@@ -50,14 +50,14 @@ jobs:
           echo "=== env GRADLE ==="; env | grep -i gradle || echo "none"
       - name: Run lint
         continue-on-error: true
-        run: ./gradlew lintDebug --stacktrace
+        run: unset GRADLE_HOME; ./gradlew lintDebug --stacktrace
 
       - name: Run unit tests
         continue-on-error: true
-        run: ./gradlew testDebugUnitTest
+        run: unset GRADLE_HOME; ./gradlew testDebugUnitTest
 
       - name: Build with Gradle
-        run: ./gradlew assembleDebug --stacktrace
+        run: unset GRADLE_HOME; ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
