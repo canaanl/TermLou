@@ -44,14 +44,9 @@ jobs:
 
       - name: Debug comprehensive
         run: |
+          echo "=== all properties ==="; find . -name "*.properties" -exec echo "--- {} ---" \; -exec cat {} \; 2>&1 | head -n 100
+          echo "=== all kts ==="; grep -r "classpath\|settings" --include="*.kts" . 2>&1 | head -n 30 || true
           echo "=== env ==="; env | sort | grep -i -E "gradle|java|classpath|tool" || true
-          echo "=== which java ==="; which java; ls -l $(which java) || true; $JAVA_HOME/bin/java -version 2>&1 | head -n 5 || true
-          echo "=== gradle.properties ==="; cat gradle.properties; echo "---"; cat ~/.gradle/gradle.properties 2>&1 || echo "no user props"
-          echo "=== settings ==="; cat settings.gradle.kts
-          echo "=== app build grep ==="; grep -n "lint\|baseline" app/build.gradle.kts || true
-          echo "=== find gradle files ==="; find ~ -name "*.gradle" -o -name "*.properties" 2>&1 | head -n 20
-          echo "=== ls gradle home ==="; ls -la ~/.gradle/ 2>&1 | head -n 20; ls -la ~/.gradle/init.d/ 2>&1 || echo "no init.d"
-          echo "=== ls gradle 9.7 ==="; ls -la /usr/share/gradle-9.7.1/ 2>&1 | head -n 20 || true
           ./gradlew help --info --stacktrace || true
 
       - name: Run lint
