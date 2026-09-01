@@ -42,15 +42,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Debug ls
+      - name: Debug wrapper
         run: |
-          ls -la
-          echo "--- app ls ---"; ls -la app/ | head -n 20
-          echo "--- find props ---"; find . -maxdepth 2 -name "*.properties" -exec ls -l {} \; 2>&1 | head -n 20
-          echo "--- cat gradle props ---"; cat gradle.properties; echo "---"; cat local.properties 2>&1 | head -n 20 || echo "no local"
-          echo "--- find home props ---"; find ~ -maxdepth 3 -name "*.properties" 2>&1 | head -n 20
-          echo "--- ls gradle home ---"; ls -la ~/.gradle/ 2>&1 | head -n 20 || true
-          echo "--- ls init.d ---"; ls -la ~/.gradle/init.d/ 2>&1 || echo "no init.d"
+          echo "=== wrapper manifest ==="; unzip -p gradle/wrapper/gradle-wrapper.jar META-INF/MANIFEST.MF 2>&1 | cat || true
+          echo "=== gradle props ==="; cat gradle.properties; echo "---"; cat ~/.gradle/gradle.properties 2>&1 || echo "no user props"
+          echo "=== find props ==="; find . ~ -name "*.properties" -exec echo "--- {} ---" \; -exec head -n 20 {} \; 2>&1 | head -n 80 || true
+          echo "=== help debug ==="; ./gradlew help --debug --stacktrace 2>&1 | head -n 200 || true
 
       - name: Run lint
         continue-on-error: true
