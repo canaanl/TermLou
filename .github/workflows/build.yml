@@ -45,11 +45,13 @@ jobs:
       - name: Debug env before lint
         run: |
           echo "=== env ==="; env | sort
-          echo "=== gradle.properties ==="; cat gradle.properties
+          echo "=== gradle.properties ==="; cat gradle.properties; echo "---"; cat ~/.gradle/gradle.properties 2>&1 || echo "no user gradle.properties"
           echo "=== settings ==="; cat settings.gradle.kts
           echo "=== gradlew head ==="; head -n 5 gradlew; ls -la gradle/wrapper/
+          echo "=== wrapper props ==="; cat gradle/wrapper/gradle-wrapper.properties
+          echo "=== check lasspath string ==="; grep -r "lasspath" . 2>&1 || echo "no lasspath found"
       - name: Run lint
-        run: ./gradlew lintDebug --stacktrace
+        run: ./gradlew --version --stacktrace
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest
