@@ -42,22 +42,28 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Debug gradlew opts
+      - name: Debug comprehensive
         run: |
-          echo "=== gradlew DEFAULT_JVM_OPTS ==="; grep -n "DEFAULT_JVM_OPTS" gradlew || echo "no DEFAULT"
-          echo "=== gradle.properties ==="; cat gradle.properties
-          echo "=== wrapper props ==="; cat gradle/wrapper/gradle-wrapper.properties
-          echo "=== env GRADLE ==="; env | grep -i gradle || echo "none"
+          echo "=== env ==="; env | sort | grep -i -E "gradle|java|classpath|tool" || true
+          echo "=== which java ==="; which java; ls -l $(which java) || true; $JAVA_HOME/bin/java -version 2>&1 | head -n 5 || true
+          echo "=== gradle.properties ==="; cat gradle.properties; echo "---"; cat ~/.gradle/gradle.properties 2>&1 || echo "no user props"
+          echo "=== settings ==="; cat settings.gradle.kts
+          echo "=== app build grep ==="; grep -n "lint\|baseline" app/build.gradle.kts || true
+          echo "=== find gradle files ==="; find ~ -name "*.gradle" -o -name "*.properties" 2>&1 | head -n 20
+          echo "=== ls gradle home ==="; ls -la ~/.gradle/ 2>&1 | head -n 20; ls -la ~/.gradle/init.d/ 2>&1 || echo "no init.d"
+          echo "=== ls gradle 9.7 ==="; ls -la /usr/share/gradle-9.7.1/ 2>&1 | head -n 20 || true
+          ./gradlew help --info --stacktrace || true
+
       - name: Run lint
         continue-on-error: true
-        run: unset GRADLE_HOME; ./gradlew -c settings.gradle.kts lintDebug --stacktrace
+        run: ./gradlew lintDebug --stacktrace
 
       - name: Run unit tests
         continue-on-error: true
-        run: unset GRADLE_HOME; ./gradlew -c settings.gradle.kts testDebugUnitTest
+        run: ./gradlew testDebugUnitTest
 
       - name: Build with Gradle
-        run: unset GRADLE_HOME; ./gradlew -c settings.gradle.kts assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
