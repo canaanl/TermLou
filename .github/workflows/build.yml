@@ -42,12 +42,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Debug wrapper
+      - name: Debug lasspath source
         run: |
-          echo "=== wrapper manifest ==="; unzip -p gradle/wrapper/gradle-wrapper.jar META-INF/MANIFEST.MF 2>&1 | cat || true
-          echo "=== gradle props ==="; cat gradle.properties; echo "---"; cat ~/.gradle/gradle.properties 2>&1 || echo "no user props"
-          echo "=== find props ==="; find . ~ -name "*.properties" -exec echo "--- {} ---" \; -exec head -n 20 {} \; 2>&1 | head -n 80 || true
-          echo "=== help debug ==="; ./gradlew help --debug --stacktrace 2>&1 | head -n 200 || true
+          echo "=== rm gradle home and retry ==="; rm -rf ~/.gradle; echo "cleared"
+          echo "=== ls ==="; ls -la; ls -la app/ | head -n 20
+          echo "=== cat files ==="; cat gradle.properties; echo "---"; cat settings.gradle.kts | head -n 30
+          echo "=== grep classpath ==="; grep -r "classpath" --include="*.kts" --include="*.properties" --include="*.gradle" . 2>&1 | head -n 20 || echo "no classpath in kts"
+          echo "=== wrapper manifest ==="; unzip -p gradle/wrapper/gradle-wrapper.jar META-INF/MANIFEST.MF 2>&1 | cat || echo "no manifest"
+          echo "=== try help with clean ==="; ./gradlew help --debug --stacktrace 2>&1 | grep -i -A2 -B2 "settings\|lasspath\|StartParams" | head -n 100 || true
 
       - name: Run lint
         continue-on-error: true
