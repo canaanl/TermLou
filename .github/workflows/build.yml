@@ -42,8 +42,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
+      - name: Debug env before lint
+        run: |
+          echo "=== env ==="; env | sort
+          echo "=== gradle.properties ==="; cat gradle.properties
+          echo "=== settings ==="; cat settings.gradle.kts
+          echo "=== gradlew head ==="; head -n 5 gradlew; ls -la gradle/wrapper/
       - name: Run lint
-        run: ./gradlew lintDebug
+        run: ./gradlew lintDebug --stacktrace
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest
