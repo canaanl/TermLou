@@ -69,6 +69,9 @@ android {
             pickFirsts.add("lib/**/libtermux.so")
         }
     }
+    lint {
+        baseline = file("lint-baseline.xml")
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
