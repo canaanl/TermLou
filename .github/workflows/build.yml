@@ -44,24 +44,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Debug gradle env
+      - name: Debug files
         run: |
-          echo "GRADLE_OPTS=${GRADLE_OPTS:-empty}"
-          echo "JAVA_OPTS=${JAVA_OPTS:-empty}"
-          echo "CLASSPATH=${CLASSPATH:-empty}"
-          echo "GRADLE_HOME=${GRADLE_HOME:-empty}"
-          echo "JAVA_TOOL_OPTIONS=${JAVA_TOOL_OPTIONS:-empty}"
-          env | grep -i -E "gradle|classpath|java_tool" || echo "no match"
-          ls -la ~/.gradle/ 2>&1 || true
-          cat ~/.gradle/gradle.properties 2>&1 || echo "no user props"
-          cat ~/.gradle/init.gradle 2>&1 || echo "no init.gradle"
-          ls -la ~/.gradle/init.d/ 2>&1 || echo "no init.d"
-          echo "=== app build head ==="; head -n 20 app/build.gradle.kts
-          echo "=== workspace build head ==="; head -n 20 workspace/build.gradle.kts
-          ls -lh app/lint-baseline.xml 2>&1 || echo "no baseline"
-          ./gradlew help --stacktrace || true
+          echo "=== app build grep ==="; grep -n "lint\|baseline\|abort" app/build.gradle.kts || echo "no lint"
+          echo "=== full app build ==="; cat app/build.gradle.kts
+          echo "=== lint baseline head ==="; head -n 5 app/lint-baseline.xml
+          ls -lh app/lint-baseline.xml
+          ./gradlew help --info --stacktrace || true
       - name: Run lint
-        run: ./gradlew lintDebug --stacktrace
+        run: ./gradlew lintDebug --info --stacktrace
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest
