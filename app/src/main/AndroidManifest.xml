@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.BIND_VPN_SERVICE" />
+
+    <application
+        android:name="com.workspace.proot.TermLouApp"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="TermLou"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.TermLou">
+        <activity
+            android:name="com.workspace.proot.MainActivity"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustResize"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name="com.workspace.proot.ShortcutSettingsActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:theme="@style/Theme.TermLou" />
+
+        <activity
+            android:name="com.workspace.proot.ShortcutGroupActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:theme="@style/Theme.TermLou" />
+
+        <activity
+            android:name="com.workspace.proot.DialogMakerActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:theme="@style/Theme.TermLou" />
+
+        <activity
+            android:name="com.workspace.proot.SplashMakerActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:theme="@style/Theme.TermLou" />
+
+        <activity
+            android:name="com.workspace.proot.TileCommandTrampolineActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=".trampoline"
+            android:theme="@style/Theme.TermLou.Transparent" />
+
+        <service
+            android:name=".TermlouCommandRunner"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_FOREGROUND_SERVICE_SPECIAL_USE"
+                android:value="Run a termlou-ui command headlessly and show the overlay" />
+        </service>
+
+        <service
+            android:name=".TermKeepAliveService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_FOREGROUND_SERVICE_SPECIAL_USE"
+                android:value="Keep terminal session alive in background" />
+        </service>
+
+        <service
+            android:name=".NetVpnService"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+            <property
+                android:name="android.app.PROPERTY_FOREGROUND_SERVICE_SPECIAL_USE"
+                android:value="Capture and forward device traffic through a TUN interface" />
+        </service>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <service
+            android:name=".CommandTileService"
+            android:icon="@drawable/ic_tile"
+            android:label="磁贴命令"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.tile"
+                android:resource="@xml/quick_settings_tile" />
+        </service>
+
+        <service
+            android:name=".LauncherTileService"
+            android:icon="@drawable/ic_tile_launcher"
+            android:label="快捷启动"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.tile"
+                android:resource="@xml/quick_settings_launcher_tile" />
+        </service>
+    </application>
+</manifest>

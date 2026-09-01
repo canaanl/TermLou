@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <files-path name="workspace" path="workspace/" />
+    <files-path name="tmp" path="workspace/tmp/" />
+    <cache-path name="cache" path="tmp/" />
+</paths>

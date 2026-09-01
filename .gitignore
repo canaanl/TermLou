@@ -1,0 +1,42 @@
+# Signing / secrets - NEVER commit
+keystore/
+*.jks
+*.keystore
+keystore.properties
+
+# Machine-specific
+local.properties
+
+# Large local toolchains / SDK
+android-sdk/
+tools/
+.tools/
+config/
+Icons.zip
+android-sdk.zip
+
+# Gradle / Kotlin / NDK / build outputs
+.gradle/
+.kotlin/
+.cxx/
+**/.cxx/
+build/
+**/build/
+out/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+Thumbs.db
+
+# Temp
+*.tmp
+*.log
+crash.log
+
+# Rootfs original backup (kept locally only)
+# opencode temp is outside repo, but guard anyway
+opencode/

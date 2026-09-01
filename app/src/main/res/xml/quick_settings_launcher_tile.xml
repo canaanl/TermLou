@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<tile
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:icon="@drawable/ic_tile_launcher"
+    android:label="快捷启动"
+    android:subtitle="打开快捷启动" />
