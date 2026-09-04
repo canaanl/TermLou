@@ -137,8 +137,21 @@ class WsServer(
 
             when {
                 method == "GET" && (path == "/" || path == "/index.html") -> {
-                    val html = context.assets.open("xterm.html").use { it.readBytes() }
+                    val html = context.assets.open("xterm/index.html").use { it.readBytes() }
                     writeBytes(client, 200, "text/html; charset=utf-8", html)
+                    client.close()
+                }
+                method == "GET" && path.startsWith("/static/") -> {
+                    val name = path.removePrefix("/static/")
+                    val mime = when {
+                        name.endsWith(".js") -> "text/javascript; charset=utf-8"
+                        name.endsWith(".css") -> "text/css; charset=utf-8"
+                        else -> null
+                    }
+                    val ok = mime != null && (name == "xterm.js" || name == "xterm.css" || name == "addon-fit.js") && !name.contains("..")
+                    if (!ok) { writeText(client, 404, "Not found"); client.close(); return }
+                    val data = context.assets.open("xterm/$name").use { it.readBytes() }
+                    writeBytes(client, 200, mime!!, data)
                     client.close()
                 }
                 method == "POST" && path == "/login" -> {

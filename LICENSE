@@ -672,3 +672,5 @@ may consider it more useful to permit linking proprietary applications with
 the library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.  But first, please read
 <https://www.gnu.org/licenses/why-not-lgpl.html>.
+
+NOTICE: app/src/main/assets/xterm/ contains xterm.js (@xterm/xterm 6.0.0) and FitAddon (@xterm/addon-fit 0.11.0), both MIT licensed (https://github.com/xtermjs/xterm.js).

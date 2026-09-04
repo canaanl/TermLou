@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TermLou</title>
+<link rel="stylesheet" href="/static/xterm.css">
+<style>
+body{background:#1e1e1e;color:#e0e0e0;font-family:monospace;margin:0;padding:8px}
+#bar{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center}
+button{background:#2d7d46;color:#fff;border:0;border-radius:6px;padding:6px 12px}
+button:disabled{opacity:.4}
+#term{height:70vh;background:#000;border-radius:8px;padding:6px}
+#term .xterm{height:100%}
+#login{max-width:320px;margin:10vh auto;text-align:center}
+#login input{width:100%;margin:6px 0;padding:8px;box-sizing:border-box;background:#111;color:#fff;border:1px solid #333;border-radius:6px}
+#files a{color:#4dd0e1}
+.tab{margin-top:8px}
+</style>
+</head>
+<body>
+<div id="login">
+<h3>TermLou</h3>
+<input id="user" placeholder="账号（开放访问可空）" autocomplete="username">
+<input id="pass" type="password" placeholder="密码" autocomplete="current-password">
+<button id="conn">连接</button>
+<div id="lerr" style="color:#f66"></div>
+</div>
+<div id="main" style="display:none">
+<div id="bar">
+<button id="bTerm">终端</button>
+<button id="bFiles">文件</button>
+<span id="st">未连接</span>
+</div>
+<div id="pTerm" class="tab">
+<div id="term"></div>
+</div>
+<div id="pFiles" class="tab" style="display:none">
+<div id="path">/</div>
+<div id="files"></div>
+<div style="margin-top:8px">
+<input type="file" id="up" multiple>
+<button id="upBtn">上传</button>
+</div>
+</div>
+</div>
+<script src="/static/xterm.js"></script>
+<script src="/static/addon-fit.js"></script>
+<script>
+let token="",ws=null,term=null,fit=null,curPath="/";
+const $=id=>document.getElementById(id);
+$("conn").onclick=async()=>{
+  const u=$("user").value,p=$("pass").value;
+  let r;
+  try{
+    r=await fetch("/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user:u,pass:p})});
+  }catch(e){$("lerr").textContent="无法连接服务器";return;}
+  if(r.status!==200){$("lerr").textContent="账号或密码错误";return;}
+  token=(await r.json()).token;
+  $("login").style.display="none";$("main").style.display="block";
+  term=new Terminal({fontSize:14,scrollback:1000,cursorBlink:true});
+  fit=new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open($("term"));
+  fit.fit();
+  const proto=location.protocol==="https:"?"wss":"ws";
+  ws=new WebSocket(proto+"://"+location.host+"?token="+encodeURIComponent(token));
+  ws.binaryType="arraybuffer";
+  ws.onopen=()=>{
+    $("st").textContent="已连接";
+    term.focus();
+    sendResize();
+  };
+  ws.onmessage=e=>{
+    if(typeof e.data==="string")term.write(e.data);
+    else term.write(new Uint8Array(e.data));
+  };
+  ws.onclose=()=>{$("st").textContent="已断开";};
+  term.onData(d=>{
+    if(ws&&ws.readyState===1)ws.send(new TextEncoder().encode(d));
+  });
+  term.onResize(s=>{
+    if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"resize",cols:s.cols,rows:s.rows}));
+  });
+  loadFiles("/");
+  setTimeout(()=>{fit.fit();sendResize();},300);
+};
+function sendResize(){
+  try{
+    fit.fit();
+    if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"resize",cols:term.cols,rows:term.rows}));
+  }catch(e){}
+}
+$("bTerm").onclick=()=>{$("pTerm").style.display="block";$("pFiles").style.display="none";fit.fit();};
+$("bFiles").onclick=()=>{$("pFiles").style.display="block";$("pTerm").style.display="none";};
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");}
+async function loadFiles(p){
+  curPath=p;
+  const r=await fetch("/files?path="+encodeURIComponent(p)+"&token="+encodeURIComponent(token));
+  if(r.status!==200)return;
+  const j=await r.json();
+  $("path").textContent=j.path;
+  let h="";
+  if(j.path!=="/"&&j.path!=="")h+='<div><a href="#" data-p="..">..</a></div>';
+  (j.files||[]).forEach(f=>{
+    if(f.dir)h+='<div>📁 <a href="#" data-p="'+esc(f.name)+'">'+esc(f.name)+'</a></div>';
+    else h+='<div>📄 '+esc(f.name)+' ('+f.size+') <a href="/download?path='+encodeURIComponent((j.path==="/"?"":j.path)+"/"+f.name)+'&token='+encodeURIComponent(token)+'">下载</a></div>';
+  });
+  $("files").innerHTML=h;
+  document.querySelectorAll("#files a[data-p]").forEach(a=>{a.onclick=ev=>{
+    ev.preventDefault();
+    const n=a.getAttribute("data-p");
+    loadFiles(n===".."?(curPath.split("/").slice(0,-1).join("/")||"/"):(curPath==="/"?"":"/"+curPath.replace(/^\//,""))+"/"+n);
+  };});
+}
+$("upBtn").onclick=async()=>{
+  const fs=$("up").files;
+  for(const f of fs){
+    const fd=new FormData();
+    fd.append("file",f,f.name);
+    await fetch("/upload?path="+encodeURIComponent(curPath)+"&token="+encodeURIComponent(token),{method:"POST",body:fd});
+  }
+  loadFiles(curPath);
+};
+window.onresize=sendResize;
+</script>
+</body>
+</html>
