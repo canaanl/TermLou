@@ -397,7 +397,7 @@ class WsServer(
                 200 -> "OK"; 400 -> "Bad Request"; 403 -> "Forbidden"; 404 -> "Not Found"
                 else -> "OK"
             }
-            val h = "HTTP/1.1 $code $status\r\nContent-Type: $mime\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n"
+            val h = "HTTP/1.1 $code $status\r\nContent-Type: $mime\r\nContent-Length: ${body.size}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"
             val os = client.getOutputStream()
             os.write(h.toByteArray(Charsets.ISO_8859_1))
             os.write(body)

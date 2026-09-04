@@ -32,8 +32,12 @@ button:disabled{opacity:.4}
 <button id="bTerm">终端</button>
 <button id="bFiles">文件</button>
 <button id="bTop">顶部</button>
+<button id="bPgUp">上页</button>
+<button id="bPgDn">下页</button>
 <button id="bBot">底部</button>
+<button id="bFol">跟随:开</button>
 <span id="st">未连接</span>
+<span id="diag"></span>
 </div>
 <div id="pTerm" class="tab">
 <div id="term"></div>
@@ -50,8 +54,18 @@ button:disabled{opacity:.4}
 <script src="/static/xterm.js"></script>
 <script src="/static/addon-fit.js"></script>
 <script>
-let token="",ws=null,term=null,fit=null,curPath="/";
+let token="",ws=null,term=null,fit=null,curPath="/",follow=true,pend=[];
 const $=id=>document.getElementById(id);
+function diag(){
+  if(!term)return;
+  try{
+    const b=term.buffer.active;
+    const v=document.querySelector("#term .xterm-viewport");
+    $("diag").textContent="buf:"+b.length+"/base:"+b.baseY+"/y:"+b.viewportY
+      +(v?" vp:"+v.scrollTop+"/"+v.scrollHeight+"/"+v.clientHeight:" vp:-");
+  }catch(e){}
+}
+setInterval(diag,1500);
 $("conn").onclick=async()=>{
   const u=$("user").value,p=$("pass").value;
   let r;
@@ -75,8 +89,9 @@ $("conn").onclick=async()=>{
     sendResize();
   };
   ws.onmessage=e=>{
-    if(typeof e.data==="string")term.write(e.data);
-    else term.write(new Uint8Array(e.data));
+    const d=(typeof e.data==="string")?new TextEncoder().encode(e.data):new Uint8Array(e.data);
+    if(follow){term.write(d);}
+    else{pend.push(d);$("st").textContent="已连接·已攒"+pend.length+"段";}
   };
   ws.onclose=()=>{$("st").textContent="已断开";};
   term.onData(d=>{
@@ -96,18 +111,25 @@ function sendResize(){
 }
 $("bTerm").onclick=()=>{$("pTerm").style.display="block";$("pFiles").style.display="none";fit.fit();};
 $("bFiles").onclick=()=>{$("pFiles").style.display="block";$("pTerm").style.display="none";};
-$("bTop").onclick=()=>{if(term)term.scrollToTop();};
-$("bBot").onclick=()=>{if(term)term.scrollToBottom();};
+$("bTop").onclick=()=>{if(term){term.scrollToTop();diag();}};
+$("bPgUp").onclick=()=>{if(term){term.scrollPages(-1);diag();}};
+$("bPgDn").onclick=()=>{if(term){term.scrollPages(1);diag();}};
+$("bBot").onclick=()=>{if(term){term.scrollToBottom();diag();}};
+$("bFol").onclick=()=>{
+  follow=!follow;
+  $("bFol").textContent=follow?"跟随:开":"跟随:关";
+  if(follow&&term){for(const d of pend)term.write(d);pend=[];$("st").textContent="已连接";}
+};
+function rowH(){
+  try{
+    const el=document.querySelector("#term");
+    if(el&&term&&term.rows>0)return Math.max(8,el.clientHeight/term.rows);
+  }catch(e){}
+  return 17;
+}
 (function(){
   const box=$("term");
-  let sy=0,sx=0,st=0,mode=0,vid=0;
-  function vp(){
-    if(vid>40)return null;
-    const v=box.querySelector(".xterm-viewport");
-    if(v)return v;
-    vid++;
-    return null;
-  }
+  let sy=0,sx=0,st=0,mode=0;
   box.addEventListener("touchstart",e=>{
     if(e.touches.length!==1)return;
     const t=e.touches[0];
@@ -119,8 +141,8 @@ $("bBot").onclick=()=>{if(term)term.scrollToBottom();};
     const dy=t.clientY-sy,dx=t.clientX-sx;
     if(!mode&&Math.abs(dy)<10&&Math.abs(dx)<10)return;
     mode=1;
-    const v=vp();
-    if(v){v.scrollTop-=dy;sy=t.clientY;sx=t.clientX;}
+    const lines=Math.trunc(dy/rowH());
+    if(lines!==0){term.scrollLines(-lines);sy=t.clientY;sx=t.clientX;diag();}
     if(e.cancelable)e.preventDefault();
   },{passive:false});
   box.addEventListener("touchend",e=>{

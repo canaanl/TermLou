@@ -33,8 +33,8 @@ android {
         applicationId = "com.workspace.proot"
         minSdk = 26
         targetSdk = 34
-        versionCode = 424
-        versionName = "4.2.4"
+        versionCode = 425
+        versionName = "4.2.5"
         ndk { abiFilters.add("arm64-v8a") }
     }
 
