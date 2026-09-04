@@ -152,6 +152,8 @@ class NetVpnService : VpnService() {
         if (pid < 0) throw IllegalStateException("启动 tun2socks 失败")
         tun2socksPid = pid
 
+        FlowLog.clear()
+        VpnFlowExporter.start(this)
         isRunning = true
         statusText = if (socksPort > 0) "运行中 · 直连上游 127.0.0.1:$socksPort" else "运行中 · 上游 $upstream"
 
@@ -202,6 +204,7 @@ class NetVpnService : VpnService() {
         upstreamLabel = "内置直连"
         BlockRules.clear()
         DnsMap.clear()
+        VpnFlowExporter.stop()
         if (wasActive) statusText = "已停止"
         stopForeground(STOP_FOREGROUND_REMOVE)
     }

@@ -33,8 +33,8 @@ android {
         applicationId = "com.workspace.proot"
         minSdk = 26
         targetSdk = 34
-        versionCode = 410
-        versionName = "4.1.0"
+        versionCode = 412
+        versionName = "4.1.2"
         ndk { abiFilters.add("arm64-v8a") }
         renderscriptTargetApi = 31
         renderscriptSupportModeEnabled = true
