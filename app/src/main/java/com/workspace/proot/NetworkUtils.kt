@@ -16,4 +16,28 @@ object NetworkUtils {
         } catch (_: Exception) {}
         return servers
     }
+
+    fun getLanIp(context: Context): String? {
+        try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val props = cm.activeNetwork?.let { cm.getLinkProperties(it) }
+            props?.linkAddresses?.forEach { la ->
+                val h = la.address?.hostAddress ?: return@forEach
+                if (h.contains(".") && !h.startsWith("127.") && !h.contains("%")) return h
+            }
+        } catch (_: Exception) {}
+        try {
+            val ifs = java.net.NetworkInterface.getNetworkInterfaces()
+            while (ifs.hasMoreElements()) {
+                val ni = ifs.nextElement()
+                if (!ni.isUp || ni.isLoopback) continue
+                val addrs = ni.inetAddresses
+                while (addrs.hasMoreElements()) {
+                    val h = addrs.nextElement()?.hostAddress ?: continue
+                    if (h.contains(".") && !h.startsWith("127.") && !h.contains("%")) return h
+                }
+            }
+        } catch (_: Exception) {}
+        return null
+    }
 }

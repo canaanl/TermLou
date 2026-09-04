@@ -1,17 +1,14 @@
 package com.workspace.proot
 
 import android.app.Activity
-import android.app.Dialog
+import android.app.AlertDialog
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -22,37 +19,21 @@ class AppPickerDialog(
     private val accent: Int,
     private val onSurfaceVariant: Int,
     private val all: List<AppEntry>,
-    private val sm: SettingsManager
-) : Dialog(ctx, R.style.FullScreenDialog) {
-
-    private lateinit var card: FrameLayout
+    private val sm: SettingsManager,
+    private val theme: ThemeColors
+) {
     private lateinit var listInner: LinearLayout
     private lateinit var searchInput: EditText
     private lateinit var sysSwitch: SwitchMaterial
     private val selected = sm.loadFavoriteApps().associateBy { it.pkg }.keys.toMutableSet()
 
-    init {
-        window?.apply {
-            setLayout(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            setDimAmount(0f)
-            setWindowAnimations(0)
-        }
-
+    fun show() {
         val density = ctx.resources.displayMetrics.density
         val pad = (20 * density).toInt()
 
-        val root = FrameLayout(ctx).apply { setBackgroundColor(Color.TRANSPARENT) }
-        val contentPadH = (60 * density).toInt()
-        val contentPadV = (48 * density).toInt()
-
-        card = FrameLayout(ctx).apply {
-            alpha = 0f
-            setOnClickListener { dismissWithFade() }
-        }
         val content = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(contentPadH, contentPadV, contentPadH, 0)
+            setPadding(pad, (8 * density).toInt(), pad, 0)
         }
 
         content.addView(TextView(ctx).apply {
@@ -89,7 +70,10 @@ class AppPickerDialog(
 
         val listScroll = ScrollView(ctx).apply {
             isVerticalScrollBarEnabled = false
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                (ctx.resources.displayMetrics.heightPixels * 0.45f).toInt()
+            )
         }
         listInner = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         listScroll.addView(listInner, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -101,44 +85,26 @@ class AppPickerDialog(
             textSize = UiTokens.TEXT_BODY
             isAllCaps = false
             ButtonStyle.apply(this, accent)
-            setOnClickListener { dismissWithFade() }
         }
         content.addView(doneBtn, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-            topMargin = contentPadV / 2
-            bottomMargin = contentPadV / 2
+            topMargin = (12 * density).toInt()
         })
 
-        card.addView(content, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
-        ))
-        root.addView(card, FrameLayout.LayoutParams(
-            ctx.resources.displayMetrics.widthPixels - (16 * density).toInt(),
-            (ctx.resources.displayMetrics.heightPixels * 0.76f).toInt(),
-            Gravity.CENTER
-        ))
-
-        setContentView(root)
-
+        val dialog = AlertDialog.Builder(ctx)
+            .setView(content)
+            .create()
+        doneBtn.setOnClickListener { dialog.dismiss() }
         searchInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
             override fun afterTextChanged(s: Editable?) { render() }
         })
         sysSwitch.setOnCheckedChangeListener { _, c -> sm.setIncludeSystemApps(c); render() }
-
         render()
-    }
-
-    override fun show() {
-        super.show()
-        card.post {
-            if (card.width > 0 && card.height > 0) {
-                applyFrostedCard(card, ctx)
-                card.animate().alpha(1f).setDuration(300).start()
-            }
-        }
+        dialog.show()
+        DialogStyler.apply(dialog, theme)
     }
 
     private fun render() {
@@ -183,11 +149,5 @@ class AppPickerDialog(
                 LinearLayout.LayoutParams.MATCH_PARENT, (46 * density).toInt()
             ))
         }
-    }
-
-    private fun dismissWithFade() {
-        card.animate().alpha(0f).setDuration(200).withEndAction {
-            dismiss()
-        }.start()
     }
 }

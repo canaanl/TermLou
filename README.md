@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-4.1.0-blue)
+![Version](https://img.shields.io/badge/version-4.2.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,9 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **4.2.0** | 420 | LAN 服务（`WsServer` 手搓 HTTP+WebSocket 同端口、`xterm.html` 离线终端、文件浏览上传下载、账号密码/token 鉴权、8080→8099 自动避让）；VPN 流量落盘 `workspace/vpn-flows.json`（仅开时创建、开时清、关即删）；三玻璃弹窗统一为原生 `AlertDialog`（删 `FrostedCard`/RenderScript） |
+| **4.1.2** | 412 | VPN 流量落盘 `workspace/vpn-flows.json`（仅开时创建、开时清、关即删） |
+| **4.1.1** | 411 | VPN 抓包流导出 `workspace/vpn-flows.json` 供 agent 读取 |
 | **4.1.0** | 410 | `.termlou` 迁至 `filesDir/.termlou`（`TermlouDirs` + 绑定 `/termlou`，隐藏 dotfile，自动迁移）；弹窗工坊删"保存模板"、底部三按钮品字；`UbuntuVersion` 重命名为 `DistroVersion` |
 | **4.0.0** | 400 | rootfs 大裁剪：47.4 MiB → 25.85 MiB（删 2537 文件/60.3MB，保留 bash/libc/gconv/C.utf8/usr-merge） |
 | **3.2.8** | 129 | 命令组不变式：成员减到 1 自动还原成命令（统一 删除/移出 两条路径） |

@@ -181,7 +181,7 @@ class TerminalManager(
         }
     }
 
-    private fun buildProotArgs(shellPath: String): List<String> {
+    internal fun buildProotArgs(shellPath: String): List<String> {
         TermlouDirs.base(context).mkdirs()
         val args = mutableListOf(
             "--root-id", "--link2symlink", "--kill-on-exit",
@@ -198,7 +198,7 @@ class TerminalManager(
         return args
     }
 
-    private fun buildProotEnv(loader: File): Array<String> {
+    internal fun buildProotEnv(loader: File): Array<String> {
         return arrayOf(
             "PROOT_LOADER=${loader.absolutePath}",
             "PROOT_TMP_DIR=${wsTmp.absolutePath}",
@@ -253,7 +253,7 @@ class TerminalManager(
         return process.inputStream.bufferedReader().readText().trim()
     }
 
-    fun findShellInRootfs(): String? {
+    internal fun findShellInRootfs(): String? {
         for (s in listOf("/usr/bin/bash", "/usr/bin/dash", "/usr/bin/sh", "/bin/sh")) {
             if (File(lxRoot, s.removePrefix("/")).exists()) return s
         }

@@ -18,7 +18,6 @@ class UiTokensTest {
     fun `brand splash tokens keep their literals`() {
         assertEquals(0xFF2D7D46.toInt(), UiTokens.primaryGreen)
         assertEquals(0xFF0E639C.toInt(), UiTokens.tertiaryBlue)
-        assertEquals(0xFF1E1E1E.toInt(), UiTokens.surfaceFallback)
     }
 
     @Test

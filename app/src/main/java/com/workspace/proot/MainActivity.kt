@@ -5,6 +5,8 @@ import android.app.AlertDialog
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -15,6 +17,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.text.InputType
 import android.text.SpannableString
 import android.text.TextUtils
 import android.text.style.ForegroundColorSpan
@@ -152,6 +155,10 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
     private lateinit var netMenuHost: FrameLayout
     private lateinit var netBraceMenu: BraceMenu
     private lateinit var netFlowList: LinearLayout
+    private lateinit var lanToggleBtn: Button
+    private lateinit var lanAuthBtn: Button
+    private lateinit var lanStatusText: TextView
+    private lateinit var lanUrlText: TextView
     private val netExpandedIds = HashSet<Long>()
     private var netFlowDirty = false
     private var lastNetStatusShown: String? = null
@@ -1275,6 +1282,74 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             })
         })
 
+        settingsInner.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
+                setMargins(0, 24, 0, 24)
+            }
+            setBackgroundColor(cOutline)
+        })
+
+        settingsInner.addView(TextView(this).apply {
+            text = "LAN 服务"
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            textSize = UiTokens.TEXT_TITLE
+            setPadding(0, 0, 0, 4)
+        })
+        lanStatusText = TextView(this).apply {
+            text = "状态：未开启"
+            setTextColor(cOnSurfaceVariant)
+            textSize = UiTokens.TEXT_META
+            setPadding(0, 0, 0, 4)
+        }
+        settingsInner.addView(lanStatusText)
+        lanUrlText = TextView(this).apply {
+            text = "http://…:8080（未运行，仅预览）"
+            setTextColor(cOnSurfaceVariant)
+            textSize = UiTokens.TEXT_META
+            setPadding(0, 0, 0, 12)
+            setOnClickListener { copyLanUrl() }
+        }
+        settingsInner.addView(lanUrlText)
+        settingsInner.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, 0)
+            lanToggleBtn = Button(this@MainActivity).apply {
+                text = "开启服务"
+                setTextColor(Color.WHITE)
+                textSize = UiTokens.TEXT_BODY
+                setPadding(16, 6, 16, 6)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = 4
+                }
+                ButtonStyle.apply(this, cPrimary)
+                setOnClickListener {
+                    if (LanShareService.isRunning) stopLan() else startLan()
+                }
+            }
+            lanAuthBtn = Button(this@MainActivity).apply {
+                text = "输入用户名密码"
+                setTextColor(Color.WHITE)
+                textSize = UiTokens.TEXT_BODY
+                setPadding(16, 6, 16, 6)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = 4
+                }
+                ButtonStyle.apply(this, cOutline)
+                setOnClickListener { showLanAuthDialog() }
+            }
+            addView(lanToggleBtn)
+            addView(lanAuthBtn)
+        })
+        refreshLanRow()
+
+        settingsInner.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
+                setMargins(0, 24, 0, 24)
+            }
+            setBackgroundColor(cOutline)
+        })
+
         settingsInner.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1568,7 +1643,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
     }
 
     private fun showAppPicker() {
-        AppPickerDialog(this, cPrimary, cOnSurfaceVariant, loadAppCache(), settingsManager).show()
+        AppPickerDialog(this, cPrimary, cOnSurfaceVariant, loadAppCache(), settingsManager, theme).show()
     }
 
     private fun loadAppCache(): List<AppEntry> {
@@ -1628,8 +1703,9 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 netToggleBtn,
                 barButton("选择应用", cOutline) {
                     NetAppPickerDialog(
-                        this@MainActivity, cPrimary, cOnSurfaceVariant, loadAppCache(), settingsManager
-                    ) { refreshNetTab() }.show()
+                        this@MainActivity, cPrimary, cOnSurfaceVariant, loadAppCache(), settingsManager,
+                        { refreshNetTab() }, theme
+                    ).show()
                 }
             ))
             addView(gridRow(
@@ -1881,6 +1957,108 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         netFlowDirty = true
         mainHandler.removeCallbacks(netFlowRunnable)
         mainHandler.postDelayed(netFlowRunnable, 400)
+    }
+
+    private fun refreshLanRow() {
+        if (isFinishing || isDestroyed) return
+        if (!::lanToggleBtn.isInitialized) return
+        val running = LanShareService.isRunning
+        val user = settingsManager.lanUser()
+        lanStatusText.text = if (running) {
+            "状态：运行中 · " + if (user.isEmpty()) "开放访问" else "认证：$user"
+        } else {
+            "状态：未开启" + if (user.isEmpty()) "" else " · 已设认证：$user"
+        }
+        lanUrlText.text = if (running && LanShareService.lanUrl.isNotEmpty()) {
+            LanShareService.lanUrl + "（点即复制）"
+        } else {
+            val ip = NetworkUtils.getLanIp(this) ?: "…"
+            "http://$ip:8080（未运行，仅预览，点即复制）"
+        }
+        lanToggleBtn.text = if (running) "停止服务" else "开启服务"
+        ButtonStyle.apply(lanToggleBtn, if (running) cError else cPrimary)
+        lanAuthBtn.isEnabled = !running
+        lanAuthBtn.alpha = if (running) 0.5f else 1f
+    }
+
+    private fun startLan() {
+        LanShareService.start(this)
+        showTempStatus("正在启动 LAN 服务…")
+        mainHandler.postDelayed({ refreshLanRow() }, 1500)
+        mainHandler.postDelayed({ refreshLanRow() }, 4000)
+    }
+
+    private fun stopLan() {
+        LanShareService.stop(this)
+        showTempStatus("已停止 LAN 服务，状态已重置")
+        mainHandler.postDelayed({ refreshLanRow() }, 1200)
+    }
+
+    private fun copyLanUrl() {
+        val url = if (LanShareService.isRunning && LanShareService.lanUrl.isNotEmpty()) {
+            LanShareService.lanUrl
+        } else {
+            val ip = NetworkUtils.getLanIp(this) ?: return
+            "http://$ip:8080"
+        }
+        runCatching {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("lan", url))
+        }
+        showTempStatus("已复制 $url")
+    }
+
+    private fun showLanAuthDialog() {
+        if (LanShareService.isRunning) {
+            showTempStatus("服务运行中，请先停止服务再修改认证")
+            return
+        }
+        val density = resources.displayMetrics.density
+        val userEdit = EditText(this).apply {
+            setText(settingsManager.lanUser())
+            hint = "账号（留空为开放访问）"
+            setTextColor(Color.WHITE)
+            setHintTextColor(cOnSurfaceVariant)
+            textSize = UiTokens.TEXT_BODY
+            setSingleLine(true)
+            setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
+            setBackgroundColor(UiTokens.searchBg)
+        }
+        val passEdit = EditText(this).apply {
+            setText(settingsManager.lanPass())
+            hint = "密码"
+            setTextColor(Color.WHITE)
+            setHintTextColor(cOnSurfaceVariant)
+            textSize = UiTokens.TEXT_BODY
+            setSingleLine(true)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
+            setBackgroundColor(UiTokens.searchBg)
+        }
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((16 * density).toInt(), (8 * density).toInt(), (16 * density).toInt(), (8 * density).toInt())
+            addView(userEdit)
+            addView(passEdit, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (8 * density).toInt() })
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("LAN 用户验证")
+            .setView(body)
+            .setPositiveButton("保存") { _, _ ->
+                settingsManager.setLanAuth(
+                    userEdit.text.toString().trim(),
+                    passEdit.text.toString()
+                )
+                hideIme()
+                refreshLanRow()
+                showTempStatus("LAN 认证已保存")
+            }
+            .setNegativeButton("取消", null)
+            .create()
+        dialog.show()
+        DialogStyler.apply(dialog, theme)
     }
 
     private fun startNet() {

@@ -9,11 +9,5 @@
         <item name="android:backgroundDimEnabled">false</item>
     </style>
 
-    <style name="FullScreenDialog" parent="Theme.MaterialComponents.Dialog">
-        <item name="android:windowIsFloating">false</item>
-        <item name="android:windowNoTitle">true</item>
-        <item name="android:windowBackground">@android:color/transparent</item>
-    </style>
-
     <style name="Theme.TermLou.Slider" parent="Theme.MaterialComponents.NoActionBar" />
 </resources>

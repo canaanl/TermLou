@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TermLou</title>
+<style>
+body{background:#1e1e1e;color:#e0e0e0;font-family:monospace;margin:0;padding:8px}
+#bar{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+button{background:#2d7d46;color:#fff;border:0;border-radius:6px;padding:6px 12px}
+button:disabled{opacity:.4}
+#term{background:#000;border-radius:8px;padding:10px;height:62vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+#term .cur{display:inline-block;width:8px;background:#00ff41;animation:b 1s steps(1) infinite}
+@keyframes b{50%{opacity:0}}
+#input{width:100%;background:#111;color:#0f0;border:1px solid #333;border-radius:6px;padding:8px;box-sizing:border-box}
+#files{margin-top:8px}
+#files a{color:#4dd0e1}
+#login{max-width:320px;margin:10vh auto;text-align:center}
+#login input{width:100%;margin:6px 0;padding:8px;box-sizing:border-box;background:#111;color:#fff;border:1px solid #333;border-radius:6px}
+.tab{margin-top:8px}
+</style>
+</head>
+<body>
+<div id="login">
+<h3>TermLou</h3>
+<input id="user" placeholder="账号（开放访问可空）">
+<input id="pass" type="password" placeholder="密码">
+<button id="conn">连接</button>
+<div id="lerr" style="color:#f66"></div>
+</div>
+<div id="main" style="display:none">
+<div id="bar">
+<button id="bTerm">终端</button>
+<button id="bFiles">文件</button>
+<span id="st">未连接</span>
+</div>
+<div id="pTerm" class="tab">
+<div id="term"></div>
+<input id="input" placeholder="输入命令回车发送（Ctrl+C 请点按钮）" autocomplete="off">
+<div style="margin-top:6px">
+<button id="kTab">Tab</button>
+<button id="kC">Ctrl+C</button>
+<button id="kD">Ctrl+D</button>
+<button id="kUp">↑</button>
+<button id="kDn">↓</button>
+</div>
+</div>
+<div id="pFiles" class="tab" style="display:none">
+<div id="path">/</div>
+<div id="files"></div>
+<div style="margin-top:8px">
+<input type="file" id="up" multiple>
+<button id="upBtn">上传</button>
+</div>
+</div>
+</div>
+<script>
+let token="",ws=null,cols=100,rows=32,curPath="/";
+const $=id=>document.getElementById(id);
+const term=$("term");
+function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;");}
+let fg=null;
+function out(d){
+  const t=new TextDecoder().decode(d);
+  let h="",i=0,buf="";
+  function flush(){if(buf){h+=esc(buf);buf="";}}
+  while(i<t.length){
+    const c=t[i];
+    if(c=="\x1b"&&t[i+1]=="["){
+      flush();
+      const m=t.slice(i).match(/^\x1b\[([0-9;]*)m/);
+      if(m){
+        const codes=m[1].split(";").filter(x=>x!=="");
+        if(codes.length===0||codes.includes("0")){if(fg){h+="</span>";fg=null;}}
+        const col=codes.find(x=>{const n=+x;return n>=30&&n<=37;});
+        if(col){const c=["#000","#f55","#0f0","#ff0","#66f","#f0f","#4dd","#fff"][+col-30];if(fg)h+="</span>";h+='<span style="color:'+c+'">';fg=1;}
+        i+=m[0].length;continue;
+      }
+      const cl=t.slice(i).match(/^\x1b\[[0-9;]*[A-Za-z]/);
+      if(cl){i+=cl[0].length;continue;}
+      i+=2;continue;
+    } else if(c=="\r"||c=="\n"){flush();h+="<br>";i++;if(t[i]=="\n"&&c=="\r")i++;}
+    else if(c=="\b"){flush();h+="⌫";i++;}
+    else if(c=="\x07"){i++;}
+    else {buf+=c;i++;}
+  }
+  flush();
+  term.innerHTML+=h;
+  if(fg){/* keep */}
+  term.scrollTop=term.scrollHeight;
+}
+function sendResize(){
+  cols=Math.max(40,Math.floor(term.clientWidth/8));
+  rows=Math.max(10,Math.floor(term.clientHeight/17));
+  if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"resize",cols:cols,rows:rows}));
+}
+$("conn").onclick=async()=>{
+  const u=$("user").value,p=$("pass").value;
+  const r=await fetch("/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user:u,pass:p})});
+  if(r.status!==200){$("lerr").textContent="账号或密码错误";return;}
+  token=(await r.json()).token;
+  $("login").style.display="none";$("main").style.display="block";
+  const proto=location.protocol==="https:"?"wss":"ws";
+  ws=new WebSocket(proto+"://"+location.host+"?token="+encodeURIComponent(token));
+  ws.binaryType="arraybuffer";
+  ws.onopen=()=>{$("st").textContent="已连接";sendResize();};
+  ws.onmessage=e=>{if(typeof e.data==="string")out(new TextEncoder().encode(e.data));else out(new Uint8Array(e.data));};
+  ws.onclose=()=>{$("st").textContent="已断开";};
+  loadFiles("/");
+  setTimeout(sendResize,300);
+};
+$("input").onkeydown=e=>{
+  if(e.key==="Enter"&&ws&&ws.readyState===1){ws.send(new TextEncoder().encode($("input").value+"\n"));$("input").value="";}
+};
+function key(s){if(ws&&ws.readyState===1)ws.send(new TextEncoder().encode(s));}
+$("kTab").onclick=()=>key("\t");
+$("kC").onclick=()=>key("\x03");
+$("kD").onclick=()=>key("\x04");
+$("kUp").onclick=()=>key("\x1b[A");
+$("kDn").onclick=()=>key("\x1b[B");
+$("bTerm").onclick=()=>{$("pTerm").style.display="block";$("pFiles").style.display="none";};
+$("bFiles").onclick=()=>{$("pFiles").style.display="block";$("pTerm").style.display="none";};
+async function loadFiles(p){
+  curPath=p;
+  const r=await fetch("/files?path="+encodeURIComponent(p)+"&token="+encodeURIComponent(token));
+  if(r.status!==200)return;
+  const j=await r.json();
+  $("path").textContent=j.path;
+  let h="";
+  if(j.path!=="/"&&j.path!=="")h+='<div><a href="#" data-p="..">..</a></div>';
+  (j.files||[]).forEach(f=>{
+    if(f.dir)h+='<div>📁 <a href="#" data-p="'+esc(f.name)+'">'+esc(f.name)+'</a></div>';
+    else h+='<div>📄 '+esc(f.name)+' ('+f.size+') <a href="/download?path='+encodeURIComponent((j.path==="/"?"":j.path)+"/"+f.name)+'&token='+encodeURIComponent(token)+'">下载</a></div>';
+  });
+  $("files").innerHTML=h;
+  document.querySelectorAll("#files a[data-p]").forEach(a=>{a.onclick=ev=>{ev.preventDefault();const n=a.getAttribute("data-p");loadFiles(n===".."?(curPath.split("/").slice(0,-1).join("/")||"/"):(curPath==="/"?"":"/"+curPath.replace(/^\//,""))+"/"+n);};});
+}
+$("upBtn").onclick=async()=>{
+  const fs=$("up").files;
+  for(const f of fs){
+    const fd=new FormData();
+    fd.append("file",f,f.name);
+    await fetch("/upload?path="+encodeURIComponent(curPath)+"&token="+encodeURIComponent(token),{method:"POST",body:fd});
+  }
+  loadFiles(curPath);
+};
+window.onresize=sendResize;
+</script>
+</body>
+</html>

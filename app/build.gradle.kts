@@ -33,11 +33,9 @@ android {
         applicationId = "com.workspace.proot"
         minSdk = 26
         targetSdk = 34
-        versionCode = 412
-        versionName = "4.1.2"
+        versionCode = 420
+        versionName = "4.2.0"
         ndk { abiFilters.add("arm64-v8a") }
-        renderscriptTargetApi = 31
-        renderscriptSupportModeEnabled = true
     }
 
     signingConfigs {

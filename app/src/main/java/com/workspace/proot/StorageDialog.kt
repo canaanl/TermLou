@@ -1,7 +1,6 @@
 package com.workspace.proot
 
-import android.app.Activity
-import android.app.Dialog
+import android.app.AlertDialog
 import android.app.usage.StorageStatsManager
 import android.content.Context
 import android.graphics.Canvas
@@ -9,7 +8,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
-import android.graphics.drawable.ColorDrawable
 import android.os.Process
 import android.os.storage.StorageManager
 import android.text.SpannableString
@@ -17,7 +15,6 @@ import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
-import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.animation.ValueAnimator
@@ -32,8 +29,7 @@ class StorageDialog(
     private val theme: ThemeColors,
     private val workspaceDir: File,
     private val lifecycleScope: LifecycleCoroutineScope
-) : Dialog(ctx, R.style.FullScreenDialog) {
-
+) {
     private val excludeDirs = setOf("linux", "tmp")
     private val colorFile = theme.primary
     private val colorSys = UiTokens.amber
@@ -42,36 +38,23 @@ class StorageDialog(
     private lateinit var fileLabel: TextView
     private lateinit var sysLabel: TextView
     private lateinit var totalLabel: TextView
-    private lateinit var contentView: LinearLayout
-    private lateinit var card: FrameLayout
 
-    init {
-        window?.apply {
-            setLayout(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            setDimAmount(0f)
-        }
-
+    fun show() {
         val density = ctx.resources.displayMetrics.density
-        val pad = (40 * density).toInt()
-        val cardW = ctx.resources.displayMetrics.widthPixels - (16 * density).toInt()
-        val cardH = (ctx.resources.displayMetrics.heightPixels * 0.76f).toInt()
+        val pad = (24 * density).toInt()
 
-        val root = FrameLayout(ctx).apply {
-            setBackgroundColor(Color.TRANSPARENT)
-            isClickable = true
-            setOnClickListener { dismissWithFade() }
-        }
-
-        card = FrameLayout(ctx).apply {
-            setOnClickListener { dismissWithFade() }
-        }
-
-        contentView = LinearLayout(ctx).apply {
+        val contentView = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(pad, pad, pad, pad)
         }
+
+        contentView.addView(TextView(ctx).apply {
+            text = "存储占用"
+            setTextColor(Color.WHITE)
+            textSize = UiTokens.TEXT_TITLE
+            typeface = Typeface.DEFAULT_BOLD
+        })
 
         chart = PieChartView(ctx, theme)
         chart.layoutParams = LinearLayout.LayoutParams(
@@ -79,10 +62,6 @@ class StorageDialog(
             (230 * density).toInt()
         ).apply { topMargin = (20 * density).toInt() }
         contentView.addView(chart)
-
-        contentView.addView(View(ctx), LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-        ))
 
         val legend = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -119,31 +98,14 @@ class StorageDialog(
         contentView.addView(legend, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = (20 * density).toInt() })
-        contentView.addView(View(ctx), LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-        ))
 
-        card.addView(contentView, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-
-        root.addView(card, FrameLayout.LayoutParams(cardW, cardH, Gravity.CENTER))
-
-        setContentView(root)
-    }
-
-    override fun show() {
-        super.show()
-        card.post {
-            if (card.width > 0 && card.height > 0) {
-                val act = ctx as? Activity
-                if (act != null) applyFrostedCard(card, act)
-                else card.setBackgroundColor(theme.surface)
-                card.alpha = 0f
-                card.animate().alpha(1f).setDuration(300).start()
-                loadData()
-            }
-        }
+        val dialog = AlertDialog.Builder(ctx)
+            .setView(contentView)
+            .setPositiveButton("关闭", null)
+            .create()
+        dialog.show()
+        DialogStyler.apply(dialog, theme)
+        loadData()
     }
 
     private fun loadData() {
@@ -176,12 +138,6 @@ class StorageDialog(
                 }
             }
         }
-    }
-
-    private fun dismissWithFade() {
-        card.animate().alpha(0f).setDuration(200).withEndAction {
-            dismiss()
-        }.start()
     }
 
     private fun dirSizeExcluding(dir: File, excludeNames: Set<String>): Long {

@@ -101,6 +101,15 @@
                 android:value="Capture and forward device traffic through a TUN interface" />
         </service>
 
+        <service
+            android:name=".LanShareService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_FOREGROUND_SERVICE_SPECIAL_USE"
+                android:value="Share proot terminal and workspace files over LAN via built-in HTTP and WebSocket" />
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

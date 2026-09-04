@@ -356,4 +356,22 @@ class SettingsManager(private val prefs: SharedPreferences) {
     fun setNetUpstream(v: String) {
         prefs.edit().putString("netUpstream", v).apply()
     }
+
+    fun lanUser(): String = prefs.getString("lanUser", "") ?: ""
+
+    fun lanPass(): String = prefs.getString("lanPass", "") ?: ""
+
+    fun lanPort(): Int = prefs.getInt("lanPort", 0)
+
+    fun setLanAuth(user: String, pass: String) {
+        prefs.edit().putString("lanUser", user).putString("lanPass", pass).apply()
+    }
+
+    fun setLanPort(port: Int) {
+        prefs.edit().putInt("lanPort", port).apply()
+    }
+
+    fun clearLanAuth() {
+        prefs.edit().remove("lanUser").remove("lanPass").remove("lanPort").apply()
+    }
 }

@@ -20,9 +20,6 @@ object UiTokens {
     // 品牌绿 / 品牌蓝（值等于 ThemeColors.primary / tertiary，供无 theme 实例的 View 使用）
     val primaryGreen = 0xFF2D7D46.toInt()
     val tertiaryBlue = 0xFF0E639C.toInt()
-    // 毛玻璃兜底底色（值等于 ThemeColors.surface）
-    val surfaceFallback = 0xFF1E1E1E.toInt()
-
     // 状态栏 Matrix 绿
     val statusGreen = 0xFF00FF41.toInt()
     // 文件页「返回上级」链接色
