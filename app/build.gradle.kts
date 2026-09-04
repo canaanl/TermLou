@@ -42,10 +42,13 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = rootProject.file(keystoreProps.getProperty("storeFile", ""))
-            storePassword = keystoreProps.getProperty("storePassword", "")
-            keyAlias = keystoreProps.getProperty("keyAlias", "")
-            keyPassword = keystoreProps.getProperty("keyPassword", "")
+            val p = keystoreProps.getProperty("storeFile")
+            if (!p.isNullOrEmpty()) {
+                storeFile = rootProject.file(p)
+                storePassword = keystoreProps.getProperty("storePassword", "")
+                keyAlias = keystoreProps.getProperty("keyAlias", "")
+                keyPassword = keystoreProps.getProperty("keyPassword", "")
+            }
         }
     }
 
@@ -60,7 +63,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("release")
+            if (keystorePropsFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     packaging {
