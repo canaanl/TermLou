@@ -17,25 +17,29 @@ object PtyJni {
         envVars: Array<String>,
         processId: IntArray,
         rows: Int,
-        columns: Int
+        columns: Int,
+        cellWidth: Int = columns * 8,
+        cellHeight: Int = rows * 16
     ): Int {
         val m = cls.getDeclaredMethod(
             "createSubprocess",
             String::class.java, String::class.java,
             Array<String>::class.java, Array<String>::class.java,
             IntArray::class.java,
+            Int::class.javaPrimitiveType, Int::class.javaPrimitiveType,
             Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
         )
         m.isAccessible = true
-        return (m.invoke(null, cmd, cwd, args, envVars, processId, rows, columns) as Number).toInt()
+        return (m.invoke(null, cmd, cwd, args, envVars, processId, rows, columns, cellWidth, cellHeight) as Number).toInt()
     }
 
-    fun setPtyWindowSize(fd: Int, rows: Int, columns: Int) {
+    fun setPtyWindowSize(fd: Int, rows: Int, columns: Int, cellWidth: Int = columns * 8, cellHeight: Int = rows * 16) {
         val m = cls.getDeclaredMethod(
             "setPtyWindowSize",
-            Int::class.javaPrimitiveType, Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
+            Int::class.javaPrimitiveType, Int::class.javaPrimitiveType, Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
         )
         m.isAccessible = true
-        m.invoke(null, fd, rows, columns)
+        m.invoke(null, fd, rows, columns, cellWidth, cellHeight)
     }
 }
