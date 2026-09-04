@@ -300,6 +300,33 @@ class WsServer(
     private data class Frame(val op: Int, val data: ByteArray)
 
     companion object {
+        fun reportPtyError(ctx: Context, socket: Socket, e: Exception) {
+            val msg = "pty 启动失败: ${e.javaClass.simpleName}: ${e.message}"
+            runCatching {
+                val dir = File(ctx.filesDir, "lan")
+                dir.mkdirs()
+                File(dir, "error.log").appendText(
+                    "${java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())} $msg\n${
+                        e.stackTrace.take(8).joinToString("\n")
+                    }\n"
+                )
+            }
+            runCatching {
+                val os = socket.getOutputStream()
+                val data = "\r\n[TermLou] $msg\r\n".toByteArray(Charsets.UTF_8)
+                os.write(0x80 or 0x1)
+                if (data.size < 126) os.write(data.size)
+                else {
+                    os.write(126)
+                    os.write((data.size shr 8) and 0xFF)
+                    os.write(data.size and 0xFF)
+                }
+                os.write(data)
+                os.flush()
+                Thread.sleep(300)
+            }
+        }
+
         fun indexOfHeaderEnd(head: ByteArray): Int {
             for (i in 0 until head.size - 3) {
                 if (head[i] == 13.toByte() && head[i + 1] == 10.toByte() &&
@@ -365,7 +392,12 @@ class WsServer(
         }
 
         private fun writeFile(client: Socket, f: File) {
+            val ascii = f.name.replace(Regex("[^\\x20-\\x7E]"), "_").ifEmpty { "download" }
+            val encoded = runCatching {
+                java.net.URLEncoder.encode(f.name, "UTF-8").replace("+", "%20")
+            }.getOrDefault(ascii)
             val h = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n" +
+                "Content-Disposition: attachment; filename=\"$ascii\"; filename*=UTF-8''$encoded\r\n" +
                 "Content-Length: ${f.length()}\r\nConnection: close\r\n\r\n"
             val os = client.getOutputStream()
             os.write(h.toByteArray(Charsets.ISO_8859_1))
@@ -400,13 +432,18 @@ class WsServer(
             val env = tm.buildProotEnv(loader)
             wsTmp.mkdirs()
             val pidOut = IntArray(1)
-            masterFd = PtyJni.createSubprocess(
-                prootBin.absolutePath, wsFiles.absolutePath,
-                args.toTypedArray(), env, pidOut, 24, 80
-            )
-            if (masterFd < 0) throw IllegalStateException("pty failed")
-            pid = pidOut[0]
-            pfd = ParcelFileDescriptor.adoptFd(masterFd)
+            try {
+                masterFd = PtyJni.createSubprocess(
+                    prootBin.absolutePath, wsFiles.absolutePath,
+                    args.toTypedArray(), env, pidOut, 24, 80
+                )
+                if (masterFd < 0) throw IllegalStateException("pty fd=$masterFd")
+                pid = pidOut[0]
+                pfd = ParcelFileDescriptor.adoptFd(masterFd)
+            } catch (e: Exception) {
+                reportPtyError(ctx, socket, e)
+                return
+            }
             val pin = FileInputStream(pfd!!.fileDescriptor)
             val pout = FileOutputStream(pfd!!.fileDescriptor)
 

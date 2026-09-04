@@ -19,7 +19,7 @@ object PtyJni {
         rows: Int,
         columns: Int
     ): Int {
-        val m = cls.getMethod(
+        val m = cls.getDeclaredMethod(
             "createSubprocess",
             String::class.java, String::class.java,
             Array<String>::class.java, Array<String>::class.java,
@@ -31,7 +31,7 @@ object PtyJni {
     }
 
     fun setPtyWindowSize(fd: Int, rows: Int, columns: Int) {
-        val m = cls.getMethod(
+        val m = cls.getDeclaredMethod(
             "setPtyWindowSize",
             Int::class.javaPrimitiveType, Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
         )
