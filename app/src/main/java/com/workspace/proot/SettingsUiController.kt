@@ -453,20 +453,11 @@ class SettingsUiController(
                 isChecked = langZh
                 setOnCheckedChangeListener { _, isChecked ->
                     if (suppressSwitch) return@setOnCheckedChangeListener
+                    // 同步落盘后整进程重启：冷启动路径（Application.onCreate → AppLang.apply 读盘）
+                    // 是唯一无竞态的生效方式；热重建依赖的多方重建在分身副用户下会错位（见 4.4.1）。
                     scope.settingsManager.setLangExplicit(if (isChecked) AppLang.LANG_ZH else AppLang.LANG_EN)
                     AppLang.apply(activity)
-                    NetVpnService.refreshLocale()
-                    LanShareService.refreshLocale()
-                    TermKeepAliveService.refreshLocale()
-                    runCatching {
-                        android.service.quicksettings.TileService.requestListeningState(
-                            activity, android.content.ComponentName(activity, CommandTileService::class.java)
-                        )
-                        android.service.quicksettings.TileService.requestListeningState(
-                            activity, android.content.ComponentName(activity, LauncherTileService::class.java)
-                        )
-                    }
-                    activity.recreate()
+                    restartApp()
                 }
             })
         })
@@ -476,6 +467,20 @@ class SettingsUiController(
             textSize = UiTokens.TEXT_META
             setPadding(0, 0, 0, 0)
         })
+    }
+
+    /**
+     * 整进程重启：先递 launcher intent 再自杀，系统会拉起新进程。
+     * 调用前必须保证 pref 已同步落盘（setLangExplicit 用 commit）。
+     */
+    private fun restartApp() {
+        runCatching {
+            val launch = activity.packageManager.getLaunchIntentForPackage(activity.packageName)?.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            }
+            if (launch != null) activity.startActivity(launch)
+        }
+        kotlin.system.exitProcess(0)
     }
 
     private fun controlTint(): ColorStateList = ColorStateList(

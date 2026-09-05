@@ -86,8 +86,8 @@
     <string name="battery_manual">请手动在系统设置中允许后台运行</string>
     <string name="storage_title">存储占用</string>
     <string name="lang_title">语言</string>
-    <string name="lang_sub_zh">中文 · 跟随开关切换</string>
-    <string name="lang_sub_en">English · toggle to switch</string>
+    <string name="lang_sub_zh">中文 · 跟随开关切换，切换将重启应用</string>
+    <string name="lang_sub_en">English · toggle to switch, switching restarts the app</string>
 
     <!-- 终端/文件 -->
     <string name="ctrl_reset">Ctrl 超时复位</string>

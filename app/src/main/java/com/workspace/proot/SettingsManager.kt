@@ -363,7 +363,8 @@ class SettingsManager(private val prefs: SharedPreferences) {
     fun langExplicit(): String = prefs.getString("langExplicit", "") ?: ""
 
     fun setLangExplicit(v: String) {
-        prefs.edit().putString("langExplicit", v).apply()
+        // 语言切换后紧跟着杀进程，必须同步落盘，否则新进程读到旧值。
+        prefs.edit().putString("langExplicit", v).commit()
     }
 
     fun lanUser(): String = prefs.getString("lanUser", "") ?: ""

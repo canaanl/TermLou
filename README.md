@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-4.4.0-blue)
+![Version](https://img.shields.io/badge/version-4.4.1-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **4.4.1** | 441 | 语言切换改整进程重启（分身副用户下热重建会被系统二次重建盖回旧语言；冷启动读盘是唯一无竞态路径；`setLangExplicit` 改 `commit()` 保落盘；灰字注明切换将重启） |
 | **4.4.0** | 440 | MainActivity 解耦（2682→~480 行）：拆出 AppScope + Status/Terminal/Workspace/Network/Lan/Settings/Overlay 共 8 控制器；startShell 去重收归 TerminalManager；按🇨🇳/🇺🇸开关刷新服务与磁贴 |
 | **4.3.0** | 430 | 全量中英双语（`strings.xml` + `values-en`，首次跟随系统，设置页语言开关🇨🇳/🇺🇸，含网页/脚本/通知/磁贴；CI 硬编码中文门禁） |
 | **4.2.0** | 420 | LAN 服务（`WsServer` 手搓 HTTP+WebSocket 同端口、`xterm.html` 离线终端、文件浏览上传下载、账号密码/token 鉴权、8080→8099 自动避让）；VPN 流量落盘 `workspace/vpn-flows.json`（仅开时创建、开时清、关即删）；三玻璃弹窗统一为原生 `AlertDialog`（删 `FrostedCard`/RenderScript） |

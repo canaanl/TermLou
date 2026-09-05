@@ -86,8 +86,8 @@
     <string name="battery_manual">Please allow background running in system settings</string>
     <string name="storage_title">STORAGE USAGE</string>
     <string name="lang_title">LANGUAGE</string>
-    <string name="lang_sub_zh">中文 · 跟随开关切换</string>
-    <string name="lang_sub_en">English · toggle to switch</string>
+    <string name="lang_sub_zh">中文 · 跟随开关切换，切换将重启应用</string>
+    <string name="lang_sub_en">English · toggle to switch, switching restarts the app</string>
 
     <!-- Terminal/files -->
     <string name="ctrl_reset">Ctrl reset</string>
