@@ -38,7 +38,7 @@ jobs:
 
       - name: Check no hardcoded Chinese in code
         run: |
-          hits=$(grep -rP --include='*.kt' '"[^"]*[\x{4e00}-\x{9fff}]' app/src/main/java workspace/src/main/java 2>/dev/null | grep -v '// i18n-allow' || true)
+          hits=$(grep -rP --include='*.kt' '"[^"]*[\x{4e00}-\x{9fff}]' app/src/main/java workspace/src/main/java 2>/dev/null | grep -v '// i18n-allow' | grep -vP ':\d+:\s*(//|\*|/\*)' || true)
           if [ -n "$hits" ]; then echo "$hits"; echo "hardcoded Chinese UI strings found; move them to strings.xml"; exit 1; fi
 
       - name: Run lint
