@@ -95,7 +95,7 @@ class ShortcutGroupActivity : Activity() {
             text = getString(R.string.sc_exit_group)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
-            isAllCaps = false
+            isAllCaps = true
             setPadding(0, (12 * d).toInt(), 0, (12 * d).toInt())
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,

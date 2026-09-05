@@ -598,7 +598,7 @@ class ScriptDialogRenderer(private val ctx: Context) {
         for (b in list) {
             val bg = when (b.kind) { ScriptDialogSpec.BTN_DANGER -> palette.danger; ScriptDialogSpec.BTN_PRIMARY -> palette.accent; else -> palette.buttonNormal }
             val btn = Button(ctx).apply {
-                text = b.text; isAllCaps = false; setTextColor(palette.onButton); textSize = 13f
+                text = b.text; isAllCaps = true; setTextColor(palette.onButton); textSize = 13f
                 setPadding((8 * d).toInt(), (6 * d).toInt(), (8 * d).toInt(), (6 * d).toInt())
                 setOnClickListener { onClick(b.id) }
                 background = GradientDrawable().apply { setColor(bg); cornerRadius = (8 * d).toFloat() }

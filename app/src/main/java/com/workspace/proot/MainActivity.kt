@@ -1,4 +1,4 @@
-﻿package com.workspace.proot
+package com.workspace.proot
 
 import android.Manifest
 import android.app.AlertDialog
@@ -1214,7 +1214,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 text = getString(R.string.save)
                 setTextColor(Color.WHITE)
                 textSize = UiTokens.TEXT_BODY
-                isAllCaps = false
+                isAllCaps = true
                 setPadding(16, 6, 16, 6)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     marginEnd = 4
@@ -1230,7 +1230,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 text = getString(R.string.clear)
                 setTextColor(Color.WHITE)
                 textSize = UiTokens.TEXT_BODY
-                isAllCaps = false
+                isAllCaps = true
                 setPadding(16, 6, 16, 6)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     marginStart = 4
@@ -1724,7 +1724,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             this.text = text
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
-            isAllCaps = false
+            isAllCaps = true
             setPadding(3, 0, 3, 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             ButtonStyle.apply(this, color)

@@ -2,15 +2,15 @@
 <resources>
     <!-- Common -->
     <string name="tick">✓</string>
-    <string name="save">Save</string>
-    <string name="cancel">Cancel</string>
-    <string name="clear">Clear</string>
-    <string name="reset">Reset</string>
-    <string name="done">Done</string>
-    <string name="close">Close</string>
-    <string name="view">View</string>
-    <string name="retry">Retry</string>
-    <string name="inited">Initialized</string>
+    <string name="save">SAVE</string>
+    <string name="cancel">CANCEL</string>
+    <string name="clear">CLEAR</string>
+    <string name="reset">RESET</string>
+    <string name="done">DONE</string>
+    <string name="close">CLOSE</string>
+    <string name="view">VIEW</string>
+    <string name="retry">RETRY</string>
+    <string name="inited">INITIALIZED</string>
     <string name="copied_fmt">Copied %1$s</string>
     <string name="save_failed">Save failed</string>
 
@@ -24,41 +24,41 @@
     </string-array>
 
     <!-- Tabs -->
-    <string name="tab_terminal">Terminal</string>
-    <string name="tab_files">Files</string>
-    <string name="tab_network">Network</string>
-    <string name="tab_settings">Settings</string>
+    <string name="tab_terminal">TERMINAL</string>
+    <string name="tab_files">FILES</string>
+    <string name="tab_network">NETWORK</string>
+    <string name="tab_settings">SETTINGS</string>
 
     <!-- Settings: font/command -->
-    <string name="settings_font_title">Terminal font size</string>
+    <string name="settings_font_title">TERMINAL FONT SIZE</string>
     <string name="font_changed_fmt">Font size: %1$s</string>
-    <string name="settings_shell_title">Startup command</string>
+    <string name="settings_shell_title">STARTUP COMMAND</string>
     <string name="settings_shell_desc">Command auto-run at terminal startup</string>
     <string name="hint_shell_cmd">Enter startup command</string>
     <string name="shell_saved">Shell command saved</string>
     <string name="shell_inited_idle">Initialized (not started)</string>
-    <string name="settings_tile_title">Tile command</string>
+    <string name="settings_tile_title">TILE COMMAND</string>
     <string name="settings_tile_desc">Command run when tapping the quick-settings tile</string>
     <string name="hint_tile_cmd">Enter one-tap tile command</string>
     <string name="tile_cmd_saved">Tile command saved</string>
-    <string name="settings_quick_title">Quick launch</string>
+    <string name="settings_quick_title">QUICK LAUNCH</string>
     <string name="settings_quick_desc">Launch your chosen apps from the tile</string>
-    <string name="pick_app">Choose apps</string>
-    <string name="settings_dialog_ws_title">Dialog workshop</string>
+    <string name="pick_app">CHOOSE APPS</string>
+    <string name="settings_dialog_ws_title">DIALOG WORKSHOP</string>
     <string name="settings_dialog_ws_desc">Design script dialogs visually for termlou-ui reuse</string>
-    <string name="open_workshop">Open workshop</string>
-    <string name="settings_splash_title">Splash workshop</string>
+    <string name="open_workshop">OPEN WORKSHOP</string>
+    <string name="settings_splash_title">SPLASH WORKSHOP</string>
     <string name="settings_splash_desc">Draw the boot splash, applied on next launch</string>
-    <string name="settings_advanced">Advanced</string>
+    <string name="settings_advanced">ADVANCED</string>
 
     <!-- Settings: upstream -->
-    <string name="upstream_title">Upstream proxy</string>
+    <string name="upstream_title">UPSTREAM PROXY</string>
     <string name="upstream_desc">Empty = built-in direct (recommended, with logs and blocking); a socks5:// URL uses an external proxy (e.g. inside proot), logs and blocking unavailable.</string>
     <string name="upstream_saved">Upstream saved, takes effect after restart</string>
     <string name="upstream_cleared">Restored built-in direct</string>
 
     <!-- Settings: LAN -->
-    <string name="lan_title">LAN share</string>
+    <string name="lan_title">LAN SHARE</string>
     <string name="lan_status_off">Status: off</string>
     <string name="lan_status_off_auth_fmt">Status: off · auth set: %1$s</string>
     <string name="lan_status_open">Status: on · open access</string>
@@ -66,26 +66,26 @@
     <string name="lan_url_preview">http://…:8080 (idle preview)</string>
     <string name="lan_url_copy_fmt">%1$s (tap to copy)</string>
     <string name="lan_url_preview_ip_fmt">http://%1$s:8080 (idle preview, tap to copy)</string>
-    <string name="lan_start">Start</string>
-    <string name="lan_stop">Stop</string>
-    <string name="lan_auth_btn">Auth</string>
+    <string name="lan_start">START</string>
+    <string name="lan_stop">STOP</string>
+    <string name="lan_auth_btn">AUTH</string>
     <string name="lan_starting">Starting LAN service…</string>
     <string name="lan_stopped">LAN service stopped, state reset</string>
     <string name="lan_stop_first">Stop the service before changing auth</string>
     <string name="lan_auth_saved">LAN auth saved</string>
-    <string name="lan_auth_title">LAN authentication</string>
+    <string name="lan_auth_title">LAN AUTHENTICATION</string>
     <string name="hint_lan_user">Username (empty = open access)</string>
     <string name="hint_password">Password</string>
 
     <!-- Settings: persistence/storage/language -->
-    <string name="keepalive_title">Background persistence</string>
+    <string name="keepalive_title">BACKGROUND PERSISTENCE</string>
     <string name="keepalive_on">Persistence on. Lock TermLou in recent tasks to avoid freeze</string>
     <string name="keepalive_off">Persistence off</string>
     <string name="notif_perm_needed">Please grant notification permission!</string>
     <string name="battery_exempted">Battery optimization exempted, persistence ready</string>
     <string name="battery_manual">Please allow background running in system settings</string>
-    <string name="storage_title">Storage usage</string>
-    <string name="lang_title">Language</string>
+    <string name="storage_title">STORAGE USAGE</string>
+    <string name="lang_title">LANGUAGE</string>
     <string name="lang_sub_zh">中文 · 跟随开关切换</string>
     <string name="lang_sub_en">English · toggle to switch</string>
 
@@ -93,8 +93,8 @@
     <string name="ctrl_reset">Ctrl reset</string>
     <string name="file_back">↩  Back</string>
     <string name="file_empty">    (empty)</string>
-    <string name="file_export">Export</string>
-    <string name="file_delete">Delete</string>
+    <string name="file_export">EXPORT</string>
+    <string name="file_delete">DELETE</string>
     <string name="share_failed_fmt">Share failed: %1$s</string>
     <string name="share_read_fail">Save failed: cannot read shared file</string>
     <string name="share_saved">Saved to workspace root</string>
@@ -110,18 +110,18 @@
     <string name="splash_preparing">Preparing...</string>
     <string name="splash_deps">Installing dependencies...</string>
     <string name="splash_starting">Starting terminal...</string>
-    <string name="share_to">Share via...</string>
+    <string name="share_to">SHARE VIA...</string>
     <string name="crash_snack_fmt">Last crash: %1$s</string>
     <string name="vpn_auth_cancelled">VPN authorization cancelled</string>
 
     <!-- Network tab -->
-    <string name="net_capture_start">Start capture</string>
-    <string name="net_capture_stop">Stop capture</string>
-    <string name="net_pick_apps">Choose apps</string>
-    <string name="net_clear">Clear records</string>
-    <string name="net_view_log">View logs</string>
+    <string name="net_capture_start">START CAPTURE</string>
+    <string name="net_capture_stop">STOP CAPTURE</string>
+    <string name="net_pick_apps">CHOOSE APPS</string>
+    <string name="net_clear">CLEAR RECORDS</string>
+    <string name="net_view_log">VIEW LOGS</string>
     <string name="net_cleared">Connection records cleared</string>
-    <string name="net_log_title">Network logs</string>
+    <string name="net_log_title">NETWORK LOGS</string>
     <string name="net_log_tail_tun">== tun2socks.log (tail) ==\n</string>
     <string name="net_log_tail_mini">\n== minisocks.log (tail) ==\n</string>
     <string name="net_log_empty">(no logs)</string>
@@ -133,10 +133,10 @@
     <string name="flow_state_closed">Closed</string>
     <string name="flow_server_fmt">Server %1$s</string>
     <string name="flow_no_domain">No domain record this session</string>
-    <string name="flow_unblock">Unblock</string>
+    <string name="flow_unblock">UNBLOCK</string>
     <string name="flow_unblocked">Unblocked</string>
     <string name="flow_block_all_fmt">Blocked all %1$s connections</string>
-    <string name="flow_block_ip">Block this IP</string>
+    <string name="flow_block_ip">BLOCK THIS IP</string>
     <string name="flow_blocked_ip_fmt">Blocked %1$s</string>
     <string name="net_pick_first">Choose capture apps first</string>
     <string name="net_stopped">Capture stopped</string>
@@ -144,7 +144,7 @@
     <!-- Pickers -->
     <string name="picker_search">Search apps</string>
     <string name="picker_system">Include system apps</string>
-    <string name="picker_capture_title">Choose capture apps</string>
+    <string name="picker_capture_title">CHOOSE CAPTURE APPS</string>
 
     <!-- Storage dialog -->
     <string name="storage_file_fmt">■  Files  %1$s</string>
@@ -153,7 +153,7 @@
     <string name="storage_failed_fmt">Stats failed: %1$s</string>
 
     <!-- VPN service -->
-    <string name="vpn_channel">Network capture</string>
+    <string name="vpn_channel">NETWORK CAPTURE</string>
     <string name="vpn_fail_fg_fmt">Start failed: cannot start foreground service (%1$s)</string>
     <string name="vpn_fail_fmt">Start failed: %1$s</string>
     <string name="vpn_session">TermLou VPN</string>
@@ -179,97 +179,97 @@
     <string name="keepalive_idle">idle</string>
 
     <!-- LAN service -->
-    <string name="lan_channel">LAN share</string>
+    <string name="lan_channel">LAN SHARE</string>
     <string name="lan_starting_short">Starting…</string>
     <string name="lan_failed">Start failed</string>
     <string name="lan_failed_fmt">Start failed: %1$s</string>
     <string name="lan_running_open">Running · open access</string>
     <string name="lan_running_auth">Running · auth required</string>
-    <string name="lan_notif_title">TermLou LAN sharing running</string>
+    <string name="lan_notif_title">TERMLOU LAN SHARING RUNNING</string>
     <string name="lan_notif_stop">Stop sharing</string>
 
     <!-- Tile runner -->
-    <string name="tile_runner_channel">Floating command</string>
+    <string name="tile_runner_channel">FLOATING COMMAND</string>
     <string name="tile_runner_running">Running floating command…</string>
 
     <!-- Tiles -->
-    <string name="tile_cmd_label">Tile command</string>
+    <string name="tile_cmd_label">TILE COMMAND</string>
     <string name="tile_cmd_empty">No command configured</string>
-    <string name="tile_launch_label">Quick launch</string>
+    <string name="tile_launch_label">QUICK LAUNCH</string>
     <string name="tile_launch_sub">Open quick launch</string>
     <string name="tile_exec">Run command</string>
 
     <!-- Crash -->
-    <string name="crash_channel">Crash reports</string>
-    <string name="crash_title">TermLou crash report</string>
+    <string name="crash_channel">CRASH REPORTS</string>
+    <string name="crash_title">TERMLOU CRASH REPORT</string>
     <string name="crash_copy_exit">Copy stack and exit</string>
 
     <!-- Shortcuts -->
-    <string name="sc_add">Add shortcut</string>
-    <string name="sc_edit">Edit shortcut</string>
+    <string name="sc_add">ADD SHORTCUT</string>
+    <string name="sc_edit">EDIT SHORTCUT</string>
     <string name="sc_name_hint">Name (optional)</string>
     <string name="sc_cmd_hint">Command (supports \\n \\t \\e \\cX; mark cursor with @{})</string>
     <string name="sc_confirm">OK</string>
-    <string name="sc_delete">Delete</string>
-    <string name="sc_default_pi">Install/update Pi</string>
-    <string name="sc_default_group">Command group</string>
+    <string name="sc_delete">DELETE</string>
+    <string name="sc_default_pi">INSTALL/UPDATE PI</string>
+    <string name="sc_default_group">COMMAND GROUP</string>
     <string name="sc_group_fmt">Group · %1$d commands</string>
-    <string name="sc_backup">Backup</string>
-    <string name="sc_restore">Restore</string>
-    <string name="sc_backup_to">Backup to...</string>
+    <string name="sc_backup">BACKUP</string>
+    <string name="sc_restore">RESTORE</string>
+    <string name="sc_backup_to">BACKUP TO...</string>
     <string name="sc_backup_fail_fmt">Backup failed: %1$s</string>
     <string name="sc_restore_invalid">Restore failed: not a valid TermLou command backup</string>
-    <string name="sc_restore_title">Restore library</string>
+    <string name="sc_restore_title">RESTORE LIBRARY</string>
     <string name="sc_restore_msg_fmt">Replace all current commands and stats.\n\nBackup: %1$d commands, %2$d groups.</string>
     <string name="sc_restored_fmt">Restored %1$d items (with stats)</string>
-    <string name="sc_merge_title">Merge shortcuts</string>
+    <string name="sc_merge_title">MERGE SHORTCUTS</string>
     <string name="sc_merge_msg_fmt">Merge “%1$s” and “%2$s” into a group?</string>
-    <string name="sc_merge_ok">Merge into group</string>
-    <string name="sc_name_group">Name the group</string>
+    <string name="sc_merge_ok">MERGE INTO GROUP</string>
+    <string name="sc_name_group">NAME THE GROUP</string>
     <string name="sc_group_name_hint">Group name</string>
-    <string name="sc_create">Create</string>
-    <string name="sc_join_title">Join group</string>
+    <string name="sc_create">CREATE</string>
+    <string name="sc_join_title">JOIN GROUP</string>
     <string name="sc_join_msg_fmt">Add “%1$s” to group “%2$s”?</string>
-    <string name="sc_join">Join</string>
-    <string name="sc_disband_title">Ungroup commands</string>
+    <string name="sc_join">JOIN</string>
+    <string name="sc_disband_title">UNGROUP COMMANDS</string>
     <string name="sc_disband_msg">Long-press to drag-sort · swipe to delete/ungroup · tap to open/edit</string>
     <string name="sc_cleared_all">All quick launches cleared</string>
     <string name="sc_init_confirm">Tap Reset again to confirm clearing all</string>
 
     <!-- Dialog workshop -->
-    <string name="dm_title">Dialog workshop</string>
-    <string name="dm_section_title">Title</string>
+    <string name="dm_title">DIALOG WORKSHOP</string>
+    <string name="dm_section_title">TITLE</string>
     <string name="dm_title_hint">Shown in dialog top bar</string>
     <string name="dm_msg_hint">Body (may be empty)</string>
-    <string name="dm_section_msg">Body</string>
-    <string name="dm_section_theme">Theme</string>
-    <string name="dm_section_pos">Position</string>
-    <string name="dm_section_anim">Animation</string>
+    <string name="dm_section_msg">BODY</string>
+    <string name="dm_section_theme">THEME</string>
+    <string name="dm_section_pos">POSITION</string>
+    <string name="dm_section_anim">ANIMATION</string>
     <string name="dm_accent_hint">Accent (tap swatches; theme default if none)</string>
-    <string name="dm_section_radius">Corners</string>
-    <string name="dm_section_ctrls">Controls</string>
-    <string name="dm_preview">Live preview</string>
-    <string name="dm_test">Test dialog on device</string>
-    <string name="dm_export">Export command</string>
-    <string name="dm_exit">Exit</string>
-    <string name="dm_ctrl_text_out">Text output</string>
-    <string name="dm_ctrl_text_in">Text input</string>
-    <string name="dm_ctrl_single">Single choice</string>
-    <string name="dm_ctrl_multi">Multi choice</string>
-    <string name="dm_ctrl_toggle">Toggle</string>
-    <string name="dm_ctrl_buttons">Buttons</string>
+    <string name="dm_section_radius">CORNERS</string>
+    <string name="dm_section_ctrls">CONTROLS</string>
+    <string name="dm_preview">LIVE PREVIEW</string>
+    <string name="dm_test">TEST DIALOG ON DEVICE</string>
+    <string name="dm_export">EXPORT COMMAND</string>
+    <string name="dm_exit">EXIT</string>
+    <string name="dm_ctrl_text_out">TEXT OUTPUT</string>
+    <string name="dm_ctrl_text_in">TEXT INPUT</string>
+    <string name="dm_ctrl_single">SINGLE CHOICE</string>
+    <string name="dm_ctrl_multi">MULTI CHOICE</string>
+    <string name="dm_ctrl_toggle">TOGGLE</string>
+    <string name="dm_ctrl_buttons">BUTTONS</string>
     <string name="dm_f_label">Label</string>
     <string name="dm_f_key">Field name (key)</string>
     <string name="dm_f_opts">Options (comma separated)</string>
     <string name="dm_f_btns">Buttons (comma separated, text=id=kind)</string>
-    <string name="dm_btns_default">OK=ok=primary,Cancel=cancel=normal</string>
-    <string name="dm_add_ctrl">Add control</string>
+    <string name="dm_btns_default">OK=ok=primary,CANCEL=cancel=normal</string>
+    <string name="dm_add_ctrl">ADD CONTROL</string>
     <string name="dm_summary_out_fmt">Text output: %1$s</string>
     <string name="dm_summary_in_fmt">Text input: %1$s</string>
     <string name="dm_summary_sel_fmt">%1$s: %2$s</string>
     <string name="dm_summary_toggle_fmt">Toggle: %1$s</string>
     <string name="dm_summary_btns_fmt">Buttons: %1$s</string>
-    <string name="dm_close">Close</string>
+    <string name="dm_close">CLOSE</string>
     <string name="dm_need_overlay">Overlay permission required</string>
     <string name="dm_copied">Command copied to clipboard</string>
     <string name="dm_note_output">Runtime output area</string>
@@ -279,57 +279,57 @@
     <string name="sm_block">Blocks</string>
     <string name="sm_mixed">Mixed</string>
     <string name="sm_invert">Invert</string>
-    <string name="sm_undo">Undo</string>
-    <string name="sm_import">Import photo</string>
-    <string name="sm_preview">Preview</string>
-    <string name="sm_save">Save</string>
+    <string name="sm_undo">UNDO</string>
+    <string name="sm_import">IMPORT PHOTO</string>
+    <string name="sm_preview">PREVIEW</string>
+    <string name="sm_save">SAVE</string>
 
     <!-- Brace menu -->
-    <string name="brace_confirm">Confirm?</string>
-    <string name="brace_oops">Oops</string>
-    <string name="brace_confirm_btn">Confirm</string>
+    <string name="brace_confirm">CONFIRM?</string>
+    <string name="brace_oops">OOPS</string>
+    <string name="brace_confirm_btn">CONFIRM</string>
 
     <!-- Setup -->
-    <string name="setup_title">Install RootFS</string>
-    <string name="setup_extract">Extract RootFS</string>
-    <string name="setup_import_file">Import file</string>
-    <string name="setup_import_folder">Import folder</string>
+    <string name="setup_title">INSTALL ROOTFS</string>
+    <string name="setup_extract">EXTRACT ROOTFS</string>
+    <string name="setup_import_file">IMPORT FILE</string>
+    <string name="setup_import_folder">IMPORT FOLDER</string>
     <string name="perm_bg">Background keep-alive</string>
     <string name="shell_not_found">Shell not found in rootfs</string>
     <string name="shell_error_fmt">Shell error: %1$s</string>
 
     <!-- Groups -->
-    <string name="sc_exit">Exit</string>
+    <string name="sc_exit">EXIT</string>
     <string name="sc_manage_title">Shortcuts</string>
-    <string name="sc_new">+ New shortcut</string>
-    <string name="sc_new_title">New shortcut</string>
-    <string name="sc_edit_title">Edit command</string>
-    <string name="sc_disband">Ungroup</string>
-    <string name="sc_freq_reset">Reset stats</string>
+    <string name="sc_new">+ NEW SHORTCUT</string>
+    <string name="sc_new_title">NEW SHORTCUT</string>
+    <string name="sc_edit_title">EDIT COMMAND</string>
+    <string name="sc_disband">UNGROUP</string>
+    <string name="sc_freq_reset">RESET STATS</string>
     <string name="sc_freq_cleared">Cleared stats for this command</string>
-    <string name="sc_move_out">Move out of group</string>
-    <string name="sc_delete_cmd">Delete command</string>
-    <string name="sc_exit_group">Exit group</string>
+    <string name="sc_move_out">MOVE OUT OF GROUP</string>
+    <string name="sc_delete_cmd">DELETE COMMAND</string>
+    <string name="sc_exit_group">EXIT GROUP</string>
     <string name="sc_hint_group">Long-press to drag · swipe on commands</string>
     <string name="sc_disband_msg_fmt">Ungroup “%1$s”? Its %2$d commands stay in the list.</string>
 
     <!-- Splash title -->
-    <string name="sm_title">Splash workshop</string>
+    <string name="sm_title">SPLASH WORKSHOP</string>
 
     <!-- LAN notification/errors -->
     <string name="lan_notif_text_fmt">%1$s · %2$d connected · %3$s</string>
     <string name="web_user_ph">Username (empty = open)</string>
     <string name="web_pass_ph">Password</string>
-    <string name="web_conn">Connect</string>
+    <string name="web_conn">CONNECT</string>
     <string name="web_err_conn">Cannot reach server</string>
     <string name="web_err_auth">Wrong username or password</string>
-    <string name="web_tab_term">Terminal</string>
-    <string name="web_tab_files">Files</string>
+    <string name="web_tab_term">TERMINAL</string>
+    <string name="web_tab_files">FILES</string>
     <string name="web_st_idle">Idle</string>
     <string name="web_st_on">Connected</string>
     <string name="web_st_off">Closed</string>
-    <string name="web_up_btn">Upload</string>
-    <string name="web_dl">Download</string>
+    <string name="web_up_btn">UPLOAD</string>
+    <string name="web_dl">DOWNLOAD</string>
     <string name="lan_notif_open_app">open the App to view</string>
     <string name="lan_port_busy_fmt">20 ports from %1$d all busy: %2$s</string>
     <string name="lan_pty_fail_fmt">pty failed: %1$s: %2$s</string>

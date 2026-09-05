@@ -28,7 +28,7 @@ object DialogStyler {
                         else -> Color.WHITE
                     }
                 )
-                it.isAllCaps = false
+                it.isAllCaps = true
             }
         }
     }

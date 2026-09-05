@@ -97,7 +97,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
             text = getString(R.string.sc_new)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
-            isAllCaps = false
+            isAllCaps = true
             setPadding(0, (10 * d).toInt(), 0, (10 * d).toInt())
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginEnd = (6 * d).toInt()
@@ -111,7 +111,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
             text = getString(R.string.sc_exit)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
-            isAllCaps = false
+            isAllCaps = true
             setPadding(0, (10 * d).toInt(), 0, (10 * d).toInt())
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = (6 * d).toInt()
@@ -135,7 +135,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
             text = getString(R.string.sc_backup)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
-            isAllCaps = false
+            isAllCaps = true
             setPadding(0, (10 * d).toInt(), 0, (10 * d).toInt())
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginEnd = (6 * d).toInt()
@@ -149,7 +149,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
             text = getString(R.string.sc_restore)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
-            isAllCaps = false
+            isAllCaps = true
             setPadding(0, (10 * d).toInt(), 0, (10 * d).toInt())
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = (6 * d).toInt()

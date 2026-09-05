@@ -167,7 +167,7 @@ class SplashMakerActivity : AppCompatActivity() {
         Button(this).apply {
             this.text = text
             setTextColor(Color.WHITE)
-            isAllCaps = false
+            isAllCaps = true
             textSize = UiTokens.TEXT_BODY
             setPadding((16 * density()).toInt(), (6 * density()).toInt(), (16 * density()).toInt(), (6 * density()).toInt())
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {

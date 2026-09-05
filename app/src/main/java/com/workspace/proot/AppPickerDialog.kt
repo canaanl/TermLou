@@ -83,7 +83,7 @@ class AppPickerDialog(
             text = ctx.getString(R.string.done)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
-            isAllCaps = false
+            isAllCaps = true
             ButtonStyle.apply(this, accent)
         }
         content.addView(doneBtn, LinearLayout.LayoutParams(

@@ -193,7 +193,7 @@ class DialogMakerActivity : Activity() {
         val testBtn = Button(this).apply {
             text = getString(R.string.dm_test)
             setTextColor(Color.WHITE)
-            isAllCaps = false
+            isAllCaps = true
             ButtonStyle.apply(this, theme.primary)
             setOnClickListener { testOnScreen() }
         }
@@ -204,14 +204,14 @@ class DialogMakerActivity : Activity() {
         val exportBtn = Button(this).apply {
             text = getString(R.string.dm_export)
             setTextColor(Color.WHITE)
-            isAllCaps = false
+            isAllCaps = true
             ButtonStyle.apply(this, theme.outline)
             setOnClickListener { exportCommand() }
         }
         val exitBtn = Button(this).apply {
             text = getString(R.string.dm_exit)
             setTextColor(Color.WHITE)
-            isAllCaps = false
+            isAllCaps = true
             ButtonStyle.apply(this, theme.outline)
             setOnClickListener { finish() }
         }
@@ -341,7 +341,7 @@ class DialogMakerActivity : Activity() {
             val b = Button(this).apply {
                 this.text = "+$text"
                 setTextColor(Color.WHITE)
-                isAllCaps = false
+                isAllCaps = true
                 textSize = UiTokens.TEXT_COMPACT
                 setPadding((10 * dd).toInt(), (4 * dd).toInt(), (10 * dd).toInt(), (4 * dd).toInt())
                 ButtonStyle.apply(this, theme.outline)
@@ -487,7 +487,7 @@ class DialogMakerActivity : Activity() {
             row.addView(Button(this).apply {
                 text = "×"
                 setTextColor(Color.WHITE)
-                isAllCaps = false
+                isAllCaps = true
                 textSize = UiTokens.TEXT_COMPACT
                 setPadding((8 * dd).toInt(), 0, (8 * dd).toInt(), 0)
                 setOnClickListener {

@@ -40,7 +40,7 @@ class WheelAdapter(
         val btn = Button(ctx).apply {
             setTextColor(Color.WHITE)
             textSize = 13f
-            isAllCaps = false
+            isAllCaps = true
             layoutParams = RecyclerView.LayoutParams(cardSize, RecyclerView.LayoutParams.MATCH_PARENT).apply {
                 setMargins(3, 4, 3, 4)
             }
