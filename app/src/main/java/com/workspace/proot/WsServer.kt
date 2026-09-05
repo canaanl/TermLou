@@ -138,7 +138,10 @@ class WsServer(
             when {
                 method == "GET" && (path == "/" || path == "/index.html") -> {
                     val raw = context.assets.open("xterm/index.html").use { it.readBytes().toString(Charsets.UTF_8) }
-                    val html = raw.replace("/*{{LANG}}*/{}", buildLangJson())
+                    var html = raw.replace("/*{{LANG}}*/null", buildLangJson())
+                    if ("{{LANG}}" in html) {
+                        html = html.replace(Regex("var LANG=.*?;"), "var LANG=" + buildLangJson() + ";")
+                    }
                     writeBytes(client, 200, "text/html; charset=utf-8", html.toByteArray(Charsets.UTF_8))
                     client.close()
                 }

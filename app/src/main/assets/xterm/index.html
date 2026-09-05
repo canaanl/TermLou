@@ -53,7 +53,7 @@ button:disabled{opacity:.4}
 <script src="/static/xterm.js"></script>
 <script src="/static/addon-fit.js"></script>
 <script>
-var LANG=/*{{LANG}}*/{"userPh":"","passPh":"","conn":"","errConn":"","errAuth":"","tabTerm":"","tabFiles":"","stIdle":"","stOn":"","stOff":"","upBtn":"","dl":""};
+var LANG=/*{{LANG}}*/null;if(!LANG)LANG={};
 let token="",ws=null,term=null,fit=null,curPath="/";
 const $=id=>document.getElementById(id);
 $("user").placeholder=LANG.userPh;

@@ -230,7 +230,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
                 saveList()
             }
             .setNegativeButton(getString(R.string.cancel), null)
-            .show()
+            .showStyled(theme)
     }
 
     private fun askMerge(from: Int, target: Int) {
@@ -242,8 +242,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
             .setMessage(getString(R.string.sc_merge_msg_fmt, src.label.ifBlank { src.cmd }, tgt.label.ifBlank { tgt.cmd }))
             .setPositiveButton(getString(R.string.sc_merge_ok)) { _, _ -> showGroupNameDialog(from, target) }
             .setNegativeButton(getString(R.string.cancel), null)
-            .show()
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(theme.primary)
+            .showStyled(theme)
     }
 
     private fun showGroupNameDialog(from: Int, target: Int) {
@@ -281,7 +280,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
                 saveList()
             }
             .setNegativeButton(getString(R.string.cancel), null)
-            .show()
+            .showStyled(theme)
     }
 
     private fun askJoin(from: Int, target: Int) {
@@ -301,7 +300,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
                 saveList()
             }
             .setNegativeButton(getString(R.string.cancel), null)
-            .show()
+            .showStyled(theme)
     }
 
     private fun showEditDialog(index: Int, oldLabel: String, oldCmd: String) {
@@ -419,7 +418,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
             .setMessage(getString(R.string.sc_restore_msg_fmt, cmds, groups))
             .setPositiveButton(getString(R.string.sc_restore)) { _, _ -> applyRestore(parsed) }
             .setNegativeButton(getString(R.string.cancel), null)
-            .show()
+            .showStyled(theme)
     }
 
     private class WheelBackup(

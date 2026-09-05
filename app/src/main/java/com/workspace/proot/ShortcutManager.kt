@@ -265,9 +265,7 @@ class ShortcutManager(
                 }
             }
             .setNegativeButton(context.getString(R.string.cancel), null)
-            .create()
-        dialog.show()
-        dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(theme.error)
+            .showStyled(theme)
     }
 
     private fun interpretEscapes(s: String): String {

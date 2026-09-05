@@ -14,8 +14,31 @@ object DialogStyler {
             cornerRadius = radius
         }
         dialog.window?.setBackgroundDrawable(bg)
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(theme.primary)
-        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(Color.WHITE)
-        dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(theme.error)
+        // 统一英文按键为首字母大写：关掉系统默认全大写（中文不受影响）
+        for (which in listOf(
+            AlertDialog.BUTTON_POSITIVE,
+            AlertDialog.BUTTON_NEGATIVE,
+            AlertDialog.BUTTON_NEUTRAL
+        )) {
+            dialog.getButton(which)?.let {
+                it.setTextColor(
+                    when (which) {
+                        AlertDialog.BUTTON_POSITIVE -> theme.primary
+                        AlertDialog.BUTTON_NEUTRAL -> theme.error
+                        else -> Color.WHITE
+                    }
+                )
+                it.isAllCaps = false
+            }
+        }
     }
+
+}
+
+/** 建窗即套统一样式（深色圆角 + 按键首字母大写），替代裸 show()。 */
+fun AlertDialog.Builder.showStyled(theme: ThemeColors): AlertDialog {
+    val dialog = create()
+    dialog.show()
+    DialogStyler.apply(dialog, theme)
+    return dialog
 }

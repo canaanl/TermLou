@@ -453,7 +453,7 @@ class DialogMakerActivity : Activity() {
                 onOk(edits.mapValues { it.value.text.toString() })
             }
             .setNegativeButton(getString(R.string.cancel), null)
-            .show()
+            .showStyled(theme)
     }
 
     private fun renderCtrlList() {
