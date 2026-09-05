@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
+import android.widget.ImageView
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -50,25 +51,20 @@ class UiBuilder(
         return Pair(tabHost, tabIndicator)
     }
 
-    fun createTabBar(): List<TextView> {
-        val tabTextSize = UiTokens.TEXT_TITLE
-        val toolbarBg = theme.surfaceVariant
-        val labels = listOf(activity.getString(R.string.tab_terminal), activity.getString(R.string.tab_files), activity.getString(R.string.tab_network), activity.getString(R.string.tab_settings))
+    fun createTabBar(): List<ImageView> {
+        val icons = listOf(
+            R.drawable.ic_tab_terminal to R.string.tab_terminal,
+            R.drawable.ic_tab_files to R.string.tab_files,
+            R.drawable.ic_tab_network to R.string.tab_network,
+            R.drawable.ic_tab_settings to R.string.tab_settings
+        )
 
-        return labels.map { label ->
-            TextView(activity).apply {
-                text = label
-                gravity = Gravity.CENTER
-                includeFontPadding = false
-                setTextColor(toolbarBg)
-                textSize = tabTextSize
-                // 英文长词（SETTINGS）不换行：单行+省略+装不下自动缩小，中文不受影响
-                setSingleLine(true)
-                ellipsize = TextUtils.TruncateAt.END
-                androidx.core.widget.TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                    this, 12, tabTextSize.toInt(), 1, android.util.TypedValue.COMPLEX_UNIT_SP
-                )
-                setPadding(8, 8, 8, 8)
+        return icons.map { (icon, desc) ->
+            ImageView(activity).apply {
+                setImageResource(icon)
+                contentDescription = activity.getString(desc)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                setPadding(8, 12, 8, 12)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
         }

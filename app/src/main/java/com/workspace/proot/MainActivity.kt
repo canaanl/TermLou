@@ -49,6 +49,7 @@ import android.view.animation.DecelerateInterpolator
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
@@ -98,10 +99,10 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
     private lateinit var progressBar: ProgressBar
     private lateinit var progressText: TextView
     private lateinit var terminalView: TerminalView
-    private lateinit var terminalTab: TextView
-    private lateinit var filesTab: TextView
-    private lateinit var networkTab: TextView
-    private lateinit var settingsTab: TextView
+    private lateinit var terminalTab: ImageView
+    private lateinit var filesTab: ImageView
+    private lateinit var networkTab: ImageView
+    private lateinit var settingsTab: ImageView
     private var touchStartX = 0f
     private val swipeThreshold by lazy { (50 * resources.displayMetrics.density).toInt() }
     private var animating = false
@@ -276,6 +277,9 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         networkTab = tabViews[2]
         settingsTab = tabViews[3]
         for (tv in tabViews) toolbar.addView(tv)
+        tabViews.forEachIndexed { i, iv ->
+            iv.setColorFilter(if (i == currentTab) Color.WHITE else cSurfaceVariant)
+        }
         tabHost.addView(toolbar)
 
         val setupViews = uiBuilder.createSetupArea(
@@ -705,7 +709,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         val views = listOf(terminalArea, filesArea, networkArea, settingsWrapper)
 
         for (i in 0..3) {
-            tabs[i].setTextColor(if (i == tabIndex) Color.WHITE else cSurfaceVariant)
+            tabs[i].setColorFilter(if (i == tabIndex) Color.WHITE else cSurfaceVariant)
         }
         if (tabIndex != prev) {
             tabs[tabIndex].animate().cancel()
