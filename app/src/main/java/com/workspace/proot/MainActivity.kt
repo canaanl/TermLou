@@ -7,6 +7,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -25,6 +26,7 @@ import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Uri
 import android.net.VpnService
+import android.service.quicksettings.TileService
 import android.animation.ValueAnimator
 import android.os.Build
 import android.os.Bundle
@@ -1280,6 +1282,8 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 setTextColor(Color.WHITE)
                 textSize = UiTokens.TEXT_BODY
                 setPadding(16, 6, 16, 6)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     marginEnd = 4
                 }
@@ -1293,6 +1297,8 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 setTextColor(Color.WHITE)
                 textSize = UiTokens.TEXT_BODY
                 setPadding(16, 6, 16, 6)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     marginStart = 4
                 }
@@ -1391,6 +1397,17 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                     if (suppressSwitch) return@setOnCheckedChangeListener
                     settingsManager.setLangExplicit(if (isChecked) AppLang.LANG_ZH else AppLang.LANG_EN)
                     AppLang.apply(this@MainActivity)
+                    NetVpnService.refreshLocale()
+                    LanShareService.refreshLocale()
+                    TermKeepAliveService.refreshLocale()
+                    runCatching {
+                        TileService.requestListeningState(
+                            this@MainActivity, ComponentName(this@MainActivity, CommandTileService::class.java)
+                        )
+                        TileService.requestListeningState(
+                            this@MainActivity, ComponentName(this@MainActivity, LauncherTileService::class.java)
+                        )
+                    }
                     recreate()
                 }
             })
@@ -1797,7 +1814,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         }
         renderNetFlows()
         val status = NetVpnService.statusText.substringBefore('\n')
-        if (!NetVpnService.isRunning && status != getString(R.string.vpn_idle)) {
+        if (!NetVpnService.isRunning && status.isNotEmpty() && status != getString(R.string.vpn_idle)) {
             if (status != lastNetStatusShown) {
                 lastNetStatusShown = status
                 showTempStatus("Network | $status")
@@ -2131,7 +2148,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 }
                 refreshFileList()
             } catch (e: Exception) {
-                statusText.text = "Import error: ${e.message}"
+                statusText.text = getString(R.string.import_failed_fmt, e.message.toString())
             }
         }
     }
@@ -2419,7 +2436,7 @@ exec /usr/bin/groups "$@" 2>/dev/null
                 setSplashStatus(splash, getString(R.string.splash_starting))
                 val shellPath = findShellInRootfs()
                 if (shellPath == null) {
-                    withContext(Dispatchers.Main) { statusText.text = "Shell not found in rootfs" }
+                    withContext(Dispatchers.Main) { statusText.text = getString(R.string.shell_not_found) }
                     return@launch
                 }
 
@@ -2483,7 +2500,7 @@ exec /usr/bin/groups "$@" 2>/dev/null
                 Log.e("startShell", "shell start failed", e)
                 withContext(Dispatchers.Main) {
                     rootLayout.removeView(splash)
-                    statusText.text = "Shell error: ${e.message}"
+                    statusText.text = getString(R.string.shell_error_fmt, e.message.toString())
                 }
             }
         }

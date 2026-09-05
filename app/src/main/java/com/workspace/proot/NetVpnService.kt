@@ -25,6 +25,41 @@ class NetVpnService : VpnService() {
     private var tunFd: ParcelFileDescriptor? = null
     private var miniSocks: MiniSocks5Server? = null
     private var tun2socksPid: Int? = null
+    private var state = "idle"
+    private var stateArg1 = ""
+    private var stateArg2 = ""
+    private var upstreamRaw = ""
+
+    /** 状态码 + 参数存档，语言切换时用当前 locale 重渲染（服务不重建）。 */
+    private fun setStatus(state: String, a1: String = "", a2: String = "") {
+        this.state = state
+        stateArg1 = a1
+        stateArg2 = a2
+        renderState()
+    }
+
+    private fun renderState() {
+        statusText = when (state) {
+            "fail_fg" -> getString(R.string.vpn_fail_fg_fmt, stateArg1)
+            "fail" -> getString(R.string.vpn_fail_fmt, stateArg1)
+            "running_direct" -> getString(R.string.vpn_running_direct_fmt, stateArg1.toIntOrNull() ?: 0)
+            "running_upstream" -> getString(R.string.vpn_running_upstream_fmt, stateArg1)
+            "dead" -> getString(R.string.vpn_dead_fmt, stateArg1.toIntOrNull() ?: 0, stateArg2)
+            "stopped" -> getString(R.string.vpn_stopped)
+            else -> ""
+        }
+        upstreamLabel = if (upstreamRaw.isEmpty()) getString(R.string.vpn_upstream_direct) else upstreamRaw
+    }
+
+    private fun applyLocale() {
+        renderState()
+        val on = synchronized(lock) { active }
+        if (on) {
+            runCatching {
+                getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification())
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -44,7 +79,7 @@ class NetVpnService : VpnService() {
             startForeground(NOTIFICATION_ID, buildNotification())
         } catch (e: Exception) {
             Log.e(TAG, "startForeground failed", e)
-            statusText = getString(R.string.vpn_fail_fg_fmt, e.message.toString())
+            setStatus("fail_fg", e.message.toString())
             isRunning = false
             stopSelf()
             return START_NOT_STICKY
@@ -75,7 +110,7 @@ class NetVpnService : VpnService() {
                 synchronized(lock) { active = true }
             } catch (e: Exception) {
                 Log.e(TAG, "start vpn failed", e)
-                statusText = getString(R.string.vpn_fail_fmt, e.message.toString())
+                setStatus("fail", e.message.toString())
                 isRunning = false
                 teardown()
                 stopSelf()
@@ -115,15 +150,15 @@ class NetVpnService : VpnService() {
         tunFd = tun
 
         val upstream = sm.netUpstream().trim()
+        upstreamRaw = upstream
         if (upstream.isEmpty()) {
-            upstreamLabel = getString(R.string.vpn_upstream_direct)
             val ms = MiniSocks5Server("127.0.0.1", 0, { protect(it) }, { protect(it) }, File(filesDir, "net"))
             miniSocks = ms
             socksPort = ms.startListening()
         } else {
-            upstreamLabel = upstream
             socksPort = 0
         }
+        renderState()
 
         val bin = extractBinary()
         val cmd = mutableListOf("--device", "fd://3", "--mtu", "1500")
@@ -155,7 +190,8 @@ class NetVpnService : VpnService() {
         FlowLog.clear()
         VpnFlowExporter.start(this)
         isRunning = true
-        statusText = if (socksPort > 0) getString(R.string.vpn_running_direct_fmt, socksPort) else getString(R.string.vpn_running_upstream_fmt, upstream)
+        if (socksPort > 0) setStatus("running_direct", socksPort.toString())
+        else setStatus("running_upstream", upstream)
 
         Thread {
             val code = TunSpawner.waitPid(pid)
@@ -169,7 +205,7 @@ class NetVpnService : VpnService() {
             if (doStop) {
                 Log.e(TAG, "tun2socks exited $code")
                 val tail = readLogTail(this, 10)
-                statusText = getString(R.string.vpn_dead_fmt, code, if (tail.isEmpty()) "" else "\n" + tail)
+                setStatus("dead", code.toString(), if (tail.isEmpty()) "" else "\n" + tail)
                 isRunning = false
                 stopSelf()
             }
@@ -201,11 +237,11 @@ class NetVpnService : VpnService() {
         tunFd = null
         isRunning = false
         socksPort = 0
-        upstreamLabel = getString(R.string.vpn_upstream_direct)
+        upstreamRaw = ""
         BlockRules.clear()
         DnsMap.clear()
         VpnFlowExporter.stop()
-        if (wasActive) statusText = getString(R.string.vpn_stopped)
+        if (wasActive) setStatus("stopped") else renderState()
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
@@ -254,6 +290,10 @@ class NetVpnService : VpnService() {
             context.startService(
                 Intent(context, NetVpnService::class.java).setAction(ACTION_STOP)
             )
+        }
+
+        fun refreshLocale() {
+            instance?.applyLocale()
         }
 
         fun readLogTail(context: Context, maxLines: Int = 40): String {

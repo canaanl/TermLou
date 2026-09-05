@@ -68,7 +68,7 @@
     <string name="lan_url_preview_ip_fmt">http://%1$s:8080 (idle preview, tap to copy)</string>
     <string name="lan_start">Start</string>
     <string name="lan_stop">Stop</string>
-    <string name="lan_auth_btn">Set username and password</string>
+    <string name="lan_auth_btn">Auth</string>
     <string name="lan_starting">Starting LAN service…</string>
     <string name="lan_stopped">LAN service stopped, state reset</string>
     <string name="lan_stop_first">Stop the service before changing auth</string>
@@ -295,6 +295,8 @@
     <string name="setup_import_file">Import file</string>
     <string name="setup_import_folder">Import folder</string>
     <string name="perm_bg">Background keep-alive</string>
+    <string name="shell_not_found">Shell not found in rootfs</string>
+    <string name="shell_error_fmt">Shell error: %1$s</string>
 
     <!-- Groups -->
     <string name="sc_exit">Exit</string>

@@ -42,7 +42,7 @@ class TerminalManager(
 
                 val shellPath = findShellInRootfs()
                 if (shellPath == null) {
-                    withContext(Dispatchers.Main) { onError("Shell not found in rootfs") }
+                    withContext(Dispatchers.Main) { onError(context.getString(R.string.shell_not_found)) }
                     return@launch
                 }
 
@@ -66,7 +66,7 @@ class TerminalManager(
             } catch (e: Exception) {
                 Log.e("TerminalManager", "shell start failed", e)
                 withContext(Dispatchers.Main) {
-                    onError("Shell error: ${e.message}")
+                    onError(context.getString(R.string.shell_error_fmt, e.message.toString()))
                 }
             }
         }
@@ -216,7 +216,7 @@ class TerminalManager(
         TermlouDirs.base(context).mkdirs()
         val prootBin = File(context.applicationInfo.nativeLibraryDir, "libproot_exec.so")
         val loader = File(context.applicationInfo.nativeLibraryDir, "libproot_loader.so")
-        val shell = findShellInRootfs() ?: throw Exception("Shell not found in rootfs")
+        val shell = findShellInRootfs() ?: throw Exception(context.getString(R.string.shell_not_found))
 
         val args = mutableListOf(
             "--root-id", "--link2symlink",

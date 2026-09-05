@@ -68,7 +68,7 @@
     <string name="lan_url_preview_ip_fmt">http://%1$s:8080（未运行，仅预览，点即复制）</string>
     <string name="lan_start">开启服务</string>
     <string name="lan_stop">停止服务</string>
-    <string name="lan_auth_btn">输入用户名密码</string>
+    <string name="lan_auth_btn">用户验证</string>
     <string name="lan_starting">正在启动 LAN 服务…</string>
     <string name="lan_stopped">已停止 LAN 服务，状态已重置</string>
     <string name="lan_stop_first">服务运行中，请先停止服务再修改认证</string>
@@ -295,6 +295,8 @@
     <string name="setup_import_file">导入文件</string>
     <string name="setup_import_folder">导入文件夹</string>
     <string name="perm_bg">后台保活</string>
+    <string name="shell_not_found">RootFS 中找不到 Shell</string>
+    <string name="shell_error_fmt">Shell 错误: %1$s</string>
 
     <!-- 快捷命令组 -->
     <string name="sc_exit">退出</string>

@@ -19,6 +19,30 @@ class LanShareService : Service() {
     private val lock = Any()
     private var active = false
     private var wsServer: WsServer? = null
+    private var state = "idle"
+    private var stateArg = ""
+
+    private fun setStatus(state: String, a1: String = "") {
+        this.state = state
+        stateArg = a1
+        renderState()
+    }
+
+    private fun renderState() {
+        statusText = when (state) {
+            "failed" -> getString(R.string.lan_failed)
+            "failed_msg" -> getString(R.string.lan_failed_fmt, stateArg)
+            "running_open" -> getString(R.string.lan_running_open)
+            "running_auth" -> getString(R.string.lan_running_auth)
+            "stopped" -> getString(R.string.vpn_stopped)
+            else -> ""
+        }
+    }
+
+    private fun applyLocale() {
+        renderState()
+        refreshNotification()
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -38,7 +62,7 @@ class LanShareService : Service() {
             startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.lan_starting_short)))
         } catch (e: Exception) {
             Log.e(TAG, "startForeground failed", e)
-            statusText = getString(R.string.lan_failed)
+            setStatus("failed")
             isRunning = false
             stopSelf()
             return START_NOT_STICKY
@@ -63,7 +87,7 @@ class LanShareService : Service() {
                 synchronized(lock) { active = true }
             } catch (e: Exception) {
                 Log.e(TAG, "start lan failed", e)
-                statusText = getString(R.string.lan_failed_fmt, e.message.toString())
+                setStatus("failed_msg", e.message.toString())
                 isRunning = false
                 teardown()
                 stopSelf()
@@ -87,7 +111,7 @@ class LanShareService : Service() {
         sm.setLanPort(port)
         lanUrl = "http://$ip:$port"
         isRunning = true
-        statusText = if (sm.lanUser().isEmpty()) getString(R.string.lan_running_open) else getString(R.string.lan_running_auth)
+        if (sm.lanUser().isEmpty()) setStatus("running_open") else setStatus("running_auth")
         refreshNotification()
     }
 
@@ -116,7 +140,7 @@ class LanShareService : Service() {
         boundPort = 0
         lanUrl = ""
         currentToken = ""
-        if (wasActive) statusText = getString(R.string.vpn_stopped)
+        if (wasActive) setStatus("stopped") else renderState()
         runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
     }
 
@@ -179,6 +203,10 @@ class LanShareService : Service() {
             context.startService(
                 Intent(context, LanShareService::class.java).setAction(ACTION_STOP)
             )
+        }
+
+        fun refreshLocale() {
+            instance?.applyLocale()
         }
     }
 }
