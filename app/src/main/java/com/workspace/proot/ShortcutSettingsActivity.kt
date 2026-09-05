@@ -43,7 +43,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         settingsManager = SettingsManager(prefs)
-        items.addAll(settingsManager.loadShortcuts())
+        items.addAll(settingsManager.loadShortcuts(this))
 
         val d = resources.displayMetrics.density
 
@@ -64,7 +64,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         }
 
         val titleTv = TextView(this).apply {
-            text = "\u5feb\u6377\u547d\u4ee4\u7ba1\u7406"
+            text = getString(R.string.sc_manage_title)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_TITLE
             typeface = Typeface.DEFAULT_BOLD
@@ -94,7 +94,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         }
 
         val newBtn = Button(this).apply {
-            text = "\uff0b \u65b0\u5efa\u5feb\u6377\u547d\u4ee4"
+            text = getString(R.string.sc_new)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             isAllCaps = false
@@ -108,7 +108,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         btnRow.addView(newBtn)
 
         val exitBtn = Button(this).apply {
-            text = "\u9000\u51fa"
+            text = getString(R.string.sc_exit)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             isAllCaps = false
@@ -132,7 +132,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         }
 
         val backupBtn = Button(this).apply {
-            text = "备份"
+            text = getString(R.string.sc_backup)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             isAllCaps = false
@@ -146,7 +146,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         btnRow2.addView(backupBtn)
 
         val restoreBtn = Button(this).apply {
-            text = "恢复"
+            text = getString(R.string.sc_restore)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             isAllCaps = false
@@ -162,7 +162,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         bottomBar.addView(btnRow2)
 
         val hintTv = TextView(this).apply {
-            text = "\u957f\u6309\u62d6\u52a8\u6392\u5e8f \u00b7 \u5de6\u6ed1\u5220\u9664/\u89e3\u6563 \u00b7 \u70b9\u51fb\u8fdb\u5165/\u7f16\u8f91"
+            text = getString(R.string.sc_disband_msg)
             setTextColor(theme.onSurfaceVariant)
             textSize = UiTokens.TEXT_META
             gravity = Gravity.CENTER
@@ -180,7 +180,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         items.clear()
-        items.addAll(settingsManager.loadShortcuts())
+        items.addAll(settingsManager.loadShortcuts(this))
         if (::adapter.isInitialized) adapter.notifyDataSetChanged()
     }
 
@@ -216,11 +216,11 @@ class ShortcutSettingsActivity : ComponentActivity() {
     private fun dissolveGroup(pos: Int, name: String) {
         if (pos !in items.indices) return
         val group = items[pos] as? ShortcutItem.Group ?: return
-        val msg = "\u89e3\u6563\u300c$name\u300d\uff1f\u7ec4\u5185 ${group.members.size} \u4e2a\u547d\u4ee4\u5c06\u4fdd\u7559\u5230\u5217\u8868\u3002"
+        val msg = getString(R.string.sc_disband_msg_fmt, name, group.members.size)
         AlertDialog.Builder(this)
-            .setTitle("\u89e3\u6563\u547d\u4ee4\u7ec4")
+            .setTitle(getString(R.string.sc_disband_title))
             .setMessage(msg)
-            .setPositiveButton("\u89e3\u6563") { _, _ ->
+            .setPositiveButton(getString(R.string.sc_disband)) { _, _ ->
                 items.removeAt(pos)
                 var i = pos
                 for (m in group.members) {
@@ -229,7 +229,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
                 adapter.notifyDataSetChanged()
                 saveList()
             }
-            .setNegativeButton("\u53d6\u6d88", null)
+            .setNegativeButton(getString(R.string.cancel), null)
             .show()
     }
 
@@ -238,10 +238,10 @@ class ShortcutSettingsActivity : ComponentActivity() {
         val src = items[from] as? ShortcutItem.Command ?: return
         val tgt = items[target] as? ShortcutItem.Command ?: return
         val dialog = AlertDialog.Builder(this)
-            .setTitle("\u5408\u5e76\u5feb\u6377\u547d\u4ee4")
-            .setMessage("\u300c${src.label.ifBlank { src.cmd }}\u300d\u4e0e\u300c${tgt.label.ifBlank { tgt.cmd }}\u300d\u662f\u5426\u5408\u5e76\u4e3a\u5feb\u6377\u547d\u4ee4\u7ec4\uff1f")
-            .setPositiveButton("\u5408\u5e76\u4e3a\u547d\u4ee4\u7ec4") { _, _ -> showGroupNameDialog(from, target) }
-            .setNegativeButton("\u53d6\u6d88", null)
+            .setTitle(getString(R.string.sc_merge_title))
+            .setMessage(getString(R.string.sc_merge_msg_fmt, src.label.ifBlank { src.cmd }, tgt.label.ifBlank { tgt.cmd }))
+            .setPositiveButton(getString(R.string.sc_merge_ok)) { _, _ -> showGroupNameDialog(from, target) }
+            .setNegativeButton(getString(R.string.cancel), null)
             .show()
         dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(theme.primary)
     }
@@ -252,7 +252,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         val d = resources.displayMetrics.density
         val nameEdit = EditText(this).apply {
             setText(src.label.ifBlank { "" })
-            hint = "\u7ec4\u540d"
+            hint = getString(R.string.sc_group_name_hint)
             setTextColor(Color.WHITE)
             setHintTextColor(theme.onSurfaceVariant)
             setBackgroundColor(theme.outline)
@@ -264,14 +264,14 @@ class ShortcutSettingsActivity : ComponentActivity() {
             addView(nameEdit)
         }
         AlertDialog.Builder(this)
-            .setTitle("\u547d\u540d\u547d\u4ee4\u7ec4")
+            .setTitle(getString(R.string.sc_name_group))
             .setView(body)
-            .setPositiveButton("\u521b\u5efa") { _, _ ->
+            .setPositiveButton(getString(R.string.sc_create)) { _, _ ->
                 if (from !in items.indices || target !in items.indices) return@setPositiveButton
                 val a = items[from] as? ShortcutItem.Command ?: return@setPositiveButton
                 val b = items[target] as? ShortcutItem.Command ?: return@setPositiveButton
                 var name = nameEdit.text.toString().trim()
-                if (name.isBlank()) name = a.label.ifBlank { "\u547d\u4ee4\u7ec4" }
+                if (name.isBlank()) name = a.label.ifBlank { getString(R.string.sc_default_group) }
                 val idxA = minOf(from, target)
                 val idxB = maxOf(from, target)
                 items.removeAt(idxB)
@@ -280,7 +280,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
                 adapter.notifyDataSetChanged()
                 saveList()
             }
-            .setNegativeButton("\u53d6\u6d88", null)
+            .setNegativeButton(getString(R.string.cancel), null)
             .show()
     }
 
@@ -289,9 +289,9 @@ class ShortcutSettingsActivity : ComponentActivity() {
         val src = items[from] as? ShortcutItem.Command ?: return
         val grp = items[target] as? ShortcutItem.Group ?: return
         AlertDialog.Builder(this)
-            .setTitle("\u52a0\u5165\u547d\u4ee4\u7ec4")
-            .setMessage("\u5c06\u300c${src.label.ifBlank { src.cmd }}\u300d\u52a0\u5165\u547d\u4ee4\u7ec4\u300c${grp.name}\u300d\uff1f")
-            .setPositiveButton("\u52a0\u5165") { _, _ ->
+            .setTitle(getString(R.string.sc_join_title))
+            .setMessage(getString(R.string.sc_join_msg_fmt, src.label.ifBlank { src.cmd }, grp.name))
+            .setPositiveButton(getString(R.string.sc_join)) { _, _ ->
                 if (from !in items.indices || target !in items.indices) return@setPositiveButton
                 val cmd = items[from] as? ShortcutItem.Command ?: return@setPositiveButton
                 val g = items[target] as? ShortcutItem.Group ?: return@setPositiveButton
@@ -300,7 +300,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
                 adapter.notifyDataSetChanged()
                 saveList()
             }
-            .setNegativeButton("\u53d6\u6d88", null)
+            .setNegativeButton(getString(R.string.cancel), null)
             .show()
     }
 
@@ -308,7 +308,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         val d = resources.displayMetrics.density
         val nameEdit = EditText(this).apply {
             setText(oldLabel)
-            hint = "\u540d\u79f0\uff08\u53ef\u4e0d\u586b\uff09"
+            hint = getString(R.string.sc_name_hint)
             setTextColor(Color.WHITE)
             setHintTextColor(theme.onSurfaceVariant)
             setBackgroundColor(theme.outline)
@@ -316,7 +316,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         }
         val cmdEdit = EditText(this).apply {
             setText(oldCmd)
-            hint = "\u547d\u4ee4\uff08\u652f\u6301 \\n \\t \\e \\cX\uff1b\u7528 @{} \u6807\u8bb0\u5149\u6807\uff09"
+            hint = getString(R.string.sc_cmd_hint)
             setTextColor(Color.WHITE)
             setHintTextColor(theme.onSurfaceVariant)
             setBackgroundColor(theme.outline)
@@ -333,9 +333,9 @@ class ShortcutSettingsActivity : ComponentActivity() {
             addView(cmdEdit)
         }
         val builder = AlertDialog.Builder(this)
-            .setTitle(if (index < 0) "\u65b0\u5efa\u5feb\u6377\u547d\u4ee4" else "\u7f16\u8f91\u5feb\u6377\u547d\u4ee4")
+            .setTitle(if (index < 0) getString(R.string.sc_new_title) else getString(R.string.sc_edit_title))
             .setView(body)
-            .setPositiveButton("\u786e\u5b9a") { _, _ ->
+            .setPositiveButton(getString(R.string.sc_confirm)) { _, _ ->
                 var label = nameEdit.text.toString().trim()
                 val cmd = cmdEdit.text.toString().trim()
                 if (cmd.isBlank()) return@setPositiveButton
@@ -350,13 +350,13 @@ class ShortcutSettingsActivity : ComponentActivity() {
                 }
                 saveList()
             }
-            .setNegativeButton("\u53d6\u6d88", null)
+            .setNegativeButton(getString(R.string.cancel), null)
         if (index >= 0) {
             val id = (items[index] as? ShortcutItem.Command)?.id
             if (id != null) {
-                builder.setNeutralButton("\u9891\u6b21\u6e05\u96f6") { _, _ ->
+                builder.setNeutralButton(getString(R.string.sc_freq_reset)) { _, _ ->
                     settingsManager.clearCommandUsage(id)
-                    Snackbar.make(root, "\u5df2\u6e05\u96f6\u8be5\u547d\u4ee4\u6240\u6709\u573a\u666f\u7684\u9891\u6b21", Snackbar.LENGTH_SHORT).show()
+                    Snackbar.make(root, getString(R.string.sc_freq_cleared), Snackbar.LENGTH_SHORT).show()
                 }
             }
         }
@@ -392,9 +392,9 @@ class ShortcutSettingsActivity : ComponentActivity() {
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(Intent.createChooser(send, "备份到..."))
+            startActivity(Intent.createChooser(send, getString(R.string.sc_backup_to)))
         } catch (e: Exception) {
-            Snackbar.make(root, "备份失败：${e.message}", Snackbar.LENGTH_LONG).show()
+            Snackbar.make(root, getString(R.string.sc_backup_fail_fmt, e.message), Snackbar.LENGTH_LONG).show()
         }
     }
 
@@ -406,7 +406,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         }
         val parsed = text?.let { runCatching { parseBackup(it) }.getOrNull() }
         if (parsed == null) {
-            Snackbar.make(root, "恢复失败：不是有效的 TermLou 命令库备份文件", Snackbar.LENGTH_LONG).show()
+            Snackbar.make(root, getString(R.string.sc_restore_invalid), Snackbar.LENGTH_LONG).show()
             return
         }
         var cmds = 0
@@ -415,10 +415,10 @@ class ShortcutSettingsActivity : ComponentActivity() {
             if (item is ShortcutItem.Group) groups++ else cmds++
         }
         AlertDialog.Builder(this)
-            .setTitle("恢复命令库")
-            .setMessage("将整体替换当前全部命令与频次数据。\n\n备份内容：$cmds 条命令、$groups 个命令组。")
-            .setPositiveButton("恢复") { _, _ -> applyRestore(parsed) }
-            .setNegativeButton("取消", null)
+            .setTitle(getString(R.string.sc_restore_title))
+            .setMessage(getString(R.string.sc_restore_msg_fmt, cmds, groups))
+            .setPositiveButton(getString(R.string.sc_restore)) { _, _ -> applyRestore(parsed) }
+            .setNegativeButton(getString(R.string.cancel), null)
             .show()
     }
 
@@ -451,7 +451,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
                 }
                 when {
                     members.size >= 2 ->
-                        list.add(ShortcutItem.Group(o.optString("name", "命令组"), members))
+                        list.add(ShortcutItem.Group(o.optString("name", getString(R.string.sc_default_group)), members))
                     members.size == 1 ->
                         list.add(members[0]) // 组不变式 ≥2：不足还原为单条命令
                 }
@@ -522,7 +522,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         items.clear()
         items.addAll(b.items)
         if (::adapter.isInitialized) adapter.notifyDataSetChanged()
-        Snackbar.make(root, "已恢复 ${b.items.size} 项（含频次数据）", Snackbar.LENGTH_SHORT).show()
+        Snackbar.make(root, getString(R.string.sc_restored_fmt, b.items.size), Snackbar.LENGTH_SHORT).show()
     }
 
     override fun onDestroy() {

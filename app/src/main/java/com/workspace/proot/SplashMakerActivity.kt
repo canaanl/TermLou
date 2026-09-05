@@ -79,7 +79,7 @@ class SplashMakerActivity : AppCompatActivity() {
             setBackgroundColor(theme.surfaceVariant)
             setPadding((16 * density()).toInt(), (12 * density()).toInt(), (16 * density()).toInt(), (12 * density()).toInt())
             addView(TextView(this@SplashMakerActivity).apply {
-                text = "启动工坊"
+                text = getString(R.string.sm_title)
                 setTextColor(Color.WHITE)
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                 textSize = UiTokens.TEXT_TITLE
@@ -102,9 +102,9 @@ class SplashMakerActivity : AppCompatActivity() {
         ).apply { weight = 1f })
         styleGroup = RadioGroup(this).apply {
             orientation = RadioGroup.HORIZONTAL
-            addView(RadioButton(this@SplashMakerActivity).apply { text = "轮廓"; id = 1001; isChecked = true })
-            addView(RadioButton(this@SplashMakerActivity).apply { text = "块面"; id = 1002 })
-            addView(RadioButton(this@SplashMakerActivity).apply { text = "混合"; id = 1003 })
+            addView(RadioButton(this@SplashMakerActivity).apply { text = getString(R.string.sm_outline); id = 1001; isChecked = true })
+            addView(RadioButton(this@SplashMakerActivity).apply { text = getString(R.string.sm_block); id = 1002 })
+            addView(RadioButton(this@SplashMakerActivity).apply { text = getString(R.string.sm_mixed); id = 1003 })
             setOnCheckedChangeListener { _, checkedId ->
                 selectedStyle = when (checkedId) {
                     1002 -> 1
@@ -122,7 +122,7 @@ class SplashMakerActivity : AppCompatActivity() {
             setPadding((12 * density()).toInt(), (8 * density()).toInt(), (12 * density()).toInt(), 0)
             addView(styleGroup, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             addView(TextView(this@SplashMakerActivity).apply {
-                text = "反选"
+                text = getString(R.string.sm_invert)
                 setTextColor(Color.WHITE)
             })
             addView(Switch(this@SplashMakerActivity).apply {
@@ -141,18 +141,18 @@ class SplashMakerActivity : AppCompatActivity() {
         }
         val row1 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            val ub = makeBtn("回退") { undo() }
+            val ub = makeBtn(getString(R.string.sm_undo)) { undo() }
             ub.setOnLongClickListener { clearAll(); true }
             addView(ub)
-            addView(makeBtn("导入照片") {
+            addView(makeBtn(getString(R.string.sm_import)) {
                 if (isPhotoSampling) cancelPhotoSampling() else pickPhotoLauncher.launch("image/*")
             })
         }
         val row2 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, (8 * density()).toInt(), 0, 0)
-            addView(makeBtn("预览", true) { preview() })
-            addView(makeBtn("保存", true) { save() })
+            addView(makeBtn(getString(R.string.sm_preview), true) { preview() })
+            addView(makeBtn(getString(R.string.save), true) { save() })
         }
         bottomBar.addView(row1)
         bottomBar.addView(row2)

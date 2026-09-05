@@ -65,7 +65,7 @@ class FileListManager(
 
         if (dir != File(context.filesDir, "workspace")) {
             val upRow = TextView(context).apply {
-                text = "↩  返回上级"
+                text = context.getString(R.string.file_back)
                 setTextColor(UiTokens.linkCyan)
                 textSize = nameTextSize
                 typeface = Typeface.MONOSPACE
@@ -104,7 +104,7 @@ class FileListManager(
 
         if (files.isEmpty()) {
             fileList.addView(TextView(context).apply {
-                text = "    （空目录）"
+                text = context.getString(R.string.file_empty)
                 setTextColor(theme.onSurfaceVariant)
                 textSize = nameTextSize
                 setPadding(16, 24, 16, 24)
@@ -244,7 +244,7 @@ class FileListManager(
         val rh = row.height.toFloat().coerceAtLeast(1f)
         val needsConfirm = isDir && f.listFiles()?.isNotEmpty() == true
         braceMenu.show(
-            host, ay, rh, "导出", "删除", needsConfirm,
+            host, ay, rh, context.getString(R.string.file_export), context.getString(R.string.file_delete), needsConfirm,
             onOpt1 = {
                 if (isDir) onExportFolder?.invoke(f) else onExportFile?.invoke(f)
             },

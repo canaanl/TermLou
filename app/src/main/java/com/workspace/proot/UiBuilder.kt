@@ -52,7 +52,7 @@ class UiBuilder(
     fun createTabBar(): List<TextView> {
         val tabTextSize = UiTokens.TEXT_TITLE
         val toolbarBg = theme.surfaceVariant
-        val labels = listOf("终端", "文件", "网络", "设置")
+        val labels = listOf(activity.getString(R.string.tab_terminal), activity.getString(R.string.tab_files), activity.getString(R.string.tab_network), activity.getString(R.string.tab_settings))
 
         return labels.map { label ->
             TextView(activity).apply {
@@ -75,14 +75,14 @@ class UiBuilder(
             setPadding(32, 32, 32, 32)
         }
         setupArea.addView(TextView(activity).apply {
-            text = "RootFS 安装"
+            text = activity.getString(R.string.setup_title)
             setTextColor(Color.WHITE)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             textSize = UiTokens.TEXT_TITLE
             setPadding(0, 0, 0, 16)
         })
         val setupBtn = Button(activity).apply {
-            text = "解压 RootFS"
+            text = activity.getString(R.string.setup_extract)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             setOnClickListener { onInstallClick(this) }
@@ -127,7 +127,7 @@ class UiBuilder(
             setBackgroundColor(theme.surface)
         }
         val importBtn = Button(activity).apply {
-            text = "导入文件"
+            text = activity.getString(R.string.setup_import_file)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             setPadding(3, 0, 3, 0)
@@ -136,7 +136,7 @@ class UiBuilder(
             setOnClickListener { onImportClick() }
         }
         val importFolderBtn = Button(activity).apply {
-            text = "导入文件夹"
+            text = activity.getString(R.string.setup_import_folder)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             setPadding(3, 0, 3, 0)

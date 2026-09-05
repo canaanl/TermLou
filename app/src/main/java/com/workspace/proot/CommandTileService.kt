@@ -17,8 +17,8 @@ class CommandTileService : TileService() {
         val prefs = getSharedPreferences("term-lou-settings", MODE_PRIVATE)
         val cmd = prefs.getString("tileCommand", "") ?: ""
         qsTile?.let { tile ->
-            tile.label = "磁贴命令"
-            tile.subtitle = if (cmd.isNotBlank()) cmd.take(20) else "未配置命令"
+            tile.label = getString(R.string.tile_cmd_label)
+            tile.subtitle = if (cmd.isNotBlank()) cmd.take(20) else getString(R.string.tile_cmd_empty)
             tile.state = Tile.STATE_INACTIVE
             tile.updateTile()
         }

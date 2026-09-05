@@ -37,14 +37,14 @@ class AppPickerDialog(
         }
 
         content.addView(TextView(ctx).apply {
-            text = "选择应用"
+            text = ctx.getString(R.string.pick_app)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_TITLE
             setPadding(0, 0, 0, (10 * density).toInt())
         })
 
         searchInput = EditText(ctx).apply {
-            hint = "搜索应用"
+            hint = ctx.getString(R.string.picker_search)
             setTextColor(Color.WHITE)
             setHintTextColor(onSurfaceVariant)
             textSize = UiTokens.TEXT_BODY
@@ -60,7 +60,7 @@ class AppPickerDialog(
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, (6 * density).toInt(), 0, (6 * density).toInt())
             addView(TextView(ctx).apply {
-                text = "包含系统应用"
+                text = ctx.getString(R.string.picker_system)
                 setTextColor(onSurfaceVariant)
                 textSize = UiTokens.TEXT_COMPACT
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -80,7 +80,7 @@ class AppPickerDialog(
         content.addView(listScroll)
 
         val doneBtn = Button(ctx).apply {
-            text = "完成"
+            text = ctx.getString(R.string.done)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             isAllCaps = false
@@ -122,7 +122,7 @@ class AppPickerDialog(
                 setPadding((12 * density).toInt(), 0, (12 * density).toInt(), 0)
             }
             val tick = TextView(ctx).apply {
-                text = if (isSel) "✓" else ""
+                text = if (isSel) ctx.getString(R.string.tick) else ""
                 setTextColor(accent)
                 textSize = UiTokens.TEXT_BODY
                 setPadding(0, 0, (6 * density).toInt(), 0)

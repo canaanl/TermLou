@@ -593,7 +593,7 @@ class ScriptDialogRenderer(private val ctx: Context) {
     }
 
     private fun buttonBar(buttons: List<ScriptDialogSpec.Button>?, palette: Palette, onClick: (String) -> Unit): View {
-        val list = if (buttons.isNullOrEmpty()) listOf(ScriptDialogSpec.Button("关闭", ScriptDialogSpec.RESULT_ID_DISMISS)) else buttons
+        val list = if (buttons.isNullOrEmpty()) listOf(ScriptDialogSpec.Button(ctx.getString(R.string.close), ScriptDialogSpec.RESULT_ID_DISMISS)) else buttons
         val bar = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (12 * d).toInt()) }
         for (b in list) {
             val bg = when (b.kind) { ScriptDialogSpec.BTN_DANGER -> palette.danger; ScriptDialogSpec.BTN_PRIMARY -> palette.accent; else -> palette.buttonNormal }

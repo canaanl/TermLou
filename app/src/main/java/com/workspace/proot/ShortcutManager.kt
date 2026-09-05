@@ -87,7 +87,7 @@ class ShortcutManager(
 
     override fun loadShortcutList(): List<ShortcutItem> {
         reloadUsage()
-        val list = settingsManager.loadShortcuts()
+        val list = settingsManager.loadShortcuts(context)
         lastList = list
         lastEmptyCount = emptyCountFor(list)
         return list
@@ -217,7 +217,7 @@ class ShortcutManager(
     fun showCardEditDialog(index: Int, oldLabel: String, oldCmd: String, onSaved: () -> Unit) {
         val nameEdit = EditText(context).apply {
             setText(oldLabel)
-            hint = "名称（可不填）"
+            hint = context.getString(R.string.sc_name_hint)
             setTextColor(Color.WHITE)
             setHintTextColor(theme.onSurfaceVariant)
             setBackgroundColor(theme.outline)
@@ -225,7 +225,7 @@ class ShortcutManager(
         }
         val cmdEdit = EditText(context).apply {
             setText(oldCmd)
-            hint = "命令（支持 \\n \\t \\e \\cX；用 @{} 标记光标）"
+            hint = context.getString(R.string.sc_cmd_hint)
             setTextColor(Color.WHITE)
             setHintTextColor(theme.onSurfaceVariant)
             setBackgroundColor(theme.outline)
@@ -241,14 +241,14 @@ class ShortcutManager(
             addView(cmdEdit)
         }
         val dialog = AlertDialog.Builder(context)
-            .setTitle(if (index < 0) "添加快捷命令" else "编辑快捷命令")
+            .setTitle(if (index < 0) context.getString(R.string.sc_add) else context.getString(R.string.sc_edit))
             .setView(body)
-            .setPositiveButton("确定") { _, _ ->
+            .setPositiveButton(context.getString(R.string.sc_confirm)) { _, _ ->
                 var label = nameEdit.text.toString().trim()
                 val cmd = cmdEdit.text.toString().trim()
                 if (cmd.isBlank()) return@setPositiveButton
                 if (label.isBlank()) label = cmd
-                val list = settingsManager.loadShortcuts()
+                val list = settingsManager.loadShortcuts(context)
                 val id = list.getOrNull(index)?.let { (it as? ShortcutItem.Command)?.id }
                     ?: settingsManager.newId()
                 if (index < 0) list.add(ShortcutItem.Command(id, label, cmd))
@@ -256,15 +256,15 @@ class ShortcutManager(
                 settingsManager.saveShortcuts(list)
                 onSaved()
             }
-            .setNeutralButton("删除") { _, _ ->
-                val list = settingsManager.loadShortcuts()
+            .setNeutralButton(context.getString(R.string.sc_delete)) { _, _ ->
+                val list = settingsManager.loadShortcuts(context)
                 if (index in list.indices) {
                     list.removeAt(index)
                     settingsManager.saveShortcuts(list)
                     onSaved()
                 }
             }
-            .setNegativeButton("取消", null)
+            .setNegativeButton(context.getString(R.string.cancel), null)
             .create()
         dialog.show()
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(theme.error)

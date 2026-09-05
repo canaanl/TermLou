@@ -1,18 +1,23 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TermLou</title>
 <link rel="stylesheet" href="/static/xterm.css">
 <style>
-body{background:#1e1e1e;color:#e0e0e0;font-family:monospace;margin:0;padding:8px}
-#bar{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center}
+html,body{height:100%}
+body{background:#1e1e1e;color:#e0e0e0;font-family:monospace;margin:0;padding:8px;box-sizing:border-box;display:flex;flex-direction:column;min-height:100dvh;overscroll-behavior:none}
+#bar{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center;flex:none}
 button{background:#2d7d46;color:#fff;border:0;border-radius:6px;padding:6px 12px}
 button:disabled{opacity:.4}
-#term{height:70vh;background:#000;border-radius:8px;padding:6px;touch-action:pan-y}
+#main{flex:1;display:flex;flex-direction:column;min-height:0}
+#pTerm{flex:1;display:flex;flex-direction:column;min-height:0}
+#term{flex:1;min-height:200px;background:#000;border-radius:8px;padding:6px;touch-action:none}
+#term,#term *{touch-action:none !important}
 #term .xterm{height:100%}
-#term .xterm-viewport{touch-action:pan-y !important}
+#pFiles{overflow-y:auto}
+#files{max-height:55dvh;overflow-y:auto}
 #login{max-width:320px;margin:10vh auto;text-align:center}
 #login input{width:100%;margin:6px 0;padding:8px;box-sizing:border-box;background:#111;color:#fff;border:1px solid #333;border-radius:6px}
 #files a{color:#4dd0e1}
@@ -22,16 +27,16 @@ button:disabled{opacity:.4}
 <body>
 <div id="login">
 <h3>TermLou</h3>
-<input id="user" placeholder="账号（开放访问可空）" autocomplete="username">
-<input id="pass" type="password" placeholder="密码" autocomplete="current-password">
-<button id="conn">连接</button>
+<input id="user" autocomplete="username">
+<input id="pass" type="password" autocomplete="current-password">
+<button id="conn"></button>
 <div id="lerr" style="color:#f66"></div>
 </div>
 <div id="main" style="display:none">
 <div id="bar">
-<button id="bTerm">终端</button>
-<button id="bFiles">文件</button>
-<span id="st">未连接</span>
+<button id="bTerm"></button>
+<button id="bFiles"></button>
+<span id="st"></span>
 </div>
 <div id="pTerm" class="tab">
 <div id="term"></div>
@@ -41,24 +46,32 @@ button:disabled{opacity:.4}
 <div id="files"></div>
 <div style="margin-top:8px">
 <input type="file" id="up" multiple>
-<button id="upBtn">上传</button>
+<button id="upBtn"></button>
 </div>
 </div>
 </div>
 <script src="/static/xterm.js"></script>
 <script src="/static/addon-fit.js"></script>
 <script>
+var LANG=/*{{LANG}}*/{"userPh":"","passPh":"","conn":"","errConn":"","errAuth":"","tabTerm":"","tabFiles":"","stIdle":"","stOn":"","stOff":"","upBtn":"","dl":""};
 let token="",ws=null,term=null,fit=null,curPath="/";
 const $=id=>document.getElementById(id);
+$("user").placeholder=LANG.userPh;
+$("pass").placeholder=LANG.passPh;
+$("conn").textContent=LANG.conn;
+$("bTerm").textContent=LANG.tabTerm;
+$("bFiles").textContent=LANG.tabFiles;
+$("upBtn").textContent=LANG.upBtn;
+$("st").textContent=LANG.stIdle;
 $("conn").onclick=async()=>{
   const u=$("user").value,p=$("pass").value;
   let r;
   try{
     r=await fetch("/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({user:u,pass:p})});
-  }catch(e){$("lerr").textContent="无法连接服务器";return;}
-  if(r.status!==200){$("lerr").textContent="账号或密码错误";return;}
+  }catch(e){$("lerr").textContent=LANG.errConn;return;}
+  if(r.status!==200){$("lerr").textContent=LANG.errAuth;return;}
   token=(await r.json()).token;
-  $("login").style.display="none";$("main").style.display="block";
+  $("login").style.display="none";$("main").style.display="flex";
   term=new Terminal({fontSize:14,scrollback:1000,cursorBlink:true});
   fit=new FitAddon.FitAddon();
   term.loadAddon(fit);
@@ -68,7 +81,7 @@ $("conn").onclick=async()=>{
   ws=new WebSocket(proto+"://"+location.host+"?token="+encodeURIComponent(token));
   ws.binaryType="arraybuffer";
   ws.onopen=()=>{
-    $("st").textContent="已连接";
+    $("st").textContent=LANG.stOn;
     term.focus();
     sendResize();
   };
@@ -76,7 +89,7 @@ $("conn").onclick=async()=>{
     if(typeof e.data==="string")term.write(e.data);
     else term.write(new Uint8Array(e.data));
   };
-  ws.onclose=()=>{$("st").textContent="已断开";};
+  ws.onclose=()=>{$("st").textContent=LANG.stOff;};
   term.onData(d=>{
     if(ws&&ws.readyState===1)ws.send(new TextEncoder().encode(d));
   });
@@ -92,7 +105,7 @@ function sendResize(){
     if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"resize",cols:term.cols,rows:term.rows}));
   }catch(e){}
 }
-$("bTerm").onclick=()=>{$("pTerm").style.display="block";$("pFiles").style.display="none";fit.fit();};
+$("bTerm").onclick=()=>{$("pTerm").style.display="flex";$("pFiles").style.display="none";fit.fit();sendResize();};
 $("bFiles").onclick=()=>{$("pFiles").style.display="block";$("pTerm").style.display="none";};
 function rowH(){
   try{
@@ -143,7 +156,7 @@ async function loadFiles(p){
   if(j.path!=="/"&&j.path!=="")h+='<div><a href="#" data-p="..">..</a></div>';
   (j.files||[]).forEach(f=>{
     if(f.dir)h+='<div>📁 <a href="#" data-p="'+esc(f.name)+'">'+esc(f.name)+'</a></div>';
-    else h+='<div>📄 '+esc(f.name)+' ('+f.size+') <a href="/download?path='+encodeURIComponent((j.path==="/"?"":j.path)+"/"+f.name)+'&token='+encodeURIComponent(token)+'">下载</a></div>';
+    else h+='<div>📄 '+esc(f.name)+' ('+f.size+') <a href="/download?path='+encodeURIComponent((j.path==="/"?"":j.path)+"/"+f.name)+'&token='+encodeURIComponent(token)+'">'+esc(LANG.dl)+'</a></div>';
   });
   $("files").innerHTML=h;
   document.querySelectorAll("#files a[data-p]").forEach(a=>{a.onclick=ev=>{
@@ -162,6 +175,7 @@ $("upBtn").onclick=async()=>{
   loadFiles(curPath);
 };
 window.onresize=sendResize;
+window.onorientationchange=()=>{setTimeout(sendResize,300);};
 </script>
 </body>
 </html>

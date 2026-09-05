@@ -300,9 +300,9 @@ class SplashView(context: Context, customCells: List<Pair<Int, Int>>? = null, pr
     private fun advanceProgress(text: String) {
         sawStatus = true
         val target = when (text) {
-            "准备环境..." -> 0.30f
-            "安装依赖..." -> 0.60f
-            "启动终端..." -> 0.85f
+            context.getString(R.string.splash_preparing) -> 0.30f
+            context.getString(R.string.splash_deps) -> 0.60f
+            context.getString(R.string.splash_starting) -> 0.85f
             else -> min(0.95f, targetProgress + 0.10f)
         }
         if (target > targetProgress) targetProgress = target

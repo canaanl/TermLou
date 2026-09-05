@@ -57,8 +57,8 @@ class BraceMenu(context: Context) : View(context) {
     private var anchorY = 0f
     private var rowHeight = 0f
     private var needsConfirm = false
-    private var opt1Label = "导出"
-    private var opt2Label: String? = "删除"
+    private var opt1Label: String = context.getString(R.string.file_export)
+    private var opt2Label: String? = context.getString(R.string.file_delete)
     private var onOpt1: (() -> Unit)? = null
     private var onOpt2: (() -> Unit)? = null
 
@@ -263,7 +263,7 @@ class BraceMenu(context: Context) : View(context) {
             drawChip(canvas, opt2Rect, p)
             if (inL2) {
                 val blinkAlpha = if (blinkOn) 1f else 0.25f
-                drawLabel(canvas, "确认?", opt2Rect, redPaint, p * blinkAlpha)
+                drawLabel(canvas, context.getString(R.string.brace_confirm), opt2Rect, redPaint, p * blinkAlpha)
             } else {
                 drawLabel(canvas, opt2Label ?: "", opt2Rect, redPaint, p)
             }
@@ -285,12 +285,12 @@ class BraceMenu(context: Context) : View(context) {
         val opt1Left = origin + (l2Opt1.left - origin) * p
         val opt1Right = origin + (l2Opt1.right - origin) * p
         drawChip(canvas, RectF(opt1Left, l2Opt1.top, opt1Right, l2Opt1.bottom), p)
-        drawLabel(canvas, "点错了", RectF(opt1Left, l2Opt1.top, opt1Right, l2Opt1.bottom), bluePaint, p)
+        drawLabel(canvas, context.getString(R.string.brace_oops), RectF(opt1Left, l2Opt1.top, opt1Right, l2Opt1.bottom), bluePaint, p)
 
         val opt2Left = origin + (l2Opt2.left - origin) * p
         val opt2Right = origin + (l2Opt2.right - origin) * p
         drawChip(canvas, RectF(opt2Left, l2Opt2.top, opt2Right, l2Opt2.bottom), p)
-        drawLabel(canvas, "确认", RectF(opt2Left, l2Opt2.top, opt2Right, l2Opt2.bottom), redPaint, p)
+        drawLabel(canvas, context.getString(R.string.brace_confirm_btn), RectF(opt2Left, l2Opt2.top, opt2Right, l2Opt2.bottom), redPaint, p)
     }
 
     private fun drawBrace(canvas: Canvas, rect: RectF, alpha: Float) {

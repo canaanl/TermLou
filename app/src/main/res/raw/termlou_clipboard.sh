@@ -22,6 +22,11 @@
 #   termlou-clipboard --clear
 set -u
 
+TL_LANG="$(cat /termlou/lang 2>/dev/null || echo zh)"
+_t() {
+  if [ "$TL_LANG" = "en" ]; then printf '%s' "$2"; else printf '%s' "$1"; fi
+}
+
 DIR=/termlou/clipboard
 REQ_DIR=$DIR/req
 RES_DIR=$DIR/res
@@ -33,11 +38,11 @@ Usage: termlou-clipboard [OPTIONS] [TEXT]
        echo TEXT | termlou-clipboard [OPTIONS]
 
 Description:
-  将文本写入 Android 系统剪贴板（开放写入接口，sh 自由拼内容）
+  $(_t "将文本写入 Android 系统剪贴板（开放写入接口，sh 自由拼内容）" "Write text to the Android clipboard (open write API for shell scripts)")
 
 Options:
-  -h, --help     显示此帮助
-  --clear        清空剪贴板
+  -h, --help     $(_t "显示此帮助" "Show this help")
+  --clear        $(_t "清空剪贴板" "Clear the clipboard")
 
 Examples:
   termlou-clipboard "hello world"
@@ -48,9 +53,9 @@ Examples:
   termlou-clipboard --clear
 
 Notes:
-  - 文本来源：参数 > stdin；无参数且无管道时显示帮助
-  - 任意文本均可（中文/emoji/多行），单次建议 ≤400KB
-  - 写入在前台/后台均可成功（Android 剪贴板写不受焦点限制）
+  - $(_t "文本来源：参数 > stdin；无参数且无管道时显示帮助" "Text source: args > stdin; show help when neither given")
+  - $(_t "任意文本均可（中文/emoji/多行），单次建议 ≤400KB" "Any text (CJK/emoji/multiline), ≤400KB per call recommended")
+  - $(_t "写入在前台/后台均可成功（Android 剪贴板写不受焦点限制）" "Writes succeed in foreground/background (no focus needed)")
 EOF
 }
 
@@ -73,7 +78,7 @@ while [ $# -gt 0 ]; do
       break
       ;;
     --*)
-      echo "termlou-clipboard: 未知选项 $1" >&2
+      echo "termlou-clipboard: $(_t "未知选项 $1" "unknown option $1")" >&2
       echo "Try 'termlou-clipboard --help' for more information." >&2
       exit 2
       ;;
@@ -107,7 +112,7 @@ fi
 
 # 空文本（非 clear）视为误用，提示帮助
 if [ "$OP" = "set" ] && [ -z "$TEXT" ]; then
-  echo "termlou-clipboard: 无内容可写入" >&2
+  echo "termlou-clipboard: $(_t "无内容可写入" "nothing to write")" >&2
   print_help >&2
   exit 2
 fi
@@ -115,7 +120,7 @@ fi
 # 400KB 截断（按字节）
 TEXT_BYTES=$(printf '%s' "$TEXT" | wc -c)
 if [ "$TEXT_BYTES" -gt 409600 ]; then
-  echo "termlou-clipboard: 文本超限 ${TEXT_BYTES}B > 409600B，已截断" >&2
+  echo "termlou-clipboard: $(_t "文本超限 ${TEXT_BYTES}B > 409600B，已截断" "text over limit ${TEXT_BYTES}B > 409600B, truncated")" >&2
   # 按字节截断，保留前 409600 字节
   TEXT=$(printf '%s' "$TEXT" | head -c 409600)
 fi
@@ -191,7 +196,7 @@ if [ -f "$resfile" ]; then
     exit 1
   fi
 else
-  echo "termlou-clipboard: 等待响应超时（${TIMEOUT}s），请确保 TermLou 在运行" >&2
+  echo "termlou-clipboard: $(_t "等待响应超时（${TIMEOUT}s），请确保 TermLou 在运行" "response timeout (${TIMEOUT}s), make sure TermLou is running")" >&2
   rm -f "$reqfile" "$resfile"
   exit 1
 fi

@@ -34,7 +34,7 @@ class ShortcutGroupActivity : Activity() {
         groupName = intent?.getStringExtra("group_name") ?: ""
         val prefs = getSharedPreferences("term-lou-settings", MODE_PRIVATE)
         settingsManager = SettingsManager(prefs)
-        mainItems.addAll(settingsManager.loadShortcuts())
+        mainItems.addAll(settingsManager.loadShortcuts(this))
         group = mainItems.filterIsInstance<ShortcutItem.Group>()
             .firstOrNull { it.name == groupName }
         if (group == null) {
@@ -82,7 +82,7 @@ class ShortcutGroupActivity : Activity() {
         root.addView(recyclerView)
 
         val hintTv = TextView(this).apply {
-            text = "\u957f\u6309\u62d6\u52a8\u6392\u5e8f \u00b7 \u5de6\u6ed1\u547d\u4ee4"
+            text = getString(R.string.sc_hint_group)
             setTextColor(theme.onSurfaceVariant)
             textSize = UiTokens.TEXT_META
             gravity = Gravity.CENTER
@@ -92,7 +92,7 @@ class ShortcutGroupActivity : Activity() {
         root.addView(hintTv)
 
         val exitBtn = Button(this).apply {
-            text = "\u9000\u51fa\u547d\u4ee4\u7ec4"
+            text = getString(R.string.sc_exit_group)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             isAllCaps = false
@@ -153,7 +153,7 @@ class ShortcutGroupActivity : Activity() {
         val d = resources.displayMetrics.density
         val nameEdit = EditText(this).apply {
             setText(oldLabel)
-            hint = "\u540d\u79f0\uff08\u53ef\u4e0d\u586b\uff09"
+            hint = getString(R.string.sc_name_hint)
             setTextColor(Color.WHITE)
             setHintTextColor(theme.onSurfaceVariant)
             setBackgroundColor(theme.outline)
@@ -161,7 +161,7 @@ class ShortcutGroupActivity : Activity() {
         }
         val cmdEdit = EditText(this).apply {
             setText(oldCmd)
-            hint = "\u547d\u4ee4\uff08\u652f\u6301 \\n \\t \\e \\cX\uff1b\u7528 @{} \u6807\u8bb0\u5149\u6807\uff09"
+            hint = getString(R.string.sc_cmd_hint)
             setTextColor(Color.WHITE)
             setHintTextColor(theme.onSurfaceVariant)
             setBackgroundColor(theme.outline)
@@ -179,9 +179,9 @@ class ShortcutGroupActivity : Activity() {
         }
         val id = (memberItems[pos] as? ShortcutItem.Command)?.id
         val builder = AlertDialog.Builder(this)
-            .setTitle("\u7f16\u8f91\u547d\u4ee4")
+            .setTitle(getString(R.string.sc_edit_title))
             .setView(body)
-            .setPositiveButton("\u786e\u5b9a") { _, _ ->
+            .setPositiveButton(getString(R.string.sc_confirm)) { _, _ ->
                 if (pos !in memberItems.indices) return@setPositiveButton
                 var label = nameEdit.text.toString().trim()
                 val cmd = cmdEdit.text.toString().trim()
@@ -192,11 +192,11 @@ class ShortcutGroupActivity : Activity() {
                 persist(false)
                 adapter.notifyItemChanged(pos)
             }
-            .setNegativeButton("\u53d6\u6d88", null)
+            .setNegativeButton(getString(R.string.cancel), null)
         if (id != null) {
-            builder.setNeutralButton("\u9891\u6b21\u6e05\u96f6") { _, _ ->
+            builder.setNeutralButton(getString(R.string.sc_freq_reset)) { _, _ ->
                 settingsManager.clearCommandUsage(id)
-                Snackbar.make(root, "\u5df2\u6e05\u96f6\u8be5\u547d\u4ee4\u6240\u6709\u573a\u666f\u7684\u9891\u6b21", Snackbar.LENGTH_SHORT).show()
+                Snackbar.make(root, getString(R.string.sc_freq_cleared), Snackbar.LENGTH_SHORT).show()
             }
         }
         val dialog = builder.create()
@@ -210,13 +210,13 @@ class ShortcutGroupActivity : Activity() {
         val label = m.label.ifBlank { m.cmd.take(16) + "\u2026" }
         val dialog = AlertDialog.Builder(this)
             .setTitle(label)
-            .setItems(arrayOf("\u79fb\u51fa\u547d\u4ee4\u7ec4", "\u5220\u9664\u547d\u4ee4")) { _, which ->
+            .setItems(arrayOf(getString(R.string.sc_move_out), getString(R.string.sc_delete_cmd))) { _, which ->
                 when (which) {
                     0 -> moveOut(pos)
                     1 -> deleteMember(pos)
                 }
             }
-            .setNegativeButton("\u53d6\u6d88", null)
+            .setNegativeButton(getString(R.string.cancel), null)
             .create()
         dialog.show()
         DialogStyler.apply(dialog, theme)

@@ -50,7 +50,7 @@ class StorageDialog(
         }
 
         contentView.addView(TextView(ctx).apply {
-            text = "存储占用"
+            text = ctx.getString(R.string.storage_title)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_TITLE
             typeface = Typeface.DEFAULT_BOLD
@@ -101,7 +101,7 @@ class StorageDialog(
 
         val dialog = AlertDialog.Builder(ctx)
             .setView(contentView)
-            .setPositiveButton("关闭", null)
+            .setPositiveButton(ctx.getString(R.string.close), null)
             .create()
         dialog.show()
         DialogStyler.apply(dialog, theme)
@@ -122,19 +122,19 @@ class StorageDialog(
                     chart.setData(fileBytes, sysBytes)
                     chart.startSweep()
 
-                    val fStr = "\u25A0  文件占用  ${formatBytes(fileBytes)}"
+                    val fStr = ctx.getString(R.string.storage_file_fmt, formatBytes(fileBytes))
                     fileLabel.text = SpannableString(fStr).apply {
                         setSpan(ForegroundColorSpan(colorFile), 0, 1, 0)
                     }
-                    val sStr = "\u25A0  系统占用  ${formatBytes(sysBytes)}"
+                    val sStr = ctx.getString(R.string.storage_sys_fmt, formatBytes(sysBytes))
                     sysLabel.text = SpannableString(sStr).apply {
                         setSpan(ForegroundColorSpan(colorSys), 0, 1, 0)
                     }
-                    totalLabel.text = "总计  ${formatBytes(total)}"
+                    totalLabel.text = ctx.getString(R.string.storage_total_fmt, formatBytes(total))
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    totalLabel.text = "统计失败: ${e.message}"
+                    totalLabel.text = ctx.getString(R.string.storage_failed_fmt, e.message.toString())
                 }
             }
         }

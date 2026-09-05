@@ -91,7 +91,7 @@ class ShortcutSettingsAdapter(
             }
             is ShortcutItem.Group -> {
                 holder.labelTv.text = "\uD83D\uDCC1 " + item.name
-                holder.cmdTv.text = "命令组 \u00b7 ${item.members.size} 个命令"
+                holder.cmdTv.text = holder.itemView.context.getString(R.string.sc_group_fmt, item.members.size)
             }
         }
         holder.itemView.setOnClickListener {
@@ -225,7 +225,7 @@ class ShortcutSettingsAdapter(
                             }
                             val pos = viewHolder.bindingAdapterPosition
                             val isGroup = pos in 0 until adapter.items.size && adapter.items[pos] is ShortcutItem.Group
-                            val text = if (isGroup) "\u89e3\u6563" else "\u5220\u9664"
+                            val text = if (isGroup) itemView.context.getString(R.string.sc_disband) else itemView.context.getString(R.string.sc_delete)
                             val textWidth = paint.measureText(text)
                             val textX = itemView.right - textWidth - 24f * itemView.resources.displayMetrics.density
                             val textY = itemView.top + (itemView.height + paint.textSize) / 2f

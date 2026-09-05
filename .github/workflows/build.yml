@@ -36,6 +36,11 @@ jobs:
           sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125" "cmake;3.22.1" "platform-tools"
           yes | sdkmanager --licenses > /dev/null || true
 
+      - name: Check no hardcoded Chinese in code
+        run: |
+          hits=$(grep -rP --include='*.kt' '"[^"]*[\x{4e00}-\x{9fff}]' app/src/main/java workspace/src/main/java 2>/dev/null | grep -v '// i18n-allow' || true)
+          if [ -n "$hits" ]; then echo "$hits"; echo "hardcoded Chinese UI strings found; move them to strings.xml"; exit 1; fi
+
       - name: Run lint
         continue-on-error: true
         run: gradle lintDebug --stacktrace

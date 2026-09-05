@@ -46,7 +46,7 @@ class DialogMakerActivity : Activity() {
     private val controls = mutableListOf<Ctrl>()
 
     private sealed class Ctrl {
-        data class TextOutput(val note: String = "运行时输出区") : Ctrl()
+        data class TextOutput(val note: String = "") : Ctrl()
         data class Input(val label: String, val key: String) : Ctrl()
         data class Select(val label: String, val key: String, val options: List<String>, val multi: Boolean) : Ctrl()
         data class Toggle(val label: String, val key: String) : Ctrl()
@@ -74,7 +74,7 @@ class DialogMakerActivity : Activity() {
             setPadding((16 * d).toInt(), (12 * d).toInt(), (16 * d).toInt(), (12 * d).toInt())
         }
         titleBar.addView(TextView(this).apply {
-            text = "弹窗工坊"
+            text = getString(R.string.dm_title)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_TITLE
             typeface = Typeface.DEFAULT_BOLD
@@ -96,29 +96,29 @@ class DialogMakerActivity : Activity() {
         root.addView(scroll)
 
         // ===== 标题 / 正文 =====
-        titleEdit = sectionEdit(form, "标题", "显示在浮窗顶栏")
+        titleEdit = sectionEdit(form, getString(R.string.dm_section_title), getString(R.string.dm_title_hint))
         messageRow = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         messageEdit = EditText(this).apply {
             setTextColor(Color.WHITE)
             setBackgroundColor(theme.primaryContainer)
             textSize = UiTokens.TEXT_BODY
-            setHint("正文（可留空）")
+            setHint(getString(R.string.dm_msg_hint))
             setHintTextColor(theme.onSurfaceVariant)
             setPadding((10 * d).toInt(), (8 * d).toInt(), (10 * d).toInt(), (8 * d).toInt())
             gravity = Gravity.TOP
             minLines = 2
         }
         messageRow.addView(messageEdit)
-        form.addView(sectionLabel("正文"))
+        form.addView(sectionLabel(getString(R.string.dm_section_msg)))
         form.addView(messageRow)
 
         // ===== 主题 / 位置 / 动画 =====
-        themeGroup = sectionRadio(form, "主题", listOf("dark", "light", "glass"), "dark")
-        positionGroup = sectionRadio(form, "位置", listOf("center", "bottom"), "center")
-        animGroup = sectionRadio(form, "动画", listOf("scale", "fade", "slide-up"), "scale")
+        themeGroup = sectionRadio(form, getString(R.string.dm_section_theme), listOf("dark", "light", "glass"), "dark")
+        positionGroup = sectionRadio(form, getString(R.string.dm_section_pos), listOf("center", "bottom"), "center")
+        animGroup = sectionRadio(form, getString(R.string.dm_section_anim), listOf("scale", "fade", "slide-up"), "scale")
 
         // ===== 主色 =====
-        form.addView(sectionLabel("主色（点击色块；不选则用主题默认）"))
+        form.addView(sectionLabel(getString(R.string.dm_accent_hint)))
         accentSwatches = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 0, 0, (8 * d).toInt())
@@ -127,7 +127,7 @@ class DialogMakerActivity : Activity() {
         rebuildSwatches()
 
         // ===== 圆角 =====
-        form.addView(sectionLabel("圆角"))
+        form.addView(sectionLabel(getString(R.string.dm_section_radius)))
         val radiusRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         radiusSeek = SeekBar(this).apply {
             max = 32
@@ -154,7 +154,7 @@ class DialogMakerActivity : Activity() {
         form.addView(radiusRow)
 
         // ===== 控件列表 =====
-        form.addView(sectionLabel("控件"))
+        form.addView(sectionLabel(getString(R.string.dm_section_ctrls)))
         ctrlList = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
@@ -170,7 +170,7 @@ class DialogMakerActivity : Activity() {
 
         // ===== 实时预览 =====
         form.addView(TextView(this).apply {
-            text = "实时预览"
+            text = getString(R.string.dm_preview)
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             textSize = UiTokens.TEXT_TITLE
@@ -191,7 +191,7 @@ class DialogMakerActivity : Activity() {
             setBackgroundColor(theme.surfaceVariant)
         }
         val testBtn = Button(this).apply {
-            text = "真机测试浮窗"
+            text = getString(R.string.dm_test)
             setTextColor(Color.WHITE)
             isAllCaps = false
             ButtonStyle.apply(this, theme.primary)
@@ -202,14 +202,14 @@ class DialogMakerActivity : Activity() {
         ))
         val row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val exportBtn = Button(this).apply {
-            text = "导出命令"
+            text = getString(R.string.dm_export)
             setTextColor(Color.WHITE)
             isAllCaps = false
             ButtonStyle.apply(this, theme.outline)
             setOnClickListener { exportCommand() }
         }
         val exitBtn = Button(this).apply {
-            text = "退出"
+            text = getString(R.string.dm_exit)
             setTextColor(Color.WHITE)
             isAllCaps = false
             ButtonStyle.apply(this, theme.outline)
@@ -330,12 +330,12 @@ class DialogMakerActivity : Activity() {
         }
         val inner = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val labels = mapOf(
-            "文本输出" to { addCtrl(Ctrl.TextOutput()) },
-            "文本输入" to { addInputCtrl() },
-            "单选" to { addSelectCtrl(multi = false) },
-            "多选" to { addSelectCtrl(multi = true) },
-            "开关" to { addToggleCtrl() },
-            "按钮组" to { addButtonsCtrl() }
+            getString(R.string.dm_ctrl_text_out) to { addCtrl(Ctrl.TextOutput()) },
+            getString(R.string.dm_ctrl_text_in) to { addInputCtrl() },
+            getString(R.string.dm_ctrl_single) to { addSelectCtrl(multi = false) },
+            getString(R.string.dm_ctrl_multi) to { addSelectCtrl(multi = true) },
+            getString(R.string.dm_ctrl_toggle) to { addToggleCtrl() },
+            getString(R.string.dm_ctrl_buttons) to { addButtonsCtrl() }
         )
         for ((text, action) in labels) {
             val b = Button(this).apply {
@@ -357,11 +357,11 @@ class DialogMakerActivity : Activity() {
 
     private fun addInputCtrl() {
         promptFields(mapOf(
-            "标签" to "",
-            "字段名(key)" to ""
+            getString(R.string.dm_f_label) to "",
+            getString(R.string.dm_f_key) to ""
         )) { vals ->
-            val label = vals["标签"]?.trim() ?: ""
-            val key = vals["字段名(key)"]?.trim()?.ifEmpty { label } ?: label
+            val label = vals[getString(R.string.dm_f_label)]?.trim() ?: ""
+            val key = vals[getString(R.string.dm_f_key)]?.trim()?.ifEmpty { label } ?: label
             if (key.isNotEmpty()) {
                 controls.add(Ctrl.Input(label.ifEmpty { key }, key))
                 renderCtrlList()
@@ -372,13 +372,13 @@ class DialogMakerActivity : Activity() {
 
     private fun addSelectCtrl(multi: Boolean) {
         promptFields(mapOf(
-            "标签" to "",
-            "字段名(key)" to "",
-            "选项(逗号分隔)" to "a,b,c"
+            getString(R.string.dm_f_label) to "",
+            getString(R.string.dm_f_key) to "",
+            getString(R.string.dm_f_opts) to "a,b,c"
         )) { vals ->
-            val label = vals["标签"]?.trim() ?: ""
-            val key = vals["字段名(key)"]?.trim()?.ifEmpty { label } ?: label
-            val opts = vals["选项(逗号分隔)"]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+            val label = vals[getString(R.string.dm_f_label)]?.trim() ?: ""
+            val key = vals[getString(R.string.dm_f_key)]?.trim()?.ifEmpty { label } ?: label
+            val opts = vals[getString(R.string.dm_f_opts)]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
             if (key.isNotEmpty() && opts.isNotEmpty()) {
                 controls.add(Ctrl.Select(label.ifEmpty { key }, key, opts, multi))
                 renderCtrlList()
@@ -389,9 +389,9 @@ class DialogMakerActivity : Activity() {
 
     private fun addButtonsCtrl() {
         promptFields(mapOf(
-            "按钮(逗号分隔, 文本=id=类型)" to "确定=ok=primary,取消=cancel=normal"
+            getString(R.string.dm_f_btns) to getString(R.string.dm_btns_default)
         )) { vals ->
-            val raw = vals["按钮(逗号分隔, 文本=id=类型)"] ?: ""
+            val raw = vals[getString(R.string.dm_f_btns)] ?: ""
             val buttons = raw.split(",").mapNotNull { s ->
                 val parts = s.trim().split("=")
                 if (parts.isEmpty() || parts[0].isEmpty()) null
@@ -411,11 +411,11 @@ class DialogMakerActivity : Activity() {
 
     private fun addToggleCtrl() {
         promptFields(mapOf(
-            "标签" to "",
-            "字段名(key)" to ""
+            getString(R.string.dm_f_label) to "",
+            getString(R.string.dm_f_key) to ""
         )) { vals ->
-            val label = vals["标签"]?.trim() ?: ""
-            val key = vals["字段名(key)"]?.trim()?.ifEmpty { label } ?: label
+            val label = vals[getString(R.string.dm_f_label)]?.trim() ?: ""
+            val key = vals[getString(R.string.dm_f_key)]?.trim()?.ifEmpty { label } ?: label
             if (key.isNotEmpty()) {
                 controls.add(Ctrl.Toggle(label.ifEmpty { key }, key))
                 renderCtrlList()
@@ -447,12 +447,12 @@ class DialogMakerActivity : Activity() {
             container.addView(e)
         }
         AlertDialog.Builder(this)
-            .setTitle("添加控件")
+            .setTitle(getString(R.string.dm_add_ctrl))
             .setView(container)
-            .setPositiveButton("确定") { _, _ ->
+            .setPositiveButton(getString(R.string.sc_confirm)) { _, _ ->
                 onOk(edits.mapValues { it.value.text.toString() })
             }
-            .setNegativeButton("取消", null)
+            .setNegativeButton(getString(R.string.cancel), null)
             .show()
     }
 
@@ -462,11 +462,11 @@ class DialogMakerActivity : Activity() {
         for (i in controls.indices) {
             val c = controls[i]
             val label = when (c) {
-                is Ctrl.TextOutput -> "文本输出: ${c.note}"
-                is Ctrl.Input -> "文本输入: ${c.label}"
-                is Ctrl.Select -> (if (c.multi) "多选" else "单选") + ": ${c.label}"
-                is Ctrl.Toggle -> "开关: ${c.label}"
-                is Ctrl.Buttons -> "按钮组: ${c.buttons.joinToString { it.text }}"
+                is Ctrl.TextOutput -> getString(R.string.dm_summary_out_fmt, c.note.ifBlank { getString(R.string.dm_note_output) })
+                is Ctrl.Input -> getString(R.string.dm_summary_in_fmt, c.label)
+                is Ctrl.Select -> (if (c.multi) getString(R.string.dm_ctrl_multi) else getString(R.string.dm_ctrl_single)) + ": ${c.label}"
+                is Ctrl.Toggle -> getString(R.string.dm_summary_toggle_fmt, c.label)
+                is Ctrl.Buttons -> getString(R.string.dm_summary_btns_fmt, c.buttons.joinToString { it.text })
             }
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -506,7 +506,7 @@ class DialogMakerActivity : Activity() {
         val rows = mutableListOf<ScriptDialogSpec.Row>()
         for (c in controls) {
             when (c) {
-                is Ctrl.TextOutput -> rows.add(ScriptDialogSpec.Row.Text(ScriptDialogSpec.TextRow(c.note)))
+                is Ctrl.TextOutput -> rows.add(ScriptDialogSpec.Row.Text(ScriptDialogSpec.TextRow(c.note.ifBlank { getString(R.string.dm_note_output) })))
                 is Ctrl.Input -> rows.add(
                     ScriptDialogSpec.Row.Input(ScriptDialogSpec.InputRow(c.key, c.label))
                 )
@@ -523,7 +523,7 @@ class DialogMakerActivity : Activity() {
         }
         if (controls.none { it is Ctrl.Buttons }) {
             rows.add(ScriptDialogSpec.Row.Buttons(ScriptDialogSpec.ButtonsRow(
-                listOf(ScriptDialogSpec.Button("关闭", "close"))
+                listOf(ScriptDialogSpec.Button(getString(R.string.close), "close"))
             )))
         }
         return ScriptDialogSpec.Request(
@@ -556,7 +556,7 @@ class DialogMakerActivity : Activity() {
 
     private fun testOnScreen() {
         if (!Settings.canDrawOverlays(this)) {
-            Snackbar.make(root, "需要悬浮窗权限", Snackbar.LENGTH_SHORT).show()
+            Snackbar.make(root, getString(R.string.dm_need_overlay), Snackbar.LENGTH_SHORT).show()
             startActivity(
                 Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:$packageName"))
             )
@@ -596,6 +596,6 @@ class DialogMakerActivity : Activity() {
         for (p in parts) sb.append(" \\\n  ").append(p)
         val clip = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clip.setPrimaryClip(ClipData.newPlainText("termlou-ui", sb.toString()))
-        Snackbar.make(root, "命令已复制到剪贴板", Snackbar.LENGTH_SHORT).show()
+        Snackbar.make(root, getString(R.string.dm_copied), Snackbar.LENGTH_SHORT).show()
     }
 }

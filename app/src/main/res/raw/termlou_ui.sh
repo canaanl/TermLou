@@ -80,11 +80,51 @@ die() {
   exit 2
 }
 
+TL_LANG="$(cat /termlou/lang 2>/dev/null || echo zh)"
+_t() {
+  if [ "$TL_LANG" = "en" ]; then printf '%s' "$2"; else printf '%s' "$1"; fi
+}
+
 # ---------- 参数解析 ----------
 while [ $# -gt 0 ]; do
   case "$1" in
     --help|-h)
-      cat <<'EOF'
+      if [ "$TL_LANG" = "en" ]; then
+        cat <<'EOF'
+Usage: termlou-ui [@template] [options...]
+
+Pop up an interactive overlay above any app; result prints to stdout as JSON.
+
+Options:
+  --title T              Title
+  --message M            Body
+  --button text=id[=kind][=close]  Buttons (repeatable; kind: normal|primary|danger; close 1=close after tap (default), 0=keep window for next dialog)
+  --input label=key      Text input row
+  --default V            Default for input/toggle (only when a single control exists)
+  --default key=V        Default per key, or toggle state (1/on/true/yes = on)
+  --select label=key     Single-choice list (followed by --option items)
+  --check label=key      Multi-choice list (followed by --option items)
+  --option V             List option (with filter toggle use "value#tag" to carry a filter tag)
+  --toggle label=key     Toggle row (default off; result "1"/"0")
+  --toggle label=key=tag Filter toggle: when on, only select options tagged #tag show
+  --output FILE          Render file content as text output (ANSI colors supported)
+  --timeout SEC          Timeout (default 60)
+  --close                Close the current overlay explicitly
+  --chain CHAIN_ID       Deprecated (singleton updates in place, kept for compat)
+  --theme dark|light|glass
+  --accent #RRGGBB       Accent color
+  --radius N             Corner radius in dp
+  --position center|bottom
+  --anim fade|scale|slide-up
+  -h, --help             Show this help
+
+Examples:
+  termlou-ui --title "Confirm" --message "Continue?" --button "Go=ok=primary" --button "Quit=cancel"
+  ls -l > out.txt && termlou-ui --title "List" --output out.txt --button Close
+  termlou-ui --close
+EOF
+      else
+        cat <<'EOF'
 用法: termlou-ui [@模板名] [选项...]
 
 在任意 App 之上弹出可交互浮窗，结果以 JSON 打印到 stdout。
@@ -120,23 +160,24 @@ while [ $# -gt 0 ]; do
   termlou-ui --title "菜单" --button "返回=back=normal=0" --button "退出=quit"  # 返回不关窗，接着发上层菜单即回退
   termlou-ui --close
 EOF
+      fi
       exit 0
       ;;
-    --title) shift; [ $# -eq 0 ] && die "--title 缺少参数值"; TITLE="$1" ;;
-    --message) shift; [ $# -eq 0 ] && die "--message 缺少参数值"; MESSAGE="$1" ;;
-    --button) shift; [ $# -eq 0 ] && die "--button 缺少参数值"; BTN_SPEC+=("$1") ;;
+    --title) shift; [ $# -eq 0 ] && die "$(_t "--title 缺少参数值" "--title needs a value")"; TITLE="$1" ;;
+    --message) shift; [ $# -eq 0 ] && die "$(_t "--message 缺少参数值" "--message needs a value")"; MESSAGE="$1" ;;
+    --button) shift; [ $# -eq 0 ] && die "$(_t "--button 缺少参数值" "--button needs a value")"; BTN_SPEC+=("$1") ;;
     --input) shift
-      [ $# -eq 0 ] && die "--input 缺少参数值"
+      [ $# -eq 0 ] && die "$(_t "--input 缺少参数值" "--input needs a value")"
       label=${1%%=*}; key=${1#*=}
       [ "$key" = "$1" ] && key="$label"
       IN_LABEL+=("$label"); IN_KEY+=("$key"); IN_DEFAULT+=("")
       ;;
     --default) shift
-      [ $# -eq 0 ] && die "--default 缺少参数值"
+      [ $# -eq 0 ] && die "$(_t "--default 缺少参数值" "--default needs a value")"
       DEFAULTS+=("$1")
       ;;
     --toggle) shift
-      [ $# -eq 0 ] && die "--toggle 缺少参数值"
+      [ $# -eq 0 ] && die "$(_t "--toggle 缺少参数值" "--toggle needs a value")"
       label=${1%%=*}
       rest=${1#*=}
       key=${rest%%=*}
@@ -147,7 +188,7 @@ EOF
       ;;
     --select)
       shift
-      [ $# -eq 0 ] && die "--select 缺少参数值"
+      [ $# -eq 0 ] && die "$(_t "--select 缺少参数值" "--select needs a value")"
       sel_index=$(( ${#SEL_LABEL[@]} ))
       label=${1%%=*}; key=${1#*=}
       [ "$key" = "$1" ] && key="$label"
@@ -157,7 +198,7 @@ EOF
       ;;
     --check)
       shift
-      [ $# -eq 0 ] && die "--check 缺少参数值"
+      [ $# -eq 0 ] && die "$(_t "--check 缺少参数值" "--check needs a value")"
       sel_index=$(( ${#SEL_LABEL[@]} ))
       label=${1%%=*}; key=${1#*=}
       [ "$key" = "$1" ] && key="$label"
@@ -166,24 +207,24 @@ EOF
       SEL_OPT_START[$sel_index]=${#OPT_POOL[@]}; SEL_OPT_END[$sel_index]=${#OPT_POOL[@]}
       ;;
     --option) shift
-      [ $# -eq 0 ] && die "--option 缺少参数值"
+      [ $# -eq 0 ] && die "$(_t "--option 缺少参数值" "--option needs a value")"
       if [ "$sel_index" -ge 0 ]; then
         OPT_POOL+=("$1")
         SEL_OPT_END[$sel_index]=${#OPT_POOL[@]}
       else
-        die "--option 必须跟在 --select/--check 之后"
+        die "$(_t "--option 必须跟在 --select/--check 之后" "--option must follow --select/--check")"
       fi
       ;;
-    --output) shift; [ $# -eq 0 ] && die "--output 缺少参数值"; OUTPUT_FILE="$1" ;;
-    --timeout) shift; [ $# -eq 0 ] && die "--timeout 缺少参数值"; TIMEOUT="$1" ;;
+    --output) shift; [ $# -eq 0 ] && die "$(_t "--output 缺少参数值" "--output needs a value")"; OUTPUT_FILE="$1" ;;
+    --timeout) shift; [ $# -eq 0 ] && die "$(_t "--timeout 缺少参数值" "--timeout needs a value")"; TIMEOUT="$1" ;;
     --close) CLOSE=1 ;;
-    --chain) shift; [ $# -eq 0 ] && die "--chain 缺少参数值"; CHAIN="$1"; [[ "$CHAIN" =~ ^[A-Za-z0-9._-]+$ ]] || die "--chain 非法: $CHAIN（仅允许字母数字 ._-）" ;;
-    --theme) shift; [ $# -eq 0 ] && die "--theme 缺少参数值"; THEME="$1" ;;
-    --accent) shift; [ $# -eq 0 ] && die "--accent 缺少参数值"; ACCENT="$1" ;;
-    --radius) shift; [ $# -eq 0 ] && die "--radius 缺少参数值"; RADIUS="$1" ;;
-    --position) shift; [ $# -eq 0 ] && die "--position 缺少参数值"; POSITION="$1" ;;
-    --anim) shift; [ $# -eq 0 ] && die "--anim 缺少参数值"; ANIM="$1" ;;
-    *) die "未知参数 $1" ;;
+    --chain) shift; [ $# -eq 0 ] && die "$(_t "--chain 缺少参数值" "--chain needs a value")"; CHAIN="$1"; [[ "$CHAIN" =~ ^[A-Za-z0-9._-]+$ ]] || die "--chain $(_t "非法" "invalid"): $CHAIN" ;;
+    --theme) shift; [ $# -eq 0 ] && die "$(_t "--theme 缺少参数值" "--theme needs a value")"; THEME="$1" ;;
+    --accent) shift; [ $# -eq 0 ] && die "$(_t "--accent 缺少参数值" "--accent needs a value")"; ACCENT="$1" ;;
+    --radius) shift; [ $# -eq 0 ] && die "$(_t "--radius 缺少参数值" "--radius needs a value")"; RADIUS="$1" ;;
+    --position) shift; [ $# -eq 0 ] && die "$(_t "--position 缺少参数值" "--position needs a value")"; POSITION="$1" ;;
+    --anim) shift; [ $# -eq 0 ] && die "$(_t "--anim 缺少参数值" "--anim needs a value")"; ANIM="$1" ;;
+    *) die "$(_t "未知参数 $1" "unknown option $1")" ;;
   esac
   shift
 done
@@ -215,7 +256,7 @@ resolve_default() {
   fi
   # 旧语法：整串当值（仅存在一种控件时可用）
   if [ ${#IN_KEY[@]} -gt 0 ] && [ ${#TOG_KEY[@]} -gt 0 ]; then
-    die "--default $d: 同时存在输入行与开关，请用 --default key=值 精确指定"
+    die "--default $d: $(_t "同时存在输入行与开关，请用 --default key=值 精确指定" "both input and toggle exist, use --default key=value")"
   elif [ ${#IN_KEY[@]} -gt 0 ]; then
     IN_DEFAULT[$(( ${#IN_DEFAULT[@]} - 1 ))]="$d"
   elif [ ${#TOG_KEY[@]} -gt 0 ]; then
@@ -224,7 +265,7 @@ resolve_default() {
       *) TOG_DEFAULT[$(( ${#TOG_DEFAULT[@]} - 1 ))]="0" ;;
     esac
   else
-    die "--default $d: 没有输入行或开关可设置"
+    die "--default $d: $(_t "没有输入行或开关可设置" "no input or toggle to set")"
   fi
 }
 for d in "${DEFAULTS[@]}"; do
@@ -232,24 +273,24 @@ for d in "${DEFAULTS[@]}"; do
 done
 
 # ---------- 参数校验 ----------
-case "$THEME" in dark|light|glass) ;; *) die "--theme 无效值: $THEME（可选 dark|light|glass）" ;; esac
-case "$POSITION" in center|bottom) ;; *) die "--position 无效值: $POSITION（可选 center|bottom）" ;; esac
-case "$ANIM" in fade|scale|slide-up) ;; *) die "--anim 无效值: $ANIM（可选 fade|scale|slide-up）" ;; esac
-[[ "$TIMEOUT" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "--timeout 必须是数字: $TIMEOUT"
+case "$THEME" in dark|light|glass) ;; *) die "--theme $(_t "无效值" "invalid value"): $THEME" ;; esac
+case "$POSITION" in center|bottom) ;; *) die "--position $(_t "无效值" "invalid value"): $POSITION" ;; esac
+case "$ANIM" in fade|scale|slide-up) ;; *) die "--anim $(_t "无效值" "invalid value"): $ANIM" ;; esac
+[[ "$TIMEOUT" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "--timeout $(_t "必须是数字" "must be a number"): $TIMEOUT"
 if [ -n "$RADIUS" ]; then
-  [[ "$RADIUS" =~ ^[0-9]+$ ]] || die "--radius 必须是整数: $RADIUS"
+  [[ "$RADIUS" =~ ^[0-9]+$ ]] || die "--radius $(_t "必须是整数" "must be an integer"): $RADIUS"
 fi
 for i in "${!IN_LABEL[@]}"; do
-  [ -n "${IN_LABEL[$i]}" ] || die "--input 标签不能为空"
-  [ -n "${IN_KEY[$i]}" ] || die "--input key 不能为空"
+  [ -n "${IN_LABEL[$i]}" ] || die "$(_t "--input 标签不能为空" "--input label must not be empty")"
+  [ -n "${IN_KEY[$i]}" ] || die "$(_t "--input key 不能为空" "--input key must not be empty")"
 done
 for i in "${!SEL_LABEL[@]}"; do
-  [ -n "${SEL_LABEL[$i]}" ] || die "--select/--check 标签不能为空"
-  [ -n "${SEL_KEY[$i]}" ] || die "--select/--check key 不能为空"
+  [ -n "${SEL_LABEL[$i]}" ] || die "$(_t "--select/--check 标签不能为空" "--select/--check label must not be empty")"
+  [ -n "${SEL_KEY[$i]}" ] || die "$(_t "--select/--check key 不能为空" "--select/--check key must not be empty")"
 done
 for i in "${!TOG_LABEL[@]}"; do
-  [ -n "${TOG_LABEL[$i]}" ] || die "--toggle 标签不能为空"
-  [ -n "${TOG_KEY[$i]}" ] || die "--toggle key 不能为空"
+  [ -n "${TOG_LABEL[$i]}" ] || die "$(_t "--toggle 标签不能为空" "--toggle label must not be empty")"
+  [ -n "${TOG_KEY[$i]}" ] || die "$(_t "--toggle key 不能为空" "--toggle key must not be empty")"
 done
 
 # ---------- 文本转义 ----------

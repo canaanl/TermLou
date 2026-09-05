@@ -23,7 +23,7 @@ class LanShareService : Service() {
     override fun onCreate() {
         super.onCreate()
         getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "LAN 共享", NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(CHANNEL_ID, getString(R.string.lan_channel), NotificationManager.IMPORTANCE_LOW)
         )
         synchronized(lock) { instance = this }
     }
@@ -35,10 +35,10 @@ class LanShareService : Service() {
             return START_NOT_STICKY
         }
         try {
-            startForeground(NOTIFICATION_ID, buildNotification("正在启动…"))
+            startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.lan_starting_short)))
         } catch (e: Exception) {
             Log.e(TAG, "startForeground failed", e)
-            statusText = "启动失败"
+            statusText = getString(R.string.lan_failed)
             isRunning = false
             stopSelf()
             return START_NOT_STICKY
@@ -63,7 +63,7 @@ class LanShareService : Service() {
                 synchronized(lock) { active = true }
             } catch (e: Exception) {
                 Log.e(TAG, "start lan failed", e)
-                statusText = "启动失败: ${e.message}"
+                statusText = getString(R.string.lan_failed_fmt, e.message.toString())
                 isRunning = false
                 teardown()
                 stopSelf()
@@ -87,7 +87,7 @@ class LanShareService : Service() {
         sm.setLanPort(port)
         lanUrl = "http://$ip:$port"
         isRunning = true
-        statusText = if (sm.lanUser().isEmpty()) "运行中 · 开放访问" else "运行中 · 需认证"
+        statusText = if (sm.lanUser().isEmpty()) getString(R.string.lan_running_open) else getString(R.string.lan_running_auth)
         refreshNotification()
     }
 
@@ -116,7 +116,7 @@ class LanShareService : Service() {
         boundPort = 0
         lanUrl = ""
         currentToken = ""
-        if (wasActive) statusText = "已停止"
+        if (wasActive) statusText = getString(R.string.vpn_stopped)
         runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
     }
 
@@ -133,13 +133,16 @@ class LanShareService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val text = overrideText
-            ?: "$lanUrl · 已连接 $clientCount · ${if (currentToken.isEmpty()) "" else "点开 App 查看"}"
+            ?: getString(
+                R.string.lan_notif_text_fmt, lanUrl, clientCount,
+                if (currentToken.isEmpty()) "" else getString(R.string.lan_notif_open_app)
+            )
         return Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("TermLou LAN 共享运行中")
+            .setContentTitle(getString(R.string.lan_notif_title))
             .setContentText(text.ifEmpty { statusText })
             .setSmallIcon(R.drawable.ic_tile)
             .setContentIntent(pendingOpen)
-            .addAction(Notification.Action.Builder(null, "停止共享", stopIntent).build())
+            .addAction(Notification.Action.Builder(null, getString(R.string.lan_notif_stop), stopIntent).build())
             .setOngoing(true)
             .build()
     }
@@ -153,7 +156,7 @@ class LanShareService : Service() {
 
         @Volatile var isRunning = false
             private set
-        @Volatile var statusText = "未开启"
+        @Volatile var statusText = ""
             private set
         @Volatile var lanUrl = ""
             private set

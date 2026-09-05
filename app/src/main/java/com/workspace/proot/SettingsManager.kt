@@ -1,5 +1,6 @@
 package com.workspace.proot
 
+import android.content.Context
 import android.content.SharedPreferences
 
 sealed class ShortcutItem {
@@ -22,7 +23,9 @@ class SettingsManager(private val prefs: SharedPreferences) {
         private set
 
     val fontSizes = listOf(18, 22, 28, 34, 40)
-    val fontNames = listOf("极小", "小", "中等", "大", "极大")
+
+    fun fontNames(ctx: Context): List<String> =
+        ctx.resources.getStringArray(R.array.font_size_names).toList()
 
     fun load() {
         fontSizeIndex = prefs.getInt("fontSizeIndex", 2)
@@ -55,7 +58,7 @@ class SettingsManager(private val prefs: SharedPreferences) {
 
     fun newId(): String = java.util.UUID.randomUUID().toString()
 
-    fun loadShortcuts(): MutableList<ShortcutItem> {
+    fun loadShortcuts(ctx: Context): MutableList<ShortcutItem> {
         val list = mutableListOf<ShortcutItem>()
         var migrated = false
         try {
@@ -63,7 +66,7 @@ class SettingsManager(private val prefs: SharedPreferences) {
             for (i in 0 until arr.length()) {
                 val obj = arr.getJSONObject(i)
                 if (obj.optBoolean("group", false)) {
-                    val name = obj.optString("name", "命令组")
+                    val name = obj.optString("name", ctx.getString(R.string.sc_default_group))
                     val members = mutableListOf<ShortcutItem.Command>()
                     val marr = obj.optJSONArray("members")
                     if (marr != null) {
@@ -89,7 +92,7 @@ class SettingsManager(private val prefs: SharedPreferences) {
             }
         } catch (_: Exception) {}
         if (list.isEmpty()) {
-            list.add(ShortcutItem.Command(newId(), "Pi安装/更新", "mkdir -p ~/.local && curl -fsSL -o /tmp/pi.tar.gz \"https://github.com/earendil-works/pi/releases/latest/download/pi-linux-$(uname -m | sed -e 's/x86_64/x64/' -e 's/aarch64/arm64/').tar.gz\" && tar -xzf /tmp/pi.tar.gz -C ~/.local && mkdir -p ~/.local/bin && ln -sf ~/.local/pi/pi ~/.local/bin/pi && pi --version\n"))
+            list.add(ShortcutItem.Command(newId(), ctx.getString(R.string.sc_default_pi), "mkdir -p ~/.local && curl -fsSL -o /tmp/pi.tar.gz \"https://github.com/earendil-works/pi/releases/latest/download/pi-linux-$(uname -m | sed -e 's/x86_64/x64/' -e 's/aarch64/arm64/').tar.gz\" && tar -xzf /tmp/pi.tar.gz -C ~/.local && mkdir -p ~/.local/bin && ln -sf ~/.local/pi/pi ~/.local/bin/pi && pi --version\n"))
             saveShortcuts(list)
         } else if (migrated) {
             saveShortcuts(list)
@@ -355,6 +358,12 @@ class SettingsManager(private val prefs: SharedPreferences) {
 
     fun setNetUpstream(v: String) {
         prefs.edit().putString("netUpstream", v).apply()
+    }
+
+    fun langExplicit(): String = prefs.getString("langExplicit", "") ?: ""
+
+    fun setLangExplicit(v: String) {
+        prefs.edit().putString("langExplicit", v).apply()
     }
 
     fun lanUser(): String = prefs.getString("lanUser", "") ?: ""

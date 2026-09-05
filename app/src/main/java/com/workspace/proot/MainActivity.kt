@@ -134,7 +134,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
     private var pendingTileCommand: String? = null
     private val prefs by lazy { getSharedPreferences("term-lou-settings", MODE_PRIVATE) }
     private val fontSizes = listOf(18, 22, 28, 34, 40)
-    private val fontNames = listOf("极小", "小", "中等", "大", "极大")
+    private fun fontNames(): List<String> = resources.getStringArray(R.array.font_size_names).toList()
     private lateinit var shortcutContainer: SwipeableContainer
     private lateinit var shortcutInner: LinearLayout
     private lateinit var columnsWrapper: LinearLayout
@@ -205,7 +205,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         if (result.resultCode == RESULT_OK) {
             NetVpnService.start(this)
         } else {
-            showTempStatus("VPN 授权已取消")
+            showTempStatus(getString(R.string.vpn_auth_cancelled))
         }
     }
 
@@ -222,10 +222,10 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             startForegroundService(Intent(this, TermKeepAliveService::class.java))
             keepAlive = true
             settingsManager.setKeepAlive(true)
-            showTempStatus("后台持久化已开启，请到最近任务锁定 TermLou 防冻结")
+            showTempStatus(getString(R.string.keepalive_on))
             ensureIgnoreBatteryOptimizations()
         } else {
-            showTempStatus("请打开通知权限！")
+            showTempStatus(getString(R.string.notif_perm_needed))
         }
     }
 
@@ -236,7 +236,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val ch = NotificationChannel(
                 "term-lou-keepalive", "TermLou", NotificationManager.IMPORTANCE_LOW
-            ).apply { description = "后台保活" }
+            ).apply { description = getString(R.string.perm_bg) }
             val nm = getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(ch)
         }
@@ -622,18 +622,18 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 val input = contentResolver.openInputStream(uri)
                 if (input == null) {
                     withContext(Dispatchers.Main) {
-                        Snackbar.make(rootLayout, "保存失败: 无法读取分享的文件", Snackbar.LENGTH_SHORT).show()
+                        Snackbar.make(rootLayout, getString(R.string.share_read_fail), Snackbar.LENGTH_SHORT).show()
                     }
                     return@launch
                 }
                 input.use { src -> dest.outputStream().use { dst -> src.copyTo(dst) } }
                 withContext(Dispatchers.Main) {
                     refreshFileList()
-                    Snackbar.make(rootLayout, "已保存到 workspace 根目录", Snackbar.LENGTH_SHORT).show()
+                    Snackbar.make(rootLayout, getString(R.string.share_saved), Snackbar.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Snackbar.make(rootLayout, "保存失败", Snackbar.LENGTH_SHORT).show()
+                    Snackbar.make(rootLayout, getString(R.string.save_failed), Snackbar.LENGTH_SHORT).show()
                 }
             }
         }
@@ -811,7 +811,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
 
     private fun applyFontSettings() {
         terminalView.setTextSize(fontSizeSp)
-        showTempStatus("终端字号已切换: ${fontNames[fontSizeIndex]}")
+        showTempStatus(getString(R.string.font_changed_fmt, fontNames()[fontSizeIndex]))
     }
 
     private fun attachFontSliderAnimation(slider: Slider) {
@@ -820,7 +820,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         var downX = 0f
         val stepFor: (Float) -> Float = { x ->
             val frac = (x / slider.width).coerceIn(0f, 1f)
-            (frac * maxStep).roundToInt().coerceIn(fontNames.indices).toFloat()
+            (frac * maxStep).roundToInt().coerceIn(fontNames().indices).toFloat()
         }
         val continuousFor: (Float) -> Float = { x ->
             val frac = (x / slider.width).coerceIn(0f, 1f)
@@ -864,7 +864,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
     }
 
     private fun applyFontSizeStep(index: Float) {
-        val idx = index.roundToInt().coerceIn(fontNames.indices)
+        val idx = index.roundToInt().coerceIn(fontNames().indices)
         fontSizeIndex = idx
         fontSizeSp = fontSizes[idx]
         settingsManager.setFontSizeIndex(idx)
@@ -874,7 +874,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
     private fun buildSettingsContent() {
         val density = resources.displayMetrics.density
         settingsInner.addView(TextView(this).apply {
-            text = "终端字号设置"
+            text = getString(R.string.settings_font_title)
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             textSize = UiTokens.TEXT_TITLE
@@ -903,7 +903,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         })
 
         settingsInner.addView(TextView(this).apply {
-            text = "初始命令"
+            text = getString(R.string.settings_shell_title)
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             textSize = UiTokens.TEXT_TITLE
@@ -911,7 +911,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         })
 
         settingsInner.addView(TextView(this).apply {
-            text = "终端启动时自动执行的命令"
+            text = getString(R.string.settings_shell_desc)
             setTextColor(cOnSurfaceVariant)
             textSize = UiTokens.TEXT_META
             setPadding(0, 0, 0, 12)
@@ -923,7 +923,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             setBackgroundColor(cOutline)
             textSize = UiTokens.TEXT_BODY
             setPadding(12, 8, 12, 8)
-            setHint("输入启动命令")
+            setHint(getString(R.string.hint_shell_cmd))
             setHintTextColor(cOnSurfaceVariant)
         }
         settingsInner.addView(shellEdit)
@@ -933,7 +933,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             setPadding(0, 8, 0, 0)
         }
         val saveShellBtn = Button(this).apply {
-            text = "保存"
+            text = getString(R.string.save)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             setPadding(16, 6, 16, 6)
@@ -945,12 +945,12 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 val cmd = shellEdit.text.toString().trim()
                 shellCmd = cmd
                 settingsManager.setShellCmd(shellCmd)
-                showTempStatus("Shell 命令已保存")
+                showTempStatus(getString(R.string.shell_saved))
                 hideIme()
             }
         }
         val resetShellBtn = Button(this).apply {
-            text = "初始化"
+            text = getString(R.string.reset)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             setPadding(16, 6, 16, 6)
@@ -962,7 +962,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 shellEdit.setText("")
                 shellCmd = ""
                 settingsManager.setShellCmd("")
-                showTempStatus("已初始化（不启动）")
+                showTempStatus(getString(R.string.shell_inited_idle))
                 hideIme()
             }
         }
@@ -978,7 +978,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         })
 
         settingsInner.addView(TextView(this).apply {
-            text = "磁贴命令"
+            text = getString(R.string.settings_tile_title)
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             textSize = UiTokens.TEXT_TITLE
@@ -986,7 +986,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         })
 
         settingsInner.addView(TextView(this).apply {
-            text = "点击快速设置磁贴时执行的命令"
+            text = getString(R.string.settings_tile_desc)
             setTextColor(cOnSurfaceVariant)
             textSize = UiTokens.TEXT_META
             setPadding(0, 0, 0, 12)
@@ -998,7 +998,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             setBackgroundColor(cOutline)
             textSize = UiTokens.TEXT_BODY
             setPadding(12, 8, 12, 8)
-            setHint("输入磁贴一键命令")
+            setHint(getString(R.string.hint_tile_cmd))
             setHintTextColor(cOnSurfaceVariant)
         }
         settingsInner.addView(tileEdit)
@@ -1008,7 +1008,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             setPadding(0, 8, 0, 0)
         }
         val saveTileBtn = Button(this).apply {
-            text = "保存"
+            text = getString(R.string.save)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             setPadding(16, 6, 16, 6)
@@ -1020,12 +1020,12 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 val cmd = tileEdit.text.toString().trim()
                 tileCommand = cmd
                 settingsManager.setTileCommand(cmd)
-                showTempStatus("磁贴命令已保存")
+                showTempStatus(getString(R.string.tile_cmd_saved))
                 hideIme()
             }
         }
         val resetTileBtn = Button(this).apply {
-            text = "初始化"
+            text = getString(R.string.reset)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             setPadding(16, 6, 16, 6)
@@ -1037,7 +1037,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 tileEdit.setText(shellCmd)
                 tileCommand = shellCmd
                 settingsManager.setTileCommand(shellCmd)
-                showTempStatus("已初始化")
+                showTempStatus(getString(R.string.inited))
                 hideIme()
             }
         }
@@ -1053,7 +1053,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         })
 
         settingsInner.addView(TextView(this).apply {
-            text = "快捷启动"
+            text = getString(R.string.settings_quick_title)
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             textSize = UiTokens.TEXT_TITLE
@@ -1061,7 +1061,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         })
 
         settingsInner.addView(TextView(this).apply {
-            text = "在磁贴上快捷启动你所选的应用"
+            text = getString(R.string.settings_quick_desc)
             setTextColor(cOnSurfaceVariant)
             textSize = UiTokens.TEXT_META
             setPadding(0, 0, 0, 12)
@@ -1072,7 +1072,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             setPadding(0, 0, 0, 0)
         }
         val appBtn = Button(this).apply {
-            text = "选择应用"
+            text = getString(R.string.pick_app)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             setPadding(16, 6, 16, 6)
@@ -1083,7 +1083,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             setOnClickListener { showAppPicker() }
         }
         val initBtn = Button(this).apply {
-            text = "初始化"
+            text = getString(R.string.reset)
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             setPadding(16, 6, 16, 6)
@@ -1105,7 +1105,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         })
 
         settingsInner.addView(TextView(this).apply {
-            text = "弹窗工坊"
+            text = getString(R.string.settings_dialog_ws_title)
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             textSize = UiTokens.TEXT_TITLE
@@ -1113,7 +1113,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         })
 
         settingsInner.addView(TextView(this).apply {
-            text = "图形化设计脚本浮窗，保存模板供 termlou-ui 复用"
+            text = getString(R.string.settings_dialog_ws_desc)
             setTextColor(cOnSurfaceVariant)
             textSize = UiTokens.TEXT_META
             setPadding(0, 0, 0, 12)
@@ -1122,7 +1122,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         settingsInner.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(Button(this@MainActivity).apply {
-                text = "打开工坊"
+                text = getString(R.string.open_workshop)
                 setTextColor(Color.WHITE)
                 textSize = UiTokens.TEXT_BODY
                 setPadding(16, 6, 16, 6)
@@ -1140,7 +1140,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         })
 
         settingsInner.addView(TextView(this).apply {
-            text = "启动工坊"
+            text = getString(R.string.settings_splash_title)
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             textSize = UiTokens.TEXT_TITLE
@@ -1148,7 +1148,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         })
 
         settingsInner.addView(TextView(this).apply {
-            text = "自由绘制开屏图像，保存后下次启动生效"
+            text = getString(R.string.settings_splash_desc)
             setTextColor(cOnSurfaceVariant)
             textSize = UiTokens.TEXT_META
             setPadding(0, 0, 0, 12)
@@ -1157,7 +1157,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         settingsInner.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(Button(this@MainActivity).apply {
-                text = "打开工坊"
+                text = getString(R.string.open_workshop)
                 setTextColor(Color.WHITE)
                 textSize = UiTokens.TEXT_BODY
                 setPadding(16, 6, 16, 6)
@@ -1175,14 +1175,21 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         })
 
         settingsInner.addView(TextView(this).apply {
-            text = "高级"
+            text = getString(R.string.settings_advanced)
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             textSize = UiTokens.TEXT_TITLE
             setPadding(0, 0, 0, (4 * density).toInt())
         })
         settingsInner.addView(TextView(this).apply {
-            text = "上游代理：留空 = 内置直连（推荐，支持连接记录与屏蔽）；填 socks5://地址 走外部代理（如 proot 里运行的代理），此时记录与屏蔽不可用。"
+            text = getString(R.string.upstream_title)
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            textSize = UiTokens.TEXT_BODY
+            setPadding(0, 0, 0, 4)
+        })
+        settingsInner.addView(TextView(this).apply {
+            text = getString(R.string.upstream_desc)
             setTextColor(cOnSurfaceVariant)
             textSize = UiTokens.TEXT_META
             setPadding(0, 0, 0, (12 * density).toInt())
@@ -1202,7 +1209,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, (8 * density).toInt(), 0, 0)
             addView(Button(this@MainActivity).apply {
-                text = "保存"
+                text = getString(R.string.save)
                 setTextColor(Color.WHITE)
                 textSize = UiTokens.TEXT_BODY
                 isAllCaps = false
@@ -1213,12 +1220,12 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 ButtonStyle.apply(this, cPrimary)
                 setOnClickListener {
                     settingsManager.setNetUpstream(upEdit.text.toString().trim())
-                    showTempStatus("上游已保存，重启抓包后生效")
+                    showTempStatus(getString(R.string.upstream_saved))
                     hideIme()
                 }
             })
             addView(Button(this@MainActivity).apply {
-                text = "清空"
+                text = getString(R.string.clear)
                 setTextColor(Color.WHITE)
                 textSize = UiTokens.TEXT_BODY
                 isAllCaps = false
@@ -1230,7 +1237,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 setOnClickListener {
                     upEdit.setText("")
                     settingsManager.setNetUpstream("")
-                    showTempStatus("已恢复内置直连")
+                    showTempStatus(getString(R.string.upstream_cleared))
                     hideIme()
                 }
             })
@@ -1243,15 +1250,69 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             setBackgroundColor(cOutline)
         })
 
+        settingsInner.addView(TextView(this).apply {
+            text = getString(R.string.lan_title)
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            textSize = UiTokens.TEXT_BODY
+            setPadding(0, 0, 0, 4)
+        })
+        lanStatusText = TextView(this).apply {
+            text = getString(R.string.lan_status_off)
+            setTextColor(cOnSurfaceVariant)
+            textSize = UiTokens.TEXT_META
+            setPadding(0, 0, 0, 4)
+        }
+        settingsInner.addView(lanStatusText)
+        lanUrlText = TextView(this).apply {
+            text = getString(R.string.lan_url_preview)
+            setTextColor(cOnSurfaceVariant)
+            textSize = UiTokens.TEXT_META
+            setPadding(0, 0, 0, 12)
+            setOnClickListener { copyLanUrl() }
+        }
+        settingsInner.addView(lanUrlText)
+        settingsInner.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, (8 * density).toInt(), 0, 0)
+            lanToggleBtn = Button(this@MainActivity).apply {
+                text = getString(R.string.lan_start)
+                setTextColor(Color.WHITE)
+                textSize = UiTokens.TEXT_BODY
+                setPadding(16, 6, 16, 6)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = 4
+                }
+                ButtonStyle.apply(this, cPrimary)
+                setOnClickListener {
+                    if (LanShareService.isRunning) stopLan() else startLan()
+                }
+            }
+            lanAuthBtn = Button(this@MainActivity).apply {
+                text = getString(R.string.lan_auth_btn)
+                setTextColor(Color.WHITE)
+                textSize = UiTokens.TEXT_BODY
+                setPadding(16, 6, 16, 6)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = 4
+                }
+                ButtonStyle.apply(this, cOutline)
+                setOnClickListener { showLanAuthDialog() }
+            }
+            addView(lanToggleBtn)
+            addView(lanAuthBtn)
+        })
+        refreshLanRow()
+
         settingsInner.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, 0, 0, 0)
             addView(TextView(this@MainActivity).apply {
-                text = "后台持久化"
+                text = getString(R.string.keepalive_title)
                 setTextColor(Color.WHITE)
                 typeface = Typeface.DEFAULT_BOLD
-                textSize = UiTokens.TEXT_TITLE
+                textSize = UiTokens.TEXT_BODY
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(SwitchMaterial(ContextThemeWrapper(this@MainActivity, R.style.Theme_TermLou_Slider)).apply {
@@ -1267,7 +1328,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                             startForegroundService(Intent(this@MainActivity, TermKeepAliveService::class.java))
                             keepAlive = true
                             settingsManager.setKeepAlive(true)
-                            showTempStatus("后台持久化已开启，请到最近任务锁定 TermLou 防冻结")
+                            showTempStatus(getString(R.string.keepalive_on))
                             ensureIgnoreBatteryOptimizations()
                         } else {
                             permLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -1276,92 +1337,24 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                         stopService(Intent(this@MainActivity, TermKeepAliveService::class.java))
                         keepAlive = false
                         settingsManager.setKeepAlive(false)
-                        showTempStatus("后台持久化已关闭")
+                        showTempStatus(getString(R.string.keepalive_off))
                     }
                 }
             })
-        })
-
-        settingsInner.addView(View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
-                setMargins(0, 24, 0, 24)
-            }
-            setBackgroundColor(cOutline)
-        })
-
-        settingsInner.addView(TextView(this).apply {
-            text = "LAN 服务"
-            setTextColor(Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD
-            textSize = UiTokens.TEXT_TITLE
-            setPadding(0, 0, 0, 4)
-        })
-        lanStatusText = TextView(this).apply {
-            text = "状态：未开启"
-            setTextColor(cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_META
-            setPadding(0, 0, 0, 4)
-        }
-        settingsInner.addView(lanStatusText)
-        lanUrlText = TextView(this).apply {
-            text = "http://…:8080（未运行，仅预览）"
-            setTextColor(cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_META
-            setPadding(0, 0, 0, 12)
-            setOnClickListener { copyLanUrl() }
-        }
-        settingsInner.addView(lanUrlText)
-        settingsInner.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 0)
-            lanToggleBtn = Button(this@MainActivity).apply {
-                text = "开启服务"
-                setTextColor(Color.WHITE)
-                textSize = UiTokens.TEXT_BODY
-                setPadding(16, 6, 16, 6)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginEnd = 4
-                }
-                ButtonStyle.apply(this, cPrimary)
-                setOnClickListener {
-                    if (LanShareService.isRunning) stopLan() else startLan()
-                }
-            }
-            lanAuthBtn = Button(this@MainActivity).apply {
-                text = "输入用户名密码"
-                setTextColor(Color.WHITE)
-                textSize = UiTokens.TEXT_BODY
-                setPadding(16, 6, 16, 6)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = 4
-                }
-                ButtonStyle.apply(this, cOutline)
-                setOnClickListener { showLanAuthDialog() }
-            }
-            addView(lanToggleBtn)
-            addView(lanAuthBtn)
-        })
-        refreshLanRow()
-
-        settingsInner.addView(View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
-                setMargins(0, 24, 0, 24)
-            }
-            setBackgroundColor(cOutline)
         })
 
         settingsInner.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             addView(TextView(this@MainActivity).apply {
-                text = "存储占用"
+                text = getString(R.string.storage_title)
                 setTextColor(Color.WHITE)
                 typeface = Typeface.DEFAULT_BOLD
                 textSize = UiTokens.TEXT_TITLE
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(Button(this@MainActivity).apply {
-                text = "查看"
+                text = getString(R.string.view)
                 setTextColor(Color.WHITE)
                 textSize = UiTokens.TEXT_BODY
                 setPadding(16, 6, 16, 6)
@@ -1375,6 +1368,38 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 setMargins(0, 24, 0, 24)
             }
             setBackgroundColor(cOutline)
+        })
+
+        val langZh = AppLang.isChinese(this)
+        settingsInner.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, 0)
+            addView(TextView(this@MainActivity).apply {
+                text = getString(R.string.lang_title) + " " + if (langZh) "🇨🇳" else "🇺🇸"
+                setTextColor(Color.WHITE)
+                typeface = Typeface.DEFAULT_BOLD
+                textSize = UiTokens.TEXT_TITLE
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(SwitchMaterial(ContextThemeWrapper(this@MainActivity, R.style.Theme_TermLou_Slider)).apply {
+                elevation = 8f
+                thumbTintList = controlTint()
+                trackTintList = switchTrackTint()
+                isChecked = langZh
+                setOnCheckedChangeListener { _, isChecked ->
+                    if (suppressSwitch) return@setOnCheckedChangeListener
+                    settingsManager.setLangExplicit(if (isChecked) AppLang.LANG_ZH else AppLang.LANG_EN)
+                    AppLang.apply(this@MainActivity)
+                    recreate()
+                }
+            })
+        })
+        settingsInner.addView(TextView(this).apply {
+            text = getString(if (langZh) R.string.lang_sub_zh else R.string.lang_sub_en)
+            setTextColor(cOnSurfaceVariant)
+            textSize = UiTokens.TEXT_META
+            setPadding(0, 0, 0, 0)
         })
     }
 
@@ -1398,7 +1423,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         )
     }
 
-    private fun loadShortcuts(): MutableList<ShortcutItem> = settingsManager.loadShortcuts()
+    private fun loadShortcuts(): MutableList<ShortcutItem> = settingsManager.loadShortcuts(this)
 
     private fun saveShortcuts(list: List<ShortcutItem>) {
         settingsManager.saveShortcuts(list)
@@ -1420,7 +1445,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             2 -> {
                 val s = NetVpnService.statusText.substringBefore('\n')
                 if (NetVpnService.isRunning) "Network | $s"
-                else if (settingsManager.loadCaptureApps().isEmpty()) "Network | 未选择应用，请先在「选择应用」中勾选"
+                else if (settingsManager.loadCaptureApps().isEmpty()) getString(R.string.net_no_apps)
                 else "Network"
             }
             3 -> "Settings"
@@ -1492,7 +1517,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             batteryOptPending = false
             val pm = getSystemService(POWER_SERVICE) as PowerManager
             if (pm.isIgnoringBatteryOptimizations(packageName)) {
-                showTempStatus("电池优化已豁免，持久化已就绪")
+                showTempStatus(getString(R.string.battery_exempted))
             }
         }
     }
@@ -1527,7 +1552,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 batteryOptPending = true
                 startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
             } catch (e2: Exception) {
-                showTempStatus("请手动在系统设置中允许后台运行")
+                showTempStatus(getString(R.string.battery_manual))
             }
         }
     }
@@ -1608,7 +1633,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 if (terminalManager.ctrlMode) {
                     terminalManager.setCtrlMode(false)
                     updateCtrlButtonColor()
-                    showTerminalTemp("Ctrl 超时复位", 1000L)
+                    showTerminalTemp(getString(R.string.ctrl_reset), 1000L)
                 } else {
                     restoreTerminalStatus()
                 }
@@ -1693,7 +1718,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             setPadding(4, 2, 4, 2)
             for (b in buttons) addView(b)
         }
-        netToggleBtn = barButton("启动抓包", cPrimary) {
+        netToggleBtn = barButton(getString(R.string.net_capture_start), cPrimary) {
             if (NetVpnService.isRunning) stopNet() else startNet()
         }
         return LinearLayout(this).apply {
@@ -1701,7 +1726,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             setBackgroundColor(cSurface)
             addView(gridRow(
                 netToggleBtn,
-                barButton("选择应用", cOutline) {
+                barButton(getString(R.string.net_pick_apps), cOutline) {
                     NetAppPickerDialog(
                         this@MainActivity, cPrimary, cOnSurfaceVariant, loadAppCache(), settingsManager,
                         { refreshNetTab() }, theme
@@ -1709,12 +1734,12 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 }
             ))
             addView(gridRow(
-                barButton("清空记录", cOutline) {
+                barButton(getString(R.string.net_clear), cOutline) {
                     FlowLog.clear()
                     renderNetFlows()
-                    showTempStatus("已清空连接记录")
+                    showTempStatus(getString(R.string.net_cleared))
                 },
-                barButton("查看日志", cOutline) { showNetLogDialog() }
+                barButton(getString(R.string.net_view_log), cOutline) { showNetLogDialog() }
             ))
         }
     }
@@ -1731,13 +1756,13 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         }.getOrDefault("")
         val content = buildString {
             if (startLog.isNotBlank()) { append("== start.log ==\n").append(startLog) }
-            append("== tun2socks.log（尾部） ==\n")
-            append(if (log.isBlank()) "（无日志）" else log)
-            append("\n== minisocks.log（尾部） ==\n")
-            append(if (miniLog.isBlank()) "（无日志）" else miniLog)
+            append(getString(R.string.net_log_tail_tun))
+            append(if (log.isBlank()) getString(R.string.net_log_empty) else log)
+            append(getString(R.string.net_log_tail_mini))
+            append(if (miniLog.isBlank()) getString(R.string.net_log_empty) else miniLog)
         }
         val dialog = AlertDialog.Builder(this)
-            .setTitle("网络日志")
+            .setTitle(getString(R.string.net_log_title))
             .setView(ScrollView(this).apply {
                 addView(TextView(this@MainActivity).apply {
                     text = content
@@ -1747,7 +1772,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                     setPadding((16 * density).toInt(), (16 * density).toInt(), (16 * density).toInt(), (16 * density).toInt())
                 })
             })
-            .setPositiveButton("关闭", null)
+            .setPositiveButton(getString(R.string.close), null)
             .create()
         DialogStyler.apply(dialog, theme)
         dialog.show()
@@ -1758,7 +1783,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         if (::netToggleBtn.isInitialized) {
             val running = NetVpnService.isRunning
             val hasApps = settingsManager.loadCaptureApps().isNotEmpty()
-            netToggleBtn.text = if (running) "停止抓包" else "启动抓包"
+            netToggleBtn.text = if (running) getString(R.string.net_capture_stop) else getString(R.string.net_capture_start)
             netToggleBtn.setTextColor(Color.WHITE)
             if (!running && !hasApps) {
                 netToggleBtn.isEnabled = false
@@ -1772,7 +1797,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         }
         renderNetFlows()
         val status = NetVpnService.statusText.substringBefore('\n')
-        if (!NetVpnService.isRunning && status != "未启动") {
+        if (!NetVpnService.isRunning && status != getString(R.string.vpn_idle)) {
             if (status != lastNetStatusShown) {
                 lastNetStatusShown = status
                 showTempStatus("Network | $status")
@@ -1790,7 +1815,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         val rows = FlowLog.list()
         if (rows.isEmpty()) {
             netFlowList.addView(TextView(this).apply {
-                text = "暂无记录"
+                text = getString(R.string.net_empty)
                 setTextColor(cOnSurfaceVariant)
                 textSize = UiTokens.TEXT_COMPACT
                 setPadding(0, 8, 0, 8)
@@ -1844,7 +1869,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             })
             if (blocked) {
                 addView(TextView(this@MainActivity).apply {
-                    text = "已屏蔽"
+                    text = getString(R.string.flow_blocked)
                     setTextColor(Color.parseColor("#FF5252"))
                     textSize = UiTokens.TEXT_META
                     typeface = Typeface.MONOSPACE
@@ -1874,19 +1899,19 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
 
     private fun buildFlowInfo(f: FlowEntry, domain: String?): String {
         val stateCn = when (f.state) {
-            "OPEN" -> "进行中"
-            "UDP" -> "活跃"
-            "BLOCKED" -> "已屏蔽"
-            else -> "已结束"
+            "OPEN" -> getString(R.string.flow_state_open)
+            "UDP" -> getString(R.string.flow_state_udp)
+            "BLOCKED" -> getString(R.string.flow_blocked)
+            else -> getString(R.string.flow_state_closed)
         }
         return "${f.proto}:${f.dstPort} · ↑${formatBytes(f.bytesUp)} ↓${formatBytes(f.bytesDown)} · $stateCn · ${f.time}"
     }
 
     private fun buildFlowDetail(f: FlowEntry, domain: String?): String {
         val detail = if (!domain.isNullOrBlank()) {
-            "服务器地址 ${f.dstIp}"
+            getString(R.string.flow_server_fmt, f.dstIp)
         } else {
-            "无域名记录（本次会话未解析到域名）"
+            getString(R.string.flow_no_domain)
         }
         return "$detail · ${f.proto} ${f.dstPort}"
     }
@@ -1924,30 +1949,30 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             val matched = if (!domain.isNullOrBlank()) BlockRules.blockedDomainFor(domain) else null
             val opt2Label = matched ?: if (!domain.isNullOrBlank()) rootDomainOf(domain) else null
             netBraceMenu.show(
-                netMenuHost, ay, rh, "解除屏蔽", opt2Label,
+                netMenuHost, ay, rh, getString(R.string.flow_unblock), opt2Label,
                 confirm = opt2Label != null,
                 onOpt1 = {
                     if (matched != null) BlockRules.removeBlockDomain(matched)
                     else BlockRules.removeBlockIp(ip)
-                    showTempStatus("已解除屏蔽")
+                    showTempStatus(getString(R.string.flow_unblocked))
                 },
                 onOpt2 = {
                     if (opt2Label != null) BlockRules.addBlockDomain(opt2Label)
-                    showTempStatus("已屏蔽 $opt2Label 全部连接")
+                    showTempStatus(getString(R.string.flow_block_all_fmt, opt2Label))
                 }
             )
         } else {
             val opt2Label = if (!domain.isNullOrBlank()) rootDomainOf(domain) else null
             netBraceMenu.show(
-                netMenuHost, ay, rh, "屏蔽此IP", opt2Label,
+                netMenuHost, ay, rh, getString(R.string.flow_block_ip), opt2Label,
                 confirm = opt2Label != null,
                 onOpt1 = {
                     BlockRules.addBlockIp(ip)
-                    showTempStatus("已屏蔽 $ip")
+                    showTempStatus(getString(R.string.flow_blocked_ip_fmt, ip))
                 },
                 onOpt2 = {
                     if (opt2Label != null) BlockRules.addBlockDomain(opt2Label)
-                    showTempStatus("已屏蔽 $opt2Label 全部连接")
+                    showTempStatus(getString(R.string.flow_block_all_fmt, opt2Label))
                 }
             )
         }
@@ -1965,17 +1990,17 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         val running = LanShareService.isRunning
         val user = settingsManager.lanUser()
         lanStatusText.text = if (running) {
-            "状态：运行中 · " + if (user.isEmpty()) "开放访问" else "认证：$user"
+            if (user.isEmpty()) getString(R.string.lan_status_open) else getString(R.string.lan_status_auth_fmt, user)
         } else {
-            "状态：未开启" + if (user.isEmpty()) "" else " · 已设认证：$user"
+            if (user.isEmpty()) getString(R.string.lan_status_off) else getString(R.string.lan_status_off_auth_fmt, user)
         }
         lanUrlText.text = if (running && LanShareService.lanUrl.isNotEmpty()) {
-            LanShareService.lanUrl + "（点即复制）"
+            getString(R.string.lan_url_copy_fmt, LanShareService.lanUrl)
         } else {
             val ip = NetworkUtils.getLanIp(this) ?: "…"
-            "http://$ip:8080（未运行，仅预览，点即复制）"
+            getString(R.string.lan_url_preview_ip_fmt, ip)
         }
-        lanToggleBtn.text = if (running) "停止服务" else "开启服务"
+        lanToggleBtn.text = if (running) getString(R.string.lan_stop) else getString(R.string.lan_start)
         ButtonStyle.apply(lanToggleBtn, if (running) cError else cPrimary)
         lanAuthBtn.isEnabled = !running
         lanAuthBtn.alpha = if (running) 0.5f else 1f
@@ -1983,14 +2008,14 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
 
     private fun startLan() {
         LanShareService.start(this)
-        showTempStatus("正在启动 LAN 服务…")
+        showTempStatus(getString(R.string.lan_starting))
         mainHandler.postDelayed({ refreshLanRow() }, 1500)
         mainHandler.postDelayed({ refreshLanRow() }, 4000)
     }
 
     private fun stopLan() {
         LanShareService.stop(this)
-        showTempStatus("已停止 LAN 服务，状态已重置")
+        showTempStatus(getString(R.string.lan_stopped))
         mainHandler.postDelayed({ refreshLanRow() }, 1200)
     }
 
@@ -2005,18 +2030,18 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             cm.setPrimaryClip(ClipData.newPlainText("lan", url))
         }
-        showTempStatus("已复制 $url")
+        showTempStatus(getString(R.string.copied_fmt, url))
     }
 
     private fun showLanAuthDialog() {
         if (LanShareService.isRunning) {
-            showTempStatus("服务运行中，请先停止服务再修改认证")
+            showTempStatus(getString(R.string.lan_stop_first))
             return
         }
         val density = resources.displayMetrics.density
         val userEdit = EditText(this).apply {
             setText(settingsManager.lanUser())
-            hint = "账号（留空为开放访问）"
+            hint = getString(R.string.hint_lan_user)
             setTextColor(Color.WHITE)
             setHintTextColor(cOnSurfaceVariant)
             textSize = UiTokens.TEXT_BODY
@@ -2026,7 +2051,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         }
         val passEdit = EditText(this).apply {
             setText(settingsManager.lanPass())
-            hint = "密码"
+            hint = getString(R.string.hint_password)
             setTextColor(Color.WHITE)
             setHintTextColor(cOnSurfaceVariant)
             textSize = UiTokens.TEXT_BODY
@@ -2044,18 +2069,18 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             ).apply { topMargin = (8 * density).toInt() })
         }
         val dialog = AlertDialog.Builder(this)
-            .setTitle("LAN 用户验证")
+            .setTitle(getString(R.string.lan_auth_title))
             .setView(body)
-            .setPositiveButton("保存") { _, _ ->
+            .setPositiveButton(getString(R.string.save)) { _, _ ->
                 settingsManager.setLanAuth(
                     userEdit.text.toString().trim(),
                     passEdit.text.toString()
                 )
                 hideIme()
                 refreshLanRow()
-                showTempStatus("LAN 认证已保存")
+                showTempStatus(getString(R.string.lan_auth_saved))
             }
-            .setNegativeButton("取消", null)
+            .setNegativeButton(getString(R.string.cancel), null)
             .create()
         dialog.show()
         DialogStyler.apply(dialog, theme)
@@ -2063,7 +2088,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
 
     private fun startNet() {
         if (settingsManager.loadCaptureApps().isEmpty()) {
-            showTempStatus("请先在「选择应用」中勾选要抓包的应用")
+            showTempStatus(getString(R.string.net_pick_first))
             refreshNetTab()
             return
         }
@@ -2078,7 +2103,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
 
     private fun stopNet() {
         NetVpnService.stop(this)
-        showTempStatus("已停止抓包")
+        showTempStatus(getString(R.string.net_stopped))
         mainHandler.postDelayed({ refreshNetTab() }, 500)
     }
 
@@ -2086,10 +2111,10 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
         if (quickInitArmed && statusGen == quickInitArmedGen) {
             settingsManager.clearFavoriteApps()
             quickInitArmed = false
-            showTempStatus("已清空全部快捷启动")
+            showTempStatus(getString(R.string.sc_cleared_all))
         } else {
             quickInitArmed = true
-            showTempStatus("再点一次「初始化」确认清空全部")
+            showTempStatus(getString(R.string.sc_init_confirm))
             quickInitArmedGen = statusGen
         }
     }
@@ -2120,9 +2145,9 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(Intent.createChooser(shareIntent, "分享到..."))
+            startActivity(Intent.createChooser(shareIntent, getString(R.string.share_to)))
         } catch (e: Exception) {
-            statusText.text = "分享失败: ${e.message}"
+            statusText.text = getString(R.string.share_failed_fmt, e.message.toString())
         }
     }
 
@@ -2148,7 +2173,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
     private fun shareFolder(folder: File) {
         lifecycleScope.launch {
             try {
-                withContext(Dispatchers.Main) { statusText.text = "打包中..." }
+                withContext(Dispatchers.Main) { statusText.text = getString(R.string.pack_progress) }
                 val zipFile = File(wsTmp, "${folder.name}.zip")
                 withContext(Dispatchers.IO) {
                     ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
@@ -2164,10 +2189,10 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 }
                 withContext(Dispatchers.Main) {
                     shareFile(zipFile)
-                    statusText.text = "打包完成"
+                    statusText.text = getString(R.string.pack_done)
                 }
             } catch (e: Exception) {
-                statusText.text = "打包失败: ${e.message}"
+                statusText.text = getString(R.string.pack_failed_fmt, e.message.toString())
             }
         }
     }
@@ -2175,8 +2200,8 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
     private fun syncFolderFromUri(uri: Uri) {
         lifecycleScope.launch {
             try {
-                statusText.text = "导入文件夹中..."
-                val rootDoc = DocumentFile.fromTreeUri(this@MainActivity, uri) ?: throw Exception("无法读取")
+                statusText.text = getString(R.string.import_progress)
+                val rootDoc = DocumentFile.fromTreeUri(this@MainActivity, uri) ?: throw Exception(getString(R.string.import_unreadable))
                 withContext(Dispatchers.IO) {
                     val folderName = rootDoc.name ?: "imported"
                     val targetDir = File(fileListManager.getCurrentDir(), folderName)
@@ -2184,9 +2209,9 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                     syncDocuments(rootDoc, targetDir)
                 }
                 refreshFileList()
-                statusText.text = "文件夹导入完成"
+                statusText.text = getString(R.string.import_done)
             } catch (e: Exception) {
-                statusText.text = "导入失败: ${e.message}"
+                statusText.text = getString(R.string.import_failed_fmt, e.message.toString())
             }
         }
     }
@@ -2214,9 +2239,9 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
 
     private fun installRootfs(setupBtn: Button) {
         setupBtn.isEnabled = false
-        setupBtn.text = "解压中..."
+        setupBtn.text = getString(R.string.setup_extracting)
         progressBar.isIndeterminate = true
-        progressText.text = "解压内置 RootFS..."
+        progressText.text = getString(R.string.setup_extract_rootfs)
 
         lifecycleScope.launch {
             try {
@@ -2235,7 +2260,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
                 Log.e("RootfsExtractor", "extractTo failed", e)
                 progressText.text = "Error: ${e.javaClass.simpleName}: ${e.message}"
                 setupBtn.isEnabled = true
-                setupBtn.text = "重试"
+                setupBtn.text = getString(R.string.retry)
             }
         }
     }
@@ -2252,7 +2277,7 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
     private fun startShell(splash: SplashView) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                setSplashStatus(splash, "准备环境...")
+                setSplashStatus(splash, getString(R.string.splash_preparing))
                 wsTmp.mkdirs()
                 wsTmp.listFiles()?.forEach { it.deleteRecursively() }
 
@@ -2364,7 +2389,7 @@ exec /usr/bin/groups "$@" 2>/dev/null
                 }
 
                 syncDnsToRootfs()
-                setSplashStatus(splash, "安装依赖...")
+                setSplashStatus(splash, getString(R.string.splash_deps))
                 val curlBin = File(lxRoot, "usr/bin/curl")
                 if (!curlBin.exists() || !File(lxRoot, "etc/ssl/certs/ca-certificates.crt").exists()) {
                     val offlineCopy = runCatching {
@@ -2391,7 +2416,7 @@ exec /usr/bin/groups "$@" 2>/dev/null
                 val prootBin = File(applicationInfo.nativeLibraryDir, "libproot_exec.so")
                 val loader = File(applicationInfo.nativeLibraryDir, "libproot_loader.so")
 
-                setSplashStatus(splash, "启动终端...")
+                setSplashStatus(splash, getString(R.string.splash_starting))
                 val shellPath = findShellInRootfs()
                 if (shellPath == null) {
                     withContext(Dispatchers.Main) { statusText.text = "Shell not found in rootfs" }
@@ -2476,7 +2501,7 @@ exec /usr/bin/groups "$@" 2>/dev/null
             prefs.edit().putBoolean(seenKey, true).apply()
             val text = runCatching { crashFile.readText() }.getOrDefault("")
             val cause = (application as TermLouApp).rootCauseLine(text)
-            val show = { Snackbar.make(rootLayout, "上次崩溃：${cause.take(160)}", Snackbar.LENGTH_LONG).show() }
+            val show = { Snackbar.make(rootLayout, getString(R.string.crash_snack_fmt, cause.take(160)), Snackbar.LENGTH_LONG).show() }
             if (rootLayout.isAttachedToWindow) {
                 show()
             } else {

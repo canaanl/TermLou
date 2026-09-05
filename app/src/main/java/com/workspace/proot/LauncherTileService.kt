@@ -11,8 +11,8 @@ class LauncherTileService : TileService() {
     override fun onStartListening() {
         super.onStartListening()
         qsTile?.let { t ->
-            t.label = "快捷启动"
-            t.subtitle = "打开快捷启动"
+            t.label = getString(R.string.tile_launch_label)
+            t.subtitle = getString(R.string.tile_launch_sub)
             t.state = Tile.STATE_INACTIVE
             t.updateTile()
         }

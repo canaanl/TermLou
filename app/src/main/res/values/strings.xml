@@ -1,0 +1,334 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 通用 -->
+    <string name="tick">✓</string>
+    <string name="save">保存</string>
+    <string name="cancel">取消</string>
+    <string name="clear">清空</string>
+    <string name="reset">初始化</string>
+    <string name="done">完成</string>
+    <string name="close">关闭</string>
+    <string name="view">查看</string>
+    <string name="retry">重试</string>
+    <string name="inited">已初始化</string>
+    <string name="copied_fmt">已复制 %1$s</string>
+    <string name="save_failed">保存失败</string>
+
+    <!-- 字号 -->
+    <string-array name="font_size_names">
+        <item>极小</item>
+        <item>小</item>
+        <item>中等</item>
+        <item>大</item>
+        <item>极大</item>
+    </string-array>
+
+    <!-- Tab -->
+    <string name="tab_terminal">终端</string>
+    <string name="tab_files">文件</string>
+    <string name="tab_network">网络</string>
+    <string name="tab_settings">设置</string>
+
+    <!-- 设置：字号/命令 -->
+    <string name="settings_font_title">终端字号设置</string>
+    <string name="font_changed_fmt">终端字号已切换: %1$s</string>
+    <string name="settings_shell_title">初始命令</string>
+    <string name="settings_shell_desc">终端启动时自动执行的命令</string>
+    <string name="hint_shell_cmd">输入启动命令</string>
+    <string name="shell_saved">Shell 命令已保存</string>
+    <string name="shell_inited_idle">已初始化（不启动）</string>
+    <string name="settings_tile_title">磁贴命令</string>
+    <string name="settings_tile_desc">点击快速设置磁贴时执行的命令</string>
+    <string name="hint_tile_cmd">输入磁贴一键命令</string>
+    <string name="tile_cmd_saved">磁贴命令已保存</string>
+    <string name="settings_quick_title">快捷启动</string>
+    <string name="settings_quick_desc">在磁贴上快捷启动你所选的应用</string>
+    <string name="pick_app">选择应用</string>
+    <string name="settings_dialog_ws_title">弹窗工坊</string>
+    <string name="settings_dialog_ws_desc">图形化设计脚本浮窗，保存模板供 termlou-ui 复用</string>
+    <string name="open_workshop">打开工坊</string>
+    <string name="settings_splash_title">启动工坊</string>
+    <string name="settings_splash_desc">自由绘制开屏图像，保存后下次启动生效</string>
+    <string name="settings_advanced">高级</string>
+
+    <!-- 设置：上游代理 -->
+    <string name="upstream_title">上游代理</string>
+    <string name="upstream_desc">留空 = 内置直连（推荐，支持连接记录与屏蔽）；填 socks5://地址 走外部代理（如 proot 里运行的代理），此时记录与屏蔽不可用。</string>
+    <string name="upstream_saved">上游已保存，重启抓包后生效</string>
+    <string name="upstream_cleared">已恢复内置直连</string>
+
+    <!-- 设置：LAN -->
+    <string name="lan_title">LAN 服务</string>
+    <string name="lan_status_off">状态：未开启</string>
+    <string name="lan_status_off_auth_fmt">状态：未开启 · 已设认证：%1$s</string>
+    <string name="lan_status_open">状态：运行中 · 开放访问</string>
+    <string name="lan_status_auth_fmt">状态：运行中 · 认证：%1$s</string>
+    <string name="lan_url_preview">http://…:8080（未运行，仅预览）</string>
+    <string name="lan_url_copy_fmt">%1$s（点即复制）</string>
+    <string name="lan_url_preview_ip_fmt">http://%1$s:8080（未运行，仅预览，点即复制）</string>
+    <string name="lan_start">开启服务</string>
+    <string name="lan_stop">停止服务</string>
+    <string name="lan_auth_btn">输入用户名密码</string>
+    <string name="lan_starting">正在启动 LAN 服务…</string>
+    <string name="lan_stopped">已停止 LAN 服务，状态已重置</string>
+    <string name="lan_stop_first">服务运行中，请先停止服务再修改认证</string>
+    <string name="lan_auth_saved">LAN 认证已保存</string>
+    <string name="lan_auth_title">LAN 用户验证</string>
+    <string name="hint_lan_user">账号（留空为开放访问）</string>
+    <string name="hint_password">密码</string>
+
+    <!-- 设置：持久化/存储/语言 -->
+    <string name="keepalive_title">后台持久化</string>
+    <string name="keepalive_on">后台持久化已开启，请到最近任务锁定 TermLou 防冻结</string>
+    <string name="keepalive_off">后台持久化已关闭</string>
+    <string name="notif_perm_needed">请打开通知权限！</string>
+    <string name="battery_exempted">电池优化已豁免，持久化已就绪</string>
+    <string name="battery_manual">请手动在系统设置中允许后台运行</string>
+    <string name="storage_title">存储占用</string>
+    <string name="lang_title">语言</string>
+    <string name="lang_sub_zh">中文 · 跟随开关切换</string>
+    <string name="lang_sub_en">English · toggle to switch</string>
+
+    <!-- 终端/文件 -->
+    <string name="ctrl_reset">Ctrl 超时复位</string>
+    <string name="file_back">↩  返回上级</string>
+    <string name="file_empty">    （空目录）</string>
+    <string name="file_export">导出</string>
+    <string name="file_delete">删除</string>
+    <string name="share_failed_fmt">分享失败: %1$s</string>
+    <string name="share_read_fail">保存失败: 无法读取分享的文件</string>
+    <string name="share_saved">已保存到 workspace 根目录</string>
+    <string name="pack_progress">打包中...</string>
+    <string name="pack_done">打包完成</string>
+    <string name="pack_failed_fmt">打包失败: %1$s</string>
+    <string name="import_progress">导入文件夹中...</string>
+    <string name="import_unreadable">无法读取</string>
+    <string name="import_done">文件夹导入完成</string>
+    <string name="import_failed_fmt">导入失败: %1$s</string>
+    <string name="setup_extracting">解压中...</string>
+    <string name="setup_extract_rootfs">解压内置 RootFS...</string>
+    <string name="splash_preparing">准备环境...</string>
+    <string name="splash_deps">安装依赖...</string>
+    <string name="splash_starting">启动终端...</string>
+    <string name="share_to">分享到...</string>
+    <string name="crash_snack_fmt">上次崩溃：%1$s</string>
+    <string name="vpn_auth_cancelled">VPN 授权已取消</string>
+
+    <!-- 网络 Tab -->
+    <string name="net_capture_start">启动抓包</string>
+    <string name="net_capture_stop">停止抓包</string>
+    <string name="net_pick_apps">选择应用</string>
+    <string name="net_clear">清空记录</string>
+    <string name="net_view_log">查看日志</string>
+    <string name="net_cleared">已清空连接记录</string>
+    <string name="net_log_title">网络日志</string>
+    <string name="net_log_tail_tun">== tun2socks.log（尾部） ==\n</string>
+    <string name="net_log_tail_mini">\n== minisocks.log（尾部） ==\n</string>
+    <string name="net_log_empty">(无日志)</string>
+    <string name="net_empty">暂无记录</string>
+    <string name="net_no_apps">Network | 未选择应用，请先在「选择应用」中勾选</string>
+    <string name="flow_blocked">已屏蔽</string>
+    <string name="flow_state_open">进行中</string>
+    <string name="flow_state_udp">活跃</string>
+    <string name="flow_state_closed">已结束</string>
+    <string name="flow_server_fmt">服务器地址 %1$s</string>
+    <string name="flow_no_domain">无域名记录（本次会话未解析到域名）</string>
+    <string name="flow_unblock">解除屏蔽</string>
+    <string name="flow_unblocked">已解除屏蔽</string>
+    <string name="flow_block_all_fmt">已屏蔽 %1$s 全部连接</string>
+    <string name="flow_block_ip">屏蔽此IP</string>
+    <string name="flow_blocked_ip_fmt">已屏蔽 %1$s</string>
+    <string name="net_pick_first">请先在「选择应用」中勾选要抓包的应用</string>
+    <string name="net_stopped">已停止抓包</string>
+
+    <!-- 应用选择 -->
+    <string name="picker_search">搜索应用</string>
+    <string name="picker_system">包含系统应用</string>
+    <string name="picker_capture_title">选择抓包应用</string>
+
+    <!-- 存储弹窗 -->
+    <string name="storage_file_fmt">■  文件占用  %1$s</string>
+    <string name="storage_sys_fmt">■  系统占用  %1$s</string>
+    <string name="storage_total_fmt">总计  %1$s</string>
+    <string name="storage_failed_fmt">统计失败: %1$s</string>
+
+    <!-- VPN 服务 -->
+    <string name="vpn_channel">网络抓包</string>
+    <string name="vpn_fail_fg_fmt">启动失败: 无法启动前台服务（%1$s）</string>
+    <string name="vpn_fail_fmt">启动失败: %1$s</string>
+    <string name="vpn_session">TermLou 网络</string>
+    <string name="vpn_no_apps">未选择抓包应用，请先在「选择应用」中勾选</string>
+    <string name="vpn_no_auth">未获得 VPN 授权，请先授权</string>
+    <string name="vpn_establish_fail">建立 VPN 接口失败（未授权或系统拒绝），请先走「启动抓包」的授权流程</string>
+    <string name="vpn_upstream_direct">内置直连</string>
+    <string name="vpn_tun_fail">启动 tun2socks 失败</string>
+    <string name="vpn_running_direct_fmt">运行中 · 直连上游 127.0.0.1:%1$d</string>
+    <string name="vpn_running_upstream_fmt">运行中 · 上游 %1$s</string>
+    <string name="vpn_dead_fmt">已停止（tun2socks 退出码 %1$d）%2$s</string>
+    <string name="vpn_stopped">已停止</string>
+    <string name="vpn_notif">网络抓包运行中</string>
+    <string name="vpn_idle">未启动</string>
+
+    <!-- 保活 -->
+    <string name="keepalive_notif">后台保活中</string>
+    <string name="keepalive_status_on_fmt">保活：开 · 豁免：%1$s · 持锁：%2$s</string>
+    <string name="keepalive_status_off">保活：关</string>
+    <string name="yes">是</string>
+    <string name="no">否</string>
+    <string name="keepalive_held">持有</string>
+    <string name="keepalive_idle">待机</string>
+
+    <!-- LAN 服务 -->
+    <string name="lan_channel">LAN 共享</string>
+    <string name="lan_starting_short">正在启动…</string>
+    <string name="lan_failed">启动失败</string>
+    <string name="lan_failed_fmt">启动失败: %1$s</string>
+    <string name="lan_running_open">运行中 · 开放访问</string>
+    <string name="lan_running_auth">运行中 · 需认证</string>
+    <string name="lan_notif_title">TermLou LAN 共享运行中</string>
+    <string name="lan_notif_stop">停止共享</string>
+
+    <!-- 浮窗命令 -->
+    <string name="tile_runner_channel">浮窗命令</string>
+    <string name="tile_runner_running">浮窗命令执行中…</string>
+
+    <!-- 磁贴 -->
+    <string name="tile_cmd_label">磁贴命令</string>
+    <string name="tile_cmd_empty">未配置命令</string>
+    <string name="tile_launch_label">快捷启动</string>
+    <string name="tile_launch_sub">打开快捷启动</string>
+    <string name="tile_exec">执行命令</string>
+
+    <!-- 崩溃 -->
+    <string name="crash_channel">崩溃报告</string>
+    <string name="crash_title">TermLou 崩溃报告</string>
+    <string name="crash_copy_exit">复制堆栈并退出</string>
+
+    <!-- 快捷命令 -->
+    <string name="sc_add">添加快捷命令</string>
+    <string name="sc_edit">编辑快捷命令</string>
+    <string name="sc_name_hint">名称（可不填）</string>
+    <string name="sc_cmd_hint">命令（支持 \\n \\t \\e \\cX；用 @{} 标记光标）</string>
+    <string name="sc_confirm">确定</string>
+    <string name="sc_delete">删除</string>
+    <string name="sc_default_pi">Pi安装/更新</string>
+    <string name="sc_default_group">命令组</string>
+    <string name="sc_group_fmt">命令组 · %1$d 个命令</string>
+    <string name="sc_backup">备份</string>
+    <string name="sc_restore">恢复</string>
+    <string name="sc_backup_to">备份到...</string>
+    <string name="sc_backup_fail_fmt">备份失败：%1$s</string>
+    <string name="sc_restore_invalid">恢复失败：不是有效的 TermLou 命令库备份文件</string>
+    <string name="sc_restore_title">恢复命令库</string>
+    <string name="sc_restore_msg_fmt">将整体替换当前全部命令与频率数据。\n\n备份内容：%1$d 条命令、%2$d 个命令组。</string>
+    <string name="sc_restored_fmt">已恢复 %1$d 项（含频次数据）</string>
+    <string name="sc_merge_title">合并快捷命令</string>
+    <string name="sc_merge_msg_fmt">「%1$s」与「%2$s」是否合并为快捷命令组？</string>
+    <string name="sc_merge_ok">合并为命令组</string>
+    <string name="sc_name_group">命名命令组</string>
+    <string name="sc_group_name_hint">组名</string>
+    <string name="sc_create">创建</string>
+    <string name="sc_join_title">加入命令组</string>
+    <string name="sc_join_msg_fmt">将「%1$s」加入命令组「%2$s」？</string>
+    <string name="sc_join">加入</string>
+    <string name="sc_disband_title">解散命令组</string>
+    <string name="sc_disband_msg">长按拖动排序 · 左滑删除/解散 · 点击进入/编辑</string>
+    <string name="sc_cleared_all">已清空全部快捷启动</string>
+    <string name="sc_init_confirm">再点一次「初始化」确认清空全部</string>
+
+    <!-- 弹窗工坊 -->
+    <string name="dm_title">弹窗工坊</string>
+    <string name="dm_section_title">标题</string>
+    <string name="dm_title_hint">显示在浮窗顶栏</string>
+    <string name="dm_msg_hint">正文（可留空）</string>
+    <string name="dm_section_msg">正文</string>
+    <string name="dm_section_theme">主题</string>
+    <string name="dm_section_pos">位置</string>
+    <string name="dm_section_anim">动画</string>
+    <string name="dm_accent_hint">主色（点击色块；不选则用主题默认）</string>
+    <string name="dm_section_radius">圆角</string>
+    <string name="dm_section_ctrls">控件</string>
+    <string name="dm_preview">实时预览</string>
+    <string name="dm_test">真机测试浮窗</string>
+    <string name="dm_export">导出命令</string>
+    <string name="dm_exit">退出</string>
+    <string name="dm_ctrl_text_out">文本输出</string>
+    <string name="dm_ctrl_text_in">文本输入</string>
+    <string name="dm_ctrl_single">单选</string>
+    <string name="dm_ctrl_multi">多选</string>
+    <string name="dm_ctrl_toggle">开关</string>
+    <string name="dm_ctrl_buttons">按钮组</string>
+    <string name="dm_f_label">标签</string>
+    <string name="dm_f_key">字段名(key)</string>
+    <string name="dm_f_opts">选项(逗号分隔)</string>
+    <string name="dm_f_btns">按钮(逗号分隔, 文本=id=类型)</string>
+    <string name="dm_btns_default">确定=ok=primary,取消=cancel=normal</string>
+    <string name="dm_add_ctrl">添加控件</string>
+    <string name="dm_summary_out_fmt">文本输出: %1$s</string>
+    <string name="dm_summary_in_fmt">文本输入: %1$s</string>
+    <string name="dm_summary_sel_fmt">%1$s: %2$s</string>
+    <string name="dm_summary_toggle_fmt">开关: %1$s</string>
+    <string name="dm_summary_btns_fmt">按钮组: %1$s</string>
+    <string name="dm_close">关闭</string>
+    <string name="dm_need_overlay">需要悬浮窗权限</string>
+    <string name="dm_copied">命令已复制到剪贴板</string>
+    <string name="dm_note_output">运行时输出区</string>
+
+    <!-- 启动工坊 -->
+    <string name="sm_outline">轮廓</string>
+    <string name="sm_block">块面</string>
+    <string name="sm_mixed">混合</string>
+    <string name="sm_invert">反选</string>
+    <string name="sm_undo">返回</string>
+    <string name="sm_import">导入照片</string>
+    <string name="sm_preview">预览</string>
+    <string name="sm_save">保存</string>
+
+    <!-- 花括号菜单 -->
+    <string name="brace_confirm">确认?</string>
+    <string name="brace_oops">点错了</string>
+    <string name="brace_confirm_btn">确认</string>
+
+    <!-- 设置区 -->
+    <string name="setup_title">RootFS 安装</string>
+    <string name="setup_extract">解压 RootFS</string>
+    <string name="setup_import_file">导入文件</string>
+    <string name="setup_import_folder">导入文件夹</string>
+    <string name="perm_bg">后台保活</string>
+
+    <!-- 快捷命令组 -->
+    <string name="sc_exit">退出</string>
+    <string name="sc_manage_title">快捷命令管理</string>
+    <string name="sc_new">＋ 新建快捷命令</string>
+    <string name="sc_new_title">新建快捷命令</string>
+    <string name="sc_edit_title">编辑命令</string>
+    <string name="sc_disband">解散</string>
+    <string name="sc_freq_reset">频次清零</string>
+    <string name="sc_freq_cleared">已清零该命令所有场景的频次</string>
+    <string name="sc_move_out">移出命令组</string>
+    <string name="sc_delete_cmd">删除命令</string>
+    <string name="sc_exit_group">退出命令组</string>
+    <string name="sc_hint_group">长按拖动排序 · 左滑命令</string>
+    <string name="sc_disband_msg_fmt">解散「%1$s」？组内 %2$d 个命令将保留到列表。</string>
+
+    <!-- 启动工坊标题 -->
+    <string name="sm_title">启动工坊</string>
+
+    <!-- LAN 通知正文/错误 -->
+    <string name="lan_notif_text_fmt">%1$s · 已连接 %2$d · %3$s</string>
+    <string name="web_user_ph">账号（开放访问可空）</string>
+    <string name="web_pass_ph">密码</string>
+    <string name="web_conn">连接</string>
+    <string name="web_err_conn">无法连接服务器</string>
+    <string name="web_err_auth">账号或密码错误</string>
+    <string name="web_tab_term">终端</string>
+    <string name="web_tab_files">文件</string>
+    <string name="web_st_idle">未连接</string>
+    <string name="web_st_on">已连接</string>
+    <string name="web_st_off">已断开</string>
+    <string name="web_up_btn">上传</string>
+    <string name="web_dl">下载</string>
+    <string name="lan_notif_open_app">点开 App 查看</string>
+    <string name="lan_port_busy_fmt">端口 %1$d 起 20 个均被占用：%2$s</string>
+    <string name="lan_pty_fail_fmt">pty 启动失败: %1$s: %2$s</string>
+</resources>

@@ -25,7 +25,7 @@ class TermKeepAliveService : Service() {
 
         val notification = Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("TermLou")
-            .setContentText("后台保活中")
+            .setContentText(getString(R.string.keepalive_notif))
             .setSmallIcon(R.drawable.ic_tile)
             .setContentIntent(pendingOpen)
             .setOngoing(true)

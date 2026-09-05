@@ -76,7 +76,11 @@ class SettingsManagerTest {
     }
 
     @Test
-    fun `fontNames list has correct values`() {
-        assertEquals(listOf("极小", "小", "中等", "大", "极大"), manager.fontNames)
+    fun `fontNames list has five tiers`() {
+        val ctx = mockk<android.content.Context>(relaxed = true)
+        val res = mockk<android.content.res.Resources>(relaxed = true)
+        every { ctx.resources } returns res
+        every { res.getStringArray(any()) } returns arrayOf("a", "b", "c", "d", "e")
+        assertEquals(listOf("a", "b", "c", "d", "e"), manager.fontNames(ctx))
     }
 }

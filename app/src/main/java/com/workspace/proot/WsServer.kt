@@ -55,7 +55,7 @@ class WsServer(
                 lastErr = e
             }
         }
-        val bound = s ?: throw IllegalStateException("端口 $preferredPort 起 20 个均被占用：${lastErr?.message}")
+        val bound = s ?: throw IllegalStateException(context.getString(R.string.lan_port_busy_fmt, preferredPort, lastErr?.message))
         server = bound
         boundPort = port
         running = true
@@ -137,8 +137,9 @@ class WsServer(
 
             when {
                 method == "GET" && (path == "/" || path == "/index.html") -> {
-                    val html = context.assets.open("xterm/index.html").use { it.readBytes() }
-                    writeBytes(client, 200, "text/html; charset=utf-8", html)
+                    val raw = context.assets.open("xterm/index.html").use { it.readBytes().toString(Charsets.UTF_8) }
+                    val html = raw.replace("/*{{LANG}}*/{}", buildLangJson())
+                    writeBytes(client, 200, "text/html; charset=utf-8", html.toByteArray(Charsets.UTF_8))
                     client.close()
                 }
                 method == "GET" && path.startsWith("/static/") -> {
@@ -258,6 +259,30 @@ class WsServer(
         .replace("\\", "\\\\").replace("\"", "\\\"")
         .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
 
+    private fun jstr(resId: Int): String = "\"" + esc(context.getString(resId)) + "\""
+
+    private fun buildLangJson(): String = runCatching {
+        val sb = StringBuilder("{")
+        fun kv(k: String, resId: Int, first: Boolean) {
+            if (!first) sb.append(',')
+            sb.append('"').append(k).append("\":").append(jstr(resId))
+        }
+        kv("userPh", R.string.web_user_ph, true)
+        kv("passPh", R.string.web_pass_ph, false)
+        kv("conn", R.string.web_conn, false)
+        kv("errConn", R.string.web_err_conn, false)
+        kv("errAuth", R.string.web_err_auth, false)
+        kv("tabTerm", R.string.web_tab_term, false)
+        kv("tabFiles", R.string.web_tab_files, false)
+        kv("stIdle", R.string.web_st_idle, false)
+        kv("stOn", R.string.web_st_on, false)
+        kv("stOff", R.string.web_st_off, false)
+        kv("upBtn", R.string.web_up_btn, false)
+        kv("dl", R.string.web_dl, false)
+        sb.append('}')
+        sb.toString()
+    }.getOrDefault("{}")
+
     private fun listFilesJson(rel: String): String {
         val dir = resolveWorkspaceFile(if (rel.isEmpty()) "/" else rel) ?: return "{\"error\":\"bad path\"}"
         if (!dir.exists()) return "{\"error\":\"not found\"}"
@@ -314,15 +339,13 @@ class WsServer(
 
     companion object {
         fun reportPtyError(ctx: Context, socket: Socket, e: Exception) {
-            val msg = "pty 启动失败: ${e.javaClass.simpleName}: ${e.message}"
+            val msg = ctx.getString(R.string.lan_pty_fail_fmt, e.javaClass.simpleName, e.message.toString())
             runCatching {
                 val dir = File(ctx.filesDir, "lan")
                 dir.mkdirs()
-                File(dir, "error.log").appendText(
-                    "${java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())} $msg\n${
-                        e.stackTrace.take(8).joinToString("\n")
-                    }\n"
-                )
+                val stamp = java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+                val trace = e.stackTrace.take(8).joinToString("\n")
+                File(dir, "error.log").appendText("$stamp $msg\n$trace\n")
             }
             runCatching {
                 val os = socket.getOutputStream()

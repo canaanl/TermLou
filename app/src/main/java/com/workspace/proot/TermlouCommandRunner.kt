@@ -29,7 +29,7 @@ class TermlouCommandRunner : Service() {
         super.onCreate()
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "浮窗命令", NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(CHANNEL_ID, getString(R.string.tile_runner_channel), NotificationManager.IMPORTANCE_LOW)
         )
     }
 
@@ -106,7 +106,7 @@ class TermlouCommandRunner : Service() {
         )
         return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("TermLou")
-            .setContentText("浮窗命令执行中")
+            .setContentText(getString(R.string.tile_runner_running))
             .setSmallIcon(R.drawable.ic_tile)
             .setContentIntent(pendingOpen)
             .setOngoing(true)

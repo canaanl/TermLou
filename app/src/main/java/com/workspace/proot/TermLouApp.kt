@@ -40,10 +40,11 @@ class TermLouApp : Application() {
     override fun onCreate() {
         super.onCreate()
         appColdStartAt = SystemClock.elapsedRealtime()
+        AppLang.apply(this)
         createCrashChannel()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             val report = buildString {
-                append("TermLou 崩溃报告\n\n")
+                append(getString(R.string.crash_title) + "\n\n")
                 append(formatThrowable(throwable))
             }
             runCatching { crashLog().writeText(report) }
@@ -84,7 +85,7 @@ class TermLouApp : Application() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.createNotificationChannel(
-                NotificationChannel(CRASH_CHANNEL, "崩溃报告", NotificationManager.IMPORTANCE_HIGH)
+                NotificationChannel(CRASH_CHANNEL, getString(R.string.crash_channel), NotificationManager.IMPORTANCE_HIGH)
             )
         }
     }
@@ -101,7 +102,7 @@ class TermLouApp : Application() {
         )
         val notification = Notification.Builder(this, CRASH_CHANNEL)
             .setSmallIcon(android.R.drawable.stat_notify_error)
-            .setContentTitle("TermLou 崩溃报告")
+            .setContentTitle(getString(R.string.crash_title))
             .setContentText(rootCauseLine(report))
             .setStyle(Notification.BigTextStyle().bigText(report))
             .setContentIntent(openMain)
@@ -156,7 +157,7 @@ class TermLouApp : Application() {
             setPadding(px(24), px(48), px(24), px(24))
         }
         val title = TextView(this).apply {
-            text = "TermLou 崩溃报告"
+            text = getString(R.string.crash_title)
             setTextColor(Color.WHITE)
             textSize = 18f
             setPadding(0, 0, 0, px(12))
@@ -169,7 +170,7 @@ class TermLouApp : Application() {
         }
         scroll.addView(body)
         val close = Button(this).apply {
-            text = "复制堆栈并退出"
+            text = getString(R.string.crash_copy_exit)
             setOnClickListener {
                 runCatching {
                     val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

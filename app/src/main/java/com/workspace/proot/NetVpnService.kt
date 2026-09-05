@@ -29,7 +29,7 @@ class NetVpnService : VpnService() {
     override fun onCreate() {
         super.onCreate()
         getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "网络抓包", NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(CHANNEL_ID, getString(R.string.vpn_channel), NotificationManager.IMPORTANCE_LOW)
         )
         synchronized(lock) { instance = this }
     }
@@ -44,7 +44,7 @@ class NetVpnService : VpnService() {
             startForeground(NOTIFICATION_ID, buildNotification())
         } catch (e: Exception) {
             Log.e(TAG, "startForeground failed", e)
-            statusText = "启动失败: 无法启动前台服务（${e.message}）"
+            statusText = getString(R.string.vpn_fail_fg_fmt, e.message.toString())
             isRunning = false
             stopSelf()
             return START_NOT_STICKY
@@ -75,7 +75,7 @@ class NetVpnService : VpnService() {
                 synchronized(lock) { active = true }
             } catch (e: Exception) {
                 Log.e(TAG, "start vpn failed", e)
-                statusText = "启动失败: ${e.message}"
+                statusText = getString(R.string.vpn_fail_fmt, e.message.toString())
                 isRunning = false
                 teardown()
                 stopSelf()
@@ -88,7 +88,7 @@ class NetVpnService : VpnService() {
         sm.load()
 
         val builder = Builder().apply {
-            setSession("TermLou 网络")
+            setSession(getString(R.string.vpn_session))
             setMtu(1500)
             addAddress("10.7.0.1", 32)
             addRoute("0.0.0.0", 0)
@@ -97,7 +97,7 @@ class NetVpnService : VpnService() {
         }
         val apps = sm.loadCaptureApps()
         if (apps.isEmpty()) {
-            throw IllegalStateException("未选择抓包应用，请先在「选择应用」中勾选")
+            throw IllegalStateException(getString(R.string.vpn_no_apps))
         }
         val pm = packageManager
         for (pkg in apps) {
@@ -108,15 +108,15 @@ class NetVpnService : VpnService() {
         }
 
         if (VpnService.prepare(this) != null) {
-            throw IllegalStateException("未获得 VPN 授权，请先授权")
+            throw IllegalStateException(getString(R.string.vpn_no_auth))
         }
 
-        val tun = builder.establish() ?: throw IllegalStateException("建立 VPN 接口失败（未授权或系统拒绝），请先走「启动抓包」的授权流程")
+        val tun = builder.establish() ?: throw IllegalStateException(getString(R.string.vpn_establish_fail))
         tunFd = tun
 
         val upstream = sm.netUpstream().trim()
         if (upstream.isEmpty()) {
-            upstreamLabel = "内置直连"
+            upstreamLabel = getString(R.string.vpn_upstream_direct)
             val ms = MiniSocks5Server("127.0.0.1", 0, { protect(it) }, { protect(it) }, File(filesDir, "net"))
             miniSocks = ms
             socksPort = ms.startListening()
@@ -149,13 +149,13 @@ class NetVpnService : VpnService() {
         } catch (_: Exception) {}
 
         val pid = TunSpawner.spawnTun2Socks(bin.absolutePath, cmd.toTypedArray(), tun.fd, logFile.absolutePath)
-        if (pid < 0) throw IllegalStateException("启动 tun2socks 失败")
+        if (pid < 0) throw IllegalStateException(getString(R.string.vpn_tun_fail))
         tun2socksPid = pid
 
         FlowLog.clear()
         VpnFlowExporter.start(this)
         isRunning = true
-        statusText = if (socksPort > 0) "运行中 · 直连上游 127.0.0.1:$socksPort" else "运行中 · 上游 $upstream"
+        statusText = if (socksPort > 0) getString(R.string.vpn_running_direct_fmt, socksPort) else getString(R.string.vpn_running_upstream_fmt, upstream)
 
         Thread {
             val code = TunSpawner.waitPid(pid)
@@ -169,7 +169,7 @@ class NetVpnService : VpnService() {
             if (doStop) {
                 Log.e(TAG, "tun2socks exited $code")
                 val tail = readLogTail(this, 10)
-                statusText = "已停止（tun2socks 退出码 $code）${if (tail.isEmpty()) "" else "\n" + tail}"
+                statusText = getString(R.string.vpn_dead_fmt, code, if (tail.isEmpty()) "" else "\n" + tail)
                 isRunning = false
                 stopSelf()
             }
@@ -201,11 +201,11 @@ class NetVpnService : VpnService() {
         tunFd = null
         isRunning = false
         socksPort = 0
-        upstreamLabel = "内置直连"
+        upstreamLabel = getString(R.string.vpn_upstream_direct)
         BlockRules.clear()
         DnsMap.clear()
         VpnFlowExporter.stop()
-        if (wasActive) statusText = "已停止"
+        if (wasActive) statusText = getString(R.string.vpn_stopped)
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 
@@ -219,7 +219,7 @@ class NetVpnService : VpnService() {
         )
         return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("TermLou")
-            .setContentText("网络抓包运行中")
+            .setContentText(getString(R.string.vpn_notif))
             .setSmallIcon(R.drawable.ic_tile)
             .setContentIntent(pendingOpen)
             .setOngoing(true)
@@ -235,11 +235,11 @@ class NetVpnService : VpnService() {
 
         @Volatile var isRunning = false
             private set
-        @Volatile var statusText = "未启动"
+        @Volatile var statusText = ""
             private set
         @Volatile var socksPort = 0
             private set
-        @Volatile var upstreamLabel = "内置直连"
+        @Volatile var upstreamLabel = ""
             private set
 
         private var instance: NetVpnService? = null
