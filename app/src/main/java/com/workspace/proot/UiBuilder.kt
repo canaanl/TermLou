@@ -3,6 +3,7 @@ package com.workspace.proot
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -61,7 +62,13 @@ class UiBuilder(
                 includeFontPadding = false
                 setTextColor(toolbarBg)
                 textSize = tabTextSize
-                setPadding(24, 8, 24, 8)
+                // 英文长词（SETTINGS）不换行：单行+省略+装不下自动缩小，中文不受影响
+                setSingleLine(true)
+                ellipsize = TextUtils.TruncateAt.END
+                androidx.core.widget.TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                    this, 12, tabTextSize.toInt(), 1, android.util.TypedValue.COMPLEX_UNIT_SP
+                )
+                setPadding(8, 8, 8, 8)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
         }
@@ -131,6 +138,8 @@ class UiBuilder(
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             setPadding(3, 0, 3, 0)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             ButtonStyle.apply(this, theme.outline)
             setOnClickListener { onImportClick() }
@@ -140,6 +149,8 @@ class UiBuilder(
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             setPadding(3, 0, 3, 0)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             ButtonStyle.apply(this, theme.outline)
             setOnClickListener { onImportFolderClick() }

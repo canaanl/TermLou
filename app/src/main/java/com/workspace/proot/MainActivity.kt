@@ -1725,6 +1725,8 @@ class MainActivity : AppCompatActivity(), TerminalSessionClient, TerminalViewCli
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
             isAllCaps = true
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
             setPadding(3, 0, 3, 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             ButtonStyle.apply(this, color)
