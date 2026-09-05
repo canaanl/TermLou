@@ -27,52 +27,7 @@ class TerminalManager(
         this.session = session
     }
 
-    fun startShell(
-        scope: CoroutineScope,
-        terminalView: TerminalView,
-        shellCmd: String,
-        onReady: () -> Unit,
-        onError: (String) -> Unit
-    ) {
-        scope.launch(Dispatchers.IO) {
-            try {
-                setupEnvironment(shellCmd)
-                val prootBin = File(context.applicationInfo.nativeLibraryDir, "libproot_exec.so")
-                val loader = File(context.applicationInfo.nativeLibraryDir, "libproot_loader.so")
-
-                val shellPath = findShellInRootfs()
-                if (shellPath == null) {
-                    withContext(Dispatchers.Main) { onError(context.getString(R.string.shell_not_found)) }
-                    return@launch
-                }
-
-                val args = buildProotArgs(shellPath)
-                val env = buildProotEnv(loader)
-
-                withContext(Dispatchers.Main) {
-                    val client = context as? com.termux.terminal.TerminalSessionClient
-                    val newSession = TerminalSession(
-                        prootBin.absolutePath,
-                        wsFiles.absolutePath,
-                        args.toTypedArray(),
-                        env,
-                        null,
-                        client
-                    )
-                    session = newSession
-                    terminalView.attachSession(newSession)
-                    onReady()
-                }
-            } catch (e: Exception) {
-                Log.e("TerminalManager", "shell start failed", e)
-                withContext(Dispatchers.Main) {
-                    onError(context.getString(R.string.shell_error_fmt, e.message.toString()))
-                }
-            }
-        }
-    }
-
-    private fun setupEnvironment(shellCmd: String) {
+    internal fun setupEnvironment(shellCmd: String) {
         wsTmp.mkdirs()
         wsTmp.listFiles()?.forEach { it.deleteRecursively() }
         wsFiles.mkdirs()
