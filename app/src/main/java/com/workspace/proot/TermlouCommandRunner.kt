@@ -50,7 +50,7 @@ class TermlouCommandRunner : Service() {
         // 无论后续是否执行，都要在时限内完成前台声明，否则系统判 ForegroundServiceDidNotStartInTimeException 闪退。
         startForeground(NOTIFICATION_ID, buildNotification())
         // 冷启动重试 150ms 内可能重复投递同一命令，去重避免重复执行；
-        // 超过时间窗的再次点击视为新请求，放行进入队列（避免连续点击"一下灵一下死"）。
+        // 超过时间窗的再次点击视为新请求，放行进入队列，避免连续点击偶发无响应。
         val now = SystemClock.elapsedRealtime()
         if (executing == cmd && now - lastStartAt < DEDUP_WINDOW_MS) return START_NOT_STICKY
         executing = cmd

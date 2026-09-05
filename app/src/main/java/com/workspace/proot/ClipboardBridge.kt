@@ -10,9 +10,9 @@ import java.io.File
 import java.util.concurrent.Executors
 
 /**
- * 进程级单例：监听 termlou 目录（filesDir/.termlou/clipboard）req，把文本写入系统剪贴板。
- * 仅开放写入（set/clear），读不受限于此桥；写在任意场景都允许，无需窗口焦点。
- * 协议：sh 原子写 req/<id>.json {id, op:"set"|"clear", text?} -> 桥主线程 setPrimaryClip -> 原子写 res/<id>.json {ok:true}。
+ * Process singleton: watches termlou dir (filesDir/.termlou/clipboard) req, writes text to clipboard.
+ * Write-only (set/clear); writes allowed in any state, no window focus needed.
+ * Protocol: sh atomic-writes req/[id].json {id, op:set/clear, text?} -> main-thread setPrimaryClip -> atomic res/[id].json {ok:true}.
  */
 object ClipboardBridge {
 
