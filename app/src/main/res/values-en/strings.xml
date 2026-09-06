@@ -84,7 +84,12 @@
     <string name="notif_perm_needed">Please grant notification permission!</string>
     <string name="battery_exempted">Battery optimization exempted, persistence ready</string>
     <string name="battery_manual">Please allow background running in system settings</string>
-    <string name="storage_title">STORAGE USAGE</string>
+    <string name="storage_title">SYSTEM INFO</string>
+    <string name="sysinfo_distro">DISTRIBUTION</string>
+    <string name="sysinfo_version">VERSION</string>
+    <string name="sysinfo_codename">CODENAME</string>
+    <string name="sysinfo_arch">ARCHITECTURE</string>
+    <string name="sysinfo_unknown">UNKNOWN</string>
     <string name="lang_title">LANGUAGE</string>
     <string name="lang_sub_zh">中文 · 跟随开关切换，切换将重启应用</string>
     <string name="lang_sub_en">English · toggle to switch, switching restarts the app</string>

@@ -38,6 +38,10 @@ class StorageDialog(
     private lateinit var fileLabel: TextView
     private lateinit var sysLabel: TextView
     private lateinit var totalLabel: TextView
+    private lateinit var distroValue: TextView
+    private lateinit var versionValue: TextView
+    private lateinit var codenameValue: TextView
+    private lateinit var archValue: TextView
 
     fun show() {
         val density = ctx.resources.displayMetrics.density
@@ -56,12 +60,34 @@ class StorageDialog(
             typeface = Typeface.DEFAULT_BOLD
         })
 
+        // 双列：左系统信息 / 右饼图+图例
+        val keyColor = theme.onSurfaceVariant
+        val columns = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val leftCol = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.START
+        }
+        distroValue = addInfoRow(leftCol, ctx.getString(R.string.sysinfo_distro), keyColor, density)
+        versionValue = addInfoRow(leftCol, ctx.getString(R.string.sysinfo_version), keyColor, density)
+        codenameValue = addInfoRow(leftCol, ctx.getString(R.string.sysinfo_codename), keyColor, density)
+        archValue = addInfoRow(leftCol, ctx.getString(R.string.sysinfo_arch), keyColor, density)
+        columns.addView(leftCol, LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+        ))
+
+        val rightCol = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
         chart = PieChartView(ctx, theme)
         chart.layoutParams = LinearLayout.LayoutParams(
-            (230 * density).toInt(),
-            (230 * density).toInt()
+            (140 * density).toInt(),
+            (140 * density).toInt()
         ).apply { topMargin = (20 * density).toInt() }
-        contentView.addView(chart)
+        rightCol.addView(chart)
 
         val legend = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -95,9 +121,15 @@ class StorageDialog(
         }
         legend.addView(totalLabel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
-        contentView.addView(legend, LinearLayout.LayoutParams(
+        rightCol.addView(legend, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = (20 * density).toInt() })
+        ).apply { topMargin = (12 * density).toInt() })
+        columns.addView(rightCol, LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+        ))
+        contentView.addView(columns, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = (8 * density).toInt() })
 
         val dialog = AlertDialog.Builder(ctx)
             .setView(contentView)
@@ -106,6 +138,23 @@ class StorageDialog(
         dialog.show()
         DialogStyler.apply(dialog, theme)
         loadData()
+    }
+
+    private fun addInfoRow(parent: LinearLayout, key: String, keyColor: Int, density: Float): TextView {
+        parent.addView(TextView(ctx).apply {
+            text = key
+            setTextColor(keyColor)
+            textSize = UiTokens.TEXT_META
+            setPadding(0, (12 * density).toInt(), 0, 0)
+        })
+        val valueView = TextView(ctx).apply {
+            setTextColor(Color.WHITE)
+            textSize = UiTokens.TEXT_BODY
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(0, 0, 0, 0)
+        }
+        parent.addView(valueView)
+        return valueView
     }
 
     private fun loadData() {
@@ -118,9 +167,16 @@ class StorageDialog(
                 val total = stats.appBytes + stats.dataBytes
                 val fileBytes = dirSizeExcluding(workspaceDir, excludeDirs)
                 val sysBytes = (total - fileBytes).coerceAtLeast(0L)
+                val distro = resolveDistroInfo(File(workspaceDir, "linux"))
+                val abi = runCatching { deviceAbi() }.getOrDefault("unknown")
                 withContext(Dispatchers.Main) {
                     chart.setData(fileBytes, sysBytes)
                     chart.startSweep()
+                    val unknown = ctx.getString(R.string.sysinfo_unknown)
+                    distroValue.text = distro?.pretty?.ifBlank { unknown } ?: unknown
+                    versionValue.text = distro?.versionId?.ifBlank { unknown } ?: unknown
+                    codenameValue.text = distro?.codename?.ifBlank { unknown } ?: unknown
+                    archValue.text = abi
 
                     val fStr = ctx.getString(R.string.storage_file_fmt, formatBytes(fileBytes))
                     fileLabel.text = SpannableString(fStr).apply {

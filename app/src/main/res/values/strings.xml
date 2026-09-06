@@ -84,7 +84,12 @@
     <string name="notif_perm_needed">请打开通知权限！</string>
     <string name="battery_exempted">电池优化已豁免，持久化已就绪</string>
     <string name="battery_manual">请手动在系统设置中允许后台运行</string>
-    <string name="storage_title">存储占用</string>
+    <string name="storage_title">系统信息</string>
+    <string name="sysinfo_distro">发行版</string>
+    <string name="sysinfo_version">版本</string>
+    <string name="sysinfo_codename">代号</string>
+    <string name="sysinfo_arch">架构</string>
+    <string name="sysinfo_unknown">未知</string>
     <string name="lang_title">语言</string>
     <string name="lang_sub_zh">中文 · 跟随开关切换，切换将重启应用</string>
     <string name="lang_sub_en">English · toggle to switch, switching restarts the app</string>
