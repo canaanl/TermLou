@@ -270,9 +270,10 @@ class WheelController(
                 btn.scaleX = scale
                 btn.scaleY = scale
             }
-            if (btn.isSelected != isCenter) {
+            val centerTextColor = if (isCenter) Color.BLACK else Color.WHITE
+            if (btn.currentTextColor != centerTextColor) {
                 btn.isSelected = isCenter
-                btn.setTextColor(if (isCenter) Color.BLACK else Color.WHITE)
+                btn.setTextColor(centerTextColor)
                 btn.background = if (isCenter) light else dark
                 btn.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
             }
