@@ -51,6 +51,7 @@ class WheelController(
     private var pendingWheelRealign = false
     private var pendingUpperRealign = false
     private var pendingUpperGroup: ShortcutItem.Group? = null
+    private var lastCenteredItem: ShortcutItem? = null
     private var wheelBtnLight: GradientDrawable? = null
     private var wheelBtnDark: GradientDrawable? = null
     private var upperWheelBtnLight: GradientDrawable? = null
@@ -62,8 +63,9 @@ class WheelController(
             }
 
             override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
-                if (newState == RecyclerView.SCROLL_STATE_IDLE && pendingWheelRealign) {
-                    alignWheelToLanding()
+                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    if (pendingWheelRealign) alignWheelToLanding()
+                    settleUpperWheel()
                 }
             }
         })
@@ -91,6 +93,7 @@ class WheelController(
     fun hide() {
         if (wheelPanel.visibility != View.VISIBLE) return
         pendingWheelRealign = false
+        lastCenteredItem = null
         hideUpperWheel(false)
         wheelPanel.animate().cancel()
         wheelPanel.animate().translationY(wheelCardH.toFloat()).alpha(0f).setDuration(180)
@@ -111,6 +114,7 @@ class WheelController(
         pendingWheelRealign = false
         pendingUpperRealign = false
         pendingUpperGroup = null
+        lastCenteredItem = null
         upperWheelAdapter = null
         upperWheelRecycler.adapter = null
         upperWheelPanel.animate().cancel()
@@ -220,8 +224,7 @@ class WheelController(
 
     private val slotWidthPx: Int get() = context.resources.displayMetrics.widthPixels / 3 + 6
 
-    private fun updateWheelGlow() {
-        val lm = wheelRecycler.layoutManager as? LinearLayoutManager ?: return
+    private fun ensureWheelDrawables() {
         if (wheelBtnLight == null || wheelBtnDark == null) {
             val centerRadius = ButtonStyle.CORNER_RADIUS_DP * context.resources.displayMetrics.density
             wheelBtnLight = GradientDrawable().apply {
@@ -232,36 +235,30 @@ class WheelController(
                 setColor(Color.TRANSPARENT)
             }
         }
-        val center = wheelRecycler.width / 2f
-        for (i in 0 until lm.childCount) {
-            val btn = lm.getChildAt(i) as? Button ?: continue
-            if (btn.text.isEmpty()) continue
-            val childCenter = btn.left + btn.width / 2f
-            val dist = Math.abs(childCenter - center) / (btn.width / 2f)
-            val isCenter = dist < 1f
-            val scale = 1f - 0.14f * dist.coerceIn(0f, 1f)
-            if (Math.abs(btn.scaleX - scale) > 0.01f) {
-                btn.animate().scaleX(scale).scaleY(scale).setDuration(120).start()
-            }
-            btn.isSelected = isCenter
-            btn.setTextColor(if (isCenter) Color.BLACK else Color.WHITE)
-            btn.background = if (isCenter) wheelBtnLight else wheelBtnDark
-            btn.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
-        }
+    }
+
+    private fun updateWheelGlow() {
+        val lm = wheelRecycler.layoutManager as? LinearLayoutManager ?: return
+        ensureWheelDrawables()
+        applyGlow(wheelRecycler, wheelBtnLight!!, wheelBtnDark!!)
         syncUpperWheel()
     }
 
     private fun updateUpperWheelGlow() {
         val lm = upperWheelRecycler.layoutManager as? LinearLayoutManager ?: return
+        ensureWheelDrawables()
         if (upperWheelBtnLight == null) {
-            val radius = 8 * context.resources.displayMetrics.density
-            val centerRadius = ButtonStyle.CORNER_RADIUS_DP * context.resources.displayMetrics.density
             upperWheelBtnLight = GradientDrawable().apply {
                 setColor(Color.parseColor("#FFF3D6"))
-                cornerRadius = centerRadius
+                cornerRadius = ButtonStyle.CORNER_RADIUS_DP * context.resources.displayMetrics.density
             }
         }
-        val center = upperWheelRecycler.width / 2f
+        applyGlow(upperWheelRecycler, upperWheelBtnLight!!, wheelBtnDark!!)
+    }
+
+    private fun applyGlow(rv: RecyclerView, light: GradientDrawable, dark: GradientDrawable) {
+        val lm = rv.layoutManager as? LinearLayoutManager ?: return
+        val center = rv.width / 2f
         for (i in 0 until lm.childCount) {
             val btn = lm.getChildAt(i) as? Button ?: continue
             if (btn.text.isEmpty()) continue
@@ -270,28 +267,42 @@ class WheelController(
             val isCenter = dist < 1f
             val scale = 1f - 0.14f * dist.coerceIn(0f, 1f)
             if (Math.abs(btn.scaleX - scale) > 0.01f) {
-                btn.animate().scaleX(scale).scaleY(scale).setDuration(120).start()
+                btn.scaleX = scale
+                btn.scaleY = scale
             }
-            btn.isSelected = isCenter
-            btn.setTextColor(if (isCenter) Color.BLACK else Color.WHITE)
-            btn.background = if (isCenter) upperWheelBtnLight else wheelBtnDark
-            btn.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
+            if (btn.isSelected != isCenter) {
+                btn.isSelected = isCenter
+                btn.setTextColor(if (isCenter) Color.BLACK else Color.WHITE)
+                btn.background = if (isCenter) light else dark
+                btn.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
+            }
         }
     }
 
     private fun syncUpperWheel() {
         if (wheelPanel.visibility != View.VISIBLE) {
+            lastCenteredItem = null
             hideUpperWheel(false)
             return
         }
         val child = centeredChild(wheelRecycler) ?: return
-        val tag = child.tag as? ShortcutItem ?: return
-        val group = tag as? ShortcutItem.Group
+        val item = child.tag as? ShortcutItem ?: return
+        if (item === lastCenteredItem) return
+        lastCenteredItem = item
+        val group = item as? ShortcutItem.Group
         if (group == null || group.members.isEmpty()) {
             hideUpperWheel(true)
         } else {
             showUpperWheel(group)
         }
+    }
+
+    private fun settleUpperWheel() {
+        if (wheelPanel.visibility != View.VISIBLE) return
+        val child = centeredChild(wheelRecycler) ?: return
+        val group = child.tag as? ShortcutItem.Group ?: return
+        if (group.members.isEmpty()) return
+        recenterUpperToBest(group)
     }
 
     private fun showUpperWheel(group: ShortcutItem.Group) {

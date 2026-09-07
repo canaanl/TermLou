@@ -47,23 +47,38 @@ object TuiStateDetector {
             if (!pidStr.all { it.isDigit() }) continue
             val pid = pidStr.toIntOrNull() ?: continue
             if (pid == myPid) continue
-            if (!sameUid(pid, myUid)) continue
-            val name = comm(pid) ?: continue
-            if (name in excluded || name.startsWith("libproot") || name.startsWith("proot")) continue
-            candidates.add(Candidate(pid, name, starttime(pid)))
+            val c = readCandidate(pid, myUid) ?: continue
+            candidates.add(c)
         }
 
         val candidatePids = candidates.mapTo(mutableSetOf()) { it.pid }
         val best = candidates
-            .filter { parentPid(it.pid) !in candidatePids }
+            .filter { it.ppid !in candidatePids }
             .maxByOrNull { it.start }
         return best?.name ?: "shell"
     }
 
-    private fun comm(pid: Int): String? = try {
-        File("/proc/$pid/comm").readText().trim()
-    } catch (_: Exception) {
-        null
+    private fun readCandidate(pid: Int, myUid: Int): Candidate? {
+        if (!sameUid(pid, myUid)) return null
+        return try {
+            val name = File("/proc/$pid/comm").readText().trim()
+            if (name in excluded || name.startsWith("libproot") || name.startsWith("proot")) null
+            else {
+                val stat = File("/proc/$pid/stat").readText()
+                val close = stat.lastIndexOf(')')
+                if (close < 0) null
+                else {
+                    val rest = stat.substring(close + 1).trim().split(' ')
+                    Candidate(
+                        pid, name,
+                        rest.getOrNull(1)?.toIntOrNull() ?: -1,
+                        rest.getOrNull(19)?.toLongOrNull() ?: -1L
+                    )
+                }
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun sameUid(pid: Int, uid: Int): Boolean {
@@ -85,31 +100,5 @@ object TuiStateDetector {
         }
     }
 
-    private fun starttime(pid: Int): Long {
-        return try {
-            val stat = File("/proc/$pid/stat").readText()
-            val close = stat.lastIndexOf(')')
-            if (close < 0) -1L
-            else stat.substring(close + 1).trim().split(' ').getOrNull(19)?.toLongOrNull() ?: -1L
-        } catch (_: Exception) {
-            -1L
-        }
-    }
-
-    private fun statFields(pid: Int): List<String>? {
-        return try {
-            val stat = File("/proc/$pid/stat").readText()
-            val end = stat.lastIndexOf(')')
-            if (end < 0) null else stat.substring(end + 1).trim().split(' ')
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private fun parentPid(pid: Int): Int {
-        val rest = statFields(pid) ?: return -1
-        return rest.getOrNull(1)?.toIntOrNull() ?: -1
-    }
-
-    private data class Candidate(val pid: Int, val name: String, val start: Long)
+    private data class Candidate(val pid: Int, val name: String, val ppid: Int, val start: Long)
 }
