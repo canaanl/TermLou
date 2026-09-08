@@ -17,11 +17,12 @@ class WheelLevelFrame(context: Context) : View(context) {
 
     companion object {
         val FRAME_COLOR = Color.WHITE
-        const val STROKE_DP = 12f
-        const val BLUR_DP = 12f
+        const val STROKE_DP = 2f
+        const val BLUR_DP = 1f
         /** 辉光在框内四周需要的活动范围（上/下/左/右），供 onDraw 外溢不裁切。 */
-        const val PAD_DP = 24f
-        private const val ANIM_MS = 180L
+        const val PAD_DP = 12f
+        const val OPEN_MS = 220L
+        const val CLOSE_MS = 180L
     }
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -38,8 +39,10 @@ class WheelLevelFrame(context: Context) : View(context) {
 
     private var frameH = 1f
     private var animator: ValueAnimator? = null
+    private var closing = false
 
     fun setLevel(level: Int, cardH: Int, animate: Boolean = true) {
+        if (closing) return
         val target = (if (level >= 2) cardH * 2 else cardH).toFloat()
         if (target <= 0f) return
         animator?.cancel()
@@ -49,13 +52,43 @@ class WheelLevelFrame(context: Context) : View(context) {
             return
         }
         animator = ValueAnimator.ofFloat(frameH, target).apply {
-            duration = ANIM_MS
+            duration = 180L
             interpolator = DecelerateInterpolator()
             addUpdateListener {
                 frameH = it.animatedValue as Float
                 invalidate()
             }
             start()
+        }
+    }
+
+    /** 与 wheelPanel 进/出动画用相同参数做镜像，保证显隐完全同步。 */
+    fun setOpen(open: Boolean, slidePx: Float) {
+        animate().cancel()
+        if (open) {
+            closing = false
+            visibility = View.VISIBLE
+            translationY = slidePx
+            alpha = 0f
+            animate().translationY(0f).alpha(1f).setDuration(OPEN_MS)
+                .setInterpolator(DecelerateInterpolator()).start()
+        } else {
+            if (visibility != View.VISIBLE) {
+                closing = false
+                visibility = View.GONE
+                translationY = 0f
+                alpha = 1f
+                return
+            }
+            closing = true
+            animate().translationY(slidePx).alpha(0f).setDuration(CLOSE_MS)
+                .setInterpolator(DecelerateInterpolator())
+                .withEndAction {
+                    visibility = View.GONE
+                    translationY = 0f
+                    alpha = 1f
+                    closing = false
+                }.start()
         }
     }
 

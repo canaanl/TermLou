@@ -37,6 +37,8 @@ class WheelController(
     private var wheelCardH: Int,
     private val onStatusRestore: () -> Unit = {}
 ) {
+    var onWheelPhase: ((Boolean) -> Unit)? = null
+
     private val snapHelper = SkipEmptySnapHelper().apply { attachToRecyclerView(wheelRecycler) }
     private val upperSnapHelper = SkipEmptySnapHelper().apply { attachToRecyclerView(upperWheelRecycler) }
 
@@ -85,6 +87,7 @@ class WheelController(
 
     fun hide() {
         if (wheelPanel.visibility != View.VISIBLE) return
+        onWheelPhase?.invoke(false)
         pendingWheelRealign = false
         lastCenteredItem = null
         hideUpperWheel(false)
@@ -133,6 +136,7 @@ class WheelController(
     }
 
     private fun show() {
+        onWheelPhase?.invoke(true)
         wheelPanel.visibility = View.VISIBLE
         wheelPanel.translationY = wheelCardH.toFloat()
         wheelPanel.alpha = 0f

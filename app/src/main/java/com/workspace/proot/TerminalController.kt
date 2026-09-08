@@ -182,16 +182,20 @@ class TerminalController(
 
         wheelPanel.onVisibilityChange = { visible ->
             if (visible) {
-                wheelLevelFrame.visibility = View.VISIBLE
                 wheelLevelFrame.setLevel(
                     if (upperWheelPanel.visibility == View.VISIBLE) 2 else 1, wheelCardH
                 )
             } else {
-                wheelLevelFrame.visibility = View.GONE
+                wheelLevelFrame.setOpen(false, wheelCardH.toFloat())
             }
         }
         upperWheelPanel.onVisibilityChange = { visible ->
             wheelLevelFrame.setLevel(if (visible) 2 else 1, wheelCardH)
+        }
+        wheelController?.let {
+            it.onWheelPhase = { opening ->
+                wheelLevelFrame.setOpen(opening, wheelCardH.toFloat())
+            }
         }
 
         rowTop = LinearLayout(activity).apply {

@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-4.4.8-blue)
+![Version](https://img.shields.io/badge/version-4.4.9-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **4.4.9** | 449 | 拨号框收敛为细白微辉光（2dp 线宽 + 1dp 模糊）；显隐与 wheel 完全同步：`WheelController` 新增 `onWheelPhase` 钩子，框以与 wheelPanel 完全一致的参数（220ms/180ms、同插值器、translationY+alpha）做镜像进出动画，关闭不再滞后；closing 期间高度动画让位 |
 | **4.4.8** | 448 | 拨号框外观改白色张扬辉光：单层全白 `BlurMaskFilter` 泛光（线宽/模糊各 12dp）内外一致、带范围扩散，软件层渲染；视图四周预留 24dp 辉光空间防裁切，几何/动画/层级观察/无触摸全不变 |
 | **4.4.7** | 447 | 拨轮去掉居中高亮（双轮统一暗底白字、保留按距离缩放），改为独立纯视觉固定拨号框组件（`WheelLevelFrame`）：奶油描边圆角框、仅观察轮盘层级自动高度切换（一层短/二层长、180ms 平滑伸缩）、无触摸行为不挡操作；按压缩放脉冲保留 |
 | **4.4.6** | 446 | 呼出推荐升级为四因素评分：当前TUI频次＋上文后继（上一次执行命令在当前TUI下的马尔可夫后继，Laplace平滑＋置信系数）＋全局累计（冷状态兜底，随状态频次轻阻尼防双倍计喜）＋最近使用（半衰期7天）；会话级 prevKey 内存锚点，跨层级命令 id 平铺评分，无新增持久化 |
