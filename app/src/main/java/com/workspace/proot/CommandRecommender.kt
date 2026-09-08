@@ -4,64 +4,69 @@ import kotlin.math.exp
 
 object CommandRecommender {
 
-    private const val W_FREQ = 1.0f
-    private const val W_SEQ = 2.0f
-    private const val W_RECENT = 0.8f
+    const val W_STATE = 1.0f
+    const val W_SUCC = 3.0f
+    const val W_GLOBAL = 0.8f
+    const val W_RECENT = 0.5f
+
     private const val SEQ_CAP = 24
     private const val HALF_LIFE_MS = 7L * 24 * 60 * 60 * 1000
+    private const val SUCC_CONF_K = 3f
 
-    fun score(
+    fun summonScore(
         id: String,
         stateUsage: Map<String, Int>?,
-        seq: List<String>,
-        lastUsed: Map<String, Long>,
-        now: Long
-    ): Float {
-        val freq = stateUsage?.get(id) ?: 0
-        val maxFreq = stateUsage?.values?.maxOrNull() ?: 0
-        val freqN = if (maxFreq > 0) freq.toFloat() / maxFreq else 0f
-
-        val seqN = seqScore(id, seq)
-
-        val recencyN = lastUsed[id]?.let { t ->
-            if (t > 0) exp(-(now - t) / HALF_LIFE_MS.toFloat()) else 0f
-        } ?: 0f
-
-        return W_FREQ * freqN + W_SEQ * seqN + W_RECENT * recencyN
-    }
-
-    fun globalScore(
-        id: String,
+        stateSeq: List<String>,
+        anchor: String?,
         usage: Map<String, Map<String, Int>>,
         lastUsed: Map<String, Long>,
         now: Long
     ): Float {
-        val total = usage.values.sumOf { it[id] ?: 0 }
-        val maxTotal = usage.values.maxOfOrNull { inner ->
-            inner.values.sum()
-        } ?: 0
-        val freqN = if (maxTotal > 0) total.toFloat() / maxTotal else 0f
-
-        val recencyN = lastUsed[id]?.let { t ->
-            if (t > 0) exp(-(now - t) / HALF_LIFE_MS.toFloat()) else 0f
-        } ?: 0f
-
-        return W_FREQ * freqN + W_RECENT * recencyN
+        val freqN = stateFreqN(id, stateUsage)
+        val succN = successorN(id, stateSeq, anchor)
+        val damp = 1f - 0.5f * freqN
+        val globN = globalN(id, usage) * damp
+        val recN = recencyN(lastUsed[id], now)
+        return W_STATE * freqN + W_SUCC * succN + W_GLOBAL * globN + W_RECENT * recN
     }
 
     fun seqCap(): Int = SEQ_CAP
 
-    private fun seqScore(id: String, seq: List<String>): Float {
-        if (seq.size < 2) return 0f
-        val last = seq.last()
-        var match = 0
+    private fun stateFreqN(id: String, stateUsage: Map<String, Int>?): Float {
+        if (stateUsage == null) return 0f
+        val freq = stateUsage[id] ?: 0
+        val maxFreq = stateUsage.values.maxOrNull() ?: 0
+        if (freq <= 0 || maxFreq <= 0) return 0f
+        return freq.toFloat() / maxFreq
+    }
+
+    private fun successorN(id: String, stateSeq: List<String>, anchor: String?): Float {
+        if (anchor == null || stateSeq.size < 2) return 0f
         var total = 0
-        for (i in 0 until seq.size - 1) {
-            if (seq[i] != last) continue
+        var match = 0
+        for (i in 0 until stateSeq.size - 1) {
+            if (stateSeq[i] != anchor) continue
             total++
-            if (seq[i + 1] == id) match++
+            if (stateSeq[i + 1] == id) match++
         }
         if (total == 0) return 0f
-        return match.toFloat() / total
+        val raw = (match + 1f) / (total + 2f)
+        val conf = total.toFloat() / (total + SUCC_CONF_K)
+        return raw * conf
+    }
+
+    private fun globalN(id: String, usage: Map<String, Map<String, Int>>): Float {
+        val total = usage.values.sumOf { it[id] ?: 0 }
+        if (total <= 0) return 0f
+        val maxTotal = usage.values.maxOfOrNull { inner -> inner.values.sum() } ?: 0
+        if (maxTotal <= 0) return 0f
+        return total.toFloat() / maxTotal
+    }
+
+    private fun recencyN(lastUsed: Long?, now: Long): Float {
+        if (lastUsed == null || lastUsed <= 0) return 0f
+        val delta = now - lastUsed
+        if (delta < 0) return 0f
+        return exp(-delta / HALF_LIFE_MS.toFloat()).coerceIn(0f, 1f)
     }
 }

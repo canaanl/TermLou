@@ -19,13 +19,11 @@ interface WheelDataSource {
     fun emptyCountFor(list: List<ShortcutItem>): Int
     fun recommendedStartPos(force: Boolean): Int
     fun wheelCycleSize(): Int
-    fun currentRecommendedGroupName(): String?
     fun groupStartPos(
         members: List<ShortcutItem.Command>,
         emptyCount: Int,
         base: Int,
-        cycleSize: Int,
-        useGlobal: Boolean
+        cycleSize: Int
     ): Int
     fun execute(item: ShortcutItem)
 }
@@ -329,9 +327,8 @@ class WheelController(
         val cycleSize = members.size + (if (members.size <= 2) 1 else 0)
         val base = Int.MAX_VALUE / 2
         val emptyCount = if (members.size <= 2) 1 else 0
-        val useGlobal = dataSource.currentRecommendedGroupName() != group.name
         val startPos = dataSource.groupStartPos(
-            members, emptyCount, base, cycleSize, useGlobal = useGlobal
+            members, emptyCount, base, cycleSize
         )
         (upperWheelRecycler.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(
             startPos, context.resources.displayMetrics.widthPixels / 3
@@ -358,9 +355,8 @@ class WheelController(
         val cycle = members.size + emptyCount
         if (cycle <= 0) return
         val base = Int.MAX_VALUE / 2
-        val useGlobal = dataSource.currentRecommendedGroupName() != group.name
         val targetPos = dataSource.groupStartPos(
-            members, emptyCount, base, cycle, useGlobal = useGlobal
+            members, emptyCount, base, cycle
         )
         val targetSlot = targetPos % cycle
         val curSlot = centeredSlot(upperWheelRecycler, cycle)

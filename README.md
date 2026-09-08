@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-4.4.5-blue)
+![Version](https://img.shields.io/badge/version-4.4.6-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **4.4.6** | 446 | 呼出推荐升级为四因素评分：当前TUI频次＋上文后继（上一次执行命令在当前TUI下的马尔可夫后继，Laplace平滑＋置信系数）＋全局累计（冷状态兜底，随状态频次轻阻尼防双倍计喜）＋最近使用（半衰期7天）；会话级 prevKey 内存锚点，跨层级命令 id 平铺评分，无新增持久化 |
 | **4.4.5** | 445 | 页面切换动画由 3D 翻转改为纯平移滑动（与顶部标签条一致；去除 DIM 淡化、cameraDistance/rotationY，改 translationX 并行跟随滑动） |
 | **4.4.4** | 444 | 修复 4.4.3 回归：拨轮呼出/组展开即时高亮（`applyGlow` 首评分门槛由 `isSelected` 改为按已应用文本色判定，避免与 `WheelAdapter` 默认选中态撞车导致居中卡片不高亮） |
 | **4.4.3** | 443 | 拨轮性能与逻辑打磨：滚动中卡片缩放改直设（去掉逐 tick 重启 120ms 动画的滞后感）、双轮光效合并为共享实现、上层组轮盘按中心槽位变化节流且仅静止时回正推荐位；TuiStateDetector 单遍读 `/proc`（每次候选 4 次文件读→1 次，消除父进程过滤的重复读） |

@@ -26,6 +26,8 @@ class ShortcutManager(
     private var seqMap = settingsManager.loadSeqMap()
     private var lastUsedMap = settingsManager.loadLastUsedMap()
     private var lastClickContext: Pair<String, String>? = null
+    private var prevKey: String? = null
+    private val TIE_BAND = 0.05f
 
     fun setStatusText(statusText: TextView) {
         this.statusText = statusText
@@ -80,6 +82,7 @@ class ShortcutManager(
                 onCardUsed(item.label, state, counted)
                 writeFn(buildWritePayload(interpretEscapes(item.cmd)))
                 onCommandExecuted()
+                prevKey = item.id
             }
             is ShortcutItem.Group -> {}
         }
@@ -103,23 +106,15 @@ class ShortcutManager(
         members: List<ShortcutItem.Command>,
         emptyCount: Int,
         base: Int,
-        cycleSize: Int,
-        useGlobal: Boolean
+        cycleSize: Int
     ): Int {
         if (cycleSize <= 0) return base
-        val recIndex = recommendedMemberIndex(members, useGlobal)
-        val slot = if (recIndex == null) emptyCount else emptyCount + recIndex
+        val idx = bestMemberIndex(members)
+        val slot = if (idx == null) emptyCount else emptyCount + idx
         return base - (base % cycleSize) + slot
     }
 
     override fun wheelCycleSize(): Int = lastList.size + lastEmptyCount
-
-    override fun currentRecommendedGroupName(): String? {
-        if (lastList.isEmpty()) return null
-        reloadUsage()
-        val idx = recommendedIndex(lastList) ?: return null
-        return (lastList[idx] as? ShortcutItem.Group)?.name
-    }
 
     override fun emptyCountFor(list: List<ShortcutItem>): Int = when {
         list.size <= 2 -> 1
@@ -130,33 +125,12 @@ class ShortcutManager(
         list: List<ShortcutItem>,
         emptyCount: Int,
         base: Int,
-        cycleSize: Int,
-        useGlobal: Boolean = false
+        cycleSize: Int
     ): Int {
         if (cycleSize <= 0) return base
-        val recIndex = if (useGlobal) globalRecommendedIndex(list) else recommendedIndex(list)
+        val recIndex = recommendedIndex(list)
         val slot = if (recIndex == null) emptyCount else emptyCount + recIndex
         return base - (base % cycleSize) + slot
-    }
-
-    private fun globalRecommendedIndex(list: List<ShortcutItem>): Int? {
-        if (list.isEmpty()) return null
-        val now = System.currentTimeMillis()
-        var best = 0
-        var bestScore = -1f
-        for ((i, item) in list.withIndex()) {
-            val score = when (item) {
-                is ShortcutItem.Command -> CommandRecommender.globalScore(item.id, usageMap, lastUsedMap, now)
-                is ShortcutItem.Group -> item.members.maxOfOrNull { m ->
-                    CommandRecommender.globalScore(m.id, usageMap, lastUsedMap, now)
-                } ?: 0f
-            }
-            if (score > bestScore) {
-                bestScore = score
-                best = i
-            }
-        }
-        return best
     }
 
     private fun recommendedIndex(list: List<ShortcutItem>): Int? {
@@ -165,53 +139,73 @@ class ShortcutManager(
         val seq = seqMap[state] ?: emptyList()
         val now = System.currentTimeMillis()
         var best: Int? = null
-        var bestCount = 0f
+        var bestScore = 0f
+        var bestUsed = 0L
         for ((i, item) in list.withIndex()) {
-            val count = when (item) {
-                is ShortcutItem.Command -> CommandRecommender.score(item.id, stateUsage, seq, lastUsedMap, now)
-                is ShortcutItem.Group -> item.members.maxOfOrNull { m ->
-                    CommandRecommender.score(m.id, stateUsage, seq, lastUsedMap, now)
-                } ?: 0f
-            }
-            if (count > 0f && count > bestCount) {
-                bestCount = count
+            val (score, id) = itemScore(item, stateUsage, seq, now)
+            if (score <= 0f) continue
+            val used = id?.let { lastUsedMap[it] } ?: 0L
+            if (best == null || score > bestScore + bestScore * TIE_BAND ||
+                (score >= bestScore - bestScore * TIE_BAND && used > bestUsed)
+            ) {
                 best = i
+                bestScore = score
+                bestUsed = used
             }
         }
         return best
     }
 
-    private fun recommendedMemberIndex(
-        members: List<ShortcutItem.Command>,
-        useGlobal: Boolean
-    ): Int? {
-        if (members.isEmpty()) return null
-        val now = System.currentTimeMillis()
-        if (useGlobal) {
-            var best = 0
-            var bestScore = -1f
-            for ((i, m) in members.withIndex()) {
-                val s = CommandRecommender.globalScore(m.id, usageMap, lastUsedMap, now)
-                if (s > bestScore) {
-                    bestScore = s
-                    best = i
-                }
-            }
-            return best
-        }
+    private fun bestMemberIndex(members: List<ShortcutItem.Command>): Int? {
         val state = TuiStateDetector.getCurrentState()
         val stateUsage = usageMap[state]
         val seq = seqMap[state] ?: emptyList()
+        val now = System.currentTimeMillis()
         var best: Int? = null
         var bestScore = 0f
+        var bestUsed = 0L
         for ((i, m) in members.withIndex()) {
-            val s = CommandRecommender.score(m.id, stateUsage, seq, lastUsedMap, now)
-            if (s > 0f && s > bestScore) {
-                bestScore = s
+            val score = CommandRecommender.summonScore(
+                m.id, stateUsage, seq, prevKey, usageMap, lastUsedMap, now
+            )
+            if (score <= 0f) continue
+            val used = lastUsedMap[m.id] ?: 0L
+            if (best == null || score > bestScore + bestScore * TIE_BAND ||
+                (score >= bestScore - bestScore * TIE_BAND && used > bestUsed)
+            ) {
                 best = i
+                bestScore = score
+                bestUsed = used
             }
         }
         return best
+    }
+
+    private fun itemScore(
+        item: ShortcutItem,
+        stateUsage: Map<String, Int>?,
+        seq: List<String>,
+        now: Long
+    ): Pair<Float, String?> {
+        when (item) {
+            is ShortcutItem.Command -> return CommandRecommender.summonScore(
+                item.id, stateUsage, seq, prevKey, usageMap, lastUsedMap, now
+            ) to item.id
+            is ShortcutItem.Group -> {
+                var bestScore = 0f
+                var bestId: String? = null
+                for (m in item.members) {
+                    val s = CommandRecommender.summonScore(
+                        m.id, stateUsage, seq, prevKey, usageMap, lastUsedMap, now
+                    )
+                    if (s > bestScore) {
+                        bestScore = s
+                        bestId = m.id
+                    }
+                }
+                return bestScore to bestId
+            }
+        }
     }
 
     fun showCardEditDialog(index: Int, oldLabel: String, oldCmd: String, onSaved: () -> Unit) {
