@@ -169,8 +169,10 @@ class TerminalController(
         terminalArea.addView(terminalWrapper)
 
         wheelLevelFrame = WheelLevelFrame(activity).apply {
+            val padPx = (WheelLevelFrame.PAD_DP * activity.resources.displayMetrics.density).toInt()
             layoutParams = FrameLayout.LayoutParams(
-                activity.resources.displayMetrics.widthPixels / 3 + 6, wheelCardH * 2,
+                activity.resources.displayMetrics.widthPixels / 3 + 6 + padPx * 2,
+                wheelCardH * 2 + padPx,
                 Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             )
             visibility = View.GONE
