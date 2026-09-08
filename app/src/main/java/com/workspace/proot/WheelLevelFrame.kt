@@ -13,10 +13,12 @@ import android.view.animation.DecelerateInterpolator
  * 独立纯视觉组件：不参与 wheel 任何滚动/吸附/点击逻辑，无触摸行为。
  * 唯一职责：根据"当前几层轮盘"把框高动画到矮/高两档。
  */
-class WheelLevelFrame(context: Context) : View(context) {
+class WheelLevelFrame(context: Context, private val boxWidthPx: Int) : View(context) {
 
     companion object {
         val FRAME_COLOR = Color.WHITE
+        /** 框外暗膜颜色（显著变暗 ~85% 黑）。 */
+        val SCRIM_COLOR = Color.parseColor("#D91E1E1E")
         const val STROKE_DP = 2f
         const val BLUR_DP = 1f
         /** 辉光在框内四周需要的活动范围（上/下/左/右），供 onDraw 外溢不裁切。 */
@@ -30,6 +32,9 @@ class WheelLevelFrame(context: Context) : View(context) {
         strokeWidth = STROKE_DP * resources.displayMetrics.density
         color = FRAME_COLOR
         maskFilter = BlurMaskFilter(BLUR_DP * resources.displayMetrics.density, BlurMaskFilter.Blur.NORMAL)
+    }
+    private val scrimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = SCRIM_COLOR
     }
     private val cornerRadius = ButtonStyle.CORNER_RADIUS_DP * resources.displayMetrics.density
 
@@ -95,12 +100,24 @@ class WheelLevelFrame(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (width <= 0 || height <= 0 || frameH <= 0f) return
-        val pad = PAD_DP * resources.displayMetrics.density
         val inset = paint.strokeWidth / 2f
-        val left = pad + inset
-        val right = width - pad - inset
-        val bottom = height - inset
-        val top = (bottom - frameH).coerceAtLeast(pad + inset)
-        canvas.drawRoundRect(left, top, right, bottom, cornerRadius, cornerRadius, paint)
+        val pad = PAD_DP * resources.displayMetrics.density
+        val bandTop = (height - frameH).coerceAtLeast(0f)
+        val bandBottom = height.toFloat()
+        val boxLeft = (width - boxWidthPx) / 2f
+        val boxRight = boxLeft + boxWidthPx
+
+        if (boxLeft > 0f) {
+            canvas.drawRect(0f, bandTop, boxLeft, bandBottom, scrimPaint)
+        }
+        if (boxRight < width) {
+            canvas.drawRect(boxRight, bandTop, width.toFloat(), bandBottom, scrimPaint)
+        }
+
+        val sLeft = boxLeft + inset
+        val sRight = boxRight - inset
+        val sTop = (bandTop - inset).coerceAtLeast(inset)
+        val sBottom = bandBottom - inset
+        canvas.drawRoundRect(sLeft, sTop, sRight, sBottom, cornerRadius, cornerRadius, paint)
     }
 }
