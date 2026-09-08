@@ -54,10 +54,11 @@ class TerminalController(
     internal lateinit var terminalView: TerminalView
     internal var wheelController: WheelController? = null
 
-    private lateinit var wheelPanel: FrameLayout
+    private lateinit var wheelPanel: LeveledPanel
     private lateinit var wheelRecycler: RecyclerView
-    private lateinit var upperWheelPanel: FrameLayout
+    private lateinit var upperWheelPanel: LeveledPanel
     private lateinit var upperWheelRecycler: RecyclerView
+    private lateinit var wheelLevelFrame: WheelLevelFrame
     private lateinit var shortcutContainer: SwipeableContainer
     private lateinit var shortcutInner: LinearLayout
     private lateinit var columnsWrapper: LinearLayout
@@ -123,7 +124,7 @@ class TerminalController(
             overScrollMode = View.OVER_SCROLL_NEVER
         }
 
-        wheelPanel = FrameLayout(activity).apply {
+        wheelPanel = LeveledPanel(activity).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, wheelCardH,
                 Gravity.BOTTOM
@@ -133,7 +134,7 @@ class TerminalController(
             addView(wheelRecycler)
         }
 
-        upperWheelPanel = FrameLayout(activity).apply {
+        upperWheelPanel = LeveledPanel(activity).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, wheelCardH,
                 Gravity.BOTTOM
@@ -166,6 +167,30 @@ class TerminalController(
             addView(wheelPanel)
         }
         terminalArea.addView(terminalWrapper)
+
+        wheelLevelFrame = WheelLevelFrame(activity).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                activity.resources.displayMetrics.widthPixels / 3 + 6, wheelCardH * 2,
+                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            )
+            visibility = View.GONE
+            setLevel(1, wheelCardH, animate = false)
+        }
+        terminalWrapper.addView(wheelLevelFrame)
+
+        wheelPanel.onVisibilityChange = { visible ->
+            if (visible) {
+                wheelLevelFrame.visibility = View.VISIBLE
+                wheelLevelFrame.setLevel(
+                    if (upperWheelPanel.visibility == View.VISIBLE) 2 else 1, wheelCardH
+                )
+            } else {
+                wheelLevelFrame.visibility = View.GONE
+            }
+        }
+        upperWheelPanel.onVisibilityChange = { visible ->
+            wheelLevelFrame.setLevel(if (visible) 2 else 1, wheelCardH)
+        }
 
         rowTop = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL

@@ -10,14 +10,11 @@ import androidx.recyclerview.widget.RecyclerView
 class WheelAdapter(
     private val items: List<ShortcutItem>,
     private val emptyCount: Int = 0,
-    private val centerColor: Int = 0xFFF2F2F2.toInt(),
-    private val glowColor: Int = Color.WHITE,
     private val onHighlightClick: (ShortcutItem) -> Unit
 ) : RecyclerView.Adapter<WheelAdapter.VH>() {
 
     private var rv: RecyclerView? = null
     private var darkRounded: GradientDrawable? = null
-    private var centerRounded: GradientDrawable? = null
 
     override fun getItemCount() = Int.MAX_VALUE
 
@@ -27,17 +24,11 @@ class WheelAdapter(
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-        val ctx = parent.context
-        val centerRadius = ButtonStyle.CORNER_RADIUS_DP * ctx.resources.displayMetrics.density
         darkRounded = GradientDrawable().apply {
             setColor(Color.TRANSPARENT)
         }
-        centerRounded = GradientDrawable().apply {
-            setColor(centerColor)
-            cornerRadius = centerRadius
-        }
-        val cardSize = ctx.resources.displayMetrics.widthPixels / 3
-        val btn = Button(ctx).apply {
+        val cardSize = parent.context.resources.displayMetrics.widthPixels / 3
+        val btn = Button(parent.context).apply {
             setTextColor(Color.WHITE)
             textSize = 13f
             isAllCaps = true
@@ -108,15 +99,9 @@ class WheelAdapter(
     private fun pressFeedback(v: View) {
         v.animate().cancel()
         v.animate().scaleX(0.9f).scaleY(0.9f).setDuration(80).start()
-        (v as Button).setTextColor(Color.WHITE)
-        v.background = darkRounded
-        v.setShadowLayer(18f, 0f, 0f, glowColor)
         v.postDelayed({
             if (isAtHighlight(v)) {
                 v.animate().scaleX(1f).scaleY(1f).setDuration(120).start()
-                v.setTextColor(Color.BLACK)
-                v.background = centerRounded
-                v.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
             }
         }, 150)
     }

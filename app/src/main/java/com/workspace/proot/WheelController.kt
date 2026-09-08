@@ -1,8 +1,6 @@
 package com.workspace.proot
 
 import android.content.Context
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.view.animation.DecelerateInterpolator
 import android.widget.Button
@@ -50,9 +48,6 @@ class WheelController(
     private var pendingUpperRealign = false
     private var pendingUpperGroup: ShortcutItem.Group? = null
     private var lastCenteredItem: ShortcutItem? = null
-    private var wheelBtnLight: GradientDrawable? = null
-    private var wheelBtnDark: GradientDrawable? = null
-    private var upperWheelBtnLight: GradientDrawable? = null
 
     init {
         wheelRecycler.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -222,39 +217,16 @@ class WheelController(
 
     private val slotWidthPx: Int get() = context.resources.displayMetrics.widthPixels / 3 + 6
 
-    private fun ensureWheelDrawables() {
-        if (wheelBtnLight == null || wheelBtnDark == null) {
-            val centerRadius = ButtonStyle.CORNER_RADIUS_DP * context.resources.displayMetrics.density
-            wheelBtnLight = GradientDrawable().apply {
-                setColor(Color.parseColor("#F2F2F2"))
-                cornerRadius = centerRadius
-            }
-            wheelBtnDark = GradientDrawable().apply {
-                setColor(Color.TRANSPARENT)
-            }
-        }
-    }
-
     private fun updateWheelGlow() {
-        val lm = wheelRecycler.layoutManager as? LinearLayoutManager ?: return
-        ensureWheelDrawables()
-        applyGlow(wheelRecycler, wheelBtnLight!!, wheelBtnDark!!)
+        applyGlow(wheelRecycler)
         syncUpperWheel()
     }
 
     private fun updateUpperWheelGlow() {
-        val lm = upperWheelRecycler.layoutManager as? LinearLayoutManager ?: return
-        ensureWheelDrawables()
-        if (upperWheelBtnLight == null) {
-            upperWheelBtnLight = GradientDrawable().apply {
-                setColor(Color.parseColor("#FFF3D6"))
-                cornerRadius = ButtonStyle.CORNER_RADIUS_DP * context.resources.displayMetrics.density
-            }
-        }
-        applyGlow(upperWheelRecycler, upperWheelBtnLight!!, wheelBtnDark!!)
+        applyGlow(upperWheelRecycler)
     }
 
-    private fun applyGlow(rv: RecyclerView, light: GradientDrawable, dark: GradientDrawable) {
+    private fun applyGlow(rv: RecyclerView) {
         val lm = rv.layoutManager as? LinearLayoutManager ?: return
         val center = rv.width / 2f
         for (i in 0 until lm.childCount) {
@@ -262,18 +234,10 @@ class WheelController(
             if (btn.text.isEmpty()) continue
             val childCenter = btn.left + btn.width / 2f
             val dist = Math.abs(childCenter - center) / (btn.width / 2f)
-            val isCenter = dist < 1f
             val scale = 1f - 0.14f * dist.coerceIn(0f, 1f)
             if (Math.abs(btn.scaleX - scale) > 0.01f) {
                 btn.scaleX = scale
                 btn.scaleY = scale
-            }
-            val centerTextColor = if (isCenter) Color.BLACK else Color.WHITE
-            if (btn.currentTextColor != centerTextColor) {
-                btn.isSelected = isCenter
-                btn.setTextColor(centerTextColor)
-                btn.background = if (isCenter) light else dark
-                btn.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
             }
         }
     }
@@ -316,8 +280,6 @@ class WheelController(
         upperWheelAdapter = WheelAdapter(
             items = members,
             emptyCount = if (members.size <= 2) 1 else 0,
-            centerColor = Color.parseColor("#FFF3D6"),
-            glowColor = Color.parseColor("#FFE8A93C"),
             onHighlightClick = { item -> dataSource.execute(item) }
         )
         upperWheelRecycler.adapter = upperWheelAdapter
