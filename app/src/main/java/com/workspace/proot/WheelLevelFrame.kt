@@ -38,9 +38,9 @@ class WheelLevelFrame(context: Context, private val boxWidthPx: Int) : View(cont
     private val scrimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = SCRIM_COLOR
     }
-    private val scrimPath = Path().apply { fillType = Path.FillType.EVEN_ODD }
     private val scrimBounds = RectF()
     private val scrimHole = RectF()
+    private val holePath = Path()
     private val cornerRadius = ButtonStyle.CORNER_RADIUS_DP * resources.displayMetrics.density
 
     init {
@@ -118,12 +118,15 @@ class WheelLevelFrame(context: Context, private val boxWidthPx: Int) : View(cont
 
         scrimBounds.set(0f, bandTop, width.toFloat(), bandBottom)
         scrimHole.set(sLeft, sTop, sRight, sBottom)
-        scrimPath.rewind()
-        scrimPath.addRect(scrimBounds, Path.Direction.CW)
+        holePath.rewind()
         if (scrimHole.width() > 0f && scrimHole.height() > 0f) {
-            scrimPath.addRoundRect(scrimHole, cornerRadius, cornerRadius, Path.Direction.CW)
+            holePath.addRoundRect(scrimHole, cornerRadius, cornerRadius, Path.Direction.CW)
         }
-        canvas.drawPath(scrimPath, scrimPaint)
+        canvas.save()
+        canvas.clipRect(scrimBounds)
+        canvas.clipOutPath(holePath)
+        canvas.drawRect(scrimBounds, scrimPaint)
+        canvas.restore()
 
         canvas.drawRoundRect(sLeft, sTop, sRight, sBottom, cornerRadius, cornerRadius, paint)
     }
