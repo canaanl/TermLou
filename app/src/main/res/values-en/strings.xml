@@ -335,6 +335,7 @@
     <string name="web_st_off">Closed</string>
     <string name="web_up_btn">UPLOAD</string>
     <string name="web_dl">DOWNLOAD</string>
+    <string name="web_copy_ok">Copied</string>
     <string name="lan_notif_open_app">open the App to view</string>
     <string name="lan_port_busy_fmt">20 ports from %1$d all busy: %2$s</string>
     <string name="lan_pty_fail_fmt">pty failed: %1$s: %2$s</string>

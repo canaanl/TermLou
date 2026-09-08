@@ -22,6 +22,8 @@ button:disabled{opacity:.4}
 #login input{width:100%;margin:6px 0;padding:8px;box-sizing:border-box;background:#111;color:#fff;border:1px solid #333;border-radius:6px}
 #files a{color:#4dd0e1}
 .tab{margin-top:8px}
+#copyTip{position:fixed;top:12px;right:12px;background:#2d7d46;color:#fff;font-size:12px;padding:4px 10px;border-radius:12px;opacity:0;transition:opacity .15s;pointer-events:none;z-index:99}
+#copyTip.show{opacity:1}
 </style>
 </head>
 <body>
@@ -50,12 +52,34 @@ button:disabled{opacity:.4}
 </div>
 </div>
 </div>
+<div id="copyTip"></div>
 <script src="/static/xterm.js"></script>
 <script src="/static/addon-fit.js"></script>
 <script>
 var LANG=/*{{LANG}}*/null;if(!LANG)LANG={};
 let token="",ws=null,term=null,fit=null,curPath="/";
 const $=id=>document.getElementById(id);
+function copyToClipboard(t,ok){
+  function fb(){
+    const ta=document.createElement("textarea");
+    ta.value=t;ta.style.position="fixed";ta.style.opacity="0";
+    document.body.appendChild(ta);ta.select();
+    try{document.execCommand("copy");}catch(e){}
+    document.body.removeChild(ta);
+    if(ok)ok();
+  }
+  if(navigator.clipboard&&window.isSecureContext)navigator.clipboard.writeText(t).then(()=>{if(ok)ok();}).catch(fb);
+  else fb();
+}
+let copyTipTimer=null;
+function showCopyTip(){
+  const el=$("copyTip");
+  if(!el)return;
+  el.textContent=(LANG&&LANG.copyOk)?LANG.copyOk:"Copied";
+  el.classList.add("show");
+  clearTimeout(copyTipTimer);
+  copyTipTimer=setTimeout(()=>el.classList.remove("show"),1200);
+}
 $("user").placeholder=LANG.userPh;
 $("pass").placeholder=LANG.passPh;
 $("conn").textContent=LANG.conn;
@@ -76,6 +100,10 @@ $("conn").onclick=async()=>{
   fit=new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open($("term"));
+  term.onSelectionChange(()=>{
+    const sel=term.getSelection();
+    if(sel&&sel.length)copyToClipboard(sel,showCopyTip);
+  });
   fit.fit();
   const proto=location.protocol==="https:"?"wss":"ws";
   ws=new WebSocket(proto+"://"+location.host+"?token="+encodeURIComponent(token));

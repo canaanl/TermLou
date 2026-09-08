@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-4.5.2-blue)
+![Version](https://img.shields.io/badge/version-4.5.3-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **4.5.3** | 453 | LAN 网页终端修复"选中即提示已复制但实际未复制"：`index.html` 新增 `term.onSelectionChange` 真实复制（secure context 用 `navigator.clipboard.writeText`，明文 http 回退隐藏 textarea + `execCommand('copy')`），复制成功后在右上角显示 `已复制` 提示（Web 多语言 `web_copy_ok`）。仅浏览器侧复制，不同步手机剪贴板 |
 | **4.5.2** | 452 | 修复拨号框整体泛灰：框外 85% 暗膜保持 `#D91E1E1E`，挖洞从 EVEN_ODD 路径改为系统级裁剪 `clipOutRoundRect`（洞矩形+圆角与白框完全一致），保证框内绝对正常不染色、圆角处暗色与边框零缝隙 |
 | **4.5.1** | 451 | 修 4.5.0 四角空隙：框外暗膜由"左右两块直角矩形"改为高度带矩形 + 与白色描边同矩形同圆角的 `EVEN_ODD` 镂空路径，灰与边框外缘完全吻合，框内亮区由圆角限定、无残留亮三角 |
 | **4.5.0** | 450 | 拨号框框外显著变暗（~85% 黑 `#D91E1E1E`），暗膜仅限框的高度带内、跟随 frameH 平滑伸缩（短一行/长两行）；框视图改全宽居中，中央框区不透膜保持原样，辉光圈叠加在上；仍为纯视觉单组件，无触摸不挡操作 |

@@ -335,6 +335,7 @@
     <string name="web_st_off">已断开</string>
     <string name="web_up_btn">上传</string>
     <string name="web_dl">下载</string>
+    <string name="web_copy_ok">已复制</string>
     <string name="lan_notif_open_app">点开 App 查看</string>
     <string name="lan_port_busy_fmt">端口 %1$d 起 20 个均被占用：%2$s</string>
     <string name="lan_pty_fail_fmt">pty 启动失败: %1$s: %2$s</string>

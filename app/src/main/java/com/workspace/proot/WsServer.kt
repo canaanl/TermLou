@@ -282,6 +282,7 @@ class WsServer(
         kv("stOff", R.string.web_st_off, false)
         kv("upBtn", R.string.web_up_btn, false)
         kv("dl", R.string.web_dl, false)
+        kv("copyOk", R.string.web_copy_ok, false)
         sb.append('}')
         sb.toString()
     }.getOrDefault("{}")
