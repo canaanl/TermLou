@@ -352,32 +352,23 @@ class MainActivity : AppCompatActivity() {
         }
         animating = true
 
-        val cd = slideContainer.height * 10f
-        val pivotX = w / 2f
-        show.cameraDistance = cd
-        hide.cameraDistance = cd
-        show.pivotX = pivotX
-        show.pivotY = slideContainer.height / 2f
-        hide.pivotX = pivotX
-        hide.pivotY = slideContainer.height / 2f
-
-        val dir = if (fromRight) -1f else 1f
-        val half = 125L
-
-        show.rotationY = -dir * 90f
-        show.alpha = DIM
+        val dir = if (fromRight) 1f else -1f
+        show.translationX = dir * w
         show.visibility = View.VISIBLE
         show.bringToFront()
 
-        hide.animate().rotationY(dir * 90f).alpha(DIM).setDuration(half).withEndAction {
-            hide.rotationY = 0f
-            hide.alpha = 1f
-            hide.visibility = View.GONE
-            show.animate().rotationY(0f).alpha(1f).setDuration(half).withEndAction {
-                show.alpha = 1f
+        hide.animate().translationX(-dir * w).setDuration(250)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+        show.animate().translationX(0f).setDuration(250)
+            .setInterpolator(DecelerateInterpolator())
+            .withEndAction {
+                hide.translationX = 0f
+                hide.visibility = View.GONE
+                show.translationX = 0f
                 animating = false
             }
-        }
+            .start()
     }
 
     internal fun refreshStatusBar() {
@@ -437,10 +428,7 @@ class MainActivity : AppCompatActivity() {
         scope.uiBuilder = UiBuilder(this, scope.theme)
     }
 
-    companion object {
-        internal const val DIM = 0f
     }
-}
 
 internal class TickSlider(context: android.content.Context) : com.google.android.material.slider.Slider(context) {
     private val activeTick = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)

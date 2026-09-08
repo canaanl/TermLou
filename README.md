@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-4.4.4-blue)
+![Version](https://img.shields.io/badge/version-4.4.5-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **4.4.5** | 445 | 页面切换动画由 3D 翻转改为纯平移滑动（与顶部标签条一致；去除 DIM 淡化、cameraDistance/rotationY，改 translationX 并行跟随滑动） |
 | **4.4.4** | 444 | 修复 4.4.3 回归：拨轮呼出/组展开即时高亮（`applyGlow` 首评分门槛由 `isSelected` 改为按已应用文本色判定，避免与 `WheelAdapter` 默认选中态撞车导致居中卡片不高亮） |
 | **4.4.3** | 443 | 拨轮性能与逻辑打磨：滚动中卡片缩放改直设（去掉逐 tick 重启 120ms 动画的滞后感）、双轮光效合并为共享实现、上层组轮盘按中心槽位变化节流且仅静止时回正推荐位；TuiStateDetector 单遍读 `/proc`（每次候选 4 次文件读→1 次，消除父进程过滤的重复读） |
 | **4.4.2** | 442 | 存储弹窗改双列系统信息（标题/入口改名系统信息；左列发行版/版本/代号/架构，读 rootfs `etc/os-release`，饼图缩至 140dp；中英字串同步） |
