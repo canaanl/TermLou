@@ -1,7 +1,6 @@
 package com.workspace.proot
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FlowClassifierTest {
@@ -15,98 +14,77 @@ class FlowClassifierTest {
         port: Int = 443,
         state: String = "OPEN"
     ): FlowClassifier.FlowSample =
-        FlowClassifier.FlowSample(up, down, 0L, durMs, now, state, port, false)
+        FlowClassifier.FlowSample(up, down, 0L, durMs, now, state, port)
 
     @Test
-    fun heartbeat() {
-        val t = FlowClassifier.classify(sample(300, 500, 120_000))
-        assertEquals(listOf(FlowClassifier.Tag.HEARTBEAT), t.map { it.tag })
-        assertEquals(92, t[0].confidence)
+    fun dnsPort() {
+        assertEquals(FlowClassifier.Tag.DNS, FlowClassifier.classify(sample(300, 400, 5_000, port = 53)))
     }
 
     @Test
-    fun interactBalanced() {
-        val t = FlowClassifier.classify(sample(1024, 1024, 2_000))
-        assertEquals(FlowClassifier.Tag.INTERACT, t.single().tag)
-        assertEquals(84, t[0].confidence)
+    fun mdnsPort() {
+        assertEquals(FlowClassifier.Tag.DNS, FlowClassifier.classify(sample(300, 400, 5_000, port = 5353)))
     }
 
     @Test
-    fun interactSkewed() {
-        val t = FlowClassifier.classify(sample(1024, 8192, 2_000))
-        assertEquals(FlowClassifier.Tag.INTERACT, t.single().tag)
-        assertEquals(70, t[0].confidence)
+    fun mediaLargeDown() {
+        assertEquals(
+            FlowClassifier.Tag.MEDIA,
+            FlowClassifier.classify(sample(200 * 1024, 40L * 1024 * 1024, 90_000))
+        )
     }
 
     @Test
-    fun mediaHigh() {
-        val t = FlowClassifier.classify(sample(100 * 1024, 40L * 1024 * 1024, 90_000))
-        assertEquals(FlowClassifier.Tag.MEDIA, t.single().tag)
-        assertEquals(92, t[0].confidence)
-    }
-
-    @Test
-    fun mediaMid() {
-        val t = FlowClassifier.classify(sample(2 * 1024, 4L * 1024 * 1024, 30_000))
-        assertEquals(FlowClassifier.Tag.MEDIA, t.single().tag)
-        assertEquals(84, t[0].confidence)
-    }
-
-    @Test
-    fun mediaLow() {
-        val t = FlowClassifier.classify(sample(2 * 1024, 512 * 1024, 30_000))
-        assertEquals(FlowClassifier.Tag.MEDIA, t.single().tag)
-        assertEquals(72, t[0].confidence)
+    fun mediaJustAboveThreshold() {
+        assertEquals(
+            FlowClassifier.Tag.MEDIA,
+            FlowClassifier.classify(sample(2 * 1024, 260 * 1024, 30_000))
+        )
     }
 
     @Test
     fun uploadStrong() {
-        val t = FlowClassifier.classify(sample(20L * 1024 * 1024, 200 * 1024, 40_000))
-        assertEquals(FlowClassifier.Tag.UPLOAD, t.single().tag)
-        assertEquals(88, t[0].confidence)
+        assertEquals(
+            FlowClassifier.Tag.UPLOAD,
+            FlowClassifier.classify(sample(20L * 1024 * 1024, 200 * 1024, 40_000))
+        )
     }
 
     @Test
-    fun uploadMedium() {
-        val t = FlowClassifier.classify(sample(2L * 1024 * 1024, 512 * 1024, 40_000))
-        assertEquals(FlowClassifier.Tag.UPLOAD, t.single().tag)
-        assertEquals(74, t[0].confidence)
+    fun heartbeatLongIdle() {
+        assertEquals(FlowClassifier.Tag.HEARTBEAT, FlowClassifier.classify(sample(300, 500, 120_000)))
     }
 
     @Test
-    fun zeroBytesReturnsEmpty() {
-        assertTrue(FlowClassifier.classify(sample(0, 0, 1_000)).isEmpty())
+    fun heartbeatWithoutDurUsesElapsed() {
+        assertEquals(
+            FlowClassifier.Tag.HEARTBEAT,
+            FlowClassifier.classify(FlowClassifier.FlowSample(300, 500, now - 120_000, null, now, "OPEN", 443))
+        )
     }
 
     @Test
-    fun blockedReturnsEmpty() {
-        assertTrue(FlowClassifier.classify(sample(300, 200, 50_000, state = "BLOCKED")).isEmpty())
+    fun otherFallback() {
+        assertEquals(FlowClassifier.Tag.OTHER, FlowClassifier.classify(sample(1024, 1024, 2_000)))
     }
 
     @Test
-    fun dnsPortReturnsEmpty() {
-        assertTrue(FlowClassifier.classify(sample(300, 400, 5_000, port = 53)).isEmpty())
+    fun otherWhenUploadBelowThreshold() {
+        assertEquals(FlowClassifier.Tag.OTHER, FlowClassifier.classify(sample(300 * 1024, 200 * 1024, 40_000)))
     }
 
     @Test
-    fun ambiguousSmallMediumReturnsEmpty() {
-        val t = FlowClassifier.classify(sample(8 * 1024, 9 * 1024, 45_000))
-        assertTrue(t.isEmpty())
+    fun otherWhenUploadBelowRatio() {
+        assertEquals(FlowClassifier.Tag.OTHER, FlowClassifier.classify(sample(2L * 1024 * 1024, 800 * 1024, 40_000)))
     }
 
     @Test
-    fun adForcesFirstAndShowsMulti() {
-        val t = FlowClassifier.classify(sample(300, 400, 120_000).copy(adHit = true))
-        assertEquals(2, t.size)
-        assertEquals(FlowClassifier.Tag.AD, t[0].tag)
-        assertEquals(FlowClassifier.Tag.HEARTBEAT, t[1].tag)
+    fun otherWhenMediaBelowThreshold() {
+        assertEquals(FlowClassifier.Tag.OTHER, FlowClassifier.classify(sample(2 * 1024, 200 * 1024, 30_000)))
     }
 
     @Test
-    fun adWithMedia() {
-        val t = FlowClassifier.classify(sample(10 * 1024, 8L * 1024 * 1024, 120_000).copy(adHit = true))
-        assertEquals(2, t.size)
-        assertEquals(FlowClassifier.Tag.AD, t[0].tag)
-        assertEquals(FlowClassifier.Tag.MEDIA, t[1].tag)
+    fun dnsWinsOverOtherSignals() {
+        assertEquals(FlowClassifier.Tag.DNS, FlowClassifier.classify(sample(0, 0, 1_000, port = 53)))
     }
 }

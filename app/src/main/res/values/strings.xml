@@ -124,14 +124,9 @@
     <string name="net_capture_stop">停止抓包</string>
     <string name="net_pick_apps">选择应用</string>
     <string name="net_clear">清空记录</string>
-    <string name="net_view_log">查看日志</string>
     <string name="net_cleared">已清空连接记录</string>
-    <string name="net_log_title">网络日志</string>
-    <string name="net_log_tail_tun">== tun2socks.log（尾部） ==\n</string>
-    <string name="net_log_tail_mini">\n== minisocks.log（尾部） ==\n</string>
-    <string name="net_log_empty">(无日志)</string>
     <string name="net_empty">暂无记录</string>
-    <string name="net_tag_note">标签为流量特征推测，非内容解析</string>
+    <string name="net_tag_note">标签按流量大小、方向与时长判定，非内容解析</string>
     <string name="net_no_apps">Network | 未选择应用，请先在「选择应用」中勾选</string>
     <string name="flow_blocked">已屏蔽</string>
     <string name="flow_state_open">进行中</string>
@@ -148,23 +143,16 @@
     <string name="net_stopped">已停止抓包</string>
     <string name="net_search_hint">搜索：域名 / SNI / IP / 端口</string>
     <string name="net_rank">排行</string>
-    <string name="net_dns">DNS 历史</string>
     <string name="net_rank_title">流量排行</string>
     <string name="net_rank_empty">暂无数据</string>
     <string name="net_rank_domain">按域名</string>
     <string name="net_rank_port">按端口</string>
-    <string name="net_dns_title">DNS 查询历史</string>
-    <string name="net_dns_empty">暂无 DNS 查询</string>
-    <string name="net_adlist">广告名单</string>
-    <string name="net_adlist_updating">正在更新广告名单…</string>
-    <string name="net_adlist_ok_fmt">广告名单已更新：%1$d 条</string>
-    <string name="net_adlist_fail">更新失败，沿用旧名单</string>
     <string name="net_multi_app_warn">同时抓取多个 App 无法区分各自流量，建议一次只勾一个</string>
-    <string name="flow_tag_interact">交互消息</string>
     <string name="flow_tag_media">大流量媒体</string>
     <string name="flow_tag_heartbeat">挂起心跳</string>
     <string name="flow_tag_upload">上行传输</string>
-    <string name="flow_tag_ad">广告</string>
+    <string name="flow_tag_dns">DNS 解析</string>
+    <string name="flow_tag_other">其他</string>
     <string name="net_dash_rate">实时速率</string>
     <string name="net_dash_total">会话总量</string>
     <string name="net_dash_counters">状态计数</string>

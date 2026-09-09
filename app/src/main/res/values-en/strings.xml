@@ -124,14 +124,9 @@
     <string name="net_capture_stop">STOP CAPTURE</string>
     <string name="net_pick_apps">CHOOSE APPS</string>
     <string name="net_clear">CLEAR RECORDS</string>
-    <string name="net_view_log">VIEW LOGS</string>
     <string name="net_cleared">Connection records cleared</string>
-    <string name="net_log_title">NETWORK LOGS</string>
-    <string name="net_log_tail_tun">== tun2socks.log (tail) ==\n</string>
-    <string name="net_log_tail_mini">\n== minisocks.log (tail) ==\n</string>
-    <string name="net_log_empty">(no logs)</string>
     <string name="net_empty">No records</string>
-    <string name="net_tag_note">Tags are traffic-pattern guesses, not content parsing</string>
+    <string name="net_tag_note">Tags are determined by traffic size, direction, and duration, not content parsing</string>
     <string name="net_no_apps">Network | no apps selected, choose apps first</string>
     <string name="flow_blocked">Blocked</string>
     <string name="flow_state_open">Active</string>
@@ -148,23 +143,16 @@
     <string name="net_stopped">Capture stopped</string>
     <string name="net_search_hint">Search: domain / SNI / IP / port</string>
     <string name="net_rank">RANKING</string>
-    <string name="net_dns">DNS HISTORY</string>
     <string name="net_rank_title">TRAFFIC RANKING</string>
     <string name="net_rank_empty">No data</string>
     <string name="net_rank_domain">BY DOMAIN</string>
     <string name="net_rank_port">BY PORT</string>
-    <string name="net_dns_title">DNS QUERY HISTORY</string>
-    <string name="net_dns_empty">No DNS queries</string>
-    <string name="net_adlist">AD LIST</string>
-    <string name="net_adlist_updating">Updating ad list…</string>
-    <string name="net_adlist_ok_fmt">Ad list updated: %1$d entries</string>
-    <string name="net_adlist_fail">Update failed; keeping the previous list</string>
     <string name="net_multi_app_warn">Multiple apps share the session; per-app traffic cannot be distinguished. Pick one app for precise results</string>
-    <string name="flow_tag_interact">INTERACT</string>
     <string name="flow_tag_media">MEDIA</string>
     <string name="flow_tag_heartbeat">HEARTBEAT</string>
     <string name="flow_tag_upload">UPLOAD</string>
-    <string name="flow_tag_ad">AD</string>
+    <string name="flow_tag_dns">DNS</string>
+    <string name="flow_tag_other">OTHER</string>
     <string name="net_dash_rate">REAL-TIME RATE</string>
     <string name="net_dash_total">SESSION TOTAL</string>
     <string name="net_dash_counters">COUNTERS</string>
