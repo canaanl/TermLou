@@ -131,6 +131,7 @@
     <string name="net_log_tail_mini">\n== minisocks.log (tail) ==\n</string>
     <string name="net_log_empty">(no logs)</string>
     <string name="net_empty">No records</string>
+    <string name="net_tag_note">Tags are traffic-pattern guesses, not content parsing</string>
     <string name="net_no_apps">Network | no apps selected, choose apps first</string>
     <string name="flow_blocked">Blocked</string>
     <string name="flow_state_open">Active</string>
@@ -154,6 +155,16 @@
     <string name="net_rank_port">BY PORT</string>
     <string name="net_dns_title">DNS QUERY HISTORY</string>
     <string name="net_dns_empty">No DNS queries</string>
+    <string name="net_adlist">AD LIST</string>
+    <string name="net_adlist_updating">Updating ad list…</string>
+    <string name="net_adlist_ok_fmt">Ad list updated: %1$d entries</string>
+    <string name="net_adlist_fail">Update failed; keeping the previous list</string>
+    <string name="net_multi_app_warn">Multiple apps share the session; per-app traffic cannot be distinguished. Pick one app for precise results</string>
+    <string name="flow_tag_interact">INTERACT</string>
+    <string name="flow_tag_media">MEDIA</string>
+    <string name="flow_tag_heartbeat">HEARTBEAT</string>
+    <string name="flow_tag_upload">UPLOAD</string>
+    <string name="flow_tag_ad">AD</string>
     <string name="net_dash_rate">REAL-TIME RATE</string>
     <string name="net_dash_total">SESSION TOTAL</string>
     <string name="net_dash_counters">COUNTERS</string>

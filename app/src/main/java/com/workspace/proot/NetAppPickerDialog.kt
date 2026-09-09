@@ -20,7 +20,7 @@ class NetAppPickerDialog(
     private val onSurfaceVariant: Int,
     private val all: List<AppEntry>,
     private val sm: SettingsManager,
-    private val onChanged: () -> Unit,
+    private val onChanged: (Int) -> Unit,
     private val theme: ThemeColors
 ) {
     private lateinit var listInner: LinearLayout
@@ -98,7 +98,7 @@ class NetAppPickerDialog(
             .create()
         doneBtn.setOnClickListener {
             sm.saveCaptureApps(selected)
-            onChanged()
+            onChanged(selected.size)
             dialog.dismiss()
         }
         searchInput.addTextChangedListener(object : TextWatcher {

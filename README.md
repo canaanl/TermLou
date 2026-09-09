@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-4.7.0-blue)
+![Version](https://img.shields.io/badge/version-4.7.1-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **4.7.1** | 471 | 抓包体验打磨：每条连接新增流量行为标签（`FlowClassifier` 纯元数据推断，标签随行/置信度，连接区顶部常驻"非内容解析"免责）——挂起心跳（长连接极低流量）/交互消息（短小连接）/ 上行传输（上行≥下行÷4）/ 大流量媒体（体积阈值分档）/ 广告追踪（域名名单命中，黑底红字）；广告名单=内置快照（`assets/ad_domains.txt`，来源 pgl.yoyo.org 的 hosts 版）+ 抓包页"广告名单"按钮手动多源刷新（yoyo + StevenBlack/hosts，失败沿用旧名单、更新条数提示）；连接列表改为活跃连接（进行中/UDP）置顶、关闭后自动下沉；同时勾选多 App 抓包时顶部闪现提示无法按 App 区分流量 |
 | **4.7.0** | 470 | 网络抓包深度分析：TCP/QUIC SNI 提取（`SniParser` 分片重组 + QUIC Initial CRYPTO 帧）、明文端口极简 HTTP（首包首行 `method path → status`）、DNS 事件记录；网络页新增实时看板（复用系统信息饼图：↑↓实时速率/会话总量/活跃/屏蔽计数 + Top3 流量饼图图例，展示区:连接区 1:1，搜索即时过滤，滚动区更新看板同帧刷新）；新建连接详情显示 SNI/HTTP/时长；新增流量排行（域名/端口）+ DNS 历史弹窗；只吃明文：无 TLS 中间人。单文件导出仍为 `vpn-flows.json`（新增可选 `sni`/`http`/`durMs` 字段），清空按钮彻底清内存+落盘 `[]` |
 | **4.6.0** | 460 | 移除意图工坊（Integrator 相关清理），版本号提升 |
 | **4.5.3** | 453 | LAN 网页终端修复"选中即提示已复制但实际未复制"：`index.html` 新增 `term.onSelectionChange` 真实复制（secure context 用 `navigator.clipboard.writeText`，明文 http 回退隐藏 textarea + `execCommand('copy')`），复制成功后在右上角显示 `已复制` 提示（Web 多语言 `web_copy_ok`）。仅浏览器侧复制，不同步手机剪贴板 |

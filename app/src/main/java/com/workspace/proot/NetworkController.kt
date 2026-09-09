@@ -119,6 +119,7 @@ class NetworkController(
     }
 
     private fun buildNetworkContent() {
+        AdDomains.ensureLoaded(activity)
         netBraceMenu = BraceMenu(activity)
         netFlowList = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -355,7 +356,10 @@ class NetworkController(
                     NetAppPickerDialog(
                         activity, scope.cPrimary, scope.cOnSurfaceVariant,
                         activity.overlayCommands.loadAppCache(), scope.settingsManager,
-                        { refreshNetTab() }, scope.theme
+                        { count ->
+                            refreshNetTab()
+                            if (count > 1) status.showTempStatus(activity.getString(R.string.net_multi_app_warn))
+                        }, scope.theme
                     ).show()
                 }
             ))
@@ -373,7 +377,8 @@ class NetworkController(
             ))
             addView(gridRow(
                 barButton(activity.getString(R.string.net_rank), scope.cOutline) { showNetRankDialog() },
-                barButton(activity.getString(R.string.net_dns), scope.cOutline) { showNetDnsDialog() }
+                barButton(activity.getString(R.string.net_dns), scope.cOutline) { showNetDnsDialog() },
+                barButton(activity.getString(R.string.net_adlist), scope.cOutline) { refreshAdDomains() }
             ))
         }
     }
@@ -567,9 +572,11 @@ class NetworkController(
         if (activity.isFinishing || activity.isDestroyed) return
         if (!::netFlowList.isInitialized) return
         val rows = FlowLog.list()
-        renderDashboard(rows)
+        val sorted = rows.filter { it.state == "OPEN" || it.state == "UDP" } +
+            rows.filter { it.state != "OPEN" && it.state != "UDP" }
+        renderDashboard(sorted)
         val q = if (::netSearch.isInitialized) netSearch.text?.toString()?.trim().orEmpty().lowercase() else ""
-        val filtered = if (q.isEmpty()) rows else rows.filter { it.matchesQuery(q) }
+        val filtered = if (q.isEmpty()) sorted else sorted.filter { it.matchesQuery(q) }
         netFlowList.removeAllViews()
         if (filtered.isEmpty()) {
             netFlowList.addView(TextView(activity).apply {
@@ -581,6 +588,12 @@ class NetworkController(
             return
         }
         val density = activity.resources.displayMetrics.density
+        netFlowList.addView(TextView(activity).apply {
+            text = activity.getString(R.string.net_tag_note)
+            setTextColor(scope.cOnSurfaceVariant)
+            textSize = UiTokens.TEXT_META
+            setPadding(0, 0, 0, (4 * density).toInt())
+        })
         val limit = minOf(filtered.size, 80)
         for (i in 0 until limit) {
             val f = filtered[i]
@@ -638,6 +651,16 @@ class NetworkController(
                     setPadding((4 * density).toInt(), (2 * density).toInt(), (4 * density).toInt(), (2 * density).toInt())
                     setBackgroundColor(Color.parseColor("#26FF5252"))
                 })
+            } else {
+                val tags = FlowClassifier.classify(
+                    FlowClassifier.FlowSample(
+                        f.bytesUp, f.bytesDown, f.startMs, f.durMs, System.currentTimeMillis(),
+                        f.state, f.dstPort, AdDomains.adOf(domain) != null
+                    )
+                )
+                for (t in tags.take(2)) {
+                    addView(tagChip(t, density))
+                }
             }
         })
         row.addView(TextView(activity).apply {
@@ -657,6 +680,25 @@ class NetworkController(
             })
         }
         return row
+    }
+
+    private fun tagChip(t: FlowClassifier.TagScore, density: Float): TextView {
+        val isAd = t.tag == FlowClassifier.Tag.AD
+        val label = when (t.tag) {
+            FlowClassifier.Tag.INTERACT -> activity.getString(R.string.flow_tag_interact)
+            FlowClassifier.Tag.MEDIA -> activity.getString(R.string.flow_tag_media)
+            FlowClassifier.Tag.HEARTBEAT -> activity.getString(R.string.flow_tag_heartbeat)
+            FlowClassifier.Tag.UPLOAD -> activity.getString(R.string.flow_tag_upload)
+            FlowClassifier.Tag.AD -> activity.getString(R.string.flow_tag_ad)
+        }
+        return TextView(activity).apply {
+            text = "$label ${t.confidence}%"
+            setTextColor(if (isAd) Color.parseColor("#FF5252") else scope.cOnSurfaceVariant)
+            textSize = UiTokens.TEXT_META
+            typeface = Typeface.MONOSPACE
+            setPadding((4 * density).toInt(), (2 * density).toInt(), (4 * density).toInt(), (2 * density).toInt())
+            setBackgroundColor(if (isAd) Color.BLACK else UiTokens.searchBg)
+        }
     }
 
     private fun buildFlowInfo(f: FlowEntry): String {
@@ -771,7 +813,24 @@ class NetworkController(
             refreshNetTab()
             return
         }
+        if (scope.settingsManager.loadCaptureApps().size > 1) {
+            status.showTempStatus(activity.getString(R.string.net_multi_app_warn))
+        }
         requestVpnPrepare()
+    }
+
+    private fun refreshAdDomains() {
+        AdDomains.ensureLoaded(activity)
+        status.showTempStatus(activity.getString(R.string.net_adlist_updating))
+        AdDomains.refresh(activity) { res ->
+            scope.mainHandler.post {
+                val msg = when (res) {
+                    is AdDomains.Result.Success -> activity.getString(R.string.net_adlist_ok_fmt, res.count)
+                    AdDomains.Result.Failure -> activity.getString(R.string.net_adlist_fail)
+                }
+                status.showTempStatus(msg)
+            }
+        }
     }
 
     fun onVpnPrepareResult(granted: Boolean) {
