@@ -145,6 +145,26 @@
     <string name="flow_blocked_ip_fmt">Blocked %1$s</string>
     <string name="net_pick_first">Choose capture apps first</string>
     <string name="net_stopped">Capture stopped</string>
+    <string name="net_search_hint">Search: domain / SNI / IP / port</string>
+    <string name="net_rank">RANKING</string>
+    <string name="net_dns">DNS HISTORY</string>
+    <string name="net_rank_title">TRAFFIC RANKING</string>
+    <string name="net_rank_empty">No data</string>
+    <string name="net_rank_domain">BY DOMAIN</string>
+    <string name="net_rank_port">BY PORT</string>
+    <string name="net_dns_title">DNS QUERY HISTORY</string>
+    <string name="net_dns_empty">No DNS queries</string>
+    <string name="net_dash_rate">REAL-TIME RATE</string>
+    <string name="net_dash_total">SESSION TOTAL</string>
+    <string name="net_dash_counters">COUNTERS</string>
+    <string name="net_dash_active">Active</string>
+    <string name="net_dash_blocked">Blocked</string>
+    <string name="net_dash_dns">DNS</string>
+    <string name="net_dash_idle">Live dashboard</string>
+    <string name="net_others">Others</string>
+    <string name="net_detail_sni">SNI %1$s</string>
+    <string name="net_detail_http">HTTP %1$s</string>
+    <string name="net_detail_dur">Dur %1$s</string>
 
     <!-- Pickers -->
     <string name="picker_search">Search apps</string>

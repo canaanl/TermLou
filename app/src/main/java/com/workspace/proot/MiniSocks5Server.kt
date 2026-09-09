@@ -233,6 +233,20 @@ class MiniSocks5Server(
         val down = AtomicLong(0)
         val id = FlowLog.add("TCP", ip, dstPort, 0, 0, "OPEN", domain)
 
+        val sniRef = java.util.concurrent.atomic.AtomicReference<String?>(null)
+        val httpReq = java.util.concurrent.atomic.AtomicReference<String?>(null)
+        val httpRes = java.util.concurrent.atomic.AtomicReference<String?>(null)
+        val tlsSniffer = TlsSniffer()
+        val sniffable = dstPort == 443 || HttpProbe.plaintextPort(dstPort)
+        fun applyMeta() {
+            val s = sniRef.get()
+            val req = httpReq.get()
+            if (s == null && req == null) return
+            val res = httpRes.get()
+            val http = if (req != null && res != null) "$req → $res" else req
+            FlowLog.patchMeta(id, s, http)
+        }
+
         var remote: Socket? = null
         var rep = 1
         try {
@@ -266,6 +280,20 @@ class MiniSocks5Server(
                     while (true) {
                         val n = input.read(buf)
                         if (n < 0) break
+                        if (sniffable) {
+                            if (dstPort == 443) {
+                                val s = tlsSniffer.feed(buf, n)
+                                if (s != null) {
+                                    sniRef.set(s)
+                                    applyMeta()
+                                }
+                            } else if (httpReq.get() == null) {
+                                HttpProbe.requestLine(buf.copyOfRange(0, n))?.let {
+                                    httpReq.set(it)
+                                    applyMeta()
+                                }
+                            }
+                        }
                         rOutput.write(buf, 0, n)
                         rOutput.flush()
                         up.addAndGet(n.toLong())
@@ -280,6 +308,12 @@ class MiniSocks5Server(
                     while (true) {
                         val n = rInput.read(buf)
                         if (n < 0) break
+                        if (sniffable && dstPort != 443 && httpRes.get() == null) {
+                            HttpProbe.statusLine(buf.copyOfRange(0, n))?.let {
+                                httpRes.set(it)
+                                applyMeta()
+                            }
+                        }
                         output.write(buf, 0, n)
                         output.flush()
                         down.addAndGet(n.toLong())
@@ -346,6 +380,7 @@ class MiniSocks5Server(
                     if (isDns) {
                         val qname = DnsParser.queryName(dnsQuery!!)
                         if (qname != null) {
+                            DnsEvents.record(qname)
                             if (BlockRules.isBlockedDomain(qname)) {
                                 blockedOnce("DNS", qname, 0)
                                 continue
@@ -374,7 +409,10 @@ class MiniSocks5Server(
                         val out = DatagramSocket()
                         protectDatagram(out)
                         out.soTimeout = 15000
-                        val id = if (isDns) 0L else FlowLog.add("UDP", ip, tport, 0, 0, "OPEN", DnsMap.domainOf(ip))
+                        val sni = if (!isDns && tport == 443) {
+                            SniParser.quicClientHello(data.copyOfRange(off, off + payloadLen))
+                        } else null
+                        val id = if (isDns) 0L else FlowLog.add("UDP", ip, tport, 0, 0, "OPEN", DnsMap.domainOf(ip), sni)
                         val np = UdpPeer(out, id, AtomicLong(0), AtomicLong(0), target, tport, buildUdpHeader(target, tport))
                         peers[key] = np
                         peer = np

@@ -170,7 +170,7 @@ class StorageDialog(
                 val distro = resolveDistroInfo(File(workspaceDir, "linux"))
                 val abi = runCatching { deviceAbi() }.getOrDefault("unknown")
                 withContext(Dispatchers.Main) {
-                    chart.setData(fileBytes, sysBytes)
+                    chart.setData(listOf(fileBytes to colorFile, sysBytes to colorSys))
                     chart.startSweep()
                     val unknown = ctx.getString(R.string.sysinfo_unknown)
                     distroValue.text = distro?.pretty?.ifBlank { unknown } ?: unknown
@@ -216,15 +216,9 @@ class StorageDialog(
 }
 
 class PieChartView(context: Context, private val theme: ThemeColors) : View(context) {
-    private var fileBytes = 0L
-    private var sysBytes = 0L
+    private var items: List<Pair<Long, Int>> = emptyList()
     private var sweepAngle = 0f
-    private var fileSweep = 0f
-    private var sysSweep = 0f
     private var started = false
-
-    private val colorFile = theme.primary
-    private val colorSys = UiTokens.amber
 
     private val mainPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -236,9 +230,13 @@ class PieChartView(context: Context, private val theme: ThemeColors) : View(cont
         setLayerType(View.LAYER_TYPE_SOFTWARE, null)
     }
 
-    fun setData(file: Long, sys: Long) {
-        fileBytes = file
-        sysBytes = sys
+    /**
+     * 数据更新（实时场景直接调用即重绘，不重新滚动动画）。
+     * 每片 = (字节, 颜色)，值为 0 的片跳过。
+     */
+    fun setData(data: List<Pair<Long, Int>>) {
+        items = data
+        if (!started) sweepAngle = 360f
         invalidate()
     }
 
@@ -251,12 +249,6 @@ class PieChartView(context: Context, private val theme: ThemeColors) : View(cont
             interpolator = AccelerateDecelerateInterpolator()
             addUpdateListener { anim ->
                 sweepAngle = anim.animatedValue as Float
-                val total = fileBytes + sysBytes
-                if (total > 0) {
-                    val ratio = fileBytes.toFloat() / total
-                    fileSweep = sweepAngle * ratio
-                    sysSweep = sweepAngle - fileSweep
-                }
                 invalidate()
             }
             start()
@@ -264,8 +256,8 @@ class PieChartView(context: Context, private val theme: ThemeColors) : View(cont
     }
 
     override fun onDraw(canvas: Canvas) {
-        val total = fileBytes + sysBytes
-        if (total == 0L || sweepAngle <= 0f) return
+        val total = items.sumOf { it.first }
+        if (total <= 0L || sweepAngle <= 0f) return
         val cx = width / 2f
         val cy = height / 2f
         val r = minOf(cx, cy) * 0.82f
@@ -274,10 +266,39 @@ class PieChartView(context: Context, private val theme: ThemeColors) : View(cont
 
         canvas.drawArc(shadowRect, -90f, sweepAngle, true, shadowPaint)
 
-        mainPaint.color = colorFile
-        canvas.drawArc(rect, -90f, fileSweep, true, mainPaint)
+        var start = -90f
+        for ((value, color) in items) {
+            if (value <= 0L) continue
+            val sweep = sweepAngle * (value.toFloat() / total)
+            mainPaint.color = color
+            canvas.drawArc(rect, start, sweep, true, mainPaint)
+            start += sweep
+        }
+    }
+}
 
-        mainPaint.color = colorSys
-        canvas.drawArc(rect, -90f + fileSweep, sysSweep, true, mainPaint)
+/** 单条横向堆叠占比条：值按比例分色分段，实时场景直接 setData 即重绘。 */
+class StackedBarView(context: Context) : View(context) {
+    private var items: List<Pair<Long, Int>> = emptyList()
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    fun setData(data: List<Pair<Long, Int>>) {
+        items = data
+        invalidate()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val total = items.sumOf { it.first }
+        if (total <= 0L) return
+        val barHeight = (10 * resources.displayMetrics.density).toInt().toFloat()
+        val rect = RectF(0f, height / 2f - barHeight / 2f, width.toFloat(), height / 2f + barHeight / 2f)
+        var x = 0f
+        for ((value, color) in items) {
+            if (value <= 0L) continue
+            val w = value.toFloat() / total * rect.width()
+            paint.color = color
+            canvas.drawRect(x, rect.top, x + w, rect.bottom, paint)
+            x += w
+        }
     }
 }

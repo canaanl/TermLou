@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-4.6.0-blue)
+![Version](https://img.shields.io/badge/version-4.7.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,8 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **4.7.0** | 470 | 网络抓包深度分析：TCP/QUIC SNI 提取（`SniParser` 分片重组 + QUIC Initial CRYPTO 帧）、明文端口极简 HTTP（首包首行 `method path → status`）、DNS 事件记录；网络页新增实时看板（复用系统信息饼图：↑↓实时速率/会话总量/活跃/屏蔽计数 + Top3 流量饼图图例，展示区:连接区 1:1，搜索即时过滤，滚动区更新看板同帧刷新）；新建连接详情显示 SNI/HTTP/时长；新增流量排行（域名/端口）+ DNS 历史弹窗；只吃明文：无 TLS 中间人。单文件导出仍为 `vpn-flows.json`（新增可选 `sni`/`http`/`durMs` 字段），清空按钮彻底清内存+落盘 `[]` |
+| **4.6.0** | 460 | 移除意图工坊（Integrator 相关清理），版本号提升 |
 | **4.5.3** | 453 | LAN 网页终端修复"选中即提示已复制但实际未复制"：`index.html` 新增 `term.onSelectionChange` 真实复制（secure context 用 `navigator.clipboard.writeText`，明文 http 回退隐藏 textarea + `execCommand('copy')`），复制成功后在右上角显示 `已复制` 提示（Web 多语言 `web_copy_ok`）。仅浏览器侧复制，不同步手机剪贴板 |
 | **4.5.2** | 452 | 修复拨号框整体泛灰：框外 85% 暗膜保持 `#D91E1E1E`，挖洞从 EVEN_ODD 路径改为系统级裁剪 `clipOutRoundRect`（洞矩形+圆角与白框完全一致），保证框内绝对正常不染色、圆角处暗色与边框零缝隙 |
 | **4.5.1** | 451 | 修 4.5.0 四角空隙：框外暗膜由"左右两块直角矩形"改为高度带矩形 + 与白色描边同矩形同圆角的 `EVEN_ODD` 镂空路径，灰与边框外缘完全吻合，框内亮区由圆角限定、无残留亮三角 |

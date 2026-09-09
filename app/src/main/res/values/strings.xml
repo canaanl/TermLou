@@ -145,6 +145,26 @@
     <string name="flow_blocked_ip_fmt">已屏蔽 %1$s</string>
     <string name="net_pick_first">请先在「选择应用」中勾选要抓包的应用</string>
     <string name="net_stopped">已停止抓包</string>
+    <string name="net_search_hint">搜索：域名 / SNI / IP / 端口</string>
+    <string name="net_rank">排行</string>
+    <string name="net_dns">DNS 历史</string>
+    <string name="net_rank_title">流量排行</string>
+    <string name="net_rank_empty">暂无数据</string>
+    <string name="net_rank_domain">按域名</string>
+    <string name="net_rank_port">按端口</string>
+    <string name="net_dns_title">DNS 查询历史</string>
+    <string name="net_dns_empty">暂无 DNS 查询</string>
+    <string name="net_dash_rate">实时速率</string>
+    <string name="net_dash_total">会话总量</string>
+    <string name="net_dash_counters">状态计数</string>
+    <string name="net_dash_active">活跃</string>
+    <string name="net_dash_blocked">屏蔽</string>
+    <string name="net_dash_dns">DNS</string>
+    <string name="net_dash_idle">实时数据展示区</string>
+    <string name="net_others">其他</string>
+    <string name="net_detail_sni">SNI %1$s</string>
+    <string name="net_detail_http">HTTP %1$s</string>
+    <string name="net_detail_dur">时长 %1$s</string>
 
     <!-- 应用选择 -->
     <string name="picker_search">搜索应用</string>
