@@ -573,17 +573,17 @@ class TerminalController(
                 val args = tm.buildProotArgs(shellPath)
                 val env = tm.buildProotEnv(loader)
 
-                // 构建轻量 session 放到 IO 线程，主线程只做 attach + 切 tab，缩短 shell 就绪瞬间的同步阻塞
-                val newSession = TerminalSession(
-                    prootBin.absolutePath,
-                    scope.wsFiles.absolutePath,
-                    args.toTypedArray(),
-                    env,
-                    null,
-                    this@TerminalController
-                )
-
+                // TerminalSession 内部 new MainThreadHandler() 用 Handler() 无参构造，
+                // 绑定创建线程的 Looper——只能在主线程构造，搬到 IO 线程会直接崩溃。
                 withContext(Dispatchers.Main) {
+                    val newSession = TerminalSession(
+                        prootBin.absolutePath,
+                        scope.wsFiles.absolutePath,
+                        args.toTypedArray(),
+                        env,
+                        null,
+                        this@TerminalController
+                    )
                     tm.setSession(newSession)
                     terminalView.attachSession(newSession)
                     activity.showTerminalView()
