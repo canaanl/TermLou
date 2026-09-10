@@ -69,12 +69,12 @@ class CommandTileService : TileService() {
         }
     }
 
-    /** 命令落盘（tmp+rename 原子写），供启动被丢时兜底消费。 */
+    /** 命令落盘（tmp+rename 原子写，文件名唯一），供启动被丢时兜底消费；连续点击各自成文件不互相覆盖。 */
     private fun persistPendingCommand(cmd: String) {
         runCatching {
             val dir = File(filesDir, ".termlou").apply { mkdirs() }
-            val out = File(dir, PENDING_FILE)
-            val tmp = File(dir, "$PENDING_FILE.tmp")
+            val out = File(dir, PENDING_FILE_PREFIX + System.currentTimeMillis() + ".json")
+            val tmp = File(dir, out.name + ".tmp")
             tmp.writeText(cmd)
             tmp.renameTo(out)
         }
@@ -94,7 +94,7 @@ class CommandTileService : TileService() {
     }
 
     companion object {
-        const val PENDING_FILE = "tile_pending.json"
+        const val PENDING_FILE_PREFIX = "tile_pending-"
         private const val COLD_START_WINDOW_MS = 3000L
         private const val RETRY_DELAY_MS = 150L
     }

@@ -20,8 +20,11 @@ import java.io.File
  */
 class NetVpnService : VpnService() {
 
+    private enum class VpnState { IDLE, STARTING, RUNNING, STOPPING }
+
     private val lock = Any()
-    private var active = false
+    private var phase = VpnState.IDLE
+    private var startInFlight = false
     private var tunFd: ParcelFileDescriptor? = null
     private var miniSocks: MiniSocks5Server? = null
     private var tun2socksPid: Int? = null
@@ -53,7 +56,9 @@ class NetVpnService : VpnService() {
 
     private fun applyLocale() {
         renderState()
-        val on = synchronized(lock) { active }
+        val on = synchronized(lock) {
+            phase == VpnState.RUNNING || phase == VpnState.STARTING
+        }
         if (on) {
             runCatching {
                 getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification())
@@ -71,7 +76,7 @@ class NetVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            teardown()
+            requestShutdown()
             stopSelf()
             return START_NOT_STICKY
         }
@@ -89,31 +94,68 @@ class NetVpnService : VpnService() {
     }
 
     override fun onRevoke() {
-        teardown()
+        requestShutdown()
         stopSelf()
         super.onRevoke()
     }
 
     override fun onDestroy() {
-        teardown()
+        requestShutdown()
         synchronized(lock) { if (instance === this) instance = null }
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    /** 幂等停机：把状态置为 STOPPING，收尾后由调用方（或启动线程的 finally）归回 IDLE。 */
+    private fun requestShutdown() {
+        val wasActive = synchronized(lock) {
+            when (phase) {
+                VpnState.IDLE, VpnState.STOPPING -> false
+                else -> {
+                    phase = VpnState.STOPPING
+                    true
+                }
+            }
+        }
+        if (!wasActive && phase != VpnState.STOPPING) return
+        teardown(wasActive)
+        synchronized(lock) {
+            if (phase == VpnState.STOPPING && !startInFlight) phase = VpnState.IDLE
+        }
+    }
+
     private fun doStart() {
-        synchronized(lock) { if (active) return }
+        synchronized(lock) {
+            if (phase != VpnState.IDLE) return
+            startInFlight = true
+        }
         Thread {
             try {
                 startVpn()
-                synchronized(lock) { active = true }
+                val aborted = synchronized(lock) {
+                    if (phase == VpnState.STOPPING) {
+                        true
+                    } else {
+                        phase = VpnState.RUNNING
+                        false
+                    }
+                }
+                if (aborted) {
+                    teardown(false)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "start vpn failed", e)
                 setStatus("fail", e.message.toString())
+                synchronized(lock) { phase = VpnState.IDLE }
                 isRunning = false
-                teardown()
+                teardown(false)
                 stopSelf()
+            } finally {
+                synchronized(lock) {
+                    startInFlight = false
+                    if (phase == VpnState.STOPPING) phase = VpnState.IDLE
+                }
             }
         }.start()
     }
@@ -197,8 +239,8 @@ class NetVpnService : VpnService() {
             val code = TunSpawner.waitPid(pid)
             var doStop = false
             synchronized(lock) {
-                if (active) {
-                    active = false
+                if (phase == VpnState.RUNNING) {
+                    phase = VpnState.STOPPING
                     doStop = true
                 }
             }
@@ -223,11 +265,9 @@ class NetVpnService : VpnService() {
         }.getOrNull()
     }
 
-    private fun teardown() {
-        var wasActive = false
-        synchronized(lock) {
-            wasActive = active
-            active = false
+    private fun teardown(reportStopped: Boolean) {
+        if (reportStopped) {
+            synchronized(lock) { phase = VpnState.STOPPING }
         }
         try { tun2socksPid?.let { runCatching { TunSpawner.killPid(it) } } } catch (_: Exception) {}
         tun2socksPid = null
@@ -241,7 +281,7 @@ class NetVpnService : VpnService() {
         BlockRules.clear()
         DnsMap.clear()
         VpnFlowExporter.stop()
-        if (wasActive) setStatus("stopped") else renderState()
+        if (reportStopped) setStatus("stopped") else renderState()
         stopForeground(STOP_FOREGROUND_REMOVE)
     }
 

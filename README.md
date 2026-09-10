@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-4.7.1-blue)
+![Version](https://img.shields.io/badge/version-4.8.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **4.8.0** | 480 | 系统可靠性修复轮（第三方审查 25 项中已确认属实的全部修订）：SOCKS5 转发 20 秒空闲断连改为仅握手期超时+转发期不设超时，并在停止时关闭在途 socket（防扫描/句柄泄漏）；UDP 中继键改为「源↔目标」，同客户端访问多目标不再串流；过载不再内联执行任务，一律丢弃并关闭连接；VPN 启动/停止改为状态机（启动中收到停止也会回收刚创建的 TUN/tun2socks），避免双重起停与 teardown 竞态；LAN 服务器头部读取加 15 秒绝对截止；WebSocket 会话改独立线程并支持真实分片、强制客户端掩码、帧 1MB/消息 4MB 上限；上传改为落盘再流式解析，内存占用从约 3× 降到 1×；根文件系统安装改为事务化（staging 解压+补丁→原子切换，失败回滚），根内绝对符号链接改写为相对链接、缺失的硬链接源直接报错、PAX 增加 size/mtime/mode 覆盖；各会话临时目录隔离（主终端/磁贴/LAN 各自独立并在结束时清理）；浮窗关闭时把等待中的请求写回 dismiss 结果；磁贴命令改唯一文件队列，连续点击不互相覆盖；grep 跳过二进制文件、导入文件增加 64MB 上限；过期的会话临时目录自动清理 |
 | **4.7.1** | 471 | 抓包体验打磨：每条连接新增流量行为标签（`FlowClassifier` 纯元数据精确判定，标签按流量大小、方向与时长推断，每条连接恒有一个标签，非内容解析）——DNS 解析（端口 53/5353，独占）/ 挂起心跳（长连接极低流量）/ 大流量媒体（下行≥上行且体积≥256KB）/ 上行传输（上行≥64KB 且上行≥下行×4）/ 其他（兜底）；连接列表改为活跃连接（进行中/UDP）置顶、关闭后自动下沉；同时勾选多 App 抓包时顶部闪现提示无法按 App 区分流量；抓包页底部操作栏收敛为 2×2：开始/停止抓包、选择应用、清空记录、流量排行 |
 | **4.7.0** | 470 | 网络抓包深度分析：TCP/QUIC SNI 提取（`SniParser` 分片重组 + QUIC Initial CRYPTO 帧）、明文端口极简 HTTP（首包首行 `method path → status`）、DNS 事件记录；网络页新增实时看板（复用系统信息饼图：↑↓实时速率/会话总量/活跃/屏蔽计数 + Top3 流量饼图图例，展示区:连接区 1:1，搜索即时过滤，滚动区更新看板同帧刷新）；新建连接详情显示 SNI/HTTP/时长；新增流量排行（域名/端口）+ DNS 历史弹窗；只吃明文：无 TLS 中间人。单文件导出仍为 `vpn-flows.json`（新增可选 `sni`/`http`/`durMs` 字段），清空按钮彻底清内存+落盘 `[]` |
 | **4.6.0** | 460 | 移除意图工坊（Integrator 相关清理），版本号提升 |

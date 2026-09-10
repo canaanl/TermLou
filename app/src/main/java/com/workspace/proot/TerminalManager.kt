@@ -269,4 +269,20 @@ class TerminalManager(
     fun destroy() {
         session?.finishIfRunning()
     }
+
+    companion object {
+        private const val STALE_TMP_MS = 24L * 60 * 60 * 1000
+
+        /** 清理历史遗留的其他会话临时目录（main 当前会话不删，避免误清在用的主终端）。 */
+        fun pruneStaleSessionTmp(wsTmpRoot: File) {
+            runCatching {
+                val now = System.currentTimeMillis()
+                wsTmpRoot.listFiles()?.forEach { d ->
+                    if (d.isDirectory && d.name != "main" && now - d.lastModified() > STALE_TMP_MS) {
+                        d.deleteRecursively()
+                    }
+                }
+            }
+        }
+    }
 }

@@ -59,10 +59,11 @@ object TuiStateDetector {
     }
 
     private fun readCandidate(pid: Int, myUid: Int): Candidate? {
-        if (!sameUid(pid, myUid)) return null
         return try {
+            // 先读 comm：排除名单内的进程无需再做 Uid 判定，减少每 PID 的文件读取
             val name = File("/proc/$pid/comm").readText().trim()
             if (name in excluded || name.startsWith("libproot") || name.startsWith("proot")) null
+            else if (!sameUid(pid, myUid)) null
             else {
                 val stat = File("/proc/$pid/stat").readText()
                 val close = stat.lastIndexOf(')')

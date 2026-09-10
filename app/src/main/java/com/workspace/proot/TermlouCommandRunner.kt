@@ -24,6 +24,10 @@ class TermlouCommandRunner : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var released = false
+    private val runLock = Any()
+    private var busy = false
+    private var lastStartAt = 0L
+    private var lastCmd: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -34,65 +38,71 @@ class TermlouCommandRunner : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        var cmd = intent?.getStringExtra(EXTRA_COMMAND)
-        if (cmd.isNullOrBlank()) {
-            // 启动被吞/命令未随 Intent 到达时，兜底消费 pending 文件里残留的命令。
-            cmd = takePendingCommand()
+        val fromExtra = intent?.getStringExtra(EXTRA_COMMAND)?.takeIf { it.isNotBlank() }
+        synchronized(runLock) {
+            // 已有命令在执行：本次请求已落盘，服务下次启动时自会按序消费，避免并发执行。
+            if (busy) return START_NOT_STICKY
+            // 冷启动 150ms 双投去重；超过时间窗的再次点击视为新请求放行。
+            val now = SystemClock.elapsedRealtime()
+            if (fromExtra == lastCmd && now - lastStartAt < DEDUP_WINDOW_MS) return START_NOT_STICKY
         }
-        if (cmd.isNullOrBlank()) {
+        val pending = collectPendingCommands()
+        val commands = buildList {
+            fromExtra?.let { add(it) }
+            addAll(pending)
+        }
+        if (commands.isEmpty()) {
             stopSelf()
             return START_NOT_STICKY
         }
-        // 拿到有效命令后统一清掉 pending 残留（无论命令来自 intent 还是文件），
-        // 避免文件无限累积；若删除失败也不影响本次执行，下次点击会覆盖。
-        deletePendingFile()
         // 必须先 startForeground：本服务由 startForegroundService() 拉起，
         // 无论后续是否执行，都要在时限内完成前台声明，否则系统判 ForegroundServiceDidNotStartInTimeException 闪退。
         startForeground(NOTIFICATION_ID, buildNotification())
-        // 冷启动重试 150ms 内可能重复投递同一命令，去重避免重复执行；
-        // 超过时间窗的再次点击视为新请求，放行进入队列，避免连续点击偶发无响应。
-        val now = SystemClock.elapsedRealtime()
-        if (executing == cmd && now - lastStartAt < DEDUP_WINDOW_MS) return START_NOT_STICKY
-        executing = cmd
-        lastStartAt = now
-        runCommand(cmd)
+        synchronized(runLock) {
+            busy = true
+            lastCmd = fromExtra
+            lastStartAt = SystemClock.elapsedRealtime()
+        }
+        // 已取得命令，落盘文件全部消费掉，避免累积。
+        consumePendingFiles()
+        scope.launch {
+            try {
+                for (cmd in commands) {
+                    runCommand(cmd)
+                }
+            } finally {
+                synchronized(runLock) { busy = false }
+                stopSelf()
+            }
+        }
         return START_NOT_STICKY
     }
 
-    /** 读取 pending 文件中的命令（不删除；由调用方统一清理）。 */
-    private fun takePendingCommand(): String? {
-        val file = TermlouDirs.pending(applicationContext)
-        if (!file.exists()) return null
-        return runCatching {
-            file.readText().trim().takeIf { it.isNotBlank() }
-        }.getOrNull()
+    /** 读取所有落盘的待执行命令（按命名排序；不删除，由调用方统一消费）。 */
+    private fun collectPendingCommands(): List<String> {
+        return TermlouDirs.pendingFiles(applicationContext).mapNotNull { f ->
+            runCatching { f.readText().trim().takeIf { it.isNotBlank() } }.getOrNull()
+        }
     }
 
-    private fun deletePendingFile() {
-        runCatching {
-            TermlouDirs.pending(applicationContext).delete()
-        }
+    private fun consumePendingFiles() {
+        TermlouDirs.pendingFiles(applicationContext).forEach { runCatching { it.delete() } }
     }
 
     private fun runCommand(cmd: String) {
         val app = applicationContext
         val lxRoot = File(app.filesDir, "workspace/linux")
         val wsFiles = File(app.filesDir, "workspace")
-        val wsTmp = File(app.filesDir, "workspace/tmp")
+        val wsTmp = File(app.filesDir, "workspace/tmp/run-" + System.currentTimeMillis())
         OverlayBridge.acquire(app, TermlouDirs.base(app))
         val tm = TerminalManager(app, lxRoot, wsFiles, wsTmp)
-        scope.launch {
-            try {
-                tm.setupWrappers()
-                // 去掉末尾孤立的续行反斜杠，防止 bash -c 把它当字面参数
-                val execCmd = cmd.trim().trimEnd('\\').trim()
-                tm.runInProot(execCmd, RUN_TIMEOUT_SEC)
-            } catch (e: Exception) {
-                Log.e("TermlouCommandRunner", "run failed", e)
-            } finally {
-                executing = null
-                stopSelf()
-            }
+        try {
+            tm.setupWrappers()
+            // 去掉末尾孤立的续行反斜杠，防止 bash -c 把它当字面参数
+            val execCmd = cmd.trim().trimEnd('\\').trim()
+            tm.runInProot(execCmd, RUN_TIMEOUT_SEC)
+        } catch (e: Exception) {
+            Log.e("TermlouCommandRunner", "run failed", e)
         }
     }
 
@@ -136,11 +146,5 @@ class TermlouCommandRunner : Service() {
 
         /** 冷启动重试 150ms 双投的时间窗；超过则视为新的真实点击。 */
         private const val DEDUP_WINDOW_MS = 500L
-
-        /** 当前正在执行的命令（跨 onStartCommand 去重）。 */
-        private var executing: String? = null
-
-        /** 最近一次放行命令的时间戳（elapsedRealtime）。 */
-        private var lastStartAt = 0L
     }
 }

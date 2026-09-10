@@ -41,6 +41,7 @@ data class WorkspaceConfig(
     val maxWriteBytes: Long = 2 * 1024 * 1024,
     val maxListEntries: Int = 500,
     val maxSearchResults: Int = 100,
+    val maxImportBytes: Long = 64 * 1024 * 1024,
 )
 
 data class WorkspaceFileEntry(

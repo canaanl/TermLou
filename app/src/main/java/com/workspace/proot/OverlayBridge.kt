@@ -99,7 +99,15 @@ object OverlayBridge {
         cancelTimeout()
         activeOverlay?.dismiss()
         activeOverlay = null
+        // 收尾前给仍在等待的请求写明确结果，避免 bash 侧空等到自身超时
+        current?.let {
+            resolve(it, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
+        }
         current = null
+        while (queue.isNotEmpty()) {
+            val entry = queue.removeFirst()
+            resolve(entry, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
+        }
         queue.clear()
     }
 

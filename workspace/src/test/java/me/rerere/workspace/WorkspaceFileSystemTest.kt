@@ -4,6 +4,7 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import java.io.File
+import java.io.IOException
 
 class WorkspaceFileSystemTest {
 
@@ -133,6 +134,39 @@ class WorkspaceFileSystemTest {
     }
 
     @Test
+    fun `grep should skip binary files`() {
+        File(testRoot, "text.txt").writeText("hello world")
+        val binary = File(testRoot, "bin.dat")
+        binary.writeBytes(ByteArray(4096) { if (it == 100) 0 else 'a'.code.toByte() })
+
+        val matches = fileSystem.grep(testRoot, "hello")
+
+        assertEquals(1, matches.size)
+        assertFalse(matches.any { it.path == "bin.dat" })
+    }
+
+    @Test
+    fun `importBytes should copy stream to file`() {
+        val entry = fileSystem.importBytes(testRoot, "upload.txt", "content".byteInputStream())
+
+        assertTrue(File(testRoot, "upload.txt").exists())
+        assertEquals("content", File(testRoot, "upload.txt").readText())
+        assertFalse(entry.isDirectory)
+    }
+
+    @Test
+    fun `importBytes should throw when over max size and clean up partial file`() {
+        val smallFs = WorkspaceFileSystem(WorkspaceConfig(maxImportBytes = 1024))
+
+        try {
+            smallFs.importBytes(testRoot, "big.bin", ByteArray(4096) { 1 }.inputStream())
+            fail("expected IOException for oversized import")
+        } catch (e: IOException) {
+            assertFalse(File(testRoot, "big.bin").exists())
+        }
+    }
+
+    @Test
     fun `WorkspaceConfig should have correct defaults`() {
         val config = WorkspaceConfig()
 
@@ -140,5 +174,6 @@ class WorkspaceFileSystemTest {
         assertEquals(2 * 1024 * 1024L, config.maxWriteBytes)
         assertEquals(500, config.maxListEntries)
         assertEquals(100, config.maxSearchResults)
+        assertEquals(64L * 1024 * 1024, config.maxImportBytes)
     }
 }

@@ -21,7 +21,17 @@ object TermlouDirs {
     fun clipboardRes(context: Context): File = File(base(context), "clipboard/res")
 
     fun pending(context: Context): File =
-        File(base(context), CommandTileService.PENDING_FILE)
+        File(base(context), CommandTileService.PENDING_FILE_PREFIX + System.currentTimeMillis() + ".json")
+
+    /** 按命名排序的全部待执行命令文件（磁贴连续点击各自落盘，按序消费）。 */
+    fun pendingFiles(context: Context): List<File> {
+        val dir = base(context)
+        if (!dir.isDirectory) return emptyList()
+        return dir.listFiles()
+            .orEmpty()
+            .filter { it.name.startsWith(CommandTileService.PENDING_FILE_PREFIX) && it.name.endsWith(".json") }
+            .sortedBy { it.name }
+    }
 
     /** 首次升级迁移：把旧 workspace/.termlou 里仍有价值的数据搬到新位置。 */
     fun migrateFromWorkspace(context: Context, wsFiles: File) {

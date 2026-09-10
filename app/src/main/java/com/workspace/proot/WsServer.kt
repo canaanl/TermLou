@@ -14,10 +14,13 @@ import java.net.Socket
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.nio.channels.FileChannel
+import java.nio.file.StandardOpenOption
 
 /**
  * LAN 共享服务器：同端口兼容器 HTTP（xterm.html / 文件浏览 / 登录）与
@@ -72,7 +75,16 @@ class WsServer(
         while (running) {
             try {
                 val client = s.accept()
-                pool?.execute { handleClient(client) }
+                val p = pool
+                if (p == null) {
+                    runCatching { client.close() }
+                } else {
+                    try {
+                        p.execute { handleClient(client) }
+                    } catch (e: RejectedExecutionException) {
+                        runCatching { client.close() }
+                    }
+                }
             } catch (_: Exception) {
                 if (!running) break
             }
@@ -120,17 +132,22 @@ class WsServer(
                 }
                 doHandshake(client, key)
                 client.soTimeout = 0
-                val sess = WsSession(context, client, input)
                 val id = System.nanoTime().toString() + "-" + clients.incrementAndGet()
+                val sess = WsSession(context, client, input, id)
                 sessions[id] = sess
                 onClientsChanged(clients.get())
-                try {
-                    sess.runLoop()
-                } finally {
-                    sessions.remove(id)
-                    clients.decrementAndGet()
-                    onClientsChanged(clients.get())
-                    runCatching { client.close() }
+                Thread(null, {
+                    try {
+                        sess.runLoop()
+                    } finally {
+                        sessions.remove(id)
+                        clients.decrementAndGet()
+                        onClientsChanged(clients.get())
+                        runCatching { client.close() }
+                    }
+                }, "ws-lan-session", 256 * 1024).apply {
+                    isDaemon = true
+                    start()
                 }
                 return
             }
@@ -186,13 +203,18 @@ class WsServer(
                     val dir = resolveWorkspaceFile(query["path"] ?: "/")
                     val ctype = headers["content-type"] ?: ""
                     val len = headers["content-length"]?.toIntOrNull() ?: 0
-                    if (dir == null || len <= 0 || len > 64 * 1024 * 1024) {
+                    if (dir == null || len <= 0 || len > MAX_UPLOAD_BYTES) {
                         writeText(client, 400, "Bad request"); client.close(); return
                     }
-                    val body = readBody(input, head, headerEnd + 4, len)
-                    val saved = saveMultipart(dir, body, ctype)
-                    if (saved) writeText(client, 200, "{\"ok\":true}", "application/json")
-                    else writeText(client, 400, "{\"error\":\"upload\"}", "application/json")
+                    val spool = spoolBody(input, head, headerEnd + 4, len)
+                        ?: run { writeText(client, 413, "{\"error\":\"upload too large\"}", "application/json"); client.close(); return }
+                    try {
+                        val saved = saveMultipart(dir, spool, ctype)
+                        if (saved) writeText(client, 200, "{\"ok\":true}", "application/json")
+                        else writeText(client, 400, "{\"error\":\"upload\"}", "application/json")
+                    } finally {
+                        spool.delete()
+                    }
                     client.close()
                 }
                 else -> {
@@ -302,46 +324,72 @@ class WsServer(
         return sb.toString()
     }
 
-    private fun saveMultipart(dir: File, body: ByteArray, contentType: String): Boolean {
+    private fun saveMultipart(dir: File, spool: File, contentType: String): Boolean {
         return try {
             if (!dir.isDirectory) return false
             val bIdx = contentType.indexOf("boundary=")
             if (bIdx < 0) return false
-            val boundary = "--" + contentType.substring(bIdx + 9).trim().trim('"')
-            val text = String(body, Charsets.ISO_8859_1)
-            var pos = text.indexOf(boundary)
+            val boundaryStr = "--" + contentType.substring(bIdx + 9).trim().trim('"')
+            val bytes = spool.readBytes()
+            val boundary = boundaryStr.toByteArray(Charsets.ISO_8859_1)
+            val terminator = (boundaryStr + "--").toByteArray(Charsets.ISO_8859_1)
+            val crlf = byteArrayOf(13, 10, 13, 10)
+            var pos = bytes.indexOfSequence(boundary, 0)
+            if (pos < 0 || bytes.indexOfSequence(terminator, pos) == pos) return false
             var saved = false
             while (pos >= 0) {
-                val headEnd = text.indexOf("\r\n\r\n", pos)
+                val headEnd = bytes.indexOfSequence(crlf, pos + boundary.size)
                 if (headEnd < 0) break
-                val partHead = text.substring(pos, headEnd)
+                val partHead = String(bytes, pos, headEnd - pos, Charsets.ISO_8859_1)
                 val nameMatch = Regex("filename=\"([^\"]*)\"").find(partHead)
-                val next = text.indexOf(boundary, headEnd + 4)
+                val next = bytes.indexOfSequence(boundary, headEnd + 4)
                 if (nameMatch != null && next > 0) {
                     val fname = File(nameMatch.groupValues[1]).name
                     if (fname.isNotEmpty() && fname != "." && fname != "..") {
                         val start = headEnd + 4
-                        var end = next - 2
-                        if (end < start) end = start
-                        val bytes = body.copyOfRange(start, end)
+                        val end = next - 2
+                        if (end < start) return false
                         val target = resolveWorkspaceFile(
                             dir.relativeTo(workspaceRoot()).path + "/" + fname
                         ) ?: return false
                         target.parentFile?.mkdirs()
-                        target.writeBytes(bytes)
+                        copyRegion(spool, start, end, target)
                         saved = true
                     }
                 }
+                if (bytes.indexOfSequence(terminator, next.coerceAtLeast(0)) == next) break
                 pos = next
-                if (text.indexOf(boundary + "--", pos.coerceAtLeast(0)) == pos) break
             }
             saved
         } catch (_: Exception) { false }
     }
 
+    private fun copyRegion(spool: File, start: Int, end: Int, target: File) {
+        FileChannel.open(spool.toPath(), StandardOpenOption.READ).use { src ->
+            FileChannel.open(
+                target.toPath(),
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING
+            ).use { sink ->
+                var off = start.toLong()
+                val limit = end.toLong()
+                while (off < limit) {
+                    val n = src.transferTo(off, limit - off, sink)
+                    if (n <= 0) break
+                    off += n
+                }
+            }
+        }
+    }
+
     private data class Frame(val op: Int, val data: ByteArray)
 
     companion object {
+        private const val MAX_HEADER_BYTES = 32 * 1024
+        private const val HEADER_MAX_MS = 15_000L
+        private const val MAX_UPLOAD_BYTES = 64 * 1024 * 1024
+        private const val MAX_FRAME_BYTES = 1024 * 1024
+        private const val MAX_MESSAGE_BYTES = 4 * 1024 * 1024
+
         fun reportPtyError(ctx: Context, socket: Socket, e: Exception) {
             val msg = ctx.getString(R.string.lan_pty_fail_fmt, e.javaClass.simpleName, e.message.toString())
             runCatching {
@@ -382,12 +430,14 @@ class WsServer(
             return Base64.encodeToString(b, Base64.URL_SAFE or Base64.NO_WRAP)
         }
 
-        private fun readHeaders(input: InputStream): ByteArray? {
+        private fun readHeaders(input: InputStream, timeoutMs: Long = HEADER_MAX_MS): ByteArray? {
             val out = ByteArrayOutputStream()
             val win = ByteArray(4)
             var n = 0
             var total = 0
-            while (total < 32 * 1024) {
+            val deadline = System.currentTimeMillis() + timeoutMs
+            while (total < MAX_HEADER_BYTES) {
+                if (System.currentTimeMillis() > deadline) return null
                 val r = try { input.read() } catch (_: Exception) { -1 }
                 if (r < 0) return null
                 out.write(r)
@@ -399,6 +449,40 @@ class WsServer(
                 ) return out.toByteArray()
             }
             return null
+        }
+
+        private fun spoolBody(input: InputStream, head: ByteArray, bodyStart: Int, maxLen: Int): File? {
+            val tmp = File.createTempFile("ws-upload", ".bin")
+            try {
+                tmp.outputStream().use { out ->
+                    if (bodyStart < head.size) out.write(head, bodyStart, head.size - bodyStart)
+                    val wrote = (head.size - bodyStart).coerceAtLeast(0)
+                    var remain = maxLen - wrote
+                    val buf = ByteArray(8192)
+                    while (remain > 0) {
+                        val r = try { input.read(buf, 0, minOf(buf.size, remain)) } catch (_: Exception) { -1 }
+                        if (r <= 0) break
+                        out.write(buf, 0, r)
+                        remain -= r
+                    }
+                }
+                if (tmp.length() > maxLen) return null
+                return tmp
+            } catch (e: Exception) {
+                runCatching { tmp.delete() }
+                return null
+            }
+        }
+
+        private fun ByteArray.indexOfSequence(seq: ByteArray, from: Int): Int {
+            if (seq.isEmpty() || size < seq.size) return -1
+            outer@ for (i in from.coerceAtLeast(0)..size - seq.size) {
+                for (j in seq.indices) {
+                    if (this[i + j] != seq[j]) continue@outer
+                }
+                return i
+            }
+            return -1
         }
 
         private fun readBody(input: InputStream, head: ByteArray, bodyStart: Int, len: Int): ByteArray {
@@ -421,7 +505,7 @@ class WsServer(
 
         private fun writeBytes(client: Socket, code: Int, mime: String, body: ByteArray) {
             val status = when (code) {
-                200 -> "OK"; 400 -> "Bad Request"; 403 -> "Forbidden"; 404 -> "Not Found"
+                200 -> "OK"; 400 -> "Bad Request"; 403 -> "Forbidden"; 404 -> "Not Found"; 413 -> "Payload Too Large"
                 else -> "OK"
             }
             val h = "HTTP/1.1 $code $status\r\nContent-Type: $mime\r\nContent-Length: ${body.size}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"
@@ -452,18 +536,21 @@ class WsServer(
     inner class WsSession(
         private val ctx: Context,
         private val socket: Socket,
-        private val input: InputStream
+        private val input: InputStream,
+        private val sessionId: String
     ) {
         @Volatile private var closed = false
         private var masterFd: Int = -1
         private var pid: Int = 0
         private var pfd: ParcelFileDescriptor? = null
         private var reader: Thread? = null
+        @Volatile private var sessionTmp: File? = null
 
         fun runLoop() {
             val lxRoot = File(ctx.filesDir, "workspace/linux")
             val wsFiles = File(ctx.filesDir, "workspace")
-            val wsTmp = File(ctx.filesDir, "workspace/tmp")
+            val wsTmp = File(ctx.filesDir, "workspace/tmp/lan-$sessionId")
+            sessionTmp = wsTmp
             val tm = TerminalManager(ctx, lxRoot, wsFiles, wsTmp)
             val shell = tm.findShellInRootfs() ?: throw IllegalStateException("no shell")
             val prootBin = File(ctx.applicationInfo.nativeLibraryDir, "libproot_exec.so")
@@ -538,37 +625,68 @@ class WsServer(
             closed = true
             runCatching { pfd?.close() }
             runCatching { if (pid > 0) android.system.Os.kill(pid, 9) }
+            runCatching { sessionTmp?.deleteRecursively() }
             runCatching { socket.close() }
         }
 
         private fun readFrame(): Frame? {
-            val b1 = readByte() ?: return null
-            val b2 = readByte() ?: return null
-            val op = b1 and 0x0F
-            val masked = (b2 and 0x80) != 0
-            var len = (b2 and 0x7F).toLong()
-            if (len == 126L) {
-                val a = readByte() ?: return null
-                val b = readByte() ?: return null
-                len = ((a shl 8) or b).toLong()
-            } else if (len == 127L) {
-                len = 0
-                repeat(8) { len = (len shl 8) or ((readByte() ?: return null).toLong() and 0xFF) }
+            val buffer = java.io.ByteArrayOutputStream()
+            var fragOp = -1
+            while (true) {
+                val b1 = readByte() ?: return null
+                val b2 = readByte() ?: return null
+                val fin = (b1 and 0x80) != 0
+                val op = b1 and 0x0F
+                if ((b2 and 0x80) == 0) return null
+                var len = (b2 and 0x7F).toLong()
+                if (len == 126L) {
+                    val a = readByte() ?: return null
+                    val b = readByte() ?: return null
+                    len = ((a shl 8) or b).toLong()
+                } else if (len == 127L) {
+                    len = 0
+                    repeat(8) { len = (len shl 8) or ((readByte() ?: return null).toLong() and 0xFF) }
+                }
+                if (len < 0 || len > MAX_FRAME_BYTES) return null
+                val mask = ByteArray(4)
+                for (i in 0 until 4) mask[i] = (readByte() ?: return null).toByte()
+                val data = ByteArray(len.toInt())
+                var off = 0
+                while (off < data.size) {
+                    val r = try { input.read(data, off, data.size - off) } catch (_: Exception) { -1 }
+                    if (r <= 0) return null
+                    off += r
+                }
+                for (i in data.indices) data[i] = (data[i].toInt() xor mask[i % 4].toInt()).toByte()
+
+                when {
+                    op == 0x8 || op == 0x9 || op == 0xA -> {
+                        if (fragOp >= 0) return null
+                        return Frame(op, data)
+                    }
+                    op == 0x0 -> {
+                        if (fragOp < 0) return null
+                        buffer.write(data)
+                        if (buffer.size() > MAX_MESSAGE_BYTES) return null
+                        if (!fin) continue
+                        val full = Frame(fragOp, buffer.toByteArray())
+                        buffer.reset()
+                        fragOp = -1
+                        return full
+                    }
+                    op == 0x1 || op == 0x2 -> {
+                        if (fragOp >= 0) return null
+                        if (!fin) {
+                            fragOp = op
+                            buffer.write(data)
+                            if (buffer.size() > MAX_MESSAGE_BYTES) return null
+                            continue
+                        }
+                        return Frame(op, data)
+                    }
+                    else -> return null
+                }
             }
-            if (len < 0 || len > 8 * 1024 * 1024) return null
-            val mask = if (masked) ByteArray(4).also {
-                for (i in 0 until 4) it[i] = (readByte() ?: return null).toByte()
-            } else null
-            val data = ByteArray(len.toInt())
-            var off = 0
-            while (off < data.size) {
-                val r = try { input.read(data, off, data.size - off) } catch (_: Exception) { -1 }
-                if (r <= 0) return null
-                off += r
-            }
-            if (mask != null) for (i in data.indices) data[i] = (data[i].toInt() xor mask[i % 4].toInt()).toByte()
-            if (op == 0x0) return readFrame()
-            return Frame(op, data)
         }
 
         private fun readByte(): Int? = try {

@@ -69,9 +69,10 @@ class TileCommandTrampolineActivity : Activity() {
 
     /** 从 pending 文件读取上一条未能启动的命令（冷启动竞态时兜底）。 */
     private fun readPendingCommand(): String? {
-        val file = TermlouDirs.pending(this)
+        val files = TermlouDirs.pendingFiles(this)
+        if (files.isEmpty()) return null
         return runCatching {
-            if (file.exists()) file.readText().trim().takeIf { it.isNotBlank() } else null
+            files.last().readText().trim().takeIf { it.isNotBlank() }
         }.getOrNull()
     }
 

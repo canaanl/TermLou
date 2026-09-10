@@ -1,6 +1,7 @@
 package me.rerere.workspace
 
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
@@ -57,7 +58,26 @@ class WorkspaceFileSystem(
         val file = resolvePath(root, path)
         file.parentFile?.mkdirs()
         val target = if (!file.exists()) file else resolveConflict(file)
-        inputStream.use { input -> target.outputStream().use { input.copyTo(it) } }
+        try {
+            inputStream.use { input ->
+                target.outputStream().use { output ->
+                    var total = 0L
+                    val buffer = ByteArray(BUFFER_SIZE)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        total += read
+                        if (total > config.maxImportBytes) {
+                            throw IOException("Imported file exceeds max size: ${config.maxImportBytes} bytes")
+                        }
+                        output.write(buffer, 0, read)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            target.delete()
+            throw e
+        }
         return target.toEntry(root)
     }
 
@@ -149,6 +169,7 @@ class WorkspaceFileSystem(
                     }
                     val file = path.toFile()
                     if (file.length() > config.maxReadBytes) return@forEach
+                    if (isBinary(file)) return@forEach
                     file.useLines(StandardCharsets.UTF_8) { lines ->
                         lines.forEachIndexed { index, line ->
                             if (results.size >= config.maxSearchResults) return@useLines
@@ -170,6 +191,23 @@ class WorkspaceFileSystem(
         Files.walk(start.toPath()).use { stream ->
             block(stream.iterator().asSequence())
         }
+
+    private fun isBinary(file: File): Boolean {
+        val len = minOf(BINARY_SNIFF_BYTES.toLong(), file.length()).toInt()
+        if (len <= 0) return false
+        return try {
+            file.inputStream().use { input ->
+                val bytes = ByteArray(len)
+                val read = input.read(bytes)
+                for (i in 0 until read) {
+                    if (bytes[i] == 0.toByte()) return true
+                }
+            }
+            false
+        } catch (_: Exception) {
+            false
+        }
+    }
 
     private fun resolvePath(root: File, path: String): File {
         root.mkdirs()
@@ -211,4 +249,9 @@ class WorkspaceFileSystem(
 
     private fun Path.relativeToString(): String =
         joinToString("/") { it.name }
+
+    companion object {
+        private const val BUFFER_SIZE = 64 * 1024
+        private const val BINARY_SNIFF_BYTES = 8 * 1024
+    }
 }

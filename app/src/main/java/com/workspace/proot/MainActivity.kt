@@ -87,6 +87,7 @@ class MainActivity : AppCompatActivity() {
             wsFiles = java.io.File(filesDir, "workspace"),
             wsTmp = java.io.File(filesDir, "workspace/tmp")
         )
+        TerminalManager.pruneStaleSessionTmp(scope.wsTmp)
         loadThemeColors()
         statusController = StatusController(this, scope)
         loadSettings()
@@ -408,7 +409,7 @@ class MainActivity : AppCompatActivity() {
         scope.settingsManager = SettingsManager(scope.prefs)
         scope.settingsManager.load()
         scope.uiBuilder = UiBuilder(this, scope.theme)
-        scope.terminalManager = TerminalManager(this, scope.lxRoot, scope.wsFiles, scope.wsTmp)
+        scope.terminalManager = TerminalManager(this, scope.lxRoot, scope.wsFiles, java.io.File(scope.wsTmp, "main"))
         scope.shortcutManager = ShortcutManager(
             this, scope.theme, scope.settingsManager,
             writeFn = { cmd ->

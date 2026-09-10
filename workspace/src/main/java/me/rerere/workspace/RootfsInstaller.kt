@@ -34,15 +34,40 @@ class RootfsInstaller(
             stagingDir.mkdirs()
             download(url, archive, onProgress)
             extractTar(archive, stagingDir, format, onProgress)
-            linuxDir.deleteRecursively()
-            require(stagingDir.renameTo(linuxDir)) {
-                "Failed to move rootfs into workspace"
-            }
-            patcher.patch(linuxDir)
+            patcher.patch(stagingDir)
+            commitStaging(stagingDir, linuxDir, tempDir)
             onProgress(RootfsInstallProgress(stage = RootfsInstallStage.INSTALLED))
         } finally {
             archive.delete()
             stagingDir.deleteRecursively()
+        }
+    }
+
+    /**
+     * 事务化切换：新 rootfs 在 staging 目录解压并补丁完成后，才整体替换生产目录。
+     * 旧 linux 先改名备份，再移入 staging；任一步失败则回滚，避免留下半成品。
+     */
+    internal fun commitStaging(stagingDir: File, linuxDir: File, tempDir: File) {
+        val backupDir = File(tempDir, "rootfs-backup")
+        backupDir.deleteRecursively()
+        var staged: File? = null
+        try {
+            if (linuxDir.exists()) {
+                if (linuxDir.renameTo(backupDir)) {
+                    staged = backupDir
+                } else {
+                    throw IOException("Failed to move existing rootfs to backup")
+                }
+            }
+            if (!stagingDir.renameTo(linuxDir)) {
+                throw IOException("Failed to move staged rootfs into workspace")
+            }
+            backupDir.deleteRecursively()
+        } catch (e: Exception) {
+            if (staged != null && !linuxDir.exists() && staged.exists()) {
+                staged.renameTo(linuxDir)
+            }
+            throw e
         }
     }
 
@@ -108,15 +133,24 @@ class RootfsInstaller(
             var entries = 0
             var pendingName: String? = null
             var pendingLinkName: String? = null
+            var pendingSize: Long? = null
+            var pendingMTime: Long? = null
+            var pendingMode: Int? = null
             while (true) {
                 checkInterrupted()
                 val rawHeader = input.readTarHeader() ?: break
                 val header = rawHeader.copy(
                     name = pendingName ?: rawHeader.name,
                     linkName = pendingLinkName ?: rawHeader.linkName,
+                    size = pendingSize ?: rawHeader.size,
+                    modTime = pendingMTime ?: rawHeader.modTime,
+                    mode = pendingMode ?: rawHeader.mode,
                 )
                 pendingName = null
                 pendingLinkName = null
+                pendingSize = null
+                pendingMTime = null
+                pendingMode = null
                 if (header.name.isBlank()) {
                     input.skipFully(header.size.paddedTarSize())
                     continue
@@ -135,6 +169,9 @@ class RootfsInstaller(
                     val pax = parsePax(input.readExactly(header.size).toString(Charsets.UTF_8))
                     pendingName = pax["path"]
                     pendingLinkName = pax["linkpath"]
+                    pax["size"]?.toLongOrNull()?.let { pendingSize = it }
+                    pax["mtime"]?.substringBefore('.')?.toLongOrNull()?.let { pendingMTime = it }
+                    pax["mode"]?.trimStart('0')?.ifEmpty { "0" }?.toIntOrNull(8)?.let { pendingMode = it }
                     input.skipFully(header.size.paddingSize())
                     continue
                 }
@@ -147,6 +184,9 @@ class RootfsInstaller(
                     TarEntryType.FILE -> {
                         target.outputStream().use { output ->
                             input.copyExactly(output, header.size)
+                        }
+                        if (header.modTime > 0) {
+                            target.setLastModified(header.modTime * 1000)
                         }
                         target.applyMode(header.mode)
                     }
@@ -162,7 +202,10 @@ class RootfsInstaller(
                     input.skipFully(header.size)
                 }
                 input.skipFully(header.size.paddingSize())
-                if (header.modTime > 0 && header.type != TarEntryType.SYMLINK) {
+                if (header.modTime > 0 &&
+                    header.type != TarEntryType.FILE &&
+                    header.type != TarEntryType.SYMLINK
+                ) {
                     target.setLastModified(header.modTime * 1000)
                 }
                 entries++
@@ -179,15 +222,28 @@ class RootfsInstaller(
 
     private fun createSymlink(root: File, target: File, linkName: String) {
         if (linkName.isBlank()) return
-        val linkTarget = if (File(linkName).isAbsolute) {
-            File(linkName)
+        val linkTarget: File
+        val absTarget = File(linkName)
+        if (absTarget.isAbsolute) {
+            // 根内绝对路径（如 /bin/sh）：改写为相对链接，宿主与 chroot 内解析一致；指向根外的绝对路径保持原样
+            val normalized = absTarget.path.replace('\\', '/').trimStart('/')
+            val inRoot = File(root, normalized)
+            val targetCanonical = inRoot.canonicalFile
+            val rootCanonical = root.canonicalFile
+            if (targetCanonical.path == rootCanonical.path ||
+                targetCanonical.path.startsWith(rootCanonical.path + File.separator)
+            ) {
+                linkTarget = (target.parentFile ?: root).toPath().relativize(targetCanonical.toPath()).toFile()
+            } else {
+                linkTarget = absTarget
+            }
         } else {
             val resolved = File(target.parentFile ?: root, linkName).canonicalFile
             val rootFile = root.canonicalFile
             require(resolved.path == rootFile.path || resolved.path.startsWith(rootFile.path + File.separator)) {
                 "Symlink escapes rootfs: ${target.name}"
             }
-            (target.parentFile ?: root).toPath().relativize(resolved.toPath()).toFile()
+            linkTarget = (target.parentFile ?: root).toPath().relativize(resolved.toPath()).toFile()
         }
         target.delete()
         Files.createSymbolicLink(target.toPath(), linkTarget.toPath())
@@ -196,7 +252,9 @@ class RootfsInstaller(
     private fun createHardLink(root: File, target: File, linkName: String) {
         if (linkName.isBlank()) return
         val source = root.safeResolve(linkName)
-        if (!source.exists()) return
+        if (!source.exists()) {
+            throw IOException("Hard link target not found in rootfs: $linkName")
+        }
         target.delete()
         runCatching {
             Files.createLink(target.toPath(), source.toPath())
