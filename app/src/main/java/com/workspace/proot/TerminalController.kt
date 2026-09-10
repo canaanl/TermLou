@@ -40,6 +40,9 @@ import android.animation.ValueAnimator
 import android.os.Build
 import android.view.animation.DecelerateInterpolator
 
+/** 快捷栏↔wheel 推送切换的时长（毫秒）。 */
+private const val BAND_SWITCH_MS = 240L
+
 /**
  * 缁堢鍩燂細缁堢瑙嗗浘/鎷ㄨ疆/蹇嵎閿銆乻hell 鍚姩锛堝惈寮€灞忥級銆乮nstallRootfs銆? * 瀛楀彿/ctrl 閿€乀erminalSessionClient/ViewClient 瀹炵幇銆? * 鍘?MainActivity 缁堢鐩稿叧 ~550 琛屾敹褰掓澶勶紱Activity 浠呬繚鐣?showTab 澹炽€? */
 class TerminalController(
@@ -65,6 +68,7 @@ class TerminalController(
     private lateinit var rowTop: LinearLayout
     private lateinit var rowBottom: LinearLayout
     private var wheelCardH = 0
+    private var bandTransitionToken = 0
 
     private lateinit var setupArea: LinearLayout
     private lateinit var progressBar: ProgressBar
@@ -167,7 +171,7 @@ class TerminalController(
         terminalArea.addView(terminalWrapper)
 
         wheelLevelFrame = WheelLevelFrame(
-            activity, activity.resources.displayMetrics.widthPixels / 3 + 6, drawScrim = false
+            activity, activity.resources.displayMetrics.widthPixels / 3 + 6
         ).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
@@ -202,8 +206,8 @@ class TerminalController(
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, wheelCardH * 2
             )
-            clipChildren = false
-            clipToPadding = false
+            minimumHeight = wheelCardH * 2
+            setBackgroundColor(scope.cSurface)
             addView(shortcutInner)
             addView(upperWheelPanel)
             addView(wheelPanel)
@@ -226,10 +230,7 @@ class TerminalController(
             wheelLevelFrame.setLevel(if (visible) 2 else 1, wheelCardH)
         }
         wheelController?.let {
-            it.onWheelPhase = { opening ->
-                wheelLevelFrame.setOpen(opening)
-                shortcutInner.visibility = if (opening) View.GONE else View.VISIBLE
-            }
+            it.onWheelPhase = { opening, downward -> switchBand(opening, downward) }
         }
 
         shortcutInner.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
@@ -246,13 +247,14 @@ class TerminalController(
             val blp = shortcutContainer.layoutParams as? LinearLayout.LayoutParams
             blp?.height = wheelCardH * 2
             shortcutContainer.layoutParams = blp
+            shortcutContainer.minimumHeight = wheelCardH * 2
             wheelLevelFrame.setLevel(
                 if (upperWheelPanel.visibility == View.VISIBLE) 2 else 1, wheelCardH, animate = false
             )
             wheelController?.updateCardHeight(wheelCardH)
         }
 
-        shortcutContainer.onVerticalSwipe = { wheelController?.toggle() }
+        shortcutContainer.onVerticalSwipe = { downward -> wheelController?.toggle(downward) }
         wheelController?.onGrayTap = { wheelController?.hide() }
         wheelController?.onGrayLongPress = { _, rawX, rawY ->
             wheelGlowOverlay.burstFromScreen(rawX, rawY) { onOpenShortcutSettings() }
@@ -261,7 +263,56 @@ class TerminalController(
         refreshAllRows()
     }
 
-    /** 寮€灞忓畨瑁呭尯锛坰etupArea + 杩涘害鏉★級锛岀敱 Activity 鎸傚埌 content銆?*/
+    /** BAND 内单一方向的推送过渡：新内容从对侧推入、旧内容同向滑出，240ms 内完成。 */
+    private fun switchBand(toWheel: Boolean, downward: Boolean) {
+        val bar = shortcutInner
+        val wheel = wheelPanel
+        if (toWheel && wheel.visibility == View.VISIBLE) return
+        if (!toWheel && wheel.visibility != View.VISIBLE) return
+        bandTransitionToken++
+        val token = bandTransitionToken
+        val d = shortcutContainer.height.takeIf { it > 0 }?.toFloat() ?: (wheelCardH * 2).toFloat()
+        val outSign = if (downward) 1f else -1f
+        val inStart = -outSign * d
+
+        bar.animate().cancel()
+        wheel.animate().cancel()
+        bar.alpha = 1f
+        bar.visibility = View.VISIBLE
+        bar.translationY = 0f
+        wheel.alpha = 1f
+        wheel.visibility = View.VISIBLE
+        wheel.translationY = 0f
+
+        if (toWheel) {
+            wheel.alpha = 0f
+            wheel.translationY = inStart
+            wheel.animate().translationY(0f).alpha(1f).setDuration(BAND_SWITCH_MS)
+                .setInterpolator(DecelerateInterpolator()).start()
+            bar.animate().translationY(outSign * d).setDuration(BAND_SWITCH_MS)
+                .setInterpolator(DecelerateInterpolator())
+                .withEndAction {
+                    if (token != bandTransitionToken) return@withEndAction
+                    bar.visibility = View.GONE
+                    bar.translationY = 0f
+                }.start()
+        } else {
+            bar.translationY = inStart
+            bar.animate().translationY(0f).setDuration(BAND_SWITCH_MS)
+                .setInterpolator(DecelerateInterpolator()).start()
+            wheel.animate().translationY(outSign * d).alpha(0f).setDuration(BAND_SWITCH_MS)
+                .setInterpolator(DecelerateInterpolator())
+                .withEndAction {
+                    if (token != bandTransitionToken) return@withEndAction
+                    wheel.visibility = View.GONE
+                    wheel.alpha = 1f
+                    wheel.translationY = 0f
+                }.start()
+        }
+        wheelLevelFrame.setOpen(toWheel)
+    }
+
+    /** 開机安装区（setupArea + 进度条），由 Activity 挂到 content。 */
     fun buildSetupArea(): LinearLayout {
         val views = scope.uiBuilder.createSetupArea(
             onInstallClick = { btn -> installRootfs(btn) }

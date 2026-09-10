@@ -19,7 +19,8 @@ class SwipeableContainer(context: Context) : FrameLayout(context) {
     private val touchSlop by lazy { ViewConfiguration.get(context).scaledTouchSlop }
     private val verticalThreshold by lazy { (28 * resources.displayMetrics.density) }
 
-    var onVerticalSwipe: (() -> Unit)? = null
+    /** downward=true 表示手指下滑（内容跟手往下推开）。 */
+    var onVerticalSwipe: ((Boolean) -> Unit)? = null
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
         when (ev.actionMasked) {
@@ -45,9 +46,9 @@ class SwipeableContainer(context: Context) : FrameLayout(context) {
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_UP && intercepted) {
-            intercepted = false
+intercepted = false
             val dy = ev.y - startY
-            if (Math.abs(dy) >= touchSlop) onVerticalSwipe?.invoke()
+            if (Math.abs(dy) >= touchSlop) onVerticalSwipe?.invoke(dy > 0)
         } else if (ev.actionMasked == MotionEvent.ACTION_CANCEL) {
             intercepted = false
         }
