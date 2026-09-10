@@ -9,7 +9,6 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
-import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.FrameLayout
@@ -59,6 +58,7 @@ class TerminalController(
     private lateinit var upperWheelPanel: LeveledPanel
     private lateinit var upperWheelRecycler: RecyclerView
     private lateinit var wheelLevelFrame: WheelLevelFrame
+    private lateinit var wheelGlowOverlay: WheelGlowOverlay
     private lateinit var shortcutContainer: SwipeableContainer
     private lateinit var shortcutInner: LinearLayout
     private lateinit var columnsWrapper: LinearLayout
@@ -163,41 +163,23 @@ class TerminalController(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
             )
             addView(terminalView)
-            addView(upperWheelPanel)
-            addView(wheelPanel)
         }
         terminalArea.addView(terminalWrapper)
 
         wheelLevelFrame = WheelLevelFrame(
-            activity, activity.resources.displayMetrics.widthPixels / 3 + 6
+            activity, activity.resources.displayMetrics.widthPixels / 3 + 6, drawScrim = false
         ).apply {
-            val padPx = (WheelLevelFrame.PAD_DP * activity.resources.displayMetrics.density).toInt()
             layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                wheelCardH * 2 + padPx,
-                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
             )
             visibility = View.GONE
             setLevel(1, wheelCardH, animate = false)
         }
-        terminalWrapper.addView(wheelLevelFrame)
 
-        wheelPanel.onVisibilityChange = { visible ->
-            if (visible) {
-                wheelLevelFrame.setLevel(
-                    if (upperWheelPanel.visibility == View.VISIBLE) 2 else 1, wheelCardH
-                )
-            } else {
-                wheelLevelFrame.setOpen(false, wheelCardH.toFloat())
-            }
-        }
-        upperWheelPanel.onVisibilityChange = { visible ->
-            wheelLevelFrame.setLevel(if (visible) 2 else 1, wheelCardH)
-        }
-        wheelController?.let {
-            it.onWheelPhase = { opening ->
-                wheelLevelFrame.setOpen(opening, wheelCardH.toFloat())
-            }
+        wheelGlowOverlay = WheelGlowOverlay(activity).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+            )
         }
 
         rowTop = LinearLayout(activity).apply {
@@ -216,32 +198,64 @@ class TerminalController(
             setBackgroundColor(scope.cSurface)
             addView(columnsWrapper)
         }
-        shortcutContainer = SwipeableContainer(activity)
-        shortcutContainer.addView(shortcutInner)
+        shortcutContainer = SwipeableContainer(activity).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, wheelCardH * 2
+            )
+            clipChildren = false
+            clipToPadding = false
+            addView(shortcutInner)
+            addView(upperWheelPanel)
+            addView(wheelPanel)
+            addView(wheelLevelFrame)
+            addView(wheelGlowOverlay)
+        }
 
         terminalArea.addView(shortcutContainer)
 
-        shortcutInner.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            val h = rowTop.height
-            if (h <= 0) return@addOnLayoutChangeListener
-            val target = h + (8 * density).toInt()
-            if (target != wheelCardH) {
-                wheelCardH = target
-                val lp = wheelPanel.layoutParams as? FrameLayout.LayoutParams ?: return@addOnLayoutChangeListener
-                lp.height = wheelCardH
-                wheelPanel.layoutParams = lp
-                val ulp = upperWheelPanel.layoutParams as? FrameLayout.LayoutParams ?: return@addOnLayoutChangeListener
-                ulp.height = wheelCardH
-                ulp.bottomMargin = wheelCardH
-                upperWheelPanel.layoutParams = ulp
-                wheelController?.updateCardHeight(wheelCardH)
+        wheelPanel.onVisibilityChange = { visible ->
+            if (visible) {
+                wheelLevelFrame.setLevel(
+                    if (upperWheelPanel.visibility == View.VISIBLE) 2 else 1, wheelCardH
+                )
+            } else {
+                wheelLevelFrame.setOpen(false)
+            }
+        }
+        upperWheelPanel.onVisibilityChange = { visible ->
+            wheelLevelFrame.setLevel(if (visible) 2 else 1, wheelCardH)
+        }
+        wheelController?.let {
+            it.onWheelPhase = { opening ->
+                wheelLevelFrame.setOpen(opening)
+                shortcutInner.visibility = if (opening) View.GONE else View.VISIBLE
             }
         }
 
-        shortcutContainer.onSwipeLeft = { wheelController?.toggle() }
-        shortcutContainer.onLongSwipeLeft = { onOpenShortcutSettings() }
-        shortcutContainer.onClickPassthrough = { ev ->
-            performClickAt(shortcutContainer, ev.rawX, ev.rawY)
+        shortcutInner.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            val h = rowTop.height
+            if (h <= 0 || h == wheelCardH) return@addOnLayoutChangeListener
+            wheelCardH = h
+            val lp = wheelPanel.layoutParams as? FrameLayout.LayoutParams ?: return@addOnLayoutChangeListener
+            lp.height = wheelCardH
+            wheelPanel.layoutParams = lp
+            val ulp = upperWheelPanel.layoutParams as? FrameLayout.LayoutParams ?: return@addOnLayoutChangeListener
+            ulp.height = wheelCardH
+            ulp.bottomMargin = wheelCardH
+            upperWheelPanel.layoutParams = ulp
+            val blp = shortcutContainer.layoutParams as? LinearLayout.LayoutParams
+            blp?.height = wheelCardH * 2
+            shortcutContainer.layoutParams = blp
+            wheelLevelFrame.setLevel(
+                if (upperWheelPanel.visibility == View.VISIBLE) 2 else 1, wheelCardH, animate = false
+            )
+            wheelController?.updateCardHeight(wheelCardH)
+        }
+
+        shortcutContainer.onVerticalSwipe = { wheelController?.toggle() }
+        wheelController?.onGrayTap = { wheelController?.hide() }
+        wheelController?.onGrayLongPress = { _, rawX, rawY ->
+            wheelGlowOverlay.burstFromScreen(rawX, rawY) { onOpenShortcutSettings() }
         }
 
         refreshAllRows()
@@ -276,24 +290,6 @@ class TerminalController(
     fun refreshAllRows() {
         scope.shortcutManager.refreshAllRows(rowTop, rowBottom, shortcutInner, ::createShortcutKey, ::createCtrlKey)
         wheelController?.refreshAll()
-    }
-
-    private fun performClickAt(parent: ViewGroup, rawX: Float, rawY: Float) {
-        val loc = IntArray(2)
-        for (i in 0 until parent.childCount) {
-            val child = parent.getChildAt(i)
-            child.getLocationOnScreen(loc)
-            val left = loc[0]
-            val top = loc[1]
-            val right = left + child.width
-            val bottom = top + child.height
-            if (rawX >= left && rawX < right && rawY >= top && rawY < bottom) {
-                when (child) {
-                    is Button -> { child.performClick(); return }
-                    is ViewGroup -> { performClickAt(child, rawX, rawY); return }
-                }
-            }
-        }
     }
 
     private fun createShortcutKey(label: String, seq: String, hasCtrl: Boolean = false, ctrlSeq: String = "", widthPx: Int = 0): Button {

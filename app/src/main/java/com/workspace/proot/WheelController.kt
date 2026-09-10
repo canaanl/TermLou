@@ -1,7 +1,9 @@
 package com.workspace.proot
 
 import android.content.Context
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.animation.DecelerateInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
@@ -26,6 +28,9 @@ interface WheelDataSource {
     fun execute(item: ShortcutItem)
 }
 
+/** 长按灰色区域进入 wheel 设置的时间阈值。 */
+private const val GRAY_LONG_PRESS_MS = 2000L
+
 class WheelController(
     private val context: Context,
     private val lifecycleScope: LifecycleCoroutineScope,
@@ -38,6 +43,10 @@ class WheelController(
     private val onStatusRestore: () -> Unit = {}
 ) {
     var onWheelPhase: ((Boolean) -> Unit)? = null
+    var onGrayTap: (() -> Unit)? = null
+
+    /** 长按灰色进入设置。rawX/rawY 为屏幕坐标（抬手前触点），供辉光特效定位。 */
+    var onGrayLongPress: ((View, Float, Float) -> Unit)? = null
 
     private val snapHelper = SkipEmptySnapHelper().apply { attachToRecyclerView(wheelRecycler) }
     private val upperSnapHelper = SkipEmptySnapHelper().apply { attachToRecyclerView(upperWheelRecycler) }
@@ -75,6 +84,83 @@ class WheelController(
                 }
             }
         })
+        installGrayGestures(wheelRecycler)
+        installGrayGestures(upperWheelRecycler)
+    }
+
+    /** 灰色（非聚焦卡片/空白槽）手势：轻点收回 wheel，长按 2s 触发辉光+设置。 */
+    private fun installGrayGestures(rv: RecyclerView) {
+        rv.setOnTouchListener(GrayGestures(
+            rv = rv,
+            onTap = { onGrayTap?.invoke() },
+            onLongPress = { view, rawX, rawY -> onGrayLongPress?.invoke(view, rawX, rawY) }
+        ))
+    }
+
+    private class GrayGestures(
+        private val rv: RecyclerView,
+        private val onTap: () -> Unit,
+        private val onLongPress: (View, Float, Float) -> Unit
+    ) : View.OnTouchListener {
+
+        private val slop by lazy { ViewConfiguration.get(rv.context).scaledTouchSlop }
+        private var downX = 0f
+        private var downY = 0f
+        private var downRawX = 0f
+        private var downRawY = 0f
+        private var moved = false
+        private var armed = false
+        private var pressedView: View? = null
+        private val longPressTask = Runnable {
+            if (armed) {
+                armed = false
+                pressedView?.let { onLongPress(it, downRawX, downRawY) }
+            }
+        }
+
+        override fun onTouch(v: View, ev: MotionEvent): Boolean {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = ev.x
+                    downY = ev.y
+                    downRawX = ev.rawX
+                    downRawY = ev.rawY
+                    moved = false
+                    val child = rv.findChildViewUnder(ev.x, ev.y)
+                    pressedView = child
+                    armed = isGrayZone(child)
+                    if (armed) v.removeCallbacks(longPressTask)
+                    if (armed) v.postDelayed(longPressTask, GRAY_LONG_PRESS_MS)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (Math.abs(ev.x - downX) > slop || Math.abs(ev.y - downY) > slop) {
+                        moved = true
+                        armed = false
+                        v.removeCallbacks(longPressTask)
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    v.removeCallbacks(longPressTask)
+                    if (armed && !moved) {
+                        armed = false
+                        onTap()
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    v.removeCallbacks(longPressTask)
+                    armed = false
+                }
+            }
+            return false
+        }
+
+        private fun isGrayZone(child: View?): Boolean {
+            val btn = child as? Button
+            if (btn == null || btn.text.isNullOrEmpty()) return true
+            val center = rv.width / 2f
+            val cCenter = btn.left + btn.width / 2f
+            return Math.abs(cCenter - center) >= btn.width / 2f
+        }
     }
 
     fun updateCardHeight(h: Int) {
@@ -92,13 +178,9 @@ class WheelController(
         lastCenteredItem = null
         hideUpperWheel(false)
         wheelPanel.animate().cancel()
-        wheelPanel.animate().translationY(wheelCardH.toFloat()).alpha(0f).setDuration(180)
-            .setInterpolator(DecelerateInterpolator())
-            .withEndAction {
-                wheelPanel.visibility = View.GONE
-                wheelPanel.translationY = 0f
-                wheelPanel.alpha = 1f
-            }.start()
+        wheelPanel.visibility = View.GONE
+        wheelPanel.translationY = 0f
+        wheelPanel.alpha = 1f
     }
 
     fun onResume() {
@@ -138,9 +220,10 @@ class WheelController(
     private fun show() {
         onWheelPhase?.invoke(true)
         wheelPanel.visibility = View.VISIBLE
-        wheelPanel.translationY = wheelCardH.toFloat()
+        wheelPanel.translationY = 0f
         wheelPanel.alpha = 0f
-        wheelPanel.animate().translationY(0f).alpha(1f).setDuration(220)
+        wheelPanel.animate().cancel()
+        wheelPanel.animate().alpha(1f).setDuration(220)
             .setInterpolator(DecelerateInterpolator()).start()
         refreshAndApply(force = true, smooth = false, alignAlways = true)
     }

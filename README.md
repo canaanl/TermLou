@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-4.8.1-blue)
+![Version](https://img.shields.io/badge/version-4.9.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **4.9.0** | 483 | 终端底部交互改为「固定双层 BAND」：快捷栏（A）与拨轮（B）共用同一固定高度区域（=两层按键高，终端永不渲染其中），区域内**任意方向竖向滑动**（上/下均可、可一路滑出区域）在 A/B 间循环切换，滑完不再停留中间态）；拨轮一层高与快捷栏单键等高对齐。拨轮非聚焦卡片/空白槽仍为「轻点收回、长按 2s」：长按改为从按住点发亮、白色辉光波纹扩散至整条双层 BAND 后进入拨轮设置（原卡片变色脉动反馈移除）。删除 4.8.2 的弹簧替换开合（`androidx.dynamicanimation`），wheel 开合回到带内显隐+淡入淡出，移除 `SwipeableContainer` 横划检测/点击透传通道 |
 | **4.8.1** | 481 | 拨轮推荐升级为多阶后缀预测（Multi-Order Markov）：从最近 24 条命令序列中提取 3 阶/2 阶/1 阶 suffix，优先使用最高阶且样本≥3 的条件概率，不足时自动降阶；`MIN_TRANSITIONS=3` 防止噪声干扰，Laplace 平滑 + 置信度衰减保留不变 |
 | **4.8.0** | 480 | 系统可靠性修复轮（第三方审查 25 项中已确认属实的全部修订）：SOCKS5 转发 20 秒空闲断连改为仅握手期超时+转发期不设超时，并在停止时关闭在途 socket（防扫描/句柄泄漏）；UDP 中继键改为「源↔目标」，同客户端访问多目标不再串流；过载不再内联执行任务，一律丢弃并关闭连接；VPN 启动/停止改为状态机（启动中收到停止也会回收刚创建的 TUN/tun2socks），避免双重起停与 teardown 竞态；LAN 服务器头部读取加 15 秒绝对截止；WebSocket 会话改独立线程并支持真实分片、强制客户端掩码、帧 1MB/消息 4MB 上限；上传改为落盘再流式解析，内存占用从约 3× 降到 1×；根文件系统安装改为事务化（staging 解压+补丁→原子切换，失败回滚），根内绝对符号链接改写为相对链接、缺失的硬链接源直接报错、PAX 增加 size/mtime/mode 覆盖；各会话临时目录隔离（主终端/磁贴/LAN 各自独立并在结束时清理）；浮窗关闭时把等待中的请求写回 dismiss 结果；磁贴命令改唯一文件队列，连续点击不互相覆盖；grep 跳过二进制文件、导入文件增加 64MB 上限；过期的会话临时目录自动清理 |
 | **4.7.1** | 471 | 抓包体验打磨：每条连接新增流量行为标签（`FlowClassifier` 纯元数据精确判定，标签按流量大小、方向与时长推断，每条连接恒有一个标签，非内容解析）——DNS 解析（端口 53/5353，独占）/ 挂起心跳（长连接极低流量）/ 大流量媒体（下行≥上行且体积≥256KB）/ 上行传输（上行≥64KB 且上行≥下行×4）/ 其他（兜底）；连接列表改为活跃连接（进行中/UDP）置顶、关闭后自动下沉；同时勾选多 App 抓包时顶部闪现提示无法按 App 区分流量；抓包页底部操作栏收敛为 2×2：开始/停止抓包、选择应用、清空记录、流量排行 |

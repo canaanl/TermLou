@@ -15,7 +15,11 @@ import android.view.animation.DecelerateInterpolator
  * 独立纯视觉组件：不参与 wheel 任何滚动/吸附/点击逻辑，无触摸行为。
  * 唯一职责：根据"当前几层轮盘"把框高动画到矮/高两档。
  */
-class WheelLevelFrame(context: Context, private val boxWidthPx: Int) : View(context) {
+class WheelLevelFrame(
+    context: Context,
+    private val boxWidthPx: Int,
+    private val drawScrim: Boolean = true
+) : View(context) {
 
     companion object {
         val FRAME_COLOR = Color.WHITE
@@ -72,15 +76,15 @@ class WheelLevelFrame(context: Context, private val boxWidthPx: Int) : View(cont
         }
     }
 
-    /** 与 wheelPanel 进/出动画用相同参数做镜像，保证显隐完全同步。 */
-    fun setOpen(open: Boolean, slidePx: Float) {
+    /** 与 wheelPanel 进/出动画用相同参数做镜像，保证显隐完全同步。仅淡入淡出，位置跟随布局。 */
+    fun setOpen(open: Boolean) {
         animate().cancel()
         if (open) {
             closing = false
             visibility = View.VISIBLE
-            translationY = slidePx
+            translationY = 0f
             alpha = 0f
-            animate().translationY(0f).alpha(1f).setDuration(OPEN_MS)
+            animate().alpha(1f).setDuration(OPEN_MS)
                 .setInterpolator(DecelerateInterpolator()).start()
         } else {
             if (visibility != View.VISIBLE) {
@@ -91,7 +95,7 @@ class WheelLevelFrame(context: Context, private val boxWidthPx: Int) : View(cont
                 return
             }
             closing = true
-            animate().translationY(slidePx).alpha(0f).setDuration(CLOSE_MS)
+            animate().alpha(0f).setDuration(CLOSE_MS)
                 .setInterpolator(DecelerateInterpolator())
                 .withEndAction {
                     visibility = View.GONE
@@ -118,15 +122,17 @@ class WheelLevelFrame(context: Context, private val boxWidthPx: Int) : View(cont
 
         scrimBounds.set(0f, bandTop, width.toFloat(), bandBottom)
         scrimHole.set(sLeft, sTop, sRight, sBottom)
-        holePath.rewind()
-        if (scrimHole.width() > 0f && scrimHole.height() > 0f) {
-            holePath.addRoundRect(scrimHole, cornerRadius, cornerRadius, Path.Direction.CW)
+        if (drawScrim) {
+            holePath.rewind()
+            if (scrimHole.width() > 0f && scrimHole.height() > 0f) {
+                holePath.addRoundRect(scrimHole, cornerRadius, cornerRadius, Path.Direction.CW)
+            }
+            canvas.save()
+            canvas.clipRect(scrimBounds)
+            canvas.clipOutPath(holePath)
+            canvas.drawRect(scrimBounds, scrimPaint)
+            canvas.restore()
         }
-        canvas.save()
-        canvas.clipRect(scrimBounds)
-        canvas.clipOutPath(holePath)
-        canvas.drawRect(scrimBounds, scrimPaint)
-        canvas.restore()
 
         canvas.drawRoundRect(sLeft, sTop, sRight, sBottom, cornerRadius, cornerRadius, paint)
     }
