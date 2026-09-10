@@ -12,12 +12,13 @@ object CommandRecommender {
     private const val SEQ_CAP = 24
     private const val HALF_LIFE_MS = 7L * 24 * 60 * 60 * 1000
     private const val SUCC_CONF_K = 3f
+    private const val MIN_TRANSITIONS = 3
 
     fun summonScore(
         id: String,
         stateUsage: Map<String, Int>?,
         stateSeq: List<String>,
-        anchor: String?,
+        anchor: List<String>,
         usage: Map<String, Map<String, Int>>,
         lastUsed: Map<String, Long>,
         now: Long
@@ -40,16 +41,28 @@ object CommandRecommender {
         return freq.toFloat() / maxFreq
     }
 
-    private fun successorN(id: String, stateSeq: List<String>, anchor: String?): Float {
-        if (anchor == null || stateSeq.size < 2) return 0f
+    private fun successorN(id: String, stateSeq: List<String>, anchor: List<String>): Float {
+        if (anchor.isEmpty() || stateSeq.size < 2) return 0f
+        val maxOrder = minOf(3, anchor.size)
+        for (order in maxOrder downTo 1) {
+            val suffix = anchor.takeLast(order)
+            val result = orderScore(id, stateSeq, suffix)
+            if (result > 0f) return result
+        }
+        return 0f
+    }
+
+    private fun orderScore(id: String, stateSeq: List<String>, suffix: List<String>): Float {
+        val order = suffix.size
         var total = 0
         var match = 0
-        for (i in 0 until stateSeq.size - 1) {
-            if (stateSeq[i] != anchor) continue
-            total++
-            if (stateSeq[i + 1] == id) match++
+        for (i in 0..stateSeq.size - order - 1) {
+            if (stateSeq.subList(i, i + order) == suffix) {
+                total++
+                if (stateSeq[i + order] == id) match++
+            }
         }
-        if (total == 0) return 0f
+        if (total < MIN_TRANSITIONS) return 0f
         val raw = (match + 1f) / (total + 2f)
         val conf = total.toFloat() / (total + SUCC_CONF_K)
         return raw * conf

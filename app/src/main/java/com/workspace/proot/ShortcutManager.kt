@@ -26,7 +26,7 @@ class ShortcutManager(
     private var seqMap = settingsManager.loadSeqMap()
     private var lastUsedMap = settingsManager.loadLastUsedMap()
     private var lastClickContext: Pair<String, String>? = null
-    private var prevKey: String? = null
+    private var prevContext: List<String> = emptyList()
     private val TIE_BAND = 0.05f
 
     fun setStatusText(statusText: TextView) {
@@ -82,7 +82,7 @@ class ShortcutManager(
                 onCardUsed(item.label, state, counted)
                 writeFn(buildWritePayload(interpretEscapes(item.cmd)))
                 onCommandExecuted()
-                prevKey = item.id
+                prevContext = (prevContext + item.id).takeLast(2)
             }
             is ShortcutItem.Group -> {}
         }
@@ -166,7 +166,7 @@ class ShortcutManager(
         var bestUsed = 0L
         for ((i, m) in members.withIndex()) {
             val score = CommandRecommender.summonScore(
-                m.id, stateUsage, seq, prevKey, usageMap, lastUsedMap, now
+                m.id, stateUsage, seq, prevContext, usageMap, lastUsedMap, now
             )
             if (score <= 0f) continue
             val used = lastUsedMap[m.id] ?: 0L
@@ -189,14 +189,14 @@ class ShortcutManager(
     ): Pair<Float, String?> {
         when (item) {
             is ShortcutItem.Command -> return CommandRecommender.summonScore(
-                item.id, stateUsage, seq, prevKey, usageMap, lastUsedMap, now
+                item.id, stateUsage, seq, prevContext, usageMap, lastUsedMap, now
             ) to item.id
             is ShortcutItem.Group -> {
                 var bestScore = 0f
                 var bestId: String? = null
                 for (m in item.members) {
                     val s = CommandRecommender.summonScore(
-                        m.id, stateUsage, seq, prevKey, usageMap, lastUsedMap, now
+                        m.id, stateUsage, seq, prevContext, usageMap, lastUsedMap, now
                     )
                     if (s > bestScore) {
                         bestScore = s
