@@ -430,8 +430,9 @@ class WheelController(
         upperWheelPanel.animate().cancel()
         upperWheelPanel.visibility = View.VISIBLE
         if (suppressUpperEntryAnim) {
-            upperWheelPanel.translationY = 0f
-            upperWheelPanel.alpha = 1f
+            // BAND 共享滑移动画正在逐帧驱动 upper（switchBand 的 ValueAnimator 把
+            // upper.translationY 写到与 wheelPanel 相同的位置曲线），此处只置可见并填充内容，
+            // 绝不写入 translationY/alpha，否则会把上层瞬时跳到终点造成与下层不同步。
         } else {
             upperWheelPanel.translationY = wheelCardH.toFloat()
             upperWheelPanel.alpha = 0f

@@ -12,10 +12,11 @@ import android.widget.FrameLayout
  */
 class SwipeableContainer(context: Context) : FrameLayout(context) {
 
-    private var startX = 0f
+private var startX = 0f
     private var startY = 0f
     private var intercepted = false
     private var downInBand = false
+    private var directSwipe = false
     private val touchSlop by lazy { ViewConfiguration.get(context).scaledTouchSlop }
     private val verticalThreshold by lazy { (28 * resources.displayMetrics.density) }
 
@@ -44,13 +45,36 @@ class SwipeableContainer(context: Context) : FrameLayout(context) {
         return false
     }
 
-    override fun onTouchEvent(ev: MotionEvent): Boolean {
-        if (ev.actionMasked == MotionEvent.ACTION_UP && intercepted) {
-intercepted = false
-            val dy = ev.y - startY
-            if (Math.abs(dy) >= touchSlop) onVerticalSwipe?.invoke(dy > 0)
-        } else if (ev.actionMasked == MotionEvent.ACTION_CANCEL) {
-            intercepted = false
+override fun onTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                startX = ev.x
+                startY = ev.y
+                intercepted = false
+                directSwipe = false
+            }
+            MotionEvent.ACTION_MOVE -> {
+                // 直达本容器的触摸（按下点落在空白区，子控件全部拒绝）：
+                // onInterceptTouchEvent 只在子控件为目标时才会被查询，此路径必须在本类自行判定竖滑。
+                if (!intercepted) {
+                    val dy = Math.abs(ev.y - startY)
+                    val dx = Math.abs(ev.x - startX)
+                    if (dy > verticalThreshold && dy > dx) directSwipe = true
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                val triggered = intercepted
+                intercepted = false
+                if (directSwipe || triggered) {
+                    val dy = ev.y - startY
+                    if (Math.abs(dy) >= touchSlop) onVerticalSwipe?.invoke(dy > 0)
+                }
+                directSwipe = false
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                intercepted = false
+                directSwipe = false
+            }
         }
         return true
     }

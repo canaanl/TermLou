@@ -9,6 +9,7 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.DecelerateInterpolator
 
 /**
  * wheel 长按特效叠加层：从长按点开始发亮，波纹扩散至整条 BAND
@@ -59,8 +60,9 @@ class WheelGlowOverlay(context: Context) : View(context) {
         invalidate()
     }
 
-    /** 松手：把剩余辉光在 fillMs 内补齐，播完一帧整白后回调 onDone（用于进设置）。 */
-    fun finishBurst(onDone: (() -> Unit)? = null, fillMs: Long = 120L) {
+    /** 松手：把剩余辉光在 fillMs 内补齐，播完一帧整白后回调 onDone（用于进设置）。
+     * 补齐用较长时长 + Decelerate：靠近整白时速度趋近于 0，最后一下高亮不突兀。 */
+    fun finishBurst(onDone: (() -> Unit)? = null, fillMs: Long = 300L) {
         if (width <= 0 || height <= 0) {
             onDone?.invoke()
             return
@@ -75,7 +77,7 @@ class WheelGlowOverlay(context: Context) : View(context) {
         onEnd = onDone
         animator = ValueAnimator.ofFloat(progress, 1f).apply {
             duration = fillMs
-            interpolator = AccelerateDecelerateInterpolator()
+            interpolator = DecelerateInterpolator()
             addUpdateListener { progress = it.animatedValue as Float; invalidate() }
             start()
         }

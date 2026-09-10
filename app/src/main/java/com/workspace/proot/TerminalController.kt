@@ -36,6 +36,8 @@ import androidx.lifecycle.lifecycleScope
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.os.Build
 import android.view.animation.DecelerateInterpolator
@@ -69,6 +71,7 @@ class TerminalController(
     private lateinit var rowBottom: LinearLayout
     private var wheelCardH = 0
     private var bandTransitionToken = 0
+    private var bandAnimator: ValueAnimator? = null
 
     private lateinit var setupArea: LinearLayout
     private lateinit var progressBar: ProgressBar
@@ -215,6 +218,41 @@ class TerminalController(
             addView(wheelGlowOverlay)
         }
 
+        refreshAllRows()
+
+        // detached 预排版：以屏幕宽为容器宽度量出快捷行真实高度，提前回填各面板/容器高度，
+        // 避免首帧布局时命中 52dp 猜值触发 re-layout、整树重新 measure 造成开屏固定卡顿。
+        val measureW = View.MeasureSpec.makeMeasureSpec(
+            activity.resources.displayMetrics.widthPixels, View.MeasureSpec.EXACTLY
+        )
+        shortcutInner.measure(measureW, View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        val measuredRowH = rowTop.measuredHeight
+        if (measuredRowH > 0) {
+            val realCardH = measuredRowH + (8 * density).toInt()
+            if (realCardH != wheelCardH) {
+                wheelCardH = realCardH
+                val lp = wheelPanel.layoutParams as? FrameLayout.LayoutParams
+                if (lp != null) {
+                    lp.height = wheelCardH
+                    wheelPanel.layoutParams = lp
+                }
+                val ulp = upperWheelPanel.layoutParams as? FrameLayout.LayoutParams
+                if (ulp != null) {
+                    ulp.height = wheelCardH
+                    ulp.bottomMargin = wheelCardH
+                    upperWheelPanel.layoutParams = ulp
+                }
+                val blp = shortcutContainer.layoutParams as? LinearLayout.LayoutParams
+                if (blp != null) {
+                    blp.height = wheelCardH * 2
+                    shortcutContainer.layoutParams = blp
+                }
+                shortcutContainer.minimumHeight = wheelCardH * 2
+                wheelLevelFrame.setLevel(1, wheelCardH, animate = false)
+                wheelController?.updateCardHeight(wheelCardH)
+            }
+        }
+
         terminalArea.addView(shortcutContainer)
 
         wheelPanel.onVisibilityChange = { visible ->
@@ -266,14 +304,14 @@ class TerminalController(
             })
         }
         wheelController?.onGrayCancel = { wheelGlowOverlay.reset() }
-
-        refreshAllRows()
     }
 
-    /** BAND 内单一方向的推送过渡：新内容从对侧推入、旧内容同向滑出，240ms 内完成。 */
+    /** BAND 内单一方向的推送过渡：新内容从对侧推入、旧内容同向滑出，240ms 内完成。
+     * 上/下两层 wheel 由同一 ValueAnimator 逐帧驱动位置，严格同趟出现，不再各自做独立动画。 */
     private fun switchBand(toWheel: Boolean, downward: Boolean) {
         val bar = shortcutInner
         val wheel = wheelPanel
+        val upper = upperWheelPanel
         if (toWheel && wheel.visibility == View.VISIBLE) return
         if (!toWheel && wheel.visibility != View.VISIBLE) return
         wheelGlowOverlay.reset()
@@ -283,43 +321,47 @@ class TerminalController(
         val outSign = if (downward) 1f else -1f
         val inStart = -outSign * d
 
+        bandAnimator?.cancel()
         wheelController?.setSuppressUpperEntryAnim(true)
-
         bar.animate().cancel()
         wheel.animate().cancel()
-        bar.alpha = 1f
-        bar.visibility = View.VISIBLE
-        bar.translationY = 0f
-        wheel.alpha = 1f
-        wheel.visibility = View.VISIBLE
-        wheel.translationY = 0f
+        upper.animate().cancel()
 
-        if (toWheel) {
-            wheel.alpha = 0f
-            wheel.translationY = inStart
-            wheel.animate().translationY(0f).alpha(1f).setDuration(BAND_SWITCH_MS)
-                .setInterpolator(DecelerateInterpolator()).start()
-            bar.animate().translationY(outSign * d).setDuration(BAND_SWITCH_MS)
-                .setInterpolator(DecelerateInterpolator())
-                .withEndAction {
-                    if (token != bandTransitionToken) return@withEndAction
-                    bar.visibility = View.GONE
+        bar.alpha = 1f
+        bar.translationY = 0f
+        bar.visibility = View.VISIBLE
+        wheel.alpha = if (toWheel) 0f else 1f
+        wheel.translationY = if (toWheel) inStart else 0f
+        wheel.visibility = View.VISIBLE
+
+        bandAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = BAND_SWITCH_MS
+            interpolator = DecelerateInterpolator()
+            addUpdateListener {
+                val p = animatedValue as Float
+                bar.translationY = if (toWheel) outSign * d * p else inStart * (1f - p)
+                wheel.translationY = if (toWheel) inStart * (1f - p) else outSign * d * p
+                wheel.alpha = if (toWheel) p else 1f - p
+                // 上层 wheel 与下层共享同一位置曲线：同趟推入，绝不晚于下层出现
+                upper.translationY = wheel.translationY
+            }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    if (token != bandTransitionToken) return
                     bar.translationY = 0f
-                    wheelController?.setSuppressUpperEntryAnim(false)
-                }.start()
-        } else {
-            bar.translationY = inStart
-            bar.animate().translationY(0f).setDuration(BAND_SWITCH_MS)
-                .setInterpolator(DecelerateInterpolator()).start()
-            wheel.animate().translationY(outSign * d).alpha(0f).setDuration(BAND_SWITCH_MS)
-                .setInterpolator(DecelerateInterpolator())
-                .withEndAction {
-                    if (token != bandTransitionToken) return@withEndAction
-                    wheel.visibility = View.GONE
-                    wheel.alpha = 1f
+                    bar.alpha = 1f
                     wheel.translationY = 0f
+                    wheel.alpha = 1f
+                    upper.translationY = 0f
+                    if (toWheel) {
+                        bar.visibility = View.GONE
+                    } else {
+                        wheel.visibility = View.GONE
+                    }
                     wheelController?.setSuppressUpperEntryAnim(false)
-                }.start()
+                }
+            })
+            start()
         }
         wheelLevelFrame.setOpen(toWheel)
     }
