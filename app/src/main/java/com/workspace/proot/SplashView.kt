@@ -264,18 +264,23 @@ class SplashView(context: Context, customCells: List<Pair<Int, Int>>? = null, pr
         }
 
         val radius = pixelSize * SplashTokens.PIXEL_RADIUS_FACTOR
-        val breathe = 1f + 0.3f * sin(System.currentTimeMillis() * 0.004f)
-        glowPaint.setShadowLayer(glowBase * breathe, 0f, 0f, UiTokens.letterGlow)
-        for (i in particles.indices) {
-            if (pProgress(particles[i], elapsed) >= 1f) {
-                val cell = cells[i]
-                val l = cell.tx - pixelSize * 0.5f
-                val t = cell.ty - pixelSize * 0.5f
-                glowPaint.color = SplashTokens.lerpAlpha(cell.color, 110)
-                canvas.drawRoundRect(l - 1f, t - 1f, l + pixelSize + 1f, t + pixelSize + 1f, radius, radius, glowPaint)
+
+        // setShadowLayer 走软件模糊，逐帧对已落位像素绘制代价极高。
+        // 只在聚合动画进行中给正在落位的点阵加光晕；聚合完成后为纯色像素，避免每帧固定卡顿。
+        if (!convergeFinished) {
+            val breathe = 1f + 0.3f * sin(System.currentTimeMillis() * 0.004f)
+            glowPaint.setShadowLayer(glowBase * breathe, 0f, 0f, UiTokens.letterGlow)
+            for (i in particles.indices) {
+                if (pProgress(particles[i], elapsed) >= 1f) {
+                    val cell = cells[i]
+                    val l = cell.tx - pixelSize * 0.5f
+                    val t = cell.ty - pixelSize * 0.5f
+                    glowPaint.color = SplashTokens.lerpAlpha(cell.color, 110)
+                    canvas.drawRoundRect(l - 1f, t - 1f, l + pixelSize + 1f, t + pixelSize + 1f, radius, radius, glowPaint)
+                }
             }
+            glowPaint.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
         }
-        glowPaint.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
 
         var shader = gradientShader
         if (shader == null) {

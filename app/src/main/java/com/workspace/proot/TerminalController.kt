@@ -256,9 +256,16 @@ class TerminalController(
 
         shortcutContainer.onVerticalSwipe = { downward -> wheelController?.toggle(downward) }
         wheelController?.onGrayTap = { wheelController?.hide() }
-        wheelController?.onGrayLongPress = { _, rawX, rawY ->
-            wheelGlowOverlay.burstFromScreen(rawX, rawY) { onOpenShortcutSettings() }
+        wheelController?.onGrayHold = { _, rawX, rawY ->
+            wheelGlowOverlay.burstFromScreen(rawX, rawY)
         }
+        wheelController?.onGrayLongPress = { _, rawX, rawY ->
+            wheelGlowOverlay.finishBurst(onDone = {
+                onOpenShortcutSettings()
+                wheelGlowOverlay.reset()
+            })
+        }
+        wheelController?.onGrayCancel = { wheelGlowOverlay.reset() }
 
         refreshAllRows()
     }
@@ -269,11 +276,14 @@ class TerminalController(
         val wheel = wheelPanel
         if (toWheel && wheel.visibility == View.VISIBLE) return
         if (!toWheel && wheel.visibility != View.VISIBLE) return
+        wheelGlowOverlay.reset()
         bandTransitionToken++
         val token = bandTransitionToken
         val d = shortcutContainer.height.takeIf { it > 0 }?.toFloat() ?: (wheelCardH * 2).toFloat()
         val outSign = if (downward) 1f else -1f
         val inStart = -outSign * d
+
+        wheelController?.setSuppressUpperEntryAnim(true)
 
         bar.animate().cancel()
         wheel.animate().cancel()
@@ -295,6 +305,7 @@ class TerminalController(
                     if (token != bandTransitionToken) return@withEndAction
                     bar.visibility = View.GONE
                     bar.translationY = 0f
+                    wheelController?.setSuppressUpperEntryAnim(false)
                 }.start()
         } else {
             bar.translationY = inStart
@@ -307,6 +318,7 @@ class TerminalController(
                     wheel.visibility = View.GONE
                     wheel.alpha = 1f
                     wheel.translationY = 0f
+                    wheelController?.setSuppressUpperEntryAnim(false)
                 }.start()
         }
         wheelLevelFrame.setOpen(toWheel)
@@ -561,15 +573,17 @@ class TerminalController(
                 val args = tm.buildProotArgs(shellPath)
                 val env = tm.buildProotEnv(loader)
 
+                // 构建轻量 session 放到 IO 线程，主线程只做 attach + 切 tab，缩短 shell 就绪瞬间的同步阻塞
+                val newSession = TerminalSession(
+                    prootBin.absolutePath,
+                    scope.wsFiles.absolutePath,
+                    args.toTypedArray(),
+                    env,
+                    null,
+                    this@TerminalController
+                )
+
                 withContext(Dispatchers.Main) {
-                    val newSession = TerminalSession(
-                        prootBin.absolutePath,
-                        scope.wsFiles.absolutePath,
-                        args.toTypedArray(),
-                        env,
-                        null,
-                        this@TerminalController
-                    )
                     tm.setSession(newSession)
                     terminalView.attachSession(newSession)
                     activity.showTerminalView()

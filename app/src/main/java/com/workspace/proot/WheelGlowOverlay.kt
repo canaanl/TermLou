@@ -17,6 +17,9 @@ import android.view.animation.AccelerateDecelerateInterpolator
  */
 class WheelGlowOverlay(context: Context) : View(context) {
 
+    /** 按住 1s 蓄力后从手指下方扩散至罩满整条 BAND 的时长。 */
+    private val burstDurationMs = 1000L
+
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var cx = 0f
     private var cy = 0f
@@ -39,12 +42,43 @@ class WheelGlowOverlay(context: Context) : View(context) {
         animator?.cancel()
         progress = 0f
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 640L
+            duration = burstDurationMs
             interpolator = AccelerateDecelerateInterpolator()
             addUpdateListener { progress = it.animatedValue as Float; invalidate() }
             start()
         }
         return true
+    }
+
+    /** 取消辉光并复位。进设置、中途滑出/被抢断、BAND 切走时都应调用，防止整条 BAND 残留白亮。 */
+    fun reset() {
+        animator?.cancel()
+        animator = null
+        onEnd = null
+        progress = 0f
+        invalidate()
+    }
+
+    /** 松手：把剩余辉光在 fillMs 内补齐，播完一帧整白后回调 onDone（用于进设置）。 */
+    fun finishBurst(onDone: (() -> Unit)? = null, fillMs: Long = 120L) {
+        if (width <= 0 || height <= 0) {
+            onDone?.invoke()
+            return
+        }
+        animator?.cancel()
+        if (progress >= 1f || fillMs <= 0) {
+            progress = 1f
+            onEnd = onDone
+            invalidate()
+            return
+        }
+        onEnd = onDone
+        animator = ValueAnimator.ofFloat(progress, 1f).apply {
+            duration = fillMs
+            interpolator = AccelerateDecelerateInterpolator()
+            addUpdateListener { progress = it.animatedValue as Float; invalidate() }
+            start()
+        }
     }
 
     override fun onDraw(canvas: Canvas) {

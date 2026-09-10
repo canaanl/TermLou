@@ -28,8 +28,8 @@ interface WheelDataSource {
     fun execute(item: ShortcutItem)
 }
 
-/** 长按灰色区域进入 wheel 设置的时间阈值。 */
-private const val GRAY_LONG_PRESS_MS = 2000L
+/** 长按灰色区域进入 wheel 设置的时间阈值：满 1s 开始扩散辉光，松手进设置。 */
+private const val GRAY_LONG_PRESS_MS = 1000L
 
 class WheelController(
     private val context: Context,
@@ -48,18 +48,28 @@ class WheelController(
     /** 长按灰色进入设置。rawX/rawY 为屏幕坐标（按住点），供辉光特效定位。 */
     var onGrayLongPress: ((View, Float, Float) -> Unit)? = null
 
+    /** 蓄力完成（按住满 1s）：从按住点开始扩散辉光，此时手指仍按着。 */
+    var onGrayHold: ((View, Float, Float) -> Unit)? = null
+
+    /** 蓄力被取消（移动/抢断/切走）：复位辉光叠加层。 */
+    var onGrayCancel: (() -> Unit)? = null
+
     private val snapHelper = SkipEmptySnapHelper().apply { attachToRecyclerView(wheelRecycler) }
     private val upperSnapHelper = SkipEmptySnapHelper().apply { attachToRecyclerView(upperWheelRecycler) }
 
     private val grayGuard = GrayGuard(
         wheelRecycler,
         onGrayTap = { onGrayTap?.invoke() },
-        onGrayLongPress = { v, x, y -> onGrayLongPress?.invoke(v, x, y) }
+        onGrayHold = { v, x, y -> onGrayHold?.invoke(v, x, y) },
+        onGrayLongPress = { v, x, y -> onGrayLongPress?.invoke(v, x, y) },
+        onGrayCancel = { onGrayCancel?.invoke() }
     )
     private val upperGrayGuard = GrayGuard(
         upperWheelRecycler,
         onGrayTap = { onGrayTap?.invoke() },
-        onGrayLongPress = { v, x, y -> onGrayLongPress?.invoke(v, x, y) }
+        onGrayHold = { v, x, y -> onGrayHold?.invoke(v, x, y) },
+        onGrayLongPress = { v, x, y -> onGrayLongPress?.invoke(v, x, y) },
+        onGrayCancel = { onGrayCancel?.invoke() }
     )
 
     private var lastDetectedTui = ""
@@ -70,6 +80,12 @@ class WheelController(
     private var pendingUpperRealign = false
     private var pendingUpperGroup: ShortcutItem.Group? = null
     private var lastCenteredItem: ShortcutItem? = null
+    private var suppressUpperEntryAnim = false
+
+    /** BAND 推送切换期间禁用上层 wheel 独立的入场/退场动画，让它随带一起推入，避免上轮落后出现。 */
+    fun setSuppressUpperEntryAnim(suppress: Boolean) {
+        suppressUpperEntryAnim = suppress
+    }
 
     init {
         wheelRecycler.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -109,7 +125,7 @@ class WheelController(
         (rv as? NonFlingRecyclerView)?.onDispatchTouch = { ev -> guard.onEvent(ev) }
     }
 
-    /** 取消带内容器被父级抢占后的悬空长按计时（竖向滑动切走时防止 2s 后误触设置）。 */
+    /** 取消带内容器被父级抢占后的悬空长按计时（竖向滑动切走时防止误触设置）。 */
     private fun cancelBandGestures() {
         grayGuard.cancelPending()
         upperGrayGuard.cancelPending()
@@ -118,7 +134,9 @@ class WheelController(
     private class GrayGuard(
         private val rv: RecyclerView,
         private val onGrayTap: () -> Unit,
-        private val onGrayLongPress: (View, Float, Float) -> Unit
+        private val onGrayHold: (View, Float, Float) -> Unit,
+        private val onGrayLongPress: (View, Float, Float) -> Unit,
+        private val onGrayCancel: () -> Unit
     ) {
 
         private val slop by lazy { ViewConfiguration.get(rv.context).scaledTouchSlop }
@@ -128,16 +146,30 @@ class WheelController(
         private var downRawY = 0f
         private var armed = false
         private var longFired = false
+        private var glowActive = false
         private var pressedView: View? = null
-        private val longPressTask = Runnable {
-            armed = false
+        private val armTask = Runnable {
+            glowActive = true
             longFired = true
-            pressedView?.let { onGrayLongPress(it, downRawX, downRawY) }
+            pressedView?.let { onGrayHold(it, downRawX, downRawY) }
         }
 
         fun cancelPending() {
-            rv.removeCallbacks(longPressTask)
+            if (armed || glowActive) cancelAll() else resetFired()
+        }
+
+        private fun resetFired() {
+            rv.removeCallbacks(armTask)
             armed = false
+            longFired = false
+            glowActive = false
+            pressedView = null
+        }
+
+        private fun cancelAll() {
+            val wasGlowing = glowActive
+            resetFired()
+            if (wasGlowing) onGrayCancel()
         }
 
         fun onEvent(ev: MotionEvent) {
@@ -150,29 +182,27 @@ class WheelController(
                     pressedView = rv.findChildViewUnder(ev.x, ev.y)
                     armed = isGrayZone(pressedView)
                     longFired = false
-                    if (armed) rv.removeCallbacks(longPressTask)
-                    if (armed) rv.postDelayed(longPressTask, GRAY_LONG_PRESS_MS)
+                    glowActive = false
+                    if (armed) rv.postDelayed(armTask, GRAY_LONG_PRESS_MS)
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    if (armed && !longFired) {
-                        if (Math.abs(ev.x - downX) > slop || Math.abs(ev.y - downY) > slop) {
-                            armed = false
-                            rv.removeCallbacks(longPressTask)
-                        }
+                    if (!armed) return
+                    if (Math.abs(ev.x - downX) > slop || Math.abs(ev.y - downY) > slop) {
+                        cancelAll()
                     }
                 }
                 MotionEvent.ACTION_UP -> {
-                    rv.removeCallbacks(longPressTask)
-                    if (armed && !longFired) {
-                        armed = false
-                        onGrayTap()
+                    if (glowActive) {
+                        val v = pressedView
+                        resetFired()
+                        v?.let { onGrayLongPress(it, downRawX, downRawY) }
+                    } else {
+                        val wasArmed = armed
+                        resetFired()
+                        if (wasArmed) onGrayTap()
                     }
-                    longFired = false
                 }
-                MotionEvent.ACTION_CANCEL -> {
-                    rv.removeCallbacks(longPressTask)
-                    armed = false
-                }
+                MotionEvent.ACTION_CANCEL -> cancelAll()
             }
         }
 
@@ -399,10 +429,15 @@ class WheelController(
         )
         upperWheelPanel.animate().cancel()
         upperWheelPanel.visibility = View.VISIBLE
-        upperWheelPanel.translationY = wheelCardH.toFloat()
-        upperWheelPanel.alpha = 0f
-        upperWheelPanel.animate().translationY(0f).alpha(1f).setDuration(160)
-            .setInterpolator(DecelerateInterpolator()).start()
+        if (suppressUpperEntryAnim) {
+            upperWheelPanel.translationY = 0f
+            upperWheelPanel.alpha = 1f
+        } else {
+            upperWheelPanel.translationY = wheelCardH.toFloat()
+            upperWheelPanel.alpha = 0f
+            upperWheelPanel.animate().translationY(0f).alpha(1f).setDuration(160)
+                .setInterpolator(DecelerateInterpolator()).start()
+        }
         upperWheelRecycler.post { updateUpperWheelGlow() }
     }
 
@@ -443,7 +478,7 @@ class WheelController(
             currentUpperGroup = null
             return
         }
-        if (animate) {
+        if (animate && !suppressUpperEntryAnim) {
             upperWheelPanel.animate().cancel()
             upperWheelPanel.animate().translationY(wheelCardH.toFloat()).alpha(0f).setDuration(150)
                 .setInterpolator(DecelerateInterpolator())

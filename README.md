@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-4.9.1-blue)
+![Version](https://img.shields.io/badge/version-4.9.2-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **4.9.2** | 485 | 拨轮交互时序与启动流畅度修复：长按灰色 1s 才从按住点起亮（灰区蓄力不碰卡片），辉光 1s 扩散罩满 BAND 期间手指仍可按着可随时滑动取消，松手才补齐辉光进设置；进设置/滑出/切走均复位辉光叠加层，返回后 BAND 不再整条残留白亮；BAND 推送切换期间上层 wheel 随带同帧推入（禁用独立入场/退场动画），上下层不再先后出现；`TerminalSession` 构建移出主线程，启动页聚合完成后的纯色点阵停止逐帧阴影模糊绘制（`setShadowLayer` 仅聚合动画期间按需启用），消除启动固定卡顿 |
 | **4.9.1** | 484 | 拨轮交互修复与平滑过渡：长按灰色进设置改挂 `RecyclerView.OnItemTouchListener`（可命中非居中的命令卡片），轻点灰色收回复有效；恢复中央辉光框外暗膜与 BAND 固定双层高度+不透明底色，单层 wheel 不再塌成单行；快捷栏↔拨轮切换改为沿滑动方向的推送过渡（新内容从对侧推入、旧内容同向滑出），快速来回划无缝重入 |
 | **4.9.0** | 483 | 终端底部交互改为「固定双层 BAND」：快捷栏（A）与拨轮（B）共用同一固定高度区域（=两层按键高，终端永不渲染其中），区域内**任意方向竖向滑动**（上/下均可、可一路滑出区域）在 A/B 间循环切换，滑完不再停留中间态）；拨轮一层高与快捷栏单键等高对齐。拨轮非聚焦卡片/空白槽仍为「轻点收回、长按 2s」：长按改为从按住点发亮、白色辉光波纹扩散至整条双层 BAND 后进入拨轮设置（原卡片变色脉动反馈移除）。删除 4.8.2 的弹簧替换开合（`androidx.dynamicanimation`），wheel 开合回到带内显隐+淡入淡出，移除 `SwipeableContainer` 横划检测/点击透传通道 |
 | **4.8.1** | 481 | 拨轮推荐升级为多阶后缀预测（Multi-Order Markov）：从最近 24 条命令序列中提取 3 阶/2 阶/1 阶 suffix，优先使用最高阶且样本≥3 的条件概率，不足时自动降阶；`MIN_TRANSITIONS=3` 防止噪声干扰，Laplace 平滑 + 置信度衰减保留不变 |
