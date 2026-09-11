@@ -33,6 +33,14 @@ object TermlouDirs {
             .sortedBy { it.name }
     }
 
+    /** 从 pending 文件名解析点击意图 ID（tile_pending-<毫秒>-<id>.json 取 id 段）；
+     * 旧格式无 ID 段则合成稳定 ID，保证同一文件重复消费时仍可去重。 */
+    fun pendingId(fileName: String): String {
+        val core = fileName.removePrefix(CommandTileService.PENDING_FILE_PREFIX).removeSuffix(".json")
+        val dash = core.indexOf('-')
+        return if (dash >= 0) core.substring(dash + 1) else "legacy-$core"
+    }
+
     /** 首次升级迁移：把旧 workspace/.termlou 里仍有价值的数据搬到新位置。 */
     fun migrateFromWorkspace(context: Context, wsFiles: File) {
         runCatching {

@@ -39,6 +39,7 @@ class TermlouCommandRunner : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val fromExtra = intent?.getStringExtra(EXTRA_COMMAND)?.takeIf { it.isNotBlank() }
+        val extraId = intent?.getStringExtra(EXTRA_ID)
         synchronized(runLock) {
             // 已有命令在执行：本次请求已落盘，服务下次启动时自会按序消费，避免并发执行。
             if (busy) return START_NOT_STICKY
@@ -48,8 +49,12 @@ class TermlouCommandRunner : Service() {
         }
         val pending = collectPendingCommands()
         val commands = buildList {
-            fromExtra?.let { add(it) }
-            addAll(pending)
+            // 同一次点击经 EXTRA 与其落盘备份携带同一意图 ID，只跑一次；
+            // 不同 ID（不同点击/兜底）照常按序跑，不丢任何意图。
+            if (fromExtra != null && markExecuted(extraId ?: "extra-${fromExtra.hashCode()}")) add(fromExtra)
+            for ((id, cmd) in pending) {
+                if (markExecuted(id)) add(cmd)
+            }
         }
         if (commands.isEmpty()) {
             stopSelf()
@@ -78,10 +83,12 @@ class TermlouCommandRunner : Service() {
         return START_NOT_STICKY
     }
 
-    /** 读取所有落盘的待执行命令（按命名排序；不删除，由调用方统一消费）。 */
-    private fun collectPendingCommands(): List<String> {
+    /** 读取所有落盘的待执行命令（按命名排序；不删除，由调用方统一消费）。返回（意图ID，命令）。 */
+    private fun collectPendingCommands(): List<Pair<String, String>> {
         return TermlouDirs.pendingFiles(applicationContext).mapNotNull { f ->
-            runCatching { f.readText().trim().takeIf { it.isNotBlank() } }.getOrNull()
+            val text = runCatching { f.readText().trim().takeIf { it.isNotBlank() } }.getOrNull()
+                ?: return@mapNotNull null
+            TermlouDirs.pendingId(f.name) to text
         }
     }
 
@@ -140,9 +147,24 @@ class TermlouCommandRunner : Service() {
 
     companion object {
         const val EXTRA_COMMAND = "tile_command"
+        const val EXTRA_ID = "tile_intent_id"
         private const val CHANNEL_ID = "term-lou-command"
         private const val NOTIFICATION_ID = 2
         private const val RUN_TIMEOUT_SEC = 600L
+
+        /** 已执行意图 ID（进程级：同一点击的 EXTRA 与落盘备份、冷启动重试都共享 ID，只跑一次）。
+         * 重复只可能来自同一进程内的双胞胎/重试，内存集合充分；新点击永远是新 ID。 */
+        private val executedIds = LinkedHashSet<String>()
+        private const val EXECUTED_IDS_CAP = 100
+
+        /** 记名已执行；返回 false 表示该意图已跑过，本次跳过。 */
+        private fun markExecuted(id: String): Boolean {
+            if (!executedIds.add(id)) return false
+            while (executedIds.size > EXECUTED_IDS_CAP) {
+                executedIds.remove(executedIds.first())
+            }
+            return true
+        }
 
         /** 冷启动重试 150ms 双投的时间窗；超过则视为新的真实点击。 */
         private const val DEDUP_WINDOW_MS = 500L

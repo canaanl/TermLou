@@ -9,6 +9,7 @@ import android.os.SystemClock
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import java.io.File
+import java.util.UUID
 
 class CommandTileService : TileService() {
 
@@ -37,6 +38,7 @@ class CommandTileService : TileService() {
         val target: Intent = if (rootfsReady) {
             Intent(this, TileCommandTrampolineActivity::class.java)
                 .putExtra(TermlouCommandRunner.EXTRA_COMMAND, cmd)
+                .putExtra(TermlouCommandRunner.EXTRA_ID, persistPendingCommand(cmd))
                 // App 在后台时让跳板跑进独立 Task，避免把主界面一起带到前台
                 .apply {
                     if (!isAppForeground()) {
@@ -52,10 +54,8 @@ class CommandTileService : TileService() {
         val pi = PendingIntent.getActivity(this, 0, target,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
-        // 先落盘再启动：即使本次启动被冷启动竞态吞掉，命令也不丢失，
-        // TermlouCommandRunner / MainActivity 会在下次消费 pending 文件。
-        persistPendingCommand(cmd)
-
+        // 命令已在上面落盘（落盘先于启动：即使本次启动被冷启动竞态吞掉，命令也不丢失，
+        // TermlouCommandRunner / MainActivity 会在下次消费 pending 文件）。
         // 进程刚冷起时首次点击的 Activity 启动可能被系统静默丢弃，延迟重试一次补齐。
         // 仅在磁贴仍处于监听期（面板未收起）时补发，并用 runCatching 兜底，绝不让重试导致崩溃。
         val coldStart = SystemClock.elapsedRealtime() - TermLouApp.appColdStartAt < COLD_START_WINDOW_MS
@@ -69,15 +69,18 @@ class CommandTileService : TileService() {
         }
     }
 
-    /** 命令落盘（tmp+rename 原子写，文件名唯一），供启动被丢时兜底消费；连续点击各自成文件不互相覆盖。 */
-    private fun persistPendingCommand(cmd: String) {
+    /** 命令落盘（tmp+rename 原子写，文件名唯一），供启动被丢时兜底消费；连续点击各自成文件不互相覆盖。
+     * 返回本次点击的意图 ID（文件名内），调用方经 EXTRA 透传；消费端按 ID 精确去重，同一次点击只跑一次。 */
+    private fun persistPendingCommand(cmd: String): String {
+        val id = UUID.randomUUID().toString().take(INTENT_ID_LEN)
         runCatching {
             val dir = File(filesDir, ".termlou").apply { mkdirs() }
-            val out = File(dir, PENDING_FILE_PREFIX + System.currentTimeMillis() + ".json")
+            val out = File(dir, PENDING_FILE_PREFIX + System.currentTimeMillis() + "-$id.json")
             val tmp = File(dir, out.name + ".tmp")
             tmp.writeText(cmd)
             tmp.renameTo(out)
         }
+        return id
     }
 
     /** 模板简写 @名 → termlou-ui @名，保证无界面 bash -c 能执行。 */
@@ -97,5 +100,7 @@ class CommandTileService : TileService() {
         const val PENDING_FILE_PREFIX = "tile_pending-"
         private const val COLD_START_WINDOW_MS = 3000L
         private const val RETRY_DELAY_MS = 150L
+        /** 意图 ID 长度（UUID 前缀，无连字符，文件名解析安全）。 */
+        private const val INTENT_ID_LEN = 8
     }
 }

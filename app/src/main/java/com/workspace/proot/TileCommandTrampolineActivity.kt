@@ -20,9 +20,17 @@ class TileCommandTrampolineActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val cmd = intent.getStringExtra(TermlouCommandRunner.EXTRA_COMMAND)?.takeIf { it.isNotBlank() }
-            ?: readPendingCommand()
-        if (cmd != null) {
+        val extraCmd = intent.getStringExtra(TermlouCommandRunner.EXTRA_COMMAND)?.takeIf { it.isNotBlank() }
+        val extraId = intent.getStringExtra(TermlouCommandRunner.EXTRA_ID)
+        val resolved: Pair<String, String?>? = if (extraCmd != null) {
+            extraCmd to extraId
+        } else {
+            readPendingFile()?.let { f ->
+                val text = runCatching { f.readText().trim().takeIf { it.isNotBlank() } }.getOrNull()
+                text?.let { it to TermlouDirs.pendingId(f.name) }
+            }
+        }
+        if (resolved != null) {
             if (!Settings.canDrawOverlays(this)) {
                 runCatching {
                     startActivity(
@@ -33,13 +41,13 @@ class TileCommandTrampolineActivity : Activity() {
                     )
                 }
             } else {
-                startCommandService(cmd)
+                startCommandService(resolved.first, resolved.second)
             }
         }
         finish()
     }
 
-    private fun startCommandService(cmd: String) {
+    private fun startCommandService(cmd: String, cmdId: String?) {
         val tryStart = Runnable {
             if (startedService) return@Runnable
             runCatching {
@@ -47,6 +55,7 @@ class TileCommandTrampolineActivity : Activity() {
                 startForegroundService(
                     Intent(this, TermlouCommandRunner::class.java)
                         .putExtra(TermlouCommandRunner.EXTRA_COMMAND, cmd)
+                        .apply { cmdId?.let { putExtra(TermlouCommandRunner.EXTRA_ID, it) } }
                 )
             }.onFailure {
                 startedService = false
@@ -58,6 +67,7 @@ class TileCommandTrampolineActivity : Activity() {
                             startForegroundService(
                                 Intent(this, TermlouCommandRunner::class.java)
                                     .putExtra(TermlouCommandRunner.EXTRA_COMMAND, cmd)
+                                    .apply { cmdId?.let { putExtra(TermlouCommandRunner.EXTRA_ID, it) } }
                             )
                         }
                     }
@@ -67,13 +77,11 @@ class TileCommandTrampolineActivity : Activity() {
         tryStart.run()
     }
 
-    /** 从 pending 文件读取上一条未能启动的命令（冷启动竞态时兜底）。 */
-    private fun readPendingCommand(): String? {
+    /** 从 pending 文件读取上一条未能启动的命令文件（冷启动竞态时兜底）。 */
+    private fun readPendingFile(): File? {
         val files = TermlouDirs.pendingFiles(this)
         if (files.isEmpty()) return null
-        return runCatching {
-            files.last().readText().trim().takeIf { it.isNotBlank() }
-        }.getOrNull()
+        return files.last()
     }
 
     companion object {
