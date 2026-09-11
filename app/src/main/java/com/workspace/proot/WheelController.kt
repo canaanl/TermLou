@@ -71,6 +71,14 @@ class WheelController(
         onGrayLongPress = { v, x, y -> onGrayLongPress?.invoke(v, x, y) },
         onGrayCancel = { onGrayCancel?.invoke() }
     )
+    private val bandGuard = BandGrayGuard(
+        wheelPanel,
+        onGrayHold = { v, x, y -> onGrayHold?.invoke(v, x, y) },
+        onGrayLongPress = { v, x, y -> onGrayLongPress?.invoke(v, x, y) },
+        onGrayCancel = { onGrayCancel?.invoke() },
+        isInRecycler = { rawX, rawY -> inVisibleRecycler(rawX, rawY) },
+        isWheelVisible = { wheelPanel.visibility == View.VISIBLE }
+    )
 
     private var lastDetectedTui = ""
     private var wheelStartPos = Int.MAX_VALUE / 2
@@ -129,6 +137,26 @@ class WheelController(
     private fun cancelBandGestures() {
         grayGuard.cancelPending()
         upperGrayGuard.cancelPending()
+        bandGuard.cancelPending()
+    }
+
+    /** BAND 空白区触摸（由 SwipeableContainer.dispatchTouchEvent 观察口送入）：白框以外的区域长按进设置。 */
+    fun onBandTouch(ev: MotionEvent) {
+        bandGuard.onEvent(ev)
+    }
+
+    private val tmpLoc = IntArray(2)
+
+    private fun inVisibleRecycler(rawX: Float, rawY: Float): Boolean {
+        val inLower = wheelPanel.visibility == View.VISIBLE && containsPoint(wheelRecycler, rawX, rawY)
+        val inUpper = upperWheelPanel.visibility == View.VISIBLE && containsPoint(upperWheelRecycler, rawX, rawY)
+        return inLower || inUpper
+    }
+
+    private fun containsPoint(v: View, rawX: Float, rawY: Float): Boolean {
+        v.getLocationOnScreen(tmpLoc)
+        return rawX >= tmpLoc[0] && rawX < tmpLoc[0] + v.width &&
+            rawY >= tmpLoc[1] && rawY < tmpLoc[1] + v.height
     }
 
     private class GrayGuard(
@@ -212,6 +240,76 @@ class WheelController(
             val center = rv.width / 2f
             val cCenter = btn.left + btn.width / 2f
             return Math.abs(cCenter - center) >= btn.width / 2f
+        }
+    }
+
+    /**
+     * BAND 级灰区守卫：处理落在两个可见 recycler 之外、白框之外的空白带触摸
+     * （单层 wheel 时上半区空位；双层时带内无空位，天然不触发）。
+     * 与 GrayGuard 同语义（1s 蓄力辉光、松手进设置、滑动/CANCEL 取消），唯独短点无操作，
+     * 保持该区域现有点击无行为不变。落入 recycler 的触摸一律忽略，归各 recycler 守卫处理，
+     * 构造上不可能双重触发。
+     */
+    private class BandGrayGuard(
+        private val host: View,
+        private val onGrayHold: (View, Float, Float) -> Unit,
+        private val onGrayLongPress: (View, Float, Float) -> Unit,
+        private val onGrayCancel: () -> Unit,
+        private val isInRecycler: (rawX: Float, rawY: Float) -> Boolean,
+        private val isWheelVisible: () -> Boolean
+    ) {
+
+        private val slop by lazy { ViewConfiguration.get(host.context).scaledTouchSlop }
+        private var downRawX = 0f
+        private var downRawY = 0f
+        private var armed = false
+        private var glowActive = false
+        private val armTask = Runnable {
+            glowActive = true
+            onGrayHold(host, downRawX, downRawY)
+        }
+
+        fun cancelPending() {
+            if (armed || glowActive) cancelAll() else resetFired()
+        }
+
+        private fun resetFired() {
+            host.removeCallbacks(armTask)
+            armed = false
+            glowActive = false
+        }
+
+        private fun cancelAll() {
+            val wasGlowing = glowActive
+            resetFired()
+            if (wasGlowing) onGrayCancel()
+        }
+
+        fun onEvent(ev: MotionEvent) {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downRawX = ev.rawX
+                    downRawY = ev.rawY
+                    glowActive = false
+                    armed = isWheelVisible() && !isInRecycler(ev.rawX, ev.rawY)
+                    if (armed) host.postDelayed(armTask, GRAY_LONG_PRESS_MS)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (!armed) return
+                    if (Math.abs(ev.rawX - downRawX) > slop || Math.abs(ev.rawY - downRawY) > slop) {
+                        cancelAll()
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (glowActive) {
+                        resetFired()
+                        onGrayLongPress(host, downRawX, downRawY)
+                    } else {
+                        resetFired()
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> cancelAll()
+            }
         }
     }
 

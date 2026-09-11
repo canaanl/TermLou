@@ -23,6 +23,14 @@ private var startX = 0f
     /** downward=true 表示手指下滑（内容跟手往下推开）。 */
     var onVerticalSwipe: ((Boolean) -> Unit)? = null
 
+    /** 只读触摸观察：不拦截、不改分发，供 BAND 级灰区长按守卫使用（落在 recyclers 之外的空白带触摸）。 */
+    var onDispatchTouch: ((MotionEvent) -> Unit)? = null
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        onDispatchTouch?.invoke(ev)
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {

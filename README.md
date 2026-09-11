@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-4.9.4-blue)
+![Version](https://img.shields.io/badge/version-4.9.5-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **4.9.5** | 488 | 快捷栏入口空条：预排版与监听器统一公式（去+8dp）+纠正后显式requestLayout；长按收尾改线性补齐到0.92取消整白帧；BAND空白区（白框以外）长按进设置；遮罩改冷灰霜色+淡噪点颗粒，中心不动 |
 | **4.9.4** | 487 | BAND 切换改共享 ValueAnimator：上下层 wheel 由同一位置曲线逐帧驱动、严格同趟推入；长按进设置的最后辉光补齐 120ms→300ms Decelerate，收尾不突兀；单层 wheel 上层空白区直触本容器路径补竖滑判定，上下滑动可正常切换；detached 预量快捷行高度回填面板尺寸，消除开屏再 measure 的固定卡顿 |
 | **4.9.3** | 486 | 崩溃修复：`TerminalSession` 内部用无参 `Handler()` 构造绑定创建线程的 Looper，只能在主线程创建——4.9.2 误将其搬到 IO 线程导致 `Can't create handler ... Looper.prepare()` 每次启动必崩，现移回主线程构造；保留 4.9.2 的拨轮交互时序与启动流畅度修复 |
 | **4.9.2** | 485 | 拨轮交互时序与启动流畅度修复：长按灰色 1s 才从按住点起亮（灰区蓄力不碰卡片），辉光 1s 扩散罩满 BAND 期间手指仍可按着可随时滑动取消，松手才补齐辉光进设置；进设置/滑出/切走均复位辉光叠加层，返回后 BAND 不再整条残留白亮；BAND 推送切换期间上层 wheel 随带同帧推入（禁用独立入场/退场动画），上下层不再先后出现；`TerminalSession` 构建移出主线程，启动页聚合完成后的纯色点阵停止逐帧阴影模糊绘制（`setShadowLayer` 仅聚合动画期间按需启用），消除启动固定卡顿 |

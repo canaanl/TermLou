@@ -2,12 +2,15 @@ package com.workspace.proot
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.graphics.Shader
 import android.view.View
 import android.view.animation.DecelerateInterpolator
 
@@ -23,14 +26,20 @@ class WheelLevelFrame(
 
     companion object {
         val FRAME_COLOR = Color.WHITE
-        /** 框外暗膜颜色（显著变暗 ~85% 黑）。 */
-        val SCRIM_COLOR = Color.parseColor("#D91E1E1E")
+        /** 框外霜膜颜色：冷灰微提亮（相对纯黑），带一点点毛玻璃味，中心洞口保持不动。 */
+        val SCRIM_COLOR = Color.parseColor("#D62B2F36")
         const val STROKE_DP = 2f
         const val BLUR_DP = 1f
         /** 辉光在框内四周需要的活动范围（上/下/左/右），供 onDraw 外溢不裁切。 */
         const val PAD_DP = 12f
         const val OPEN_MS = 220L
         const val CLOSE_MS = 180L
+        /** 霜噪点颗粒尺寸、透明度级数与 ARGB 高位移（ALPHA_8 只取 alpha 字节，颗粒感只做一点点）。 */
+        const val GRAIN_PX = 64
+        const val GRAIN_ALPHA_LEVELS = 37
+        const val ALPHA_BYTE_SHIFT = 24
+        /** 噪点随机种子（固定种子保证每次启动颗粒分布一致，不闪烁）。 */
+        const val GRAIN_SEED = 7L
     }
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -41,6 +50,10 @@ class WheelLevelFrame(
     }
     private val scrimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = SCRIM_COLOR
+    }
+    /** 霜膜噪点：一次性 64×64 随机颗粒平铺，极淡，只给遮罩区一点点毛玻璃质感。 */
+    private val grainPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        shader = BitmapShader(makeGrain(), Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
     }
     private val scrimBounds = RectF()
     private val scrimHole = RectF()
@@ -54,6 +67,14 @@ class WheelLevelFrame(
     private var frameH = 1f
     private var animator: ValueAnimator? = null
     private var closing = false
+
+    private fun makeGrain(): Bitmap {
+        val bmp = Bitmap.createBitmap(GRAIN_PX, GRAIN_PX, Bitmap.Config.ALPHA_8)
+        val rnd = java.util.Random(GRAIN_SEED)
+        val px = IntArray(GRAIN_PX * GRAIN_PX) { (rnd.nextInt(GRAIN_ALPHA_LEVELS) shl ALPHA_BYTE_SHIFT) }
+        bmp.setPixels(px, 0, GRAIN_PX, 0, 0, GRAIN_PX, GRAIN_PX)
+        return bmp
+    }
 
     fun setLevel(level: Int, cardH: Int, animate: Boolean = true) {
         if (closing) return
@@ -131,6 +152,7 @@ class WheelLevelFrame(
             canvas.clipRect(scrimBounds)
             canvas.clipOutPath(holePath)
             canvas.drawRect(scrimBounds, scrimPaint)
+            canvas.drawRect(scrimBounds, grainPaint)
             canvas.restore()
         }
 

@@ -228,7 +228,9 @@ class TerminalController(
         shortcutInner.measure(measureW, View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
         val measuredRowH = rowTop.measuredHeight
         if (measuredRowH > 0) {
-            val realCardH = measuredRowH + (8 * density).toInt()
+            // 与下方 addOnLayoutChangeListener 用同一公式（wheelCardH = 行高，无 padding）：
+            // 入口即稳态，不再触发纠正，快捷栏下方不再出现空条。
+            val realCardH = measuredRowH
             if (realCardH != wheelCardH) {
                 wheelCardH = realCardH
                 val lp = wheelPanel.layoutParams as? FrameLayout.LayoutParams
@@ -290,9 +292,12 @@ class TerminalController(
                 if (upperWheelPanel.visibility == View.VISIBLE) 2 else 1, wheelCardH, animate = false
             )
             wheelController?.updateCardHeight(wheelCardH)
+            // LP 原地修改后显式请求排版兜底，保证纠正在当前帧序列内落地
+            shortcutContainer.requestLayout()
         }
 
         shortcutContainer.onVerticalSwipe = { downward -> wheelController?.toggle(downward) }
+        shortcutContainer.onDispatchTouch = { ev -> wheelController?.onBandTouch(ev) }
         wheelController?.onGrayTap = { wheelController?.hide() }
         wheelController?.onGrayHold = { _, rawX, rawY ->
             wheelGlowOverlay.burstFromScreen(rawX, rawY)

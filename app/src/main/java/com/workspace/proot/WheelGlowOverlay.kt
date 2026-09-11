@@ -1,5 +1,7 @@
 package com.workspace.proot
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
@@ -9,7 +11,7 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
-import android.view.animation.DecelerateInterpolator
+import android.view.animation.LinearInterpolator
 
 /**
  * wheel 长按特效叠加层：从长按点开始发亮，波纹扩散至整条 BAND
@@ -20,6 +22,10 @@ class WheelGlowOverlay(context: Context) : View(context) {
 
     /** 按住 1s 蓄力后从手指下方扩散至罩满整条 BAND 的时长。 */
     private val burstDurationMs = 1000L
+    /** 松手补齐的目标进度：只到亮白 Blend，不画不透明白帧，收尾不突兀。 */
+    private val settleProgress = 0.92f
+    /** 松手补齐的速率：全部走完约 500ms，按剩余比例折算。 */
+    private val fillMsPerUnit = 500L
 
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var cx = 0f
@@ -60,25 +66,30 @@ class WheelGlowOverlay(context: Context) : View(context) {
         invalidate()
     }
 
-    /** 松手：把剩余辉光在 fillMs 内补齐，播完一帧整白后回调 onDone（用于进设置）。
-     * 补齐用较长时长 + Decelerate：靠近整白时速度趋近于 0，最后一下高亮不突兀。 */
-    fun finishBurst(onDone: (() -> Unit)? = null, fillMs: Long = 300L) {
+    /** 松手：把剩余辉光线性补齐到 0.92（永不画整白帧），到位回调 onDone（用于进设置）。
+     * 匀速无速率跳变 + 时长按剩余比例，到位即进设置，收尾从"弹白+硬切"变成"柔光渐满→设置滑入"。 */
+    fun finishBurst(onDone: (() -> Unit)? = null) {
         if (width <= 0 || height <= 0) {
             onDone?.invoke()
             return
         }
         animator?.cancel()
-        if (progress >= 1f || fillMs <= 0) {
-            progress = 1f
-            onEnd = onDone
+        if (progress >= settleProgress) {
+            progress = settleProgress
             invalidate()
+            onDone?.invoke()
             return
         }
-        onEnd = onDone
-        animator = ValueAnimator.ofFloat(progress, 1f).apply {
-            duration = fillMs
-            interpolator = DecelerateInterpolator()
+        onEnd = null
+        animator = ValueAnimator.ofFloat(progress, settleProgress).apply {
+            duration = ((1f - progress) * fillMsPerUnit).toLong().coerceAtLeast(80L)
+            interpolator = LinearInterpolator()
             addUpdateListener { progress = it.animatedValue as Float; invalidate() }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    onDone?.invoke()
+                }
+            })
             start()
         }
     }
