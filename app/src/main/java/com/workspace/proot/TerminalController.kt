@@ -210,7 +210,9 @@ class TerminalController(
                 LinearLayout.LayoutParams.MATCH_PARENT, wheelCardH * 2
             )
             minimumHeight = wheelCardH * 2
-            setBackgroundColor(scope.cSurface)
+            // 容器底只在单层 wheel 上半区空行露出（无 scrim 覆盖）：直接用霜罩合成色，
+            // 与下半区非聚焦（底色+霜罩）同色接平。bar/双层时均被不透明内容全覆盖，零影响。
+            setBackgroundColor(frostBlended(scope.cSurface))
             addView(shortcutInner)
             addView(upperWheelPanel)
             addView(wheelPanel)
@@ -400,6 +402,16 @@ class TerminalController(
     fun refreshAllRows() {
         scope.shortcutManager.refreshAllRows(rowTop, rowBottom, shortcutInner, ::createShortcutKey, ::createCtrlKey)
         wheelController?.refreshAll()
+    }
+
+    /** 霜罩盖在底色上的合成色（src-over，随主题自适应）。 */
+    private fun frostBlended(base: Int): Int {
+        val scrim = WheelLevelFrame.SCRIM_COLOR
+        val a = (scrim ushr 24) / 255f
+        val r = ((scrim shr 16) and 0xFF) * a + ((base shr 16) and 0xFF) * (1f - a)
+        val g = ((scrim shr 8) and 0xFF) * a + ((base shr 8) and 0xFF) * (1f - a)
+        val b = (scrim and 0xFF) * a + (base and 0xFF) * (1f - a)
+        return (0xFF shl 24) or (r.toInt() shl 16) or (g.toInt() shl 8) or b.toInt()
     }
 
     private fun createShortcutKey(label: String, seq: String, hasCtrl: Boolean = false, ctrlSeq: String = "", widthPx: Int = 0): Button {
