@@ -14,7 +14,7 @@ object KeepAliveWakeLock {
     private var active = false
     private var statusListener: ((String) -> Unit)? = null
     private val idleRunnable = Runnable { release() }
-    private const val IDLE_TIMEOUT_MS = 90_000L
+    private const val IDLE_TIMEOUT_MS = 300_000L
 
     fun init(context: Context) {
         if (pm == null) {
