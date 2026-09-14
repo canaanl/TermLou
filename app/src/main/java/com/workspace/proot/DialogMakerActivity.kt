@@ -210,7 +210,7 @@ val testRow = LinearLayout(this).apply {
         testRow.addView(testBtn)
         SegmentStyle.applyRow(
             testRow,
-            listOf(SegmentStyle.Fill(theme.primary, Color.WHITE)),
+            listOf(null),
             theme.outline,
             theme.onSurface
         )
@@ -239,7 +239,7 @@ val testRow = LinearLayout(this).apply {
         SegmentStyle.applyRow(
             row2,
             listOf(
-                SegmentStyle.Fill(theme.primary, Color.WHITE),
+                null,
                 null
             ),
             theme.outline,
@@ -376,13 +376,13 @@ val testRow = LinearLayout(this).apply {
             getString(R.string.dm_ctrl_buttons) to { addButtonsCtrl() }
         )
         for ((text, action) in labels) {
-            val b = Button(this).apply {
+val b = Button(this).apply {
                 this.text = "+$text"
-                setTextColor(theme.onSurface)
+                setTextColor(theme.primary)
                 isAllCaps = true
                 textSize = UiTokens.TEXT_COMPACT
                 setPadding((10 * dd).toInt(), (4 * dd).toInt(), (10 * dd).toInt(), (4 * dd).toInt())
-                ButtonStyle.apply(this, theme.outline)
+                ButtonStyle.outlined(this, theme.primary)
                 setOnClickListener { action() }
             }
             inner.addView(b, LinearLayout.LayoutParams(

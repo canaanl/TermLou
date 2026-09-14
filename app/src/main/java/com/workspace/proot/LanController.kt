@@ -107,7 +107,7 @@ class LanController(
         val fill = if (running) {
             SegmentStyle.Fill(scope.cError, 0xFFFFFFFF.toInt())
         } else {
-            SegmentStyle.Fill(scope.cPrimary, Color.WHITE)
+            null
         }
         SegmentStyle.applyRow(row, listOf(fill, null), scope.cOutline, scope.cOnSurface)
     }

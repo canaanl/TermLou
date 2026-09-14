@@ -216,7 +216,7 @@ private fun divider(): View = View(activity).apply {
             SegmentStyle.applyRow(
                 this,
                 listOf(
-                    SegmentStyle.Fill(scope.cPrimary, Color.WHITE),
+                    null,
                     null
                 ),
                 scope.cOutline,
@@ -274,7 +274,7 @@ private fun divider(): View = View(activity).apply {
             SegmentStyle.applyRow(
                 this,
                 listOf(
-                    SegmentStyle.Fill(scope.cPrimary, Color.WHITE),
+                    null,
                     null
                 ),
                 scope.cOutline,
@@ -314,7 +314,7 @@ private fun divider(): View = View(activity).apply {
             SegmentStyle.applyRow(
                 this,
                 listOf(
-                    SegmentStyle.Fill(scope.cPrimary, Color.WHITE),
+                    null,
                     null
                 ),
                 scope.cOutline,
@@ -330,11 +330,11 @@ private fun divider(): View = View(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(Button(activity).apply {
                 text = activity.getString(R.string.open_workshop)
-                setTextColor(Color.WHITE)
+                setTextColor(scope.cPrimary)
                 textSize = UiTokens.TEXT_BODY
                 setPadding(16, 6, 16, 6)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                ButtonStyle.apply(this, scope.cPrimary)
+                ButtonStyle.outlined(this, scope.cPrimary)
                 setOnClickListener { onOpen() }
             })
         })
@@ -396,7 +396,7 @@ private fun divider(): View = View(activity).apply {
             SegmentStyle.applyRow(
                 this,
                 listOf(
-                    SegmentStyle.Fill(scope.cPrimary, Color.WHITE),
+                    null,
                     null
                 ),
                 scope.cOutline,

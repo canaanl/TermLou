@@ -123,7 +123,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         SegmentStyle.applyRow(
             btnRow,
             listOf(
-                SegmentStyle.Fill(theme.primary, Color.WHITE),
+                null,
                 null
             ),
             theme.outline,
@@ -168,7 +168,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         SegmentStyle.applyRow(
             btnRow2,
             listOf(
-                SegmentStyle.Fill(theme.primary, Color.WHITE),
+                null,
                 null
             ),
             theme.outline,

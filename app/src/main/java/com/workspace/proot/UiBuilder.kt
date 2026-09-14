@@ -83,10 +83,10 @@ class UiBuilder(
         })
         val setupBtn = Button(activity).apply {
             text = activity.getString(R.string.setup_extract)
-            setTextColor(Color.WHITE)
+            setTextColor(theme.primary)
             textSize = UiTokens.TEXT_BODY
             setOnClickListener { onInstallClick(this) }
-            ButtonStyle.apply(this, theme.primary)
+            ButtonStyle.outlined(this, theme.primary)
         }
         val progressBar = android.widget.ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 48)
@@ -151,7 +151,7 @@ class UiBuilder(
         SegmentStyle.applyRow(
             fileBottomBar,
             listOf(
-                SegmentStyle.Fill(theme.primary, Color.WHITE),
+                null,
                 null
             ),
             theme.outline,

@@ -105,10 +105,10 @@ class AppPickerDialog(
 
         val doneBtn = Button(ctx).apply {
             text = ctx.getString(R.string.done)
-            setTextColor(Color.WHITE)
+            setTextColor(accent)
             textSize = UiTokens.TEXT_BODY
             isAllCaps = true
-            ButtonStyle.apply(this, accent)
+            ButtonStyle.outlined(this, accent)
         }
         content.addView(doneBtn, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT

@@ -222,7 +222,7 @@ class SplashMakerActivity : AppCompatActivity() {
         SegmentStyle.applyRow(
             row2,
             listOf(
-                SegmentStyle.Fill(theme.primary, Color.WHITE),
+                null,
                 null
             ),
             theme.outline,

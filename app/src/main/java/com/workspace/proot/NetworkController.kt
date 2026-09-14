@@ -392,7 +392,7 @@ class NetworkController(
             val fill = when {
                 !running && !hasApps -> null
                 running -> SegmentStyle.Fill(scope.cError, 0xFFFFFFFF.toInt())
-                else -> SegmentStyle.Fill(scope.cPrimary, Color.WHITE)
+                else -> null
             }
             SegmentStyle.applyRow(row1, listOf(fill, null), scope.cOutline, scope.cOnSurface, SegmentStyle.Bar(0f, false))
         }
@@ -400,7 +400,7 @@ class NetworkController(
             SegmentStyle.applyRow(
                 it,
                 listOf(
-                    SegmentStyle.Fill(scope.cPrimary, Color.WHITE),
+                    null,
                     null
                 ),
                 scope.cOutline,
