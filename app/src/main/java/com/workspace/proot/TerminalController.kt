@@ -40,6 +40,7 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.os.Build
+import android.view.ViewTreeObserver
 import android.view.animation.DecelerateInterpolator
 
 /** 快捷栏↔wheel 推送切换的时长（毫秒）。 */
@@ -458,10 +459,31 @@ class TerminalController(
     }
 
     /** 日间终端配色：白底黑字 + 浅底可读的 ANSI 变体；夜间沿用仿真器默认深色不动。 */
-    private fun applyDayScheme(session: TerminalSession) {
-        val colors = session.emulator.mColors
-        if (colors.mCurrentColors.size < MIN_COLOR_SLOTS) return
-        for ((index, hex) in DAY_SCHEME) colors.tryParseColor(index, hex)
+    private fun tryApplyDayScheme(session: TerminalSession): Boolean {
+        val emulator = session.emulator
+        val ready = emulator != null && emulator.mColors.mCurrentColors.size >= MIN_COLOR_SLOTS
+        if (ready) {
+            for ((index, hex) in DAY_SCHEME) emulator.mColors.tryParseColor(index, hex)
+        }
+        return ready
+    }
+
+    /**
+     * 日间配色必须等 emulator 就绪（库在首次 layout 的 onSizeChanged 里才
+     * initializeEmulator，构造/attach 时必为 null，直接读 mColors 即崩）。
+     * 就绪即刷；未就绪挂一次性全局布局监听，layout 后重试，成功摘除，全程空安全。
+     */
+    private fun ensureDayScheme(session: TerminalSession) {
+        if (tryApplyDayScheme(session)) return
+        terminalView.viewTreeObserver.addOnGlobalLayoutListener(
+            object : ViewTreeObserver.OnGlobalLayoutListener {
+                override fun onGlobalLayout() {
+                    if (tryApplyDayScheme(session)) {
+                        terminalView.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                    }
+                }
+            }
+        )
     }
 
     private fun createShortcutKey(label: String, seq: String, hasCtrl: Boolean = false, ctrlSeq: String = "", widthPx: Int = 0): Button {
@@ -693,7 +715,7 @@ class TerminalController(
                         this@TerminalController
                     )
                     tm.setSession(newSession)
-                    if (!scope.theme.night) applyDayScheme(newSession)
+                    if (!scope.theme.night) ensureDayScheme(newSession)
                     terminalView.attachSession(newSession)
                     activity.showTerminalView()
                     val remaining = maxOf(0L, 800L - (System.currentTimeMillis() - splashStartTime))
