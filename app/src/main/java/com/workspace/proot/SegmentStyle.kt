@@ -10,7 +10,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 
 /**
- * M3 分段按钮组样式：一个圆角描边容器内，段间 1dp 分隔线，选中段填充、其余透明。
+ * M3 分段按钮组样式：圆角描边容器（或无边框全宽条）内，段间 1dp 分隔线，选中段填充、其余透明。
  * 只负责外观，不改变任何布局结构、点击监听与业务逻辑。
  */
 object SegmentStyle {
@@ -28,16 +28,30 @@ object SegmentStyle {
     /** 段外框尺寸：外端圆角半径与段间描边内缩量。 */
     data class Shape(val radius: Float, val inset: Int)
 
-    /** 把一行按钮渲染成分段组：fills 顺序对应各段（null = 未选中/透明）。 */
-    fun applyRow(row: LinearLayout, fills: List<Fill?>, outline: Int, onSurface: Int) {
-        val d = row.resources.displayMetrics.density
-        val radius = RADIUS_DP * d
-        val stroke = (STROKE_DP * d).toInt()
+    /** 行容器形态：圆角半径（dp）与是否保留外描边框。无边框=全宽分段条。 */
+    data class Bar(val radiusDp: Float = RADIUS_DP, val bordered: Boolean = true)
 
-        row.background = GradientDrawable().apply {
-            cornerRadius = radius
-            setStroke(stroke, outline)
-            setColor(Color.TRANSPARENT)
+    /** 把一行按钮渲染成分段组：fills 顺序对应各段（null = 未选中/透明）。 */
+    fun applyRow(
+        row: LinearLayout,
+        fills: List<Fill?>,
+        outline: Int,
+        onSurface: Int,
+        bar: Bar = Bar()
+    ) {
+        val d = row.resources.displayMetrics.density
+        val radius = bar.radiusDp * d
+        val stroke = (STROKE_DP * d).toInt()
+        val inset = if (bar.bordered) stroke else 0
+
+        row.background = if (bar.bordered) {
+            GradientDrawable().apply {
+                cornerRadius = radius
+                setStroke(stroke, outline)
+                setColor(Color.TRANSPARENT)
+            }
+        } else {
+            null
         }
         ensureDividers(row, stroke, outline)
         relayoutMargins(row)
@@ -49,7 +63,7 @@ object SegmentStyle {
             if (child.tag == TAG) continue
             val fill = fills.getOrNull(segment)
             val round = Round(segment == 0, fills.isNotEmpty() && segment == fills.lastIndex)
-            styleSegment(child as Button, fill, Shape(radius, stroke), onSurface, round)
+            styleSegment(child as Button, fill, Shape(radius, inset), onSurface, round)
             segment++
         }
     }

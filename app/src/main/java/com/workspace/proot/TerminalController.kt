@@ -412,8 +412,8 @@ class TerminalController(
         } else {
             null
         }
-        SegmentStyle.applyRow(rowTop, listOf(null, null, null, ctrlFill), scope.cOutline, scope.cOnSurface)
-        SegmentStyle.applyRow(rowBottom, listOf(null, null, null, null), scope.cOutline, scope.cOnSurface)
+        SegmentStyle.applyRow(rowTop, listOf(null, null, null, ctrlFill), scope.cOutline, scope.cOnSurface, SegmentStyle.Bar(0f, false))
+        SegmentStyle.applyRow(rowBottom, listOf(null, null, null, null), scope.cOutline, scope.cOnSurface, SegmentStyle.Bar(0f, false))
     }
 
     /** 霜罩盖在底色上的合成色（src-over，随主题自适应）。 */

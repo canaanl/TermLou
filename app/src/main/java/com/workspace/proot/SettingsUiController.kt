@@ -402,6 +402,10 @@ class SettingsUiController(
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             val keepAliveSw = MaterialSwitch(ContextThemeWrapper(activity, R.style.Theme_TermLou_Slider)).apply {
+                // 根因：AppCompat/MaterialComponents 主题无 materialSwitchStyle，SwitchCompat 的
+                // showText 代码默认 true + textOn/textOff 全 null 会在 onMeasure 里 StaticLayout(null) 崩溃。
+                // 开关文案由独立 TextView 承担，这里永远不需要 ON/OFF 字。
+                showText = false
                 elevation = 8f
                 thumbTintList = controlTint()
                 trackTintList = switchTrackTint()
@@ -480,6 +484,7 @@ class SettingsUiController(
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(MaterialSwitch(ContextThemeWrapper(activity, R.style.Theme_TermLou_Slider)).apply {
+                showText = false
                 elevation = 8f
                 thumbTintList = controlTint()
                 trackTintList = switchTrackTint()

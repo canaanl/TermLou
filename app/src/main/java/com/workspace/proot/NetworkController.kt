@@ -393,7 +393,7 @@ class NetworkController(
                 running -> SegmentStyle.Fill(scope.cError, 0xFFFFFFFF.toInt())
                 else -> SegmentStyle.Fill(scope.cSecondaryContainer, scope.cOnSecondaryContainer)
             }
-            SegmentStyle.applyRow(row1, listOf(fill, null), scope.cOutline, scope.cOnSurface)
+            SegmentStyle.applyRow(row1, listOf(fill, null), scope.cOutline, scope.cOnSurface, SegmentStyle.Bar(0f, false))
         }
         netRow2?.let {
             SegmentStyle.applyRow(
@@ -403,7 +403,8 @@ class NetworkController(
                     null
                 ),
                 scope.cOutline,
-                scope.cOnSurface
+                scope.cOnSurface,
+                SegmentStyle.Bar(0f, false)
             )
         }
     }

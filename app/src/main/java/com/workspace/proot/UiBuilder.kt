@@ -155,7 +155,8 @@ class UiBuilder(
                 null
             ),
             theme.outline,
-            theme.onSurface
+            theme.onSurface,
+            SegmentStyle.Bar(0f, false)
         )
         return fileBottomBar
     }

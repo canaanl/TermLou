@@ -61,6 +61,8 @@ class NetAppPickerDialog(
         content.addView(searchInput)
 
         sysSwitch = MaterialSwitch(ctx).apply {
+            // 同 SettingsUiController：主题无 materialSwitchStyle 时 showText 默认为 true 会 StaticLayout(null) 崩溃。
+            showText = false
             thumbTintList = ColorStateList(
                 arrayOf(
                     intArrayOf(android.R.attr.state_checked),

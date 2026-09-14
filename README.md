@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-5.0.0-blue)
+![Version](https://img.shields.io/badge/version-5.0.1-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.0.1** | 501 | 崩溃修复：MaterialSwitch 在 AppCompat/MaterialComponents 主题下无 materialSwitchStyle，SwitchCompat 的 showText 代码默认 true + textOn/textOff 全 null，onMeasure 里 StaticLayout(null) 必崩（网络→设置滑动、网络选应用两处），4 处开关显式 showText=false 根治；前三 tab 底部按键去圆角去边框改全宽分段条（终端 8 键、文件导入、网络两行，选中填充+分隔线保留） |
 | **5.0.0** | 500 | 外观对齐 Material Design（纯样式）：成对按钮改 M3 分段按钮（圆角描边容器+段间分隔线，主段填充副段透明），终端十二键、文件页两键、LAN 启动/认证、网络两行、设置保存/重置与上游代理同格化；磁贴开关/保留后台/语言与 App 选择对话框换 M3 MaterialSwitch（品牌绿保留）；Tab 指示器改 3dp 主题色下划亮线；输入框改 8dp 圆角 1dp 描边空心字段；状态条改 surfaceContainer+onSurface 常规字体；按钮去掉 3D 唇边改圆角胶囊+涟漪，主题色不变 |
 | **4.9.8** | 491 | 根因修复磁贴双跑：每次点击生成唯一意图ID（pending文件名+EXTRA透传），消费端按ID精确去重，同一次点击只执行一次，不丢任何意图 |
 | **4.9.6** | 489 | 彻底去掉白帧：辉光扩散与松手补齐上限均为0.92亮白blend，删除整白绘制分支与onEnd，全链路无纯白帧；单层wheel上半区空行底色改霜罩合成色，与非聚焦区同色接平 |
