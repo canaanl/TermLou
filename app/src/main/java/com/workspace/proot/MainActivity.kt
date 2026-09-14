@@ -154,7 +154,7 @@ class MainActivity : AppCompatActivity() {
         settingsTab = tabViews[3]
         for (tv in tabViews) toolbar.addView(tv)
         tabViews.forEachIndexed { i, iv ->
-            iv.setColorFilter(if (i == currentTab) Color.WHITE else scope.cOnSurfaceVariant)
+            iv.setColorFilter(if (i == currentTab) scope.cOnSurface else scope.cOnSurfaceVariant)
         }
         tabHost.addView(toolbar)
 
@@ -292,7 +292,7 @@ class MainActivity : AppCompatActivity() {
         val views = listOf(terminalArea, filesArea, networkArea, settingsWrapper)
 
         for (i in 0..3) {
-            tabs[i].setColorFilter(if (i == tabIndex) Color.WHITE else scope.cOnSurfaceVariant)
+            tabs[i].setColorFilter(if (i == tabIndex) scope.cOnSurface else scope.cOnSurfaceVariant)
         }
         if (tabIndex != prev) {
             tabs[tabIndex].animate().cancel()
@@ -392,7 +392,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadThemeColors() {
-        scope.theme = ThemeColors.default()
+        val night = SettingsManager(scope.prefs).nightMode
+        scope.theme = ThemeColors.default(night)
         val t = scope.theme
         scope.cSurface = t.surface
         scope.cSurfaceVariant = t.surfaceVariant

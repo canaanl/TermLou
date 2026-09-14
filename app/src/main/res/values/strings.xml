@@ -30,6 +30,7 @@
     <string name="tab_settings">设置</string>
 
     <!-- 设置：字号/命令 -->
+    <string name="settings_ui_title">界面设置</string>
     <string name="settings_font_title">终端字号设置</string>
     <string name="font_changed_fmt">终端字号已切换: %1$s</string>
     <string name="settings_shell_title">初始命令</string>
@@ -93,6 +94,8 @@
     <string name="lang_title">语言</string>
     <string name="lang_sub_zh">中文 · 跟随开关切换，切换将重启应用</string>
     <string name="lang_sub_en">English · toggle to switch, switching restarts the app</string>
+    <string name="settings_night_title">夜间模式</string>
+    <string name="settings_night_sub">深色界面，切换后重启生效</string>
 
     <!-- 终端/文件 -->
     <string name="ctrl_reset">Ctrl 超时复位</string>

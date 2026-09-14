@@ -66,7 +66,7 @@ class FileListManager(
         if (dir != File(context.filesDir, "workspace")) {
             val upRow = TextView(context).apply {
                 text = context.getString(R.string.file_back)
-                setTextColor(UiTokens.linkCyan)
+                setTextColor(if (theme.night) UiTokens.linkCyan else theme.tertiary)
                 textSize = nameTextSize
                 typeface = Typeface.MONOSPACE
                 setPadding(16, 14, 16, 14)
@@ -126,7 +126,7 @@ class FileListManager(
             if (isDir) {
                 row.addView(TextView(context).apply {
                     text = fullName
-                    setTextColor(Color.WHITE)
+                    setTextColor(theme.onSurface)
                     textSize = nameTextSize
                     typeface = Typeface.MONOSPACE
                     maxLines = 1
@@ -167,7 +167,7 @@ class FileListManager(
                 }
                 nameContainer.addView(TextView(context).apply {
                     text = basePart
-                    setTextColor(Color.WHITE)
+                    setTextColor(theme.onSurface)
                     textSize = nameTextSize
                     typeface = Typeface.MONOSPACE
                     maxLines = 1
@@ -177,7 +177,7 @@ class FileListManager(
                 if (extPart.isNotEmpty()) {
                     nameContainer.addView(TextView(context).apply {
                         text = extPart
-                        setTextColor(Color.WHITE)
+                        setTextColor(theme.onSurface)
                         textSize = nameTextSize
                         typeface = Typeface.MONOSPACE
                         maxLines = 1

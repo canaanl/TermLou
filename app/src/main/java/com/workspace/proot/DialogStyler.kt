@@ -25,7 +25,7 @@ object DialogStyler {
                     when (which) {
                         AlertDialog.BUTTON_POSITIVE -> theme.primary
                         AlertDialog.BUTTON_NEUTRAL -> theme.error
-                        else -> Color.WHITE
+                        else -> theme.onSurface
                     }
                 )
                 it.isAllCaps = true

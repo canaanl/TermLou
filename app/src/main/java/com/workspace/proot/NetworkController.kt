@@ -137,10 +137,10 @@ class NetworkController(
         netSearch = EditText(activity).apply {
             hint = activity.getString(R.string.net_search_hint)
             setHintTextColor(dim)
-            setTextColor(Color.WHITE)
+            setTextColor(scope.cOnSurface)
             textSize = UiTokens.TEXT_COMPACT
             setSingleLine(true)
-            setBackgroundColor(UiTokens.searchBg)
+            setBackgroundColor(if (scope.theme.night) UiTokens.searchBg else scope.theme.surfaceContainerHighest)
             setPadding((10 * density).toInt(), (6 * density).toInt(), (10 * density).toInt(), (6 * density).toInt())
             addTextChangedListener(object : android.text.TextWatcher {
                 override fun afterTextChanged(s: android.text.Editable?) = scheduleNetFlows()
@@ -178,7 +178,7 @@ class NetworkController(
 
     private fun statValue(): TextView {
         val out = TextView(activity)
-        out.setTextColor(Color.WHITE)
+        out.setTextColor(scope.cOnSurface)
         out.textSize = UiTokens.TEXT_COMPACT
         out.typeface = Typeface.MONOSPACE
         out.maxLines = 2
@@ -304,7 +304,7 @@ class NetworkController(
             })
             addView(TextView(activity).apply {
                 text = label
-                setTextColor(Color.WHITE)
+                setTextColor(scope.cOnSurface)
                 textSize = UiTokens.TEXT_META
                 typeface = Typeface.MONOSPACE
                 maxLines = 2
@@ -378,6 +378,7 @@ class NetworkController(
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(scope.cSurface)
             addView(row1)
+            addView(SegmentStyle.hDivider(activity, scope.cOutline))
             addView(row2)
             applyNetSegments()
         }
@@ -391,7 +392,7 @@ class NetworkController(
             val fill = when {
                 !running && !hasApps -> null
                 running -> SegmentStyle.Fill(scope.cError, 0xFFFFFFFF.toInt())
-                else -> SegmentStyle.Fill(scope.cSecondaryContainer, scope.cOnSecondaryContainer)
+                else -> SegmentStyle.Fill(scope.cPrimary, Color.WHITE)
             }
             SegmentStyle.applyRow(row1, listOf(fill, null), scope.cOutline, scope.cOnSurface, SegmentStyle.Bar(0f, false))
         }
@@ -399,7 +400,7 @@ class NetworkController(
             SegmentStyle.applyRow(
                 it,
                 listOf(
-                    SegmentStyle.Fill(scope.cSecondaryContainer, scope.cOnSecondaryContainer),
+                    SegmentStyle.Fill(scope.cPrimary, Color.WHITE),
                     null
                 ),
                 scope.cOutline,
@@ -437,7 +438,7 @@ class NetworkController(
             for ((index, bucket) in buckets.withIndex()) {
                 listBox.addView(TextView(activity).apply {
                     text = "${index + 1}. ${bucket.first}  ${formatBytes(bucket.second)}"
-                    setTextColor(Color.WHITE)
+                    setTextColor(scope.theme.onSurface)
                     textSize = UiTokens.TEXT_COMPACT
                     typeface = Typeface.MONOSPACE
                     maxLines = 1
@@ -448,7 +449,7 @@ class NetworkController(
         }
         fun modeButton(text: String, onClick: () -> Unit): Button = Button(activity).apply {
             this.text = text
-            setTextColor(Color.WHITE)
+            setTextColor(scope.theme.onSurface)
             textSize = UiTokens.TEXT_BODY
             isAllCaps = true
             maxLines = 1

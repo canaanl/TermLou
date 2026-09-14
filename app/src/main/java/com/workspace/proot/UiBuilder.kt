@@ -76,7 +76,7 @@ class UiBuilder(
         }
         setupArea.addView(TextView(activity).apply {
             text = activity.getString(R.string.setup_title)
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             textSize = UiTokens.TEXT_TITLE
             setPadding(0, 0, 0, 16)
@@ -94,7 +94,7 @@ class UiBuilder(
         }
         val progressText = TextView(activity).apply {
             text = ""
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             textSize = UiTokens.TEXT_COMPACT
         }
         setupArea.addView(setupBtn)
@@ -151,7 +151,7 @@ class UiBuilder(
         SegmentStyle.applyRow(
             fileBottomBar,
             listOf(
-                SegmentStyle.Fill(theme.secondaryContainer, theme.onSecondaryContainer),
+                SegmentStyle.Fill(theme.primary, Color.WHITE),
                 null
             ),
             theme.outline,

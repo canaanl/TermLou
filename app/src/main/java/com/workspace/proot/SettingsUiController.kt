@@ -54,7 +54,7 @@ class SettingsUiController(
         }
         settingsScroll.addView(settingsInner)
 
-        buildFontSection(settingsInner, density)
+        buildDisplaySection(settingsInner, density)
         settingsInner.addView(divider())
         buildShellSection(settingsInner)
         settingsInner.addView(divider())
@@ -79,8 +79,6 @@ class SettingsUiController(
         lan.buildSettingsBlock(settingsInner)
         buildKeepAliveRow(settingsInner)
         buildStorageRow(settingsInner)
-        settingsInner.addView(divider())
-        buildLanguageRow(settingsInner)
 
         settingsWrapper.addView(settingsScroll, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
@@ -119,7 +117,7 @@ class SettingsUiController(
     private fun sectionTitle(parent: LinearLayout, text: String, body: Boolean = false) {
         parent.addView(TextView(activity).apply {
             this.text = text
-            setTextColor(Color.WHITE)
+            setTextColor(scope.cOnSurface)
             typeface = Typeface.DEFAULT_BOLD
             textSize = if (body) UiTokens.TEXT_BODY else UiTokens.TEXT_TITLE
             setPadding(0, 0, 0, 4)
@@ -135,8 +133,15 @@ class SettingsUiController(
         })
     }
 
+    private fun buildDisplaySection(parent: LinearLayout, density: Float) {
+        sectionTitle(parent, activity.getString(R.string.settings_ui_title))
+        buildFontSection(parent, density)
+        buildLanguageRow(parent)
+        buildNightRow(parent)
+    }
+
     private fun buildFontSection(parent: LinearLayout, density: Float) {
-        sectionTitle(parent, activity.getString(R.string.settings_font_title))
+        sectionTitle(parent, activity.getString(R.string.settings_font_title), body = true)
         val slider = TickSlider(ContextThemeWrapper(activity, R.style.Theme_TermLou_Slider)).apply {
             valueFrom = 0f
             valueTo = 4f
@@ -165,7 +170,7 @@ class SettingsUiController(
         parent.addView(shellEdit)
         parent.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 8, 0, 0)
+            setPadding(0, (8 * activity.resources.displayMetrics.density).toInt(), 0, 0)
             addView(Button(activity).apply {
                 text = activity.getString(R.string.save)
                 setTextColor(Color.WHITE)
@@ -201,7 +206,7 @@ class SettingsUiController(
             SegmentStyle.applyRow(
                 this,
                 listOf(
-                    SegmentStyle.Fill(scope.cSecondaryContainer, scope.cOnSecondaryContainer),
+                    SegmentStyle.Fill(scope.cPrimary, Color.WHITE),
                     null
                 ),
                 scope.cOutline,
@@ -223,7 +228,7 @@ class SettingsUiController(
         parent.addView(tileEdit)
         parent.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 8, 0, 0)
+            setPadding(0, (8 * activity.resources.displayMetrics.density).toInt(), 0, 0)
             addView(Button(activity).apply {
                 text = activity.getString(R.string.save)
                 setTextColor(Color.WHITE)
@@ -259,7 +264,7 @@ class SettingsUiController(
             SegmentStyle.applyRow(
                 this,
                 listOf(
-                    SegmentStyle.Fill(scope.cSecondaryContainer, scope.cOnSecondaryContainer),
+                    SegmentStyle.Fill(scope.cPrimary, Color.WHITE),
                     null
                 ),
                 scope.cOutline,
@@ -299,7 +304,7 @@ class SettingsUiController(
             SegmentStyle.applyRow(
                 this,
                 listOf(
-                    SegmentStyle.Fill(scope.cSecondaryContainer, scope.cOnSecondaryContainer),
+                    SegmentStyle.Fill(scope.cPrimary, Color.WHITE),
                     null
                 ),
                 scope.cOutline,
@@ -381,7 +386,7 @@ class SettingsUiController(
             SegmentStyle.applyRow(
                 this,
                 listOf(
-                    SegmentStyle.Fill(scope.cSecondaryContainer, scope.cOnSecondaryContainer),
+                    SegmentStyle.Fill(scope.cPrimary, Color.WHITE),
                     null
                 ),
                 scope.cOutline,
@@ -396,12 +401,12 @@ class SettingsUiController(
             setPadding(0, 0, 0, 0)
             addView(TextView(activity).apply {
                 text = activity.getString(R.string.keepalive_title)
-                setTextColor(Color.WHITE)
+                setTextColor(scope.cOnSurface)
                 typeface = Typeface.DEFAULT_BOLD
                 textSize = UiTokens.TEXT_BODY
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
-            val keepAliveSw = MaterialSwitch(ContextThemeWrapper(activity, R.style.Theme_TermLou_Slider)).apply {
+            val keepAliveSw = MaterialSwitch(ContextThemeWrapper(activity, R.style.Theme_TermLou_Switch)).apply {
                 // 根因：AppCompat/MaterialComponents 主题无 materialSwitchStyle，SwitchCompat 的
                 // showText 代码默认 true + textOn/textOff 全 null 会在 onMeasure 里 StaticLayout(null) 崩溃。
                 // 开关文案由独立 TextView 承担，这里永远不需要 ON/OFF 字。
@@ -454,14 +459,14 @@ class SettingsUiController(
             gravity = Gravity.CENTER_VERTICAL
             addView(TextView(activity).apply {
                 text = activity.getString(R.string.storage_title)
-                setTextColor(Color.WHITE)
+                setTextColor(scope.cOnSurface)
                 typeface = Typeface.DEFAULT_BOLD
                 textSize = UiTokens.TEXT_TITLE
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(Button(activity).apply {
                 text = activity.getString(R.string.view)
-                setTextColor(Color.WHITE)
+                setTextColor(scope.cOnSurface)
                 textSize = UiTokens.TEXT_BODY
                 setPadding(16, 6, 16, 6)
                 ButtonStyle.apply(this, scope.cOutline)
@@ -470,20 +475,20 @@ class SettingsUiController(
         })
     }
 
-    private fun buildLanguageRow(parent: LinearLayout) {
+private fun buildLanguageRow(parent: LinearLayout) {
         val langZh = AppLang.isChinese(activity)
+        sectionTitle(parent, activity.getString(R.string.lang_title), body = true)
         parent.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, 0, 0, 0)
             addView(TextView(activity).apply {
-                text = activity.getString(R.string.lang_title) + " " + if (langZh) "🇨🇳" else "🇺🇸"
-                setTextColor(Color.WHITE)
-                typeface = Typeface.DEFAULT_BOLD
-                textSize = UiTokens.TEXT_TITLE
+                text = if (langZh) "🇨🇳" else "🇺🇸"
+                setTextColor(scope.cOnSurface)
+                textSize = UiTokens.TEXT_BODY
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
-            addView(MaterialSwitch(ContextThemeWrapper(activity, R.style.Theme_TermLou_Slider)).apply {
+            addView(MaterialSwitch(ContextThemeWrapper(activity, R.style.Theme_TermLou_Switch)).apply {
                 showText = false
                 elevation = 8f
                 thumbTintList = controlTint()
@@ -501,6 +506,38 @@ class SettingsUiController(
         })
         parent.addView(TextView(activity).apply {
             text = activity.getString(if (langZh) R.string.lang_sub_zh else R.string.lang_sub_en)
+            setTextColor(scope.cOnSurfaceVariant)
+            textSize = UiTokens.TEXT_META
+            setPadding(0, 0, 0, 0)
+        })
+    }
+
+    private fun buildNightRow(parent: LinearLayout) {
+        sectionTitle(parent, activity.getString(R.string.settings_night_title), body = true)
+        parent.addView(LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, 0)
+            addView(TextView(activity).apply {
+                text = if (scope.settingsManager.nightMode) "🌙" else "☀️"
+                setTextColor(scope.cOnSurface)
+                textSize = UiTokens.TEXT_BODY
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(MaterialSwitch(ContextThemeWrapper(activity, R.style.Theme_TermLou_Switch)).apply {
+                showText = false
+                elevation = 8f
+                thumbTintList = controlTint()
+                trackTintList = switchTrackTint()
+                isChecked = scope.settingsManager.nightMode
+                setOnCheckedChangeListener { _, isChecked ->
+                    scope.settingsManager.setNightMode(isChecked)
+                    restartApp()
+                }
+            })
+        })
+        parent.addView(TextView(activity).apply {
+            text = activity.getString(R.string.settings_night_sub)
             setTextColor(scope.cOnSurfaceVariant)
             textSize = UiTokens.TEXT_META
             setPadding(0, 0, 0, 0)

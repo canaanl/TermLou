@@ -63,7 +63,7 @@ class ShortcutSettingsAdapter(
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         val labelTv = TextView(ctx).apply {
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, UiTokens.TEXT_BODY)
             setSingleLine(true)
             typeface = Typeface.MONOSPACE

@@ -4,11 +4,13 @@ import com.google.android.material.color.utilities.Scheme
 
 /** 语义色槽位，值由 Material 3 tonal palette（seed = 品牌绿 #2D7D46）生成。
  *
- *  混合决策：surface 体系取 Scheme.dark（深色终端定位），primary/error 取
+ *  夜间（默认）：surface 体系取 Scheme.dark（深色终端定位），primary/error 取
  *  Scheme.light 的 tone-40 档，保证全站白字按钮对比度 ≥4.5:1。
- *  outline 槽映射为 M3 outlineVariant（tone 30），保持分隔线/次要按钮深色观感。
+ *  日间（night=false）：整体取 Scheme.light，primary 保持品牌绿 SEED。
+ *  outline 槽夜间映射为 M3 outlineVariant（tone 30），日间用 light.outline（tone 50）。
  */
 data class ThemeColors(
+    val night: Boolean = true,
     val surface: Int = 0xFF1E1E1E.toInt(),
     val surfaceVariant: Int = 0xFF252526.toInt(),
     val surfaceContainerLowest: Int = 0xFF161617.toInt(),
@@ -43,55 +45,69 @@ data class ThemeColors(
 
         private const val TONE_LOWEST = 4f
         private const val TONE_LOW = 10f
-        private const val TONE_BASE = 6f
         private const val TONE_CONTAINER = 12f
         private const val TONE_HIGH = 17f
         private const val TONE_HIGHEST = 22f
+        private const val TONE_LOWEST_DAY = 100f
+        private const val TONE_LOW_DAY = 96f
+        private const val TONE_BASE_NIGHT = 6f
+        private const val TONE_BASE_DAY = 98f
+        private const val TONE_CONTAINER_DAY = 94f
+        private const val TONE_HIGH_DAY = 92f
+        private const val TONE_HIGHEST_DAY = 90f
         private const val TONE_MAX = 100f
         private const val ALPHA_SHIFT = 24
         private const val RED_SHIFT = 16
         private const val GREEN_SHIFT = 8
         private const val BYTE_MASK = 0xFF
 
-        fun default(): ThemeColors {
+        fun default(night: Boolean = true): ThemeColors {
             val dark = Scheme.dark(SEED)
             val light = Scheme.light(SEED)
+            val base = if (night) dark else light
+            val baseTone = if (night) TONE_BASE_NIGHT else TONE_BASE_DAY
+            val lowest = if (night) TONE_LOWEST else TONE_LOWEST_DAY
+            val low = if (night) TONE_LOW else TONE_LOW_DAY
+            val container = if (night) TONE_CONTAINER else TONE_CONTAINER_DAY
+            val high = if (night) TONE_HIGH else TONE_HIGH_DAY
+            val highest = if (night) TONE_HIGHEST else TONE_HIGHEST_DAY
             return ThemeColors(
-                surface = dark.surface,
-                surfaceContainerLowest = containerTone(dark.surface, TONE_LOWEST),
-                surfaceContainerLow = containerTone(dark.surface, TONE_LOW),
-                surfaceContainer = containerTone(dark.surface, TONE_CONTAINER),
-                surfaceContainerHigh = containerTone(dark.surface, TONE_HIGH),
-                surfaceContainerHighest = containerTone(dark.surface, TONE_HIGHEST),
-                surfaceVariant = dark.surfaceVariant,
-                primaryContainer = dark.primaryContainer,
-                outline = dark.outlineVariant,
-                onSurface = dark.onSurface,
-                onSurfaceVariant = dark.onSurfaceVariant,
+                night = night,
+                surface = base.surface,
+                surfaceContainerLowest = containerTone(base.surface, lowest, baseTone),
+                surfaceContainerLow = containerTone(base.surface, low, baseTone),
+                surfaceContainer = containerTone(base.surface, container, baseTone),
+                surfaceContainerHigh = containerTone(base.surface, high, baseTone),
+                surfaceContainerHighest = containerTone(base.surface, highest, baseTone),
+                surfaceVariant = base.surfaceVariant,
+                primaryContainer = base.primaryContainer,
+                outline = if (night) dark.outlineVariant else light.outline,
+                onSurface = base.onSurface,
+                onSurfaceVariant = base.onSurfaceVariant,
                 primary = SEED,
                 error = light.error,
-                tertiary = dark.tertiary,
+                tertiary = base.tertiary,
                 onPrimary = light.onPrimary,
-                onPrimaryContainer = dark.onPrimaryContainer,
-                secondary = dark.secondary,
-                onSecondary = dark.onSecondary,
-                secondaryContainer = dark.secondaryContainer,
-                onSecondaryContainer = dark.onSecondaryContainer,
-                onTertiary = dark.onTertiary,
-                tertiaryContainer = dark.tertiaryContainer,
-                onTertiaryContainer = dark.onTertiaryContainer,
+                onPrimaryContainer = base.onPrimaryContainer,
+                secondary = base.secondary,
+                onSecondary = base.onSecondary,
+                secondaryContainer = base.secondaryContainer,
+                onSecondaryContainer = base.onSecondaryContainer,
+                onTertiary = base.onTertiary,
+                tertiaryContainer = base.tertiaryContainer,
+                onTertiaryContainer = base.onTertiaryContainer,
                 onError = light.onError,
-                errorContainer = dark.errorContainer,
-                onErrorContainer = dark.onErrorContainer,
-                outlineVariant = dark.outlineVariant,
+                errorContainer = base.errorContainer,
+                onErrorContainer = base.onErrorContainer,
+                outlineVariant = base.outlineVariant,
                 surfaceTint = SEED
             )
         }
 
-        /** M3 dark surface 基 tone≈6；容器档按标准 tone 阶梯向黑/白内插近似。 */
-        private fun containerTone(surface: Int, tone: Float): Int {
-            val fraction = if (tone <= TONE_BASE) (TONE_BASE - tone) / TONE_BASE else (tone - TONE_BASE) / (TONE_MAX - TONE_BASE)
-            val endpoint = if (tone <= TONE_BASE) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
+        /** M3 surface 基 tone（深 6 / 浅 98）；容器档按标准 tone 阶梯向黑/白内插近似。 */
+        private fun containerTone(surface: Int, tone: Float, base: Float): Int {
+            val fraction = if (tone <= base) (base - tone) / base else (tone - base) / (TONE_MAX - base)
+            val endpoint = if (tone <= base) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
             val sR = (surface shr RED_SHIFT) and BYTE_MASK
             val sG = (surface shr GREEN_SHIFT) and BYTE_MASK
             val sB = surface and BYTE_MASK

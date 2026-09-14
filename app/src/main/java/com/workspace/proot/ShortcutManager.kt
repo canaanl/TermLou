@@ -212,7 +212,7 @@ class ShortcutManager(
         val nameEdit = EditText(context).apply {
             setText(oldLabel)
             hint = context.getString(R.string.sc_name_hint)
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             setHintTextColor(theme.onSurfaceVariant)
             setBackgroundColor(theme.outline)
             setPadding(8, 6, 8, 6)
@@ -220,7 +220,7 @@ class ShortcutManager(
         val cmdEdit = EditText(context).apply {
             setText(oldCmd)
             hint = context.getString(R.string.sc_cmd_hint)
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             setHintTextColor(theme.onSurfaceVariant)
             setBackgroundColor(theme.outline)
             setPadding(8, 6, 8, 6)

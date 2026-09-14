@@ -18,7 +18,9 @@ import com.google.android.material.snackbar.Snackbar
 
 class ShortcutGroupActivity : Activity() {
 
-    private val theme = ThemeColors.default()
+    private val theme: ThemeColors by lazy {
+        ThemeColors.default(SettingsManager(getSharedPreferences("term-lou-settings", MODE_PRIVATE)).nightMode)
+    }
     private lateinit var root: LinearLayout
     private lateinit var settingsManager: SettingsManager
     private lateinit var adapter: ShortcutSettingsAdapter
@@ -63,7 +65,7 @@ class ShortcutGroupActivity : Activity() {
 
         val titleTv = TextView(this).apply {
             text = "\uD83D\uDCC1 " + groupName
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             textSize = UiTokens.TEXT_TITLE
             typeface = Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -154,7 +156,7 @@ class ShortcutGroupActivity : Activity() {
         val nameEdit = EditText(this).apply {
             setText(oldLabel)
             hint = getString(R.string.sc_name_hint)
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             setHintTextColor(theme.onSurfaceVariant)
             setBackgroundColor(theme.outline)
             setPadding((8 * d).toInt(), (6 * d).toInt(), (8 * d).toInt(), (6 * d).toInt())
@@ -162,7 +164,7 @@ class ShortcutGroupActivity : Activity() {
         val cmdEdit = EditText(this).apply {
             setText(oldCmd)
             hint = getString(R.string.sc_cmd_hint)
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             setHintTextColor(theme.onSurfaceVariant)
             setBackgroundColor(theme.outline)
             setPadding((8 * d).toInt(), (6 * d).toInt(), (8 * d).toInt(), (6 * d).toInt())

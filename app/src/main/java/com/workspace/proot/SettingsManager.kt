@@ -21,6 +21,8 @@ class SettingsManager(private val prefs: SharedPreferences) {
         private set
     var keepAlive: Boolean = false
         private set
+    var nightMode: Boolean = true
+        private set
 
     val fontSizes = listOf(18, 22, 28, 34, 40)
 
@@ -33,6 +35,7 @@ class SettingsManager(private val prefs: SharedPreferences) {
         shellCmd = prefs.getString("shellCmd", "") ?: ""
         tileCommand = prefs.getString("tileCommand", "") ?: ""
         keepAlive = prefs.getBoolean("keepAlive", false)
+        nightMode = prefs.getBoolean("nightMode", true)
     }
 
     fun setFontSizeIndex(index: Int) {
@@ -54,6 +57,11 @@ class SettingsManager(private val prefs: SharedPreferences) {
     fun setKeepAlive(enabled: Boolean) {
         keepAlive = enabled
         prefs.edit().putBoolean("keepAlive", enabled).apply()
+    }
+
+    fun setNightMode(enabled: Boolean) {
+        nightMode = enabled
+        prefs.edit().putBoolean("nightMode", enabled).apply()
     }
 
     fun newId(): String = java.util.UUID.randomUUID().toString()

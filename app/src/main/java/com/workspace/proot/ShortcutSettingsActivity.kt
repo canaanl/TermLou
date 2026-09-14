@@ -27,7 +27,9 @@ import java.util.Locale
 
 class ShortcutSettingsActivity : ComponentActivity() {
 
-    private val theme = ThemeColors.default()
+    private val theme: ThemeColors by lazy {
+        ThemeColors.default(SettingsManager(getSharedPreferences("term-lou-settings", MODE_PRIVATE)).nightMode)
+    }
     private val prefs by lazy { getSharedPreferences("term-lou-settings", MODE_PRIVATE) }
     private lateinit var root: LinearLayout
     private lateinit var settingsManager: SettingsManager
@@ -65,7 +67,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
 
         val titleTv = TextView(this).apply {
             text = getString(R.string.sc_manage_title)
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             textSize = UiTokens.TEXT_TITLE
             typeface = Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -252,7 +254,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         val nameEdit = EditText(this).apply {
             setText(src.label.ifBlank { "" })
             hint = getString(R.string.sc_group_name_hint)
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             setHintTextColor(theme.onSurfaceVariant)
             setBackgroundColor(theme.outline)
             setPadding((8 * d).toInt(), (6 * d).toInt(), (8 * d).toInt(), (6 * d).toInt())
@@ -308,7 +310,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         val nameEdit = EditText(this).apply {
             setText(oldLabel)
             hint = getString(R.string.sc_name_hint)
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             setHintTextColor(theme.onSurfaceVariant)
             setBackgroundColor(theme.outline)
             setPadding((8 * d).toInt(), (6 * d).toInt(), (8 * d).toInt(), (6 * d).toInt())
@@ -316,7 +318,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         val cmdEdit = EditText(this).apply {
             setText(oldCmd)
             hint = getString(R.string.sc_cmd_hint)
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             setHintTextColor(theme.onSurfaceVariant)
             setBackgroundColor(theme.outline)
             setPadding((8 * d).toInt(), (6 * d).toInt(), (8 * d).toInt(), (6 * d).toInt())

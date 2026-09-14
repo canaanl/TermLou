@@ -13,6 +13,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.content.res.ColorStateList
+import android.view.ContextThemeWrapper
 import com.google.android.material.materialswitch.MaterialSwitch
 
 private const val COLOR_MASK_RGB = 0x00FFFFFF
@@ -44,23 +45,23 @@ class NetAppPickerDialog(
 
         content.addView(TextView(ctx).apply {
             text = ctx.getString(R.string.picker_capture_title)
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             textSize = UiTokens.TEXT_TITLE
             setPadding(0, 0, 0, (10 * density).toInt())
         })
 
         searchInput = EditText(ctx).apply {
             hint = ctx.getString(R.string.picker_search)
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             setHintTextColor(onSurfaceVariant)
             textSize = UiTokens.TEXT_BODY
             setSingleLine(true)
             setPadding(pad, (8 * density).toInt(), pad, (8 * density).toInt())
-            setBackgroundColor(UiTokens.searchBg)
+            setBackgroundColor(if (theme.night) UiTokens.searchBg else theme.surfaceContainerHighest)
         }
         content.addView(searchInput)
 
-        sysSwitch = MaterialSwitch(ctx).apply {
+        sysSwitch = MaterialSwitch(ContextThemeWrapper(ctx, R.style.Theme_TermLou_Switch)).apply {
             // 同 SettingsUiController：主题无 materialSwitchStyle 时 showText 默认为 true 会 StaticLayout(null) 崩溃。
             showText = false
             thumbTintList = ColorStateList(
@@ -157,7 +158,7 @@ class NetAppPickerDialog(
             }
             val name = TextView(ctx).apply {
                 text = entry.label
-                setTextColor(Color.WHITE)
+                setTextColor(theme.onSurface)
                 textSize = UiTokens.TEXT_BODY
                 setSingleLine(true)
             }

@@ -198,6 +198,7 @@ class TerminalController(
         columnsWrapper = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             addView(rowTop)
+            addView(SegmentStyle.hDivider(activity, scope.cOutline))
             addView(rowBottom)
         }
         shortcutInner = LinearLayout(activity).apply {

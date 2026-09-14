@@ -30,6 +30,7 @@
     <string name="tab_settings">SETTINGS</string>
 
     <!-- Settings: font/command -->
+    <string name="settings_ui_title">DISPLAY</string>
     <string name="settings_font_title">TERMINAL FONT SIZE</string>
     <string name="font_changed_fmt">Font size: %1$s</string>
     <string name="settings_shell_title">STARTUP COMMAND</string>
@@ -93,6 +94,8 @@
     <string name="lang_title">LANGUAGE</string>
     <string name="lang_sub_zh">中文 · 跟随开关切换，切换将重启应用</string>
     <string name="lang_sub_en">English · toggle to switch, switching restarts the app</string>
+    <string name="settings_night_title">NIGHT MODE</string>
+    <string name="settings_night_sub">Dark interface, takes effect after restart</string>
 
     <!-- Terminal/files -->
     <string name="ctrl_reset">Ctrl reset</string>

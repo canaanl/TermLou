@@ -33,7 +33,7 @@ class LanController(
     fun buildSettingsBlock(parent: LinearLayout) {
         parent.addView(TextView(activity).apply {
             text = activity.getString(R.string.lan_title)
-            setTextColor(Color.WHITE)
+            setTextColor(scope.cOnSurface)
             typeface = Typeface.DEFAULT_BOLD
             textSize = UiTokens.TEXT_BODY
             setPadding(0, 0, 0, 4)
@@ -102,7 +102,7 @@ class LanController(
         val fill = if (running) {
             SegmentStyle.Fill(scope.cError, 0xFFFFFFFF.toInt())
         } else {
-            SegmentStyle.Fill(scope.cSecondaryContainer, scope.cOnSecondaryContainer)
+            SegmentStyle.Fill(scope.cPrimary, Color.WHITE)
         }
         SegmentStyle.applyRow(row, listOf(fill, null), scope.cOutline, scope.cOnSurface)
     }

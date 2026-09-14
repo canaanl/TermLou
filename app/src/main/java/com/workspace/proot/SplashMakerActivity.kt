@@ -64,11 +64,14 @@ class SplashMakerActivity : AppCompatActivity() {
         get() = TermlouDirs.base(this)
     private val splashFile: File
         get() = File(storeDir, "splash.json")
+    private val nightTheme: ThemeColors by lazy {
+        ThemeColors.default(SettingsManager(getSharedPreferences("term-lou-settings", MODE_PRIVATE)).nightMode)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         loadCustom()
-        val theme = ThemeColors.default()
+        val theme = nightTheme
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(theme.surface)
@@ -80,7 +83,7 @@ class SplashMakerActivity : AppCompatActivity() {
             setPadding((16 * density()).toInt(), (12 * density()).toInt(), (16 * density()).toInt(), (12 * density()).toInt())
             addView(TextView(this@SplashMakerActivity).apply {
                 text = getString(R.string.sm_title)
-                setTextColor(Color.WHITE)
+                setTextColor(theme.onSurface)
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                 textSize = UiTokens.TEXT_TITLE
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -123,7 +126,7 @@ class SplashMakerActivity : AppCompatActivity() {
             addView(styleGroup, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             addView(TextView(this@SplashMakerActivity).apply {
                 text = getString(R.string.sm_invert)
-                setTextColor(Color.WHITE)
+                setTextColor(theme.onSurface)
             })
             addView(Switch(this@SplashMakerActivity).apply {
                 setOnCheckedChangeListener { _, c ->
@@ -156,6 +159,23 @@ class SplashMakerActivity : AppCompatActivity() {
         }
         bottomBar.addView(row1)
         bottomBar.addView(row2)
+        SegmentStyle.applyRow(
+            row1,
+            listOf(null, null),
+            theme.outline,
+            theme.onSurface,
+            SegmentStyle.Bar(0f, false)
+        )
+        SegmentStyle.applyRow(
+            row2,
+            listOf(
+                SegmentStyle.Fill(theme.primary, Color.WHITE),
+                null
+            ),
+            theme.outline,
+            theme.onSurface,
+            SegmentStyle.Bar(0f, false)
+        )
         root.addView(bottomBar)
         rootFrame = FrameLayout(this).apply {
             addView(root, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
@@ -174,7 +194,7 @@ class SplashMakerActivity : AppCompatActivity() {
                 marginStart = (4 * density()).toInt()
                 marginEnd = (4 * density()).toInt()
             }
-            ButtonStyle.apply(this, if (primary) ThemeColors.default().primary else ThemeColors.default().outline)
+            ButtonStyle.apply(this, if (primary) nightTheme.primary else nightTheme.outline)
             setOnClickListener {
                 if (saving) return@setOnClickListener
                 onClick()

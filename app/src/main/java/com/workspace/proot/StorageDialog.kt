@@ -55,7 +55,7 @@ class StorageDialog(
 
         contentView.addView(TextView(ctx).apply {
             text = ctx.getString(R.string.storage_title)
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             textSize = UiTokens.TEXT_TITLE
             typeface = Typeface.DEFAULT_BOLD
         })
@@ -113,7 +113,7 @@ class StorageDialog(
         legend.addView(sysLabel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         totalLabel = TextView(ctx).apply {
-            setTextColor(UiTokens.totalText)
+            setTextColor(if (theme.night) UiTokens.totalText else theme.onSurface)
             textSize = UiTokens.TEXT_BODY
             typeface = Typeface.DEFAULT_BOLD
             setPadding(0, 12, 0, 0)
@@ -148,7 +148,7 @@ class StorageDialog(
             setPadding(0, (12 * density).toInt(), 0, 0)
         })
         val valueView = TextView(ctx).apply {
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             textSize = UiTokens.TEXT_BODY
             typeface = Typeface.DEFAULT_BOLD
             setPadding(0, 0, 0, 0)

@@ -31,6 +31,14 @@ object SegmentStyle {
     /** 行容器形态：圆角半径（dp）与是否保留外描边框。无边框=全宽分段条。 */
     data class Bar(val radiusDp: Float = RADIUS_DP, val bordered: Boolean = true)
 
+    /** 行间横向分隔线（终端两键行之间、网络两行之间），无大边距。 */
+    fun hDivider(context: android.content.Context, color: Int): View = View(context).apply {
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, (STROKE_DP * resources.displayMetrics.density).toInt()
+        )
+        setBackgroundColor(color)
+    }
+
     /** 把一行按钮渲染成分段组：fills 顺序对应各段（null = 未选中/透明）。 */
     fun applyRow(
         row: LinearLayout,
@@ -42,9 +50,11 @@ object SegmentStyle {
         val d = row.resources.displayMetrics.density
         val radius = bar.radiusDp * d
         val stroke = (STROKE_DP * d).toInt()
-        val inset = if (bar.bordered) stroke else 0
 
-        row.background = if (bar.bordered) {
+        // 边框画在 foreground 浮层（盖在全幅填充之上，像素级对齐，无错位缝）；
+        // 无边框=透明，段间分隔线照常保留。段填充一律全幅顶满（inset 0）。
+        row.background = null
+        row.foreground = if (bar.bordered) {
             GradientDrawable().apply {
                 cornerRadius = radius
                 setStroke(stroke, outline)
@@ -63,7 +73,7 @@ object SegmentStyle {
             if (child.tag == TAG) continue
             val fill = fills.getOrNull(segment)
             val round = Round(segment == 0, fills.isNotEmpty() && segment == fills.lastIndex)
-            styleSegment(child as Button, fill, Shape(radius, inset), onSurface, round)
+            styleSegment(child as Button, fill, Shape(radius, 0), onSurface, round)
             segment++
         }
     }

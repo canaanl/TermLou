@@ -27,7 +27,9 @@ import com.google.android.material.snackbar.Snackbar
 /** 弹窗工坊：图形化设计脚本弹窗，实时预览，导出命令/真机测试。 */
 class DialogMakerActivity : Activity() {
 
-    private val theme = ThemeColors.default()
+    private val theme: ThemeColors by lazy {
+        ThemeColors.default(SettingsManager(getSharedPreferences("term-lou-settings", MODE_PRIVATE)).nightMode)
+    }
 
     private lateinit var root: LinearLayout
     private lateinit var titleEdit: EditText
@@ -75,7 +77,7 @@ class DialogMakerActivity : Activity() {
         }
         titleBar.addView(TextView(this).apply {
             text = getString(R.string.dm_title)
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             textSize = UiTokens.TEXT_TITLE
             typeface = Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -99,7 +101,7 @@ class DialogMakerActivity : Activity() {
         titleEdit = sectionEdit(form, getString(R.string.dm_section_title), getString(R.string.dm_title_hint))
         messageRow = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         messageEdit = EditText(this).apply {
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             setBackgroundColor(theme.primaryContainer)
             textSize = UiTokens.TEXT_BODY
             setHint(getString(R.string.dm_msg_hint))
@@ -136,7 +138,7 @@ class DialogMakerActivity : Activity() {
         }
         radiusLabel = TextView(this).apply {
             text = "${radiusSeek.progress}dp"
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             textSize = UiTokens.TEXT_COMPACT
             gravity = Gravity.CENTER_VERTICAL
             setPadding((10 * d).toInt(), 0, 0, 0)
@@ -171,7 +173,7 @@ class DialogMakerActivity : Activity() {
         // ===== 实时预览 =====
         form.addView(TextView(this).apply {
             text = getString(R.string.dm_preview)
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             typeface = Typeface.DEFAULT_BOLD
             textSize = UiTokens.TEXT_TITLE
             setPadding(0, 0, 0, (8 * d).toInt())
@@ -190,33 +192,48 @@ class DialogMakerActivity : Activity() {
             setPadding((12 * d).toInt(), (8 * d).toInt(), (12 * d).toInt(), (12 * d).toInt())
             setBackgroundColor(theme.surfaceVariant)
         }
+val testRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val testBtn = Button(this).apply {
             text = getString(R.string.dm_test)
             setTextColor(Color.WHITE)
             isAllCaps = true
-            ButtonStyle.apply(this, theme.primary)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener { testOnScreen() }
         }
-        bottomBar.addView(testBtn, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-        ))
+        testRow.addView(testBtn)
+        SegmentStyle.applyRow(
+            testRow,
+            listOf(SegmentStyle.Fill(theme.primary, Color.WHITE)),
+            theme.outline,
+            theme.onSurface,
+            SegmentStyle.Bar(0f, false)
+        )
+        bottomBar.addView(testRow)
         val row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val exportBtn = Button(this).apply {
             text = getString(R.string.dm_export)
             setTextColor(Color.WHITE)
             isAllCaps = true
-            ButtonStyle.apply(this, theme.outline)
             setOnClickListener { exportCommand() }
         }
         val exitBtn = Button(this).apply {
             text = getString(R.string.dm_exit)
             setTextColor(Color.WHITE)
             isAllCaps = true
-            ButtonStyle.apply(this, theme.outline)
             setOnClickListener { finish() }
         }
         row2.addView(exportBtn, weighted(exportBtn))
         row2.addView(exitBtn, weighted(exitBtn))
+        SegmentStyle.applyRow(
+            row2,
+            listOf(
+                SegmentStyle.Fill(theme.primary, Color.WHITE),
+                null
+            ),
+            theme.outline,
+            theme.onSurface,
+            SegmentStyle.Bar(0f, false)
+        )
         bottomBar.addView(row2)
         root.addView(bottomBar)
 
@@ -236,7 +253,7 @@ class DialogMakerActivity : Activity() {
 
     private fun sectionLabel(text: String): TextView = TextView(this).apply {
         this.text = text
-        setTextColor(Color.WHITE)
+        setTextColor(theme.onSurface)
         typeface = Typeface.DEFAULT_BOLD
         textSize = UiTokens.TEXT_BODY
         setPadding(0, (10 * d()).toInt(), 0, (4 * d()).toInt())
@@ -245,7 +262,7 @@ class DialogMakerActivity : Activity() {
     private fun sectionEdit(container: LinearLayout, label: String, hint: String): EditText {
         container.addView(sectionLabel(label))
         val e = EditText(this).apply {
-            setTextColor(Color.WHITE)
+            setTextColor(theme.onSurface)
             setBackgroundColor(theme.primaryContainer)
             textSize = UiTokens.TEXT_BODY
             setHint(hint)
@@ -270,7 +287,7 @@ class DialogMakerActivity : Activity() {
             val rb = RadioButton(this).apply {
                 id = View.generateViewId()
                 text = options[i]
-                setTextColor(Color.WHITE)
+                setTextColor(theme.onSurface)
                 textSize = UiTokens.TEXT_COMPACT
                 isChecked = options[i] == default
                 setPadding((6 * d()).toInt(), 0, (10 * d()).toInt(), 0)
@@ -340,7 +357,7 @@ class DialogMakerActivity : Activity() {
         for ((text, action) in labels) {
             val b = Button(this).apply {
                 this.text = "+$text"
-                setTextColor(Color.WHITE)
+                setTextColor(theme.onSurface)
                 isAllCaps = true
                 textSize = UiTokens.TEXT_COMPACT
                 setPadding((10 * dd).toInt(), (4 * dd).toInt(), (10 * dd).toInt(), (4 * dd).toInt())
@@ -434,13 +451,13 @@ class DialogMakerActivity : Activity() {
         for ((label, def) in fields) {
             container.addView(TextView(this).apply {
                 text = label
-                setTextColor(Color.WHITE)
+                setTextColor(theme.onSurface)
                 textSize = UiTokens.TEXT_COMPACT
                 setPadding(0, (8 * d).toInt(), 0, (2 * d).toInt())
             })
             val e = EditText(this).apply {
                 setText(def)
-                setTextColor(Color.WHITE)
+                setTextColor(theme.onSurface)
                 setSingleLine(true)
             }
             edits[label] = e
@@ -479,14 +496,14 @@ class DialogMakerActivity : Activity() {
             }
             row.addView(TextView(this).apply {
                 text = label
-                setTextColor(Color.WHITE)
+                setTextColor(theme.onSurface)
                 textSize = UiTokens.TEXT_COMPACT
                 typeface = Typeface.MONOSPACE
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             row.addView(Button(this).apply {
                 text = "×"
-                setTextColor(Color.WHITE)
+                setTextColor(theme.onSurface)
                 isAllCaps = true
                 textSize = UiTokens.TEXT_COMPACT
                 setPadding((8 * dd).toInt(), 0, (8 * dd).toInt(), 0)
