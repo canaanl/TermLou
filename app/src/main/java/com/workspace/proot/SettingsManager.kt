@@ -61,7 +61,8 @@ class SettingsManager(private val prefs: SharedPreferences) {
 
     fun setNightMode(enabled: Boolean) {
         nightMode = enabled
-        prefs.edit().putBoolean("nightMode", enabled).apply()
+        // 夜间切换后紧跟着杀进程，必须同步落盘，否则新进程读到旧值（同 setLangExplicit）。
+        prefs.edit().putBoolean("nightMode", enabled).commit()
     }
 
     fun newId(): String = java.util.UUID.randomUUID().toString()
