@@ -32,8 +32,8 @@ object SegmentStyle {
     /** 段端点圆角开关。 */
     data class Round(val left: Boolean, val right: Boolean)
 
-    /** 段内分隔线：画在段右边缘并压住填充，绿连起来、被线切断，永无缝隙。 */
-    data class Divider(val color: Int, val widthPx: Int, val showRight: Boolean)
+    /** 段内分隔线：画在非首段的左边缘（空心侧），填充段全幅顶到接缝，永无遮挡感。 */
+    data class Divider(val color: Int, val widthPx: Int, val showLeft: Boolean)
 
     /** 段绘制规格：外端圆角半径 + 内分隔线。 */
     data class Shape(val radius: Float, val divider: Divider)
@@ -83,9 +83,9 @@ object SegmentStyle {
             // 填充圆角比边框小一个线宽：描边居中压边，同半径会在拐角透出底色楔形缝。
             val fillRadius = if (bar.bordered) (radius - stroke).coerceAtLeast(0f) else radius
             val round = Round(segment == 0, fills.isNotEmpty() && segment == fills.lastIndex)
-            // 压在填充上的线用深色（切断感），压在空心段上的线用浅色（可见性）。
+            // 线画在空心侧：填充段一像素不少地顶到接缝，线占非首段最左 3px。
             val divColor = if (fill != null) DIVIDER_DARK else dividerColor(onSurface)
-            val divider = Divider(divColor, stroke, fills.isNotEmpty() && segment != fills.lastIndex)
+            val divider = Divider(divColor, stroke, segment != 0)
             styleSegment(child, fill, Shape(fillRadius, divider), onSurface, round)
             segment++
         }
@@ -119,10 +119,10 @@ object SegmentStyle {
         }
         val layers = mutableListOf<Drawable>(content)
         val div = shape.divider
-        if (div.showRight) layers.add(ColorDrawable(div.color))
+        if (div.showLeft) layers.add(ColorDrawable(div.color))
         val insetLayer = LayerDrawable(layers.toTypedArray()).apply {
-            if (div.showRight) {
-                setLayerGravity(1, Gravity.RIGHT or Gravity.FILL_VERTICAL)
+            if (div.showLeft) {
+                setLayerGravity(1, Gravity.LEFT or Gravity.FILL_VERTICAL)
                 setLayerWidth(1, div.widthPx)
             }
         }

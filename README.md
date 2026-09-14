@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-5.0.8-blue)
+![Version](https://img.shields.io/badge/version-5.0.9-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.0.9** | 509 | 分隔线挪到空心段左边缘：填充段全幅顶到接缝不再被线压，绿填满、线在旁 |
 | **5.0.8** | 508 | 修复日间启动崩溃：emulator 在首次layout的onSizeChanged里才创建，构造后直读mColors必空指针；改就绪即刷（未就绪挂一次性全局布局监听重试，全程空安全） |
 | **5.0.7** | 507 | 工坊绿填充圆角嵌套（填充半径=边框半径-线宽，拐角不再透底）；返回改名撤销；日间终端白底黑字（session创建后覆写termux配色表11槽：前景/背景/光标+7个浅底不可读ANSI加深变体，夜间沿用默认，还原wrapper钉死） |
 | **5.0.6** | 506 | 快捷管理列表顶缝清零；终端显示区钉死深色底（日间白字可读，仿真器不动）；分隔线按左段填充区分深浅（压绿用深色切断、压空心用浅色）；闪屏row2 padding改margin等高；两工坊Radio圆点显式tint两档可见；反选开关换M3 MaterialSwitch与外面一致 |
