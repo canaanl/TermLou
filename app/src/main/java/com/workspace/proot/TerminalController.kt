@@ -19,6 +19,7 @@ import androidx.lifecycle.LifecycleCoroutineScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.slider.Slider
+import com.termux.terminal.TerminalColors
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
@@ -61,6 +62,12 @@ private const val ANSI_BRIGHT_GREEN = 10
 private const val ANSI_BRIGHT_YELLOW = 11
 private const val ANSI_BRIGHT_CYAN = 14
 private const val ANSI_BRIGHT_WHITE = 15
+
+/** 日间终端底（须与 applyDayScheme 写入 257 槽的值逐位一致）。 */
+private const val DAY_TERM_BG = 0xFFFFFFFF.toInt()
+
+/** 读不到默认配色表时的兜底（termux 默认就是纯黑）。 */
+private const val FALLBACK_TERM_BG = 0xFF000000.toInt()
 
 /** 日间终端配色：白底黑字 + 加深变体。 */
 private val DAY_SCHEME = listOf(
@@ -235,7 +242,8 @@ class TerminalController(
         }
         shortcutInner = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(scope.cSurface)
+            // 按键区底与显示区（仿真器底）同色：余边上下无色差，肉眼无边界。
+            setBackgroundColor(if (scope.theme.night) nightTermBg() else DAY_TERM_BG)
             addView(columnsWrapper)
         }
         shortcutContainer = SwipeableContainer(activity).apply {
@@ -505,6 +513,12 @@ class TerminalController(
         val g = ((scrim shr 8) and 0xFF) * a + ((base shr 8) and 0xFF) * (1f - a)
         val b = (scrim and 0xFF) * a + (base and 0xFF) * (1f - a)
         return (0xFF shl 24) or (r.toInt() shl 16) or (g.toInt() shl 8) or b.toInt()
+    }
+
+    /** 夜间仿真器底：从默认配色表现读 257 槽（不猜色值，与渲染器逐位对齐）。 */
+    private fun nightTermBg(): Int {
+        val slots = TerminalColors().mCurrentColors
+        return if (slots.size >= MIN_COLOR_SLOTS) slots[TERM_BG] else FALLBACK_TERM_BG
     }
 
     /** 日间终端配色：白底黑字 + 浅底可读的 ANSI 变体；夜间沿用仿真器默认深色不动。 */

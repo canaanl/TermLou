@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-5.0.10-blue)
+![Version](https://img.shields.io/badge/version-5.0.11-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.0.11** | 511 | 藏缝：按键区底改与仿真器底同色（夜间从默认配色表实时读257槽、日间纯白），余边上下无色差，肉眼无边界；像素还在，只是看不见 |
 | **5.0.10** | 510 | 去绿到底+空半格结构消除：BAND容器改自适应高度（单层wheel收尾塌格、切回按键行恢复，显示区weight吸收，空半格不存在）；全App去绿色填充（分段选中段全空心、实心绿键改绿边框空心，Ctrl武装/LAN运行/抓包红状态保留） |
 | **5.0.9** | 509 | 分隔线挪到空心段左边缘：填充段全幅顶到接缝不再被线压，绿填满、线在旁 |
 | **5.0.8** | 508 | 修复日间启动崩溃：emulator 在首次layout的onSizeChanged里才创建，构造后直读mColors必空指针；改就绪即刷（未就绪挂一次性全局布局监听重试，全程空安全） |
