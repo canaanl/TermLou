@@ -21,6 +21,7 @@ object SegmentStyle {
     const val RADIUS_DP = 20f
     private const val STROKE_DP = 1f
     private const val DIVIDER_ALPHA = 0x66
+    private const val DIVIDER_DARK = 0x73000000.toInt()
     private const val RGB_MASK = 0x00FFFFFF
     private const val ALPHA_SHIFT = 24
     private val rippleColor = ColorStateList.valueOf(0x1FFFFFFF.toInt())
@@ -74,13 +75,14 @@ object SegmentStyle {
         }
         relayoutMargins(row)
 
-        val divColor = dividerColor(onSurface)
         var segment = 0
         val n = row.childCount
         for (i in 0 until n) {
             val child = row.getChildAt(i) as Button
             val fill = fills.getOrNull(segment)
             val round = Round(segment == 0, fills.isNotEmpty() && segment == fills.lastIndex)
+            // 压在填充上的线用深色（切断感），压在空心段上的线用浅色（可见性）。
+            val divColor = if (fill != null) DIVIDER_DARK else dividerColor(onSurface)
             val divider = Divider(divColor, stroke, fills.isNotEmpty() && segment != fills.lastIndex)
             styleSegment(child, fill, Shape(radius, divider), onSurface, round)
             segment++

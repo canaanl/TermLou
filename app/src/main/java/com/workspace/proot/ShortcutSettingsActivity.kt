@@ -81,7 +81,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
             )
-            setPadding(0, (4 * d).toInt(), 0, (4 * d).toInt())
+            setPadding(0, 0, 0, (4 * d).toInt())
         }
         root.addView(recyclerView)
 

@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-5.0.5-blue)
+![Version](https://img.shields.io/badge/version-5.0.6-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.0.6** | 506 | 快捷管理列表顶缝清零；终端显示区钉死深色底（日间白字可读，仿真器不动）；分隔线按左段填充区分深浅（压绿用深色切断、压空心用浅色）；闪屏row2 padding改margin等高；两工坊Radio圆点显式tint两档可见；反选开关换M3 MaterialSwitch与外面一致 |
 | **5.0.5** | 505 | 分隔线结构根治（独立分隔View删掉，线直接画进段右边缘压住填充，永无缝隙）；工坊四行回标准圆角胶囊；网络两行纵padding清零绿顶住横线；夜间模式改名主题配色；Splash/洞洞板/预览遮罩跟随夜间（点阵绿保留）；对话框标题消息中央着色（排行/编辑/LAN标题日间可见）；快捷管理底栏改分段胶囊；系统信息与域名端口按钮改主题绿圆角边框 |
 | **5.0.4** | 504 | 根因修复夜间模式不生效：setNightMode 用 apply()（异步落盘）后紧跟杀进程重启，落盘根本没执行，新进程读旧值；改 commit() 同步落盘（同 setLangExplicit），重启即生效 |
 | **5.0.3** | 503 | 根因修复4项：①夜间模式不生效——主题加载处用未调 load() 的 SettingsManager 新实例读 nightMode 恒为 true，6 处改直读落盘值；②输入框/按钮边框重叠+填充错位——胶囊行拿顶部 padding 当间距，边框圈住含 padding 的盒子致上沿浮空重叠，4 行改 padding 清零 + topMargin 8dp；③工坊底栏四行显式全宽+对话框 row2 加 8dp 间距；④分隔线不可见——1dp outline 在深底对比度不足，改走 onSurface 40% 透明（两档自适应）；状态栏字号 15sp 改 13sp |

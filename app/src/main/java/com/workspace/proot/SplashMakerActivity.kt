@@ -1,6 +1,7 @@
 package com.workspace.proot
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -13,17 +14,22 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ContextThemeWrapper
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
-import android.widget.Switch
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.materialswitch.MaterialSwitch
 import java.io.File
+
+private const val TINT_MASK_RGB = 0x00FFFFFF
+private const val TINT_ALPHA = 0x66
+private const val ALPHA_SHIFT = 24
 
 /**
  * 启动工坊：96×40 洞洞板绘制开屏点阵（1 像素拆 4，屏尺寸不变仅密度翻倍）。
@@ -105,21 +111,31 @@ class SplashMakerActivity : AppCompatActivity() {
         ).apply { weight = 1f })
         styleGroup = RadioGroup(this).apply {
             orientation = RadioGroup.HORIZONTAL
+            val radioTint = ColorStateList(
+                arrayOf(
+                    intArrayOf(android.R.attr.state_checked),
+                    intArrayOf(-android.R.attr.state_checked)
+                ),
+                intArrayOf(theme.primary, theme.onSurfaceVariant)
+            )
             addView(RadioButton(this@SplashMakerActivity).apply {
                 text = getString(R.string.sm_outline)
                 id = 1001
                 isChecked = true
                 setTextColor(theme.onSurface)
+                androidx.core.widget.CompoundButtonCompat.setButtonTintList(this, radioTint)
             })
             addView(RadioButton(this@SplashMakerActivity).apply {
                 text = getString(R.string.sm_block)
                 id = 1002
                 setTextColor(theme.onSurface)
+                androidx.core.widget.CompoundButtonCompat.setButtonTintList(this, radioTint)
             })
             addView(RadioButton(this@SplashMakerActivity).apply {
                 text = getString(R.string.sm_mixed)
                 id = 1003
                 setTextColor(theme.onSurface)
+                androidx.core.widget.CompoundButtonCompat.setButtonTintList(this, radioTint)
             })
             setOnCheckedChangeListener { _, checkedId ->
                 selectedStyle = when (checkedId) {
@@ -141,7 +157,25 @@ class SplashMakerActivity : AppCompatActivity() {
                 text = getString(R.string.sm_invert)
                 setTextColor(theme.onSurface)
             })
-            addView(Switch(this@SplashMakerActivity).apply {
+            addView(MaterialSwitch(ContextThemeWrapper(this@SplashMakerActivity, R.style.Theme_TermLou_Switch)).apply {
+                showText = false
+                thumbTintList = ColorStateList(
+                    arrayOf(
+                        intArrayOf(android.R.attr.state_checked),
+                        intArrayOf(-android.R.attr.state_checked)
+                    ),
+                    intArrayOf(theme.primary, theme.outline)
+                )
+                trackTintList = ColorStateList(
+                    arrayOf(
+                        intArrayOf(android.R.attr.state_checked),
+                        intArrayOf(-android.R.attr.state_checked)
+                    ),
+                    intArrayOf(
+                        (theme.primary and TINT_MASK_RGB) or (TINT_ALPHA shl ALPHA_SHIFT),
+                        (theme.outline and TINT_MASK_RGB) or (TINT_ALPHA shl ALPHA_SHIFT)
+                    )
+                )
                 setOnCheckedChangeListener { _, c ->
                     invertEnabled = c
                     if (isPhotoSampling) generatePhotoCells()
@@ -173,8 +207,7 @@ class SplashMakerActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            setPadding(0, (8 * density()).toInt(), 0, 0)
+            ).apply { topMargin = (8 * density()).toInt() }
             addView(makeBtn(getString(R.string.sm_preview), true) { preview() })
             addView(makeBtn(getString(R.string.save), true) { save() })
         }

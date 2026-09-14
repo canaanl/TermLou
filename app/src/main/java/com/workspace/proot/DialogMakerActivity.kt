@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -299,6 +300,16 @@ val testRow = LinearLayout(this).apply {
                 text = options[i]
                 setTextColor(theme.onSurface)
                 textSize = UiTokens.TEXT_COMPACT
+                androidx.core.widget.CompoundButtonCompat.setButtonTintList(
+                    this,
+                    ColorStateList(
+                        arrayOf(
+                            intArrayOf(android.R.attr.state_checked),
+                            intArrayOf(-android.R.attr.state_checked)
+                        ),
+                        intArrayOf(theme.primary, theme.onSurfaceVariant)
+                    )
+                )
                 isChecked = options[i] == default
                 setPadding((6 * d()).toInt(), 0, (10 * d()).toInt(), 0)
                 setOnClickListener { refreshPreview() }

@@ -169,6 +169,8 @@ class TerminalController(
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
             )
+            // 仿真器自带深色配色、容器底在日间是浅的：显示区钉死深色，两档白字可读（夜间与原来逐位一致）。
+            setBackgroundColor(ThemeColors.default(true).surface)
             addView(terminalView)
         }
         terminalArea.addView(terminalWrapper)
