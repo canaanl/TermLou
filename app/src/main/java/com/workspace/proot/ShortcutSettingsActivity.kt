@@ -28,7 +28,7 @@ import java.util.Locale
 class ShortcutSettingsActivity : ComponentActivity() {
 
     private val theme: ThemeColors by lazy {
-        ThemeColors.default(SettingsManager(getSharedPreferences("term-lou-settings", MODE_PRIVATE)).nightMode)
+        ThemeColors.default(getSharedPreferences("term-lou-settings", MODE_PRIVATE).getBoolean("nightMode", true))
     }
     private val prefs by lazy { getSharedPreferences("term-lou-settings", MODE_PRIVATE) }
     private lateinit var root: LinearLayout

@@ -106,13 +106,21 @@ class SettingsUiController(
         })
         settingsWrapper.addView(settingsFooter)
     }
-
-    private fun divider(): View = View(activity).apply {
+private fun divider(): View = View(activity).apply {
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
             setMargins(0, 24, 0, 24)
         }
         setBackgroundColor(scope.cOutline)
     }
+
+    /** 成对按钮行的外距：间距走 topMargin（见 shell 行注释），边框只圈按钮条。 */
+    private fun pairRowParams(): LinearLayout.LayoutParams =
+        LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            topMargin = (8 * activity.resources.displayMetrics.density).toInt()
+        }
 
     private fun sectionTitle(parent: LinearLayout, text: String, body: Boolean = false) {
         parent.addView(TextView(activity).apply {
@@ -168,9 +176,11 @@ class SettingsUiController(
             FieldStyle.applyOutlined(it, scope.cOutline, scope.cOnSurface, scope.cOnSurfaceVariant, UiTokens.TEXT_BODY)
         }
         parent.addView(shellEdit)
+        // 根因记录：行间距必须用 topMargin，不能用顶部 padding——胶囊边框圈的是整个
+        // 含 padding 的盒子，padding 会把上沿顶到输入框描边上并造成填充错位。
         parent.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, (8 * activity.resources.displayMetrics.density).toInt(), 0, 0)
+            setPadding(0, 0, 0, 0)
             addView(Button(activity).apply {
                 text = activity.getString(R.string.save)
                 setTextColor(Color.WHITE)
@@ -212,7 +222,7 @@ class SettingsUiController(
                 scope.cOutline,
                 scope.cOnSurface
             )
-        })
+        }, pairRowParams())
     }
 
     private fun buildTileSection(parent: LinearLayout) {
@@ -228,7 +238,7 @@ class SettingsUiController(
         parent.addView(tileEdit)
         parent.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, (8 * activity.resources.displayMetrics.density).toInt(), 0, 0)
+            setPadding(0, 0, 0, 0)
             addView(Button(activity).apply {
                 text = activity.getString(R.string.save)
                 setTextColor(Color.WHITE)
@@ -270,7 +280,7 @@ class SettingsUiController(
                 scope.cOutline,
                 scope.cOnSurface
             )
-        })
+        }, pairRowParams())
     }
 
     private fun buildQuickSection(parent: LinearLayout) {
@@ -343,13 +353,13 @@ class SettingsUiController(
             FieldStyle.applyOutlined(it, scope.cOutline, scope.cOnSurface, scope.cOnSurfaceVariant, UiTokens.TEXT_BODY)
         }
         parent.addView(upEdit)
-        parent.addView(buildUpstreamButtons(upEdit, density))
+        parent.addView(buildUpstreamButtons(upEdit, density), pairRowParams())
     }
 
     private fun buildUpstreamButtons(upEdit: EditText, density: Float): LinearLayout =
         LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, (8 * density).toInt(), 0, 0)
+            setPadding(0, 0, 0, 0)
             addView(Button(activity).apply {
                 text = activity.getString(R.string.save)
                 setTextColor(Color.WHITE)

@@ -28,7 +28,7 @@ import com.google.android.material.snackbar.Snackbar
 class DialogMakerActivity : Activity() {
 
     private val theme: ThemeColors by lazy {
-        ThemeColors.default(SettingsManager(getSharedPreferences("term-lou-settings", MODE_PRIVATE)).nightMode)
+        ThemeColors.default(getSharedPreferences("term-lou-settings", MODE_PRIVATE).getBoolean("nightMode", true))
     }
 
     private lateinit var root: LinearLayout
@@ -192,7 +192,13 @@ class DialogMakerActivity : Activity() {
             setPadding((12 * d).toInt(), (8 * d).toInt(), (12 * d).toInt(), (12 * d).toInt())
             setBackgroundColor(theme.surfaceVariant)
         }
-val testRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+val testRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
         val testBtn = Button(this).apply {
             text = getString(R.string.dm_test)
             setTextColor(Color.WHITE)
@@ -209,7 +215,13 @@ val testRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             SegmentStyle.Bar(0f, false)
         )
         bottomBar.addView(testRow)
-        val row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val row2 = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (8 * d).toInt() }
+        }
         val exportBtn = Button(this).apply {
             text = getString(R.string.dm_export)
             setTextColor(Color.WHITE)

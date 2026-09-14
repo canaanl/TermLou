@@ -14,9 +14,12 @@ import android.widget.LinearLayout
  * 只负责外观，不改变任何布局结构、点击监听与业务逻辑。
  */
 object SegmentStyle {
-    const val RADIUS_DP = 20f
+const val RADIUS_DP = 20f
     private const val STROKE_DP = 1f
     private const val TAG = "seg_divider"
+    private const val DIVIDER_ALPHA = 0x66
+    private const val RGB_MASK = 0x00FFFFFF
+    private const val ALPHA_SHIFT = 24
     private val rippleColor = ColorStateList.valueOf(0x1FFFFFFF.toInt())
 
     /** 选中段的配色方案（品牌绿语义色，可传 secondaryContainer/errorContainer 系）。 */
@@ -31,12 +34,12 @@ object SegmentStyle {
     /** 行容器形态：圆角半径（dp）与是否保留外描边框。无边框=全宽分段条。 */
     data class Bar(val radiusDp: Float = RADIUS_DP, val bordered: Boolean = true)
 
-    /** 行间横向分隔线（终端两键行之间、网络两行之间），无大边距。 */
-    fun hDivider(context: android.content.Context, color: Int): View = View(context).apply {
+    /** 行间横向分隔线（终端两键行之间、网络两行之间），无大边距；颜色同段间分隔线。 */
+    fun hDivider(context: android.content.Context, onSurface: Int): View = View(context).apply {
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, (STROKE_DP * resources.displayMetrics.density).toInt()
         )
-        setBackgroundColor(color)
+        setBackgroundColor(dividerColor(onSurface))
     }
 
     /** 把一行按钮渲染成分段组：fills 顺序对应各段（null = 未选中/透明）。 */
@@ -63,7 +66,7 @@ object SegmentStyle {
         } else {
             null
         }
-        ensureDividers(row, stroke, outline)
+        ensureDividers(row, stroke, dividerColor(onSurface))
         relayoutMargins(row)
 
         var segment = 0
@@ -78,7 +81,11 @@ object SegmentStyle {
         }
     }
 
-    private fun ensureDividers(row: LinearLayout, stroke: Int, outline: Int) {
+    /** 分隔线用 onSurface 40% 透明：outline 在深底上对比度不足，实测不可见；两档主题自适应。 */
+    private fun dividerColor(onSurface: Int): Int =
+        (onSurface and RGB_MASK) or (DIVIDER_ALPHA shl ALPHA_SHIFT)
+
+private fun ensureDividers(row: LinearLayout, stroke: Int, divider: Int) {
         var i = 0
         while (i < row.childCount) {
             if (row.getChildAt(i).tag == TAG) row.removeViewAt(i) else i++
@@ -90,7 +97,7 @@ object SegmentStyle {
             row.addView(
                 View(row.context).apply {
                     tag = TAG
-                    setBackgroundColor(outline)
+                    setBackgroundColor(divider)
                 },
                 insertAt,
                 LinearLayout.LayoutParams(stroke, LinearLayout.LayoutParams.MATCH_PARENT)

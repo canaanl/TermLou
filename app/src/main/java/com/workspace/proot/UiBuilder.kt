@@ -22,7 +22,7 @@ class UiBuilder(
         return TextView(activity).apply {
             text = "Workspace Terminal"
             setTextColor(theme.onSurface)
-            textSize = UiTokens.TEXT_BODY
+            textSize = UiTokens.TEXT_COMPACT
             setPadding(16, 8, 16, 0)
             setBackgroundColor(theme.surfaceContainer)
         }

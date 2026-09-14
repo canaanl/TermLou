@@ -65,7 +65,7 @@ class SplashMakerActivity : AppCompatActivity() {
     private val splashFile: File
         get() = File(storeDir, "splash.json")
     private val nightTheme: ThemeColors by lazy {
-        ThemeColors.default(SettingsManager(getSharedPreferences("term-lou-settings", MODE_PRIVATE)).nightMode)
+        ThemeColors.default(getSharedPreferences("term-lou-settings", MODE_PRIVATE).getBoolean("nightMode", true))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -144,6 +144,10 @@ class SplashMakerActivity : AppCompatActivity() {
         }
         val row1 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
             val ub = makeBtn(getString(R.string.sm_undo)) { undo() }
             ub.setOnLongClickListener { clearAll(); true }
             addView(ub)
@@ -153,6 +157,10 @@ class SplashMakerActivity : AppCompatActivity() {
         }
         val row2 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
             setPadding(0, (8 * density()).toInt(), 0, 0)
             addView(makeBtn(getString(R.string.sm_preview), true) { preview() })
             addView(makeBtn(getString(R.string.save), true) { save() })

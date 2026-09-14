@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-5.0.2-blue)
+![Version](https://img.shields.io/badge/version-5.0.3-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.0.3** | 503 | 根因修复4项：①夜间模式不生效——主题加载处用未调 load() 的 SettingsManager 新实例读 nightMode 恒为 true，6 处改直读落盘值；②输入框/按钮边框重叠+填充错位——胶囊行拿顶部 padding 当间距，边框圈住含 padding 的盒子致上沿浮空重叠，4 行改 padding 清零 + topMargin 8dp；③工坊底栏四行显式全宽+对话框 row2 加 8dp 间距；④分隔线不可见——1dp outline 在深底对比度不足，改走 onSurface 40% 透明（两档自适应）；状态栏字号 15sp 改 13sp |
 | **5.0.2** | 502 | 重大修复8合1：①根治开关消失——MaterialSwitch 在 AppCompat/MaterialComponents 主题下 materialSwitchStyle 落空致 thumb/track 全 null（0尺寸隐形），新增 Theme.TermLou.Switch（M3深色）给4处开关包主题；②分段条填充/边框错位——边框改 foreground 浮层，填充全幅顶满像素对齐；③工坊二级页底栏改文件/网络式无边框全宽分段条；④终端两键行/网络两行之间加横向分隔线；⑤段间分隔线核验；⑥所有分段选中段填充统一品牌绿 cPrimary；⑦命令输入框与按钮行间距 8px 改 8dp；⑧设置页新增"界面设置"大标题（字号/语言/夜间模式三个小标题，语言上移），完整浅色主题（Scheme.light 映射+全站硬编码白字走主题色，终端模拟器与wheel特效保持深色，切换重启生效） |
 | **5.0.1** | 501 | 崩溃修复：MaterialSwitch 在 AppCompat/MaterialComponents 主题下无 materialSwitchStyle，SwitchCompat 的 showText 代码默认 true + textOn/textOff 全 null，onMeasure 里 StaticLayout(null) 必崩（网络→设置滑动、网络选应用两处），4 处开关显式 showText=false 根治；前三 tab 底部按键去圆角去边框改全宽分段条（终端 8 键、文件导入、网络两行，选中填充+分隔线保留） |
 | **5.0.0** | 500 | 外观对齐 Material Design（纯样式）：成对按钮改 M3 分段按钮（圆角描边容器+段间分隔线，主段填充副段透明），终端十二键、文件页两键、LAN 启动/认证、网络两行、设置保存/重置与上游代理同格化；磁贴开关/保留后台/语言与 App 选择对话框换 M3 MaterialSwitch（品牌绿保留）；Tab 指示器改 3dp 主题色下划亮线；输入框改 8dp 圆角 1dp 描边空心字段；状态条改 surfaceContainer+onSurface 常规字体；按钮去掉 3D 唇边改圆角胶囊+涟漪，主题色不变 |

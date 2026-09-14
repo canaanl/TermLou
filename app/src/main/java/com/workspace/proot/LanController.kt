@@ -53,18 +53,23 @@ class LanController(
             setOnClickListener { copyLanUrl() }
         }
         parent.addView(lanUrlText)
+        val density = activity.resources.displayMetrics.density
         val lanBtnRow = buildLanButtons()
         this.lanBtnRow = lanBtnRow
-        parent.addView(lanBtnRow)
+        parent.addView(lanBtnRow, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            topMargin = (8 * density).toInt()
+        })
         applyLanSegments()
         refreshLanRow()
     }
 
     private fun buildLanButtons(): LinearLayout {
-        val density = activity.resources.displayMetrics.density
         return LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, (8 * density).toInt(), 0, 0)
+            setPadding(0, 0, 0, 0)
             lanToggleBtn = Button(activity).apply {
                 text = activity.getString(R.string.lan_start)
                 setTextColor(Color.WHITE)
