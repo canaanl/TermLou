@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-5.0.12-blue)
+![Version](https://img.shields.io/badge/version-5.0.13-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.0.13** | 513 | 空行底与两侧同色：加filler view（上半格等大，仅单层wheel露空行时出现），底色按霜→面板罩→框罩三层叠离线算好逐位一致，显隐挂wheel/upper可见性回调 |
 | **5.0.12** | 512 | 回滚：TerminalController整文件回到5.0.9（塌缩机制与按键底改色一次清掉，双层wheel与霜行设计原样回来，去绿等已验收不动） |
 | **5.0.11** | 511 | 藏缝：按键区底改与仿真器底同色（夜间从默认配色表实时读257槽、日间纯白），余边上下无色差，肉眼无边界；像素还在，只是看不见 |
 | **5.0.10** | 510 | 去绿到底+空半格结构消除：BAND容器改自适应高度（单层wheel收尾塌格、切回按键行恢复，显示区weight吸收，空半格不存在）；全App去绿色填充（分段选中段全空心、实心绿键改绿边框空心，Ctrl武装/LAN运行/抓包红状态保留） |

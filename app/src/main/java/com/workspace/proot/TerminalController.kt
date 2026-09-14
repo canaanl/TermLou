@@ -101,6 +101,7 @@ class TerminalController(
     private lateinit var columnsWrapper: LinearLayout
     private lateinit var rowTop: LinearLayout
     private lateinit var rowBottom: LinearLayout
+    private lateinit var emptyRowFiller: View
     private var wheelCardH = 0
     private var bandTransitionToken = 0
     private var bandAnimator: ValueAnimator? = null
@@ -245,8 +246,11 @@ class TerminalController(
             minimumHeight = wheelCardH * 2
             // 容器底只在单层 wheel 上半区空行露出（无 scrim 覆盖）：直接用霜罩合成色，
             // 与下半区非聚焦（底色+霜罩）同色接平。bar/双层时均被不透明内容全覆盖，零影响。
-            setBackgroundColor(frostBlended(scope.cSurface))
+            val frost = frostBlended(scope.cSurface)
+            setBackgroundColor(frost)
             addView(shortcutInner)
+            emptyRowFiller = buildEmptyRowFiller(frost)
+            addView(emptyRowFiller)
             addView(upperWheelPanel)
             addView(wheelPanel)
             addView(wheelLevelFrame)
@@ -279,6 +283,11 @@ class TerminalController(
                     ulp.bottomMargin = wheelCardH
                     upperWheelPanel.layoutParams = ulp
                 }
+                val flp = emptyRowFiller.layoutParams as? FrameLayout.LayoutParams
+                if (flp != null) {
+                    flp.height = wheelCardH
+                    emptyRowFiller.layoutParams = flp
+                }
                 val blp = shortcutContainer.layoutParams as? LinearLayout.LayoutParams
                 if (blp != null) {
                     blp.height = wheelCardH * 2
@@ -300,9 +309,11 @@ class TerminalController(
             } else {
                 wheelLevelFrame.setOpen(false)
             }
+            syncEmptyRow()
         }
         upperWheelPanel.onVisibilityChange = { visible ->
             wheelLevelFrame.setLevel(if (visible) 2 else 1, wheelCardH)
+            syncEmptyRow()
         }
         wheelController?.let {
             it.onWheelPhase = { opening, downward -> switchBand(opening, downward) }
@@ -319,6 +330,11 @@ class TerminalController(
             ulp.height = wheelCardH
             ulp.bottomMargin = wheelCardH
             upperWheelPanel.layoutParams = ulp
+            val flp = emptyRowFiller.layoutParams as? FrameLayout.LayoutParams
+            if (flp != null) {
+                flp.height = wheelCardH
+                emptyRowFiller.layoutParams = flp
+            }
             val blp = shortcutContainer.layoutParams as? LinearLayout.LayoutParams
             blp?.height = wheelCardH * 2
             shortcutContainer.layoutParams = blp
@@ -398,6 +414,8 @@ class TerminalController(
                     } else {
                         wheel.visibility = View.GONE
                     }
+                    // 普通 View 无可见性回调，收尾直调一次（wheel/upper 自身变化走各自回调）。
+                    syncEmptyRow()
                     wheelController?.setSuppressUpperEntryAnim(false)
                 }
             })
@@ -447,6 +465,36 @@ class TerminalController(
         }
         SegmentStyle.applyRow(rowTop, listOf(null, null, null, ctrlFill), scope.cOutline, scope.cOnSurface, SegmentStyle.Bar(0f, false))
         SegmentStyle.applyRow(rowBottom, listOf(null, null, null, null), scope.cOutline, scope.cOnSurface, SegmentStyle.Bar(0f, false))
+    }
+
+    /** src-over 合成（与 GPU逐通道一致；底色不透明时结果不透明）。 */
+    private fun srcOver(src: Int, dst: Int): Int {
+        val a = (src ushr 24) / 255f
+        val r = ((src shr 16) and 0xFF) * a + ((dst shr 16) and 0xFF) * (1f - a)
+        val g = ((src shr 8) and 0xFF) * a + ((dst shr 8) and 0xFF) * (1f - a)
+        val b = (src and 0xFF) * a + (dst and 0xFF) * (1f - a)
+        return (0xFF shl 24) or (r.toInt() shl 16) or (g.toInt() shl 8) or b.toInt()
+    }
+
+    /** 空行 filler：上半格等大，底色按“霜→面板罩→框罩”三层叠离线算好，与两侧像素逐位一致。 */
+    private fun buildEmptyRowFiller(frost: Int): View {
+        val overPanel = srcOver(Color.parseColor("#B31E1E1E"), frost)
+        val overFrame = srcOver(WheelLevelFrame.SCRIM_COLOR, overPanel)
+        return View(activity).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, wheelCardH, Gravity.TOP
+            )
+            setBackgroundColor(overFrame)
+            visibility = View.GONE
+        }
+    }
+
+    /** 空行 filler 显隐：仅单层 wheel 露空行时出现。 */
+    private fun syncEmptyRow() {
+        if (!::emptyRowFiller.isInitialized) return
+        emptyRowFiller.visibility =
+            if (wheelPanel.visibility == View.VISIBLE && upperWheelPanel.visibility != View.VISIBLE) View.VISIBLE
+            else View.GONE
     }
 
     /** 霜罩盖在底色上的合成色（src-over，随主题自适应）。 */
