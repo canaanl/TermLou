@@ -19,7 +19,6 @@ import androidx.lifecycle.LifecycleCoroutineScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.slider.Slider
-import com.termux.terminal.TerminalColors
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
@@ -62,12 +61,6 @@ private const val ANSI_BRIGHT_GREEN = 10
 private const val ANSI_BRIGHT_YELLOW = 11
 private const val ANSI_BRIGHT_CYAN = 14
 private const val ANSI_BRIGHT_WHITE = 15
-
-/** 日间终端底（须与 applyDayScheme 写入 257 槽的值逐位一致）。 */
-private const val DAY_TERM_BG = 0xFFFFFFFF.toInt()
-
-/** 读不到默认配色表时的兜底（termux 默认就是纯黑）。 */
-private const val FALLBACK_TERM_BG = 0xFF000000.toInt()
 
 /** 日间终端配色：白底黑字 + 加深变体。 */
 private val DAY_SCHEME = listOf(
@@ -242,8 +235,7 @@ class TerminalController(
         }
         shortcutInner = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            // 按键区底与显示区（仿真器底）同色：余边上下无色差，肉眼无边界。
-            setBackgroundColor(if (scope.theme.night) nightTermBg() else DAY_TERM_BG)
+            setBackgroundColor(scope.cSurface)
             addView(columnsWrapper)
         }
         shortcutContainer = SwipeableContainer(activity).apply {
@@ -251,8 +243,8 @@ class TerminalController(
                 LinearLayout.LayoutParams.MATCH_PARENT, wheelCardH * 2
             )
             minimumHeight = wheelCardH * 2
-            // 单层 wheel 时上半格无内容：平时由切换逻辑塌掉（见 collapseBand），
-            // 仅 240ms 滑动过渡中短暂露出，此处霜罩底兜底。
+            // 容器底只在单层 wheel 上半区空行露出（无 scrim 覆盖）：直接用霜罩合成色，
+            // 与下半区非聚焦（底色+霜罩）同色接平。bar/双层时均被不透明内容全覆盖，零影响。
             setBackgroundColor(frostBlended(scope.cSurface))
             addView(shortcutInner)
             addView(upperWheelPanel)
@@ -311,11 +303,6 @@ class TerminalController(
         }
         upperWheelPanel.onVisibilityChange = { visible ->
             wheelLevelFrame.setLevel(if (visible) 2 else 1, wheelCardH)
-            if (visible) {
-                expandBand()
-            } else if (shortcutInner.visibility != View.VISIBLE && wheelPanel.visibility == View.VISIBLE) {
-                collapseBand()
-            }
         }
         wheelController?.let {
             it.onWheelPhase = { opening, downward -> switchBand(opening, downward) }
@@ -359,61 +346,6 @@ class TerminalController(
         wheelController?.onGrayCancel = { wheelGlowOverlay.reset() }
     }
 
-    /** 单层 wheel 收尾塌到 1 格：空半格不存在，多余像素由 weight 显示区吸收，屏底无缝。 */
-    private fun collapseBand() {
-        val blp = shortcutContainer.layoutParams as? LinearLayout.LayoutParams ?: return
-        if (blp.height == wheelCardH) return
-        blp.height = wheelCardH
-        shortcutContainer.layoutParams = blp
-        shortcutContainer.minimumHeight = wheelCardH
-        shortcutContainer.requestLayout()
-    }
-
-    /** 切回按键行 / 展开上层前恢复 2 格；已是 2 格返回 false（调用方据此决定是否 defer 播片）。 */
-    private fun expandBand(): Boolean {
-        val blp = shortcutContainer.layoutParams as? LinearLayout.LayoutParams
-        val needsExpand = blp != null && blp.height != wheelCardH * 2
-        if (needsExpand) {
-            blp.height = wheelCardH * 2
-            shortcutContainer.layoutParams = blp
-            shortcutContainer.minimumHeight = wheelCardH * 2
-            shortcutContainer.requestLayout()
-        }
-        return needsExpand
-    }
-
-    /** BAND 滑动收尾：复位位置与透明度；切 wheel 藏按键行（单层再塌 1 格），切回藏 wheel。 */
-    private fun onBandSlideEnd(toWheel: Boolean, token: Int) {
-        if (token != bandTransitionToken) return
-        val bar = shortcutInner
-        val wheel = wheelPanel
-        val upper = upperWheelPanel
-        bar.translationY = 0f
-        bar.alpha = 1f
-        wheel.translationY = 0f
-        wheel.alpha = 1f
-        upper.translationY = 0f
-        if (toWheel) {
-            bar.visibility = View.GONE
-            // 单层收尾塌到 1 格；双层（上层在）保持 2 格。
-            if (upper.visibility != View.VISIBLE) collapseBand()
-        } else {
-            wheel.visibility = View.GONE
-        }
-        wheelController?.setSuppressUpperEntryAnim(false)
-    }
-
-    /** BAND 滑动逐帧位置：按键行与 wheel 反向推入/滑出，上层跟下层同曲线。 */
-    private fun applyBandFrame(toWheel: Boolean, p: Float, d: Float, outSign: Float, inStart: Float) {
-        val bar = shortcutInner
-        val wheel = wheelPanel
-        val upper = upperWheelPanel
-        bar.translationY = if (toWheel) outSign * d * p else inStart * (1f - p)
-        wheel.translationY = if (toWheel) inStart * (1f - p) else outSign * d * p
-        wheel.alpha = if (toWheel) p else 1f - p
-        upper.translationY = wheel.translationY
-    }
-
     /** BAND 内单一方向的推送过渡：新内容从对侧推入、旧内容同向滑出，240ms 内完成。
      * 上/下两层 wheel 由同一 ValueAnimator 逐帧驱动位置，严格同趟出现，不再各自做独立动画。 */
     private fun switchBand(toWheel: Boolean, downward: Boolean) {
@@ -422,12 +354,10 @@ class TerminalController(
         val upper = upperWheelPanel
         if (toWheel && wheel.visibility == View.VISIBLE) return
         if (!toWheel && wheel.visibility != View.VISIBLE) return
-        // 切回按键行先恢复 2 格；刚扩过等一帧再播片，避免首帧按 1 格裁剪闪一下。
-        val expanded = if (!toWheel) expandBand() else false
         wheelGlowOverlay.reset()
         bandTransitionToken++
         val token = bandTransitionToken
-        val d = (wheelCardH * 2).toFloat()
+        val d = shortcutContainer.height.takeIf { it > 0 }?.toFloat() ?: (wheelCardH * 2).toFloat()
         val outSign = if (downward) 1f else -1f
         val inStart = -outSign * d
 
@@ -444,23 +374,36 @@ class TerminalController(
         wheel.translationY = if (toWheel) inStart else 0f
         wheel.visibility = View.VISIBLE
 
-        val startSlide = {
-            bandAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = BAND_SWITCH_MS
-                interpolator = DecelerateInterpolator()
-                addUpdateListener {
-                    applyBandFrame(toWheel, animatedValue as Float, d, outSign, inStart)
-                }
-                addListener(object : AnimatorListenerAdapter() {
-                    override fun onAnimationEnd(animation: Animator) {
-                        onBandSlideEnd(toWheel, token)
-                    }
-                })
-                start()
+        bandAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = BAND_SWITCH_MS
+            interpolator = DecelerateInterpolator()
+            addUpdateListener {
+                val p = animatedValue as Float
+                bar.translationY = if (toWheel) outSign * d * p else inStart * (1f - p)
+                wheel.translationY = if (toWheel) inStart * (1f - p) else outSign * d * p
+                wheel.alpha = if (toWheel) p else 1f - p
+                // 上层 wheel 与下层共享同一位置曲线：同趟推入，绝不晚于下层出现
+                upper.translationY = wheel.translationY
             }
-            wheelLevelFrame.setOpen(toWheel)
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    if (token != bandTransitionToken) return
+                    bar.translationY = 0f
+                    bar.alpha = 1f
+                    wheel.translationY = 0f
+                    wheel.alpha = 1f
+                    upper.translationY = 0f
+                    if (toWheel) {
+                        bar.visibility = View.GONE
+                    } else {
+                        wheel.visibility = View.GONE
+                    }
+                    wheelController?.setSuppressUpperEntryAnim(false)
+                }
+            })
+            start()
         }
-        if (expanded) shortcutContainer.post { if (token == bandTransitionToken) startSlide() } else startSlide()
+        wheelLevelFrame.setOpen(toWheel)
     }
 
     /** 開机安装区（setupArea + 进度条），由 Activity 挂到 content。 */
@@ -513,12 +456,6 @@ class TerminalController(
         val g = ((scrim shr 8) and 0xFF) * a + ((base shr 8) and 0xFF) * (1f - a)
         val b = (scrim and 0xFF) * a + (base and 0xFF) * (1f - a)
         return (0xFF shl 24) or (r.toInt() shl 16) or (g.toInt() shl 8) or b.toInt()
-    }
-
-    /** 夜间仿真器底：从默认配色表现读 257 槽（不猜色值，与渲染器逐位对齐）。 */
-    private fun nightTermBg(): Int {
-        val slots = TerminalColors().mCurrentColors
-        return if (slots.size >= MIN_COLOR_SLOTS) slots[TERM_BG] else FALLBACK_TERM_BG
     }
 
     /** 日间终端配色：白底黑字 + 浅底可读的 ANSI 变体；夜间沿用仿真器默认深色不动。 */
