@@ -65,6 +65,7 @@ Java_com_workspace_proot_TunSpawner_spawnTun2Socks(
         }
         if (tunFd != 3) {
             dup2(tunFd, 3);
+            if (tunFd > 3) close(tunFd);
         }
         execv(exe, argv.data());
         _exit(127);

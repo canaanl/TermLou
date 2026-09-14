@@ -91,8 +91,8 @@ class WorkspaceFileSystem(
     }
 
     fun delete(root: File, path: String, recursive: Boolean = false): Boolean {
-        require(path.isNotBlank() && path != ".") { "Refusing to delete workspace root" }
         val file = resolvePath(root, path)
+        require(file != root.canonicalFile) { "Refusing to delete workspace root" }
         if (!file.exists()) return false
         return if (file.isDirectory) {
             require(recursive) { "Directory delete requires recursive = true" }
@@ -103,9 +103,11 @@ class WorkspaceFileSystem(
     }
 
     fun move(root: File, source: String, target: String, overwrite: Boolean = false): WorkspaceFileEntry {
-        require(source.isNotBlank() && source != ".") { "Refusing to move workspace root" }
         val sourceFile = resolvePath(root, source)
         val targetFile = resolvePath(root, target)
+        val rootFile = root.canonicalFile
+        require(sourceFile != rootFile) { "Refusing to move workspace root" }
+        require(targetFile != rootFile) { "Refusing to move onto workspace root" }
         require(sourceFile.exists()) { "Source does not exist: $source" }
         if (targetFile.exists()) {
             require(overwrite) { "Target already exists: $target" }

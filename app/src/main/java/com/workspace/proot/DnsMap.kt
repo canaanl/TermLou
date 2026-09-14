@@ -14,7 +14,7 @@ object DnsMap {
         if (d.isEmpty()) return
         synchronized(lock) {
             domainToIps.getOrPut(d) { mutableSetOf() }.add(ip)
-            ipToDomain[ip] = d
+            ipToDomain.putIfAbsent(ip, d)
         }
     }
 

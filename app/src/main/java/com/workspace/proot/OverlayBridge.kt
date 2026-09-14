@@ -7,6 +7,7 @@ import android.os.Looper
 import android.provider.Settings
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 进程级单例：监听 termlou 目录（filesDir/.termlou）req，队列化弹出浮窗，并把结果写回 res。
@@ -31,7 +32,7 @@ object OverlayBridge {
     private var running = false
     private var pollTask: Runnable? = null
     private var reqObserver: FileObserver? = null
-    private var refs = 0
+    private var refs = AtomicInteger(0)
     private var timeoutRunnable: Runnable? = null
     private var activeOverlay: ScriptDialogOverlay? = null
 
@@ -43,13 +44,13 @@ object OverlayBridge {
             reqDir = File(termlouBase, "req")
             resDir = File(termlouBase, "res")
         }
-        refs++
+        refs.incrementAndGet()
         if (!running) start()
     }
 
     fun release() {
-        if (refs > 0) refs--
-        if (refs <= 0 && running) stop()
+        if (refs.get() > 0) refs.decrementAndGet()
+        if (refs.get() <= 0 && running) stop()
     }
 
     private fun start() {
@@ -264,7 +265,11 @@ object OverlayBridge {
             val out = File(resDir, entry.file.name)
             val tmp = File(resDir, "${entry.file.name}.tmp")
             tmp.writeText(ScriptDialogSpec.resultToJsonString(result))
-            tmp.renameTo(out)
+            if (out.exists() && !out.delete()) return
+            if (!tmp.renameTo(out)) {
+                tmp.delete()
+                return
+            }
             entry.file.delete()
         }
     }

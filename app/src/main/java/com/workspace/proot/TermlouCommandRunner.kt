@@ -70,6 +70,7 @@ class TermlouCommandRunner : Service() {
         }
         // 已取得命令，落盘文件全部消费掉，避免累积。
         consumePendingFiles()
+        OverlayBridge.acquire(applicationContext, TermlouDirs.base(applicationContext))
         scope.launch {
             try {
                 for (cmd in commands) {
@@ -101,7 +102,6 @@ class TermlouCommandRunner : Service() {
         val lxRoot = File(app.filesDir, "workspace/linux")
         val wsFiles = File(app.filesDir, "workspace")
         val wsTmp = File(app.filesDir, "workspace/tmp/run-" + System.currentTimeMillis())
-        OverlayBridge.acquire(app, TermlouDirs.base(app))
         val tm = TerminalManager(app, lxRoot, wsFiles, wsTmp)
         try {
             tm.setupWrappers()

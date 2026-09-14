@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-5.0.14-blue)
+![Version](https://img.shields.io/badge/version-5.0.15-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.0.15** | 515 | 安全审查12项全修：workspace根守卫按解析后路径做（+move target校验+6单测）；RootfsExtractor补tar逃逸校验与链接映射；runInProot复用buildProotArgs（带kill-on-exit）+128KB截断；SOCKS5中继可abort；multipart boundary截断；resize显式子协议；Runner引用配平；OverlayBridge原子计数+rename检查；DnsMap首次映射；globalN分母+绝对平局带；net_spawn关fd；Patcher原子写+组名循环 |
 | **5.0.14** | 514 | 修滑动闪烁：删掉5.0.13的filler view，空行色（霜→面板罩→框罩三层离线算好）直接写进容器背景上层，下半格仍用霜色，两层静态LayerDrawable永不切换，无view无显隐，闪烁结构性消失 |
 | **5.0.13** | 513 | 空行底与两侧同色：加filler view（上半格等大，仅单层wheel露空行时出现），底色按霜→面板罩→框罩三层叠离线算好逐位一致，显隐挂wheel/upper可见性回调 |
 | **5.0.12** | 512 | 回滚：TerminalController整文件回到5.0.9（塌缩机制与按键底改色一次清掉，双层wheel与霜行设计原样回来，去绿等已验收不动） |

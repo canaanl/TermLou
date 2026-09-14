@@ -11,6 +11,9 @@ import kotlinx.coroutines.withContext
 import me.rerere.workspace.RootfsPatcher
 import java.io.File
 
+private const val RUN_OUTPUT_MAX_BYTES = 128 * 1024
+private const val RUN_OUTPUT_BUFFER_SIZE = 8192
+
 class TerminalManager(
     private val context: Context,
     private val lxRoot: File,
@@ -173,20 +176,7 @@ class TerminalManager(
         val loader = File(context.applicationInfo.nativeLibraryDir, "libproot_loader.so")
         val shell = findShellInRootfs() ?: throw Exception(context.getString(R.string.shell_not_found))
 
-        val args = mutableListOf(
-            "--root-id", "--link2symlink",
-            "-r", lxRoot.absolutePath,
-            "-w", "/workspace",
-            "-b", "${wsFiles.absolutePath}:/workspace",
-            "-b", "${wsTmp.absolutePath}:/tmp",
-            "-b", "${TermlouDirs.base(context).absolutePath}:/termlou",
-        )
-        for (p in listOf("/dev", "/proc", "/sys", "/etc/hosts")) {
-            if (File(p).exists()) args += listOf("-b", p)
-        }
-        args += shell
-        args += "-c"
-        args += command
+        val args = (buildProotArgs(shell) + listOf("-c", command)).toMutableList()
 
         val pb = ProcessBuilder(listOf(prootBin.absolutePath) + args)
         pb.directory(wsFiles)
@@ -205,7 +195,19 @@ class TerminalManager(
         val process = pb.start()
         process.waitFor(timeoutSec, java.util.concurrent.TimeUnit.SECONDS)
         if (process.isAlive) process.destroyForcibly()
-        return process.inputStream.bufferedReader().readText().trim()
+        val output = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(RUN_OUTPUT_BUFFER_SIZE)
+        var stored = 0
+        while (true) {
+            val read = process.inputStream.read(buffer)
+            if (read < 0) break
+            if (stored < RUN_OUTPUT_MAX_BYTES) {
+                val take = minOf(read, RUN_OUTPUT_MAX_BYTES - stored)
+                output.write(buffer, 0, take)
+                stored += take
+            }
+        }
+        return output.toString(Charsets.UTF_8.name()).trim()
     }
 
     internal fun findShellInRootfs(): String? {

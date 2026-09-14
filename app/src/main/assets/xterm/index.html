@@ -122,7 +122,7 @@ $("conn").onclick=async()=>{
     if(ws&&ws.readyState===1)ws.send(new TextEncoder().encode(d));
   });
   term.onResize(s=>{
-    if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"resize",cols:s.cols,rows:s.rows}));
+    if(ws&&ws.readyState===1)ws.send(JSON.stringify({__termlou:"resize",cols:s.cols,rows:s.rows}));
   });
   loadFiles("/");
   setTimeout(()=>{fit.fit();sendResize();},300);
@@ -130,7 +130,7 @@ $("conn").onclick=async()=>{
 function sendResize(){
   try{
     fit.fit();
-    if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:"resize",cols:term.cols,rows:term.rows}));
+    if(ws&&ws.readyState===1)ws.send(JSON.stringify({__termlou:"resize",cols:term.cols,rows:term.rows}));
   }catch(e){}
 }
 $("bTerm").onclick=()=>{$("pTerm").style.display="flex";$("pFiles").style.display="none";fit.fit();sendResize();};

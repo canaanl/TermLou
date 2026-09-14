@@ -69,17 +69,20 @@ class RootfsExtractor(private val context: Context) {
         TarArchiveInputStream(inputStream).use { tarStream ->
             var entry = tarStream.nextTarEntry
             while (entry != null) {
-                val targetFile = File(linuxDir, entry.name)
-                when {
-                    entry.isDirectory -> targetFile.mkdirs()
-                    entry.isSymbolicLink -> symlinks += SymlinkEntry(targetFile, entry.linkName)
-                    entry.isLink -> hardlinks += targetFile to entry.linkName
-                    entry.isFile || entry.isFIFO || entry.isCharacterDevice || entry.isBlockDevice -> {
-                        targetFile.parentFile?.mkdirs()
-                        targetFile.outputStream().use { out -> tarStream.copyTo(out) }
-                        try {
-                            targetFile.setExecutable(entry.mode and 64 != 0, entry.mode and 8 == 0)
-                        } catch (_: Exception) {}
+                val entryName = normalizeTarEntry(entry.name)
+                if (entryName != null) {
+                    val targetFile = resolveInside(linuxDir, entryName)
+                    when {
+                        entry.isDirectory -> targetFile.mkdirs()
+                        entry.isSymbolicLink -> symlinks += SymlinkEntry(targetFile, entry.linkName)
+                        entry.isLink -> hardlinks += targetFile to entry.linkName
+                        entry.isFile || entry.isFIFO || entry.isCharacterDevice || entry.isBlockDevice -> {
+                            targetFile.parentFile?.mkdirs()
+                            targetFile.outputStream().use { out -> tarStream.copyTo(out) }
+                            try {
+                                targetFile.setExecutable(entry.mode and 64 != 0, entry.mode and 8 == 0)
+                            } catch (_: Exception) {}
+                        }
                     }
                 }
                 entry = tarStream.nextTarEntry
@@ -93,13 +96,13 @@ class RootfsExtractor(private val context: Context) {
         }
         for (s in deferredSymlinks) {
             try { Os.symlink(s.linkTarget, s.linkPath.absolutePath) }
-            catch (_: Exception) { copyTargetFile(s.linkPath, s.linkTarget) }
+            catch (_: Exception) { copyTargetFile(linuxDir, s.linkPath, s.linkTarget) }
         }
 
         // hardlinks: 两轮创建，失败降级复制目标文件
         for ((linkPath, linkName) in hardlinks) {
             try {
-                val source = File(linuxDir, linkName)
+                val source = resolveInside(linuxDir, linkName)
                 Os.link(source.absolutePath, linkPath.absolutePath)
             } catch (_: Exception) {
                 deferredHardlinks += linkPath to linkName
@@ -107,17 +110,48 @@ class RootfsExtractor(private val context: Context) {
         }
         for ((linkPath, linkName) in deferredHardlinks) {
             try {
-                val source = File(linuxDir, linkName)
+                val source = resolveInside(linuxDir, linkName)
                 Os.link(source.absolutePath, linkPath.absolutePath)
             } catch (_: Exception) {
-                copyTargetFile(linkPath, linkName)
+                copyTargetFile(linuxDir, linkPath, linkName)
             }
         }
     }
 
-    private fun copyTargetFile(link: File, target: String) {
+    private fun normalizeTarEntry(name: String): String? {
+        val normalized = name
+            .replace('\\', '/')
+            .trim()
+            .trimStart('/')
+            .removePrefix("./")
+        if (normalized.isBlank()) return null
+        require(!normalized.contains('\u0000')) { "Rootfs entry path contains invalid character" }
+        require(normalized.split('/').none { it == ".." }) { "Rootfs entry escapes target directory: $name" }
+        return normalized
+    }
+
+    private fun resolveInside(linuxDir: File, name: String): File {
+        val normalized = normalizeTarEntry(name) ?: throw IllegalArgumentException("Rootfs path is blank: $name")
+        val root = linuxDir.canonicalFile
+        val target = File(root, normalized).canonicalFile
+        require(target.path == root.path || target.path.startsWith(root.path + File.separator)) {
+            "Rootfs path escapes target directory: $name"
+        }
+        return target
+    }
+
+    private fun copyTargetFile(linuxDir: File, link: File, target: String) {
         try {
-            val resolved = File(link.parentFile, target).canonicalFile
+            val base = if (target.trimStart().startsWith("/")) {
+                File(linuxDir, target.trim().trimStart('/'))
+            } else {
+                File(link.parentFile, target)
+            }
+            val resolved = base.canonicalFile
+            val root = linuxDir.canonicalFile
+            require(resolved.path == root.path || resolved.path.startsWith(root.path + File.separator)) {
+                "Symlink target escapes rootfs: $target"
+            }
             if (resolved.exists()) {
                 link.parentFile?.mkdirs()
                 if (resolved.isDirectory) {

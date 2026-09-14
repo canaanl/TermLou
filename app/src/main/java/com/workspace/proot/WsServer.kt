@@ -329,7 +329,7 @@ class WsServer(
             if (!dir.isDirectory) return false
             val bIdx = contentType.indexOf("boundary=")
             if (bIdx < 0) return false
-            val boundaryStr = "--" + contentType.substring(bIdx + 9).trim().trim('"')
+            val boundaryStr = "--" + contentType.substring(bIdx + 9).substringBefore(';').trim().trim('"')
             val bytes = spool.readBytes()
             val boundary = boundaryStr.toByteArray(Charsets.ISO_8859_1)
             val terminator = (boundaryStr + "--").toByteArray(Charsets.ISO_8859_1)
@@ -607,7 +607,7 @@ class WsServer(
 
         private fun handleText(text: String, pout: FileOutputStream) {
             val t = text.trim()
-            if (t.startsWith("{") && t.contains("resize")) {
+            if (t.startsWith("{") && t.contains("\"__termlou\"") && t.contains("\"resize\"")) {
                 val cols = Regex("\"cols\"\\s*:\\s*(\\d+)").find(t)?.groupValues?.get(1)?.toIntOrNull()
                 val rows = Regex("\"rows\"\\s*:\\s*(\\d+)").find(t)?.groupValues?.get(1)?.toIntOrNull()
                 if (cols != null && rows != null && masterFd >= 0) {

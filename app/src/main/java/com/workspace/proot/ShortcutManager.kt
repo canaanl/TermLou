@@ -28,6 +28,7 @@ class ShortcutManager(
     private var lastClickContext: Pair<String, String>? = null
     private var prevContext: List<String> = emptyList()
     private val TIE_BAND = 0.05f
+    private val ABS_TIE = 1e-4f
 
     fun setStatusText(statusText: TextView) {
         this.statusText = statusText
@@ -145,9 +146,10 @@ class ShortcutManager(
             val (score, id) = itemScore(item, stateUsage, seq, now)
             if (score <= 0f) continue
             val used = id?.let { lastUsedMap[it] } ?: 0L
-            if (best == null || score > bestScore + bestScore * TIE_BAND ||
-                (score >= bestScore - bestScore * TIE_BAND && used > bestUsed)
-            ) {
+            val band = maxOf(bestScore * TIE_BAND, ABS_TIE)
+            val clearWin = score > bestScore + band
+            val tieWin = score >= bestScore - band && used > bestUsed
+            if (best == null || clearWin || tieWin) {
                 best = i
                 bestScore = score
                 bestUsed = used
@@ -170,9 +172,10 @@ class ShortcutManager(
             )
             if (score <= 0f) continue
             val used = lastUsedMap[m.id] ?: 0L
-            if (best == null || score > bestScore + bestScore * TIE_BAND ||
-                (score >= bestScore - bestScore * TIE_BAND && used > bestUsed)
-            ) {
+            val band = maxOf(bestScore * TIE_BAND, ABS_TIE)
+            val clearWin = score > bestScore + band
+            val tieWin = score >= bestScore - band && used > bestUsed
+            if (best == null || clearWin || tieWin) {
                 best = i
                 bestScore = score
                 bestUsed = used

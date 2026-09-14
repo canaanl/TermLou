@@ -99,6 +99,37 @@ class WorkspaceFileSystemTest {
         fileSystem.move(testRoot, ".", "target")
     }
 
+    @Test(expected = IllegalArgumentException::class)
+    fun `delete should throw for dot slash root`() {
+        fileSystem.delete(testRoot, "./", recursive = true)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `delete should throw for double slash root`() {
+        fileSystem.delete(testRoot, ".//", recursive = true)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `delete should throw for dot dot root`() {
+        fileSystem.delete(testRoot, "./.", recursive = true)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `delete should throw for sub dotdot root`() {
+        fileSystem.delete(testRoot, "./sub/..", recursive = true)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `move should throw for dot slash root source`() {
+        fileSystem.move(testRoot, "./", "target")
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `move should throw when target is root`() {
+        File(testRoot, "source.txt").writeText("content")
+        fileSystem.move(testRoot, "source.txt", ".", overwrite = true)
+    }
+
     @Test
     fun `move should rename file`() {
         File(testRoot, "source.txt").writeText("content")

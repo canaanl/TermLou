@@ -84,7 +84,7 @@ class MiniSocks5Server(
             object : RejectedExecutionHandler {
                 override fun rejectedExecution(r: Runnable, executor: ThreadPoolExecutor) {
                     if (Thread.currentThread() === this@MiniSocks5Server) {
-                        (r as? SocketTask)?.abort()
+                        (r as? Abortable)?.abort()
                         log("accept busy, dropped task")
                         return
                     }
@@ -95,7 +95,7 @@ class MiniSocks5Server(
                         }
                     } else {
                         overflowActive.decrementAndGet()
-                        (r as? SocketTask)?.abort()
+                        (r as? Abortable)?.abort()
                         log("overload, dropped task")
                     }
                 }
@@ -140,9 +140,23 @@ class MiniSocks5Server(
     private class SocketTask(
         private val socket: Socket,
         private val body: (Socket) -> Unit
-    ) : Runnable {
+    ) : Runnable, Abortable {
         override fun run() = body(socket)
-        fun abort() = runCatching { socket.close() }
+        override fun abort() {
+            runCatching { socket.close() }
+        }
+    }
+
+    private interface Abortable {
+        fun abort()
+    }
+
+    private class RelayTask(
+        private val body: () -> Unit,
+        private val onAbort: () -> Unit
+    ) : Runnable, Abortable {
+        override fun run() = body()
+        override fun abort() = onAbort()
     }
 
     private fun handleClient(client: Socket) {
@@ -320,7 +334,12 @@ class MiniSocks5Server(
                 FlowLog.updateBytes(id, up.get(), down.get(), "CLOSED")
             }
             try { client.soTimeout = 0 } catch (_: Exception) {}
-            p.execute {
+            fun abortRelay() {
+                try { client.close() } catch (_: Exception) {}
+                try { r.close() } catch (_: Exception) {}
+                oneDone()
+            }
+            p.execute(RelayTask(body = {
                 try {
                     val buf = ByteArray(16384)
                     while (true) {
@@ -347,8 +366,8 @@ class MiniSocks5Server(
                 } catch (_: Exception) {}
                 try { r.shutdownOutput() } catch (_: Exception) {}
                 oneDone()
-            }
-            p.execute {
+            }, onAbort = ::abortRelay))
+            p.execute(RelayTask(body = {
                 try {
                     val buf = ByteArray(16384)
                     while (true) {
@@ -367,7 +386,7 @@ class MiniSocks5Server(
                 } catch (_: Exception) {}
                 try { client.shutdownOutput() } catch (_: Exception) {}
                 oneDone()
-            }
+            }, onAbort = ::abortRelay))
             retained.set(true)
             return
         }

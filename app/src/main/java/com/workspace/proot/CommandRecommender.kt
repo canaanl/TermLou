@@ -71,9 +71,9 @@ object CommandRecommender {
     private fun globalN(id: String, usage: Map<String, Map<String, Int>>): Float {
         val total = usage.values.sumOf { it[id] ?: 0 }
         if (total <= 0) return 0f
-        val maxTotal = usage.values.maxOfOrNull { inner -> inner.values.sum() } ?: 0
-        if (maxTotal <= 0) return 0f
-        return total.toFloat() / maxTotal
+        val totalAll = usage.values.sumOf { inner -> inner.values.sum() }
+        if (totalAll <= 0) return 0f
+        return total.toFloat() / totalAll
     }
 
     private fun recencyN(lastUsed: Long?, now: Long): Float {

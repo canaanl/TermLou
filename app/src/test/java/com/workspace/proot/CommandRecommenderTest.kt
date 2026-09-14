@@ -28,7 +28,7 @@ class CommandRecommenderTest {
         val usage = mapOf("shell" to mapOf("a" to 10), "vim" to mapOf("b" to 2))
         val sB = score("b", null, emptyList(), emptyList(), usage)
         val sA = score("a", null, emptyList(), emptyList(), usage)
-        assertEquals(0.16f, sB, 0.001f)
+        assertEquals(0.1333f, sB, 0.001f)
         assertTrue(sB > 0f)
         assertTrue(sB < sA)
     }
