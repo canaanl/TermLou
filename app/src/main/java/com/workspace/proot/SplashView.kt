@@ -26,6 +26,16 @@ import kotlin.math.sin
  */
 class SplashView(context: Context, customCells: List<Pair<Int, Int>>? = null, private val showProgress: Boolean = true) : View(context) {
 
+    companion object {
+        private const val DAY_BG = 0xFFF5F5F5.toInt()
+        private const val DAY_TEXT = 0xFF616161.toInt()
+        private const val DAY_TRACK = 0x1F000000.toInt()
+    }
+
+    private val night: Boolean =
+        context.getSharedPreferences("term-lou-settings", Context.MODE_PRIVATE).getBoolean("nightMode", true)
+    private val bgColor: Int = if (night) Color.BLACK else DAY_BG
+
     private val rows = SplashTokens.ROWS
     private val cols = SplashTokens.COLS
 
@@ -91,7 +101,7 @@ class SplashView(context: Context, customCells: List<Pair<Int, Int>>? = null, pr
         buildGrid(customCells)
         buildParticles()
         setupPaints()
-        setBackgroundColor(Color.BLACK)
+        setBackgroundColor(bgColor)
         layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
@@ -152,8 +162,8 @@ class SplashView(context: Context, customCells: List<Pair<Int, Int>>? = null, pr
         glowPaint.style = Paint.Style.FILL
         solidPaint.style = Paint.Style.FILL
         bgPaint.style = Paint.Style.FILL
-        trackPaint.color = UiTokens.whiteFaint
-        textPaint.color = UiTokens.splashText
+        trackPaint.color = if (night) UiTokens.whiteFaint else DAY_TRACK
+        textPaint.color = if (night) UiTokens.splashText else DAY_TEXT
         textPaint.textSize = 12 * density
         textPaint.typeface = Typeface.MONOSPACE
         textPaint.textAlign = Paint.Align.CENTER
@@ -357,7 +367,7 @@ class SplashView(context: Context, customCells: List<Pair<Int, Int>>? = null, pr
     }
 
     override fun onDraw(canvas: Canvas) {
-        canvas.drawColor(Color.BLACK)
+        canvas.drawColor(bgColor)
         drawBackdrop(canvas)
         val t = convergeAnim?.animatedValue as? Float ?: 0f
         drawLetters(canvas, t * SplashTokens.CONVERGE_MS)

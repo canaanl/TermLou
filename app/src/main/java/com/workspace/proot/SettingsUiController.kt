@@ -476,10 +476,10 @@ private fun divider(): View = View(activity).apply {
             })
             addView(Button(activity).apply {
                 text = activity.getString(R.string.view)
-                setTextColor(scope.cOnSurface)
+                setTextColor(scope.cPrimary)
                 textSize = UiTokens.TEXT_BODY
                 setPadding(16, 6, 16, 6)
-                ButtonStyle.apply(this, scope.cOutline)
+                ButtonStyle.outlined(this, scope.cPrimary)
                 setOnClickListener { showStorageDialog() }
             })
         })

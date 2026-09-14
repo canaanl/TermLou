@@ -3,6 +3,7 @@ package com.workspace.proot
 import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.widget.TextView
 
 object DialogStyler {
     /** 给原生 AlertDialog 套一层深色圆角皮肤 + 强调按钮色。需在 dialog.show() 之后调用。 */
@@ -14,6 +15,12 @@ object DialogStyler {
             cornerRadius = radius
         }
         dialog.window?.setBackgroundDrawable(bg)
+        // 原生标题/消息默认跟 Activity 主题（深色白字）：浅色下看不见，统一走主题色。
+        // 全站弹窗都经此处，一处管全部（排行标题、编辑标题、LAN 验证标题、确认消息）。
+        // alertTitle 非公开 SDK id，按名运行时解析，取不到则跳过。
+        val alertTitleId = dialog.context.resources.getIdentifier("alertTitle", "id", "android")
+        if (alertTitleId != 0) dialog.findViewById<TextView>(alertTitleId)?.setTextColor(theme.onSurface)
+        dialog.findViewById<TextView>(android.R.id.message)?.setTextColor(theme.onSurface)
         // 统一英文按键为首字母大写：关掉系统默认全大写（中文不受影响）
         for (which in listOf(
             AlertDialog.BUTTON_POSITIVE,

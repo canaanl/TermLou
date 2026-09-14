@@ -104,7 +104,6 @@ class ShortcutSettingsActivity : ComponentActivity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginEnd = (6 * d).toInt()
             }
-            ButtonStyle.apply(this, theme.primary)
             setOnClickListener { showEditDialog(-1, "", "") }
         }
         btnRow.addView(newBtn)
@@ -118,10 +117,18 @@ class ShortcutSettingsActivity : ComponentActivity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = (6 * d).toInt()
             }
-            ButtonStyle.apply(this, theme.primary)
             setOnClickListener { finish() }
         }
         btnRow.addView(exitBtn)
+        SegmentStyle.applyRow(
+            btnRow,
+            listOf(
+                SegmentStyle.Fill(theme.primary, Color.WHITE),
+                null
+            ),
+            theme.outline,
+            theme.onSurface
+        )
 
         bottomBar.addView(btnRow)
 
@@ -142,7 +149,6 @@ class ShortcutSettingsActivity : ComponentActivity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginEnd = (6 * d).toInt()
             }
-            ButtonStyle.apply(this, theme.primary)
             setOnClickListener { backupWheel() }
         }
         btnRow2.addView(backupBtn)
@@ -156,10 +162,18 @@ class ShortcutSettingsActivity : ComponentActivity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = (6 * d).toInt()
             }
-            ButtonStyle.apply(this, theme.primary)
             setOnClickListener { restoreLauncher.launch(arrayOf("*/*")) }
         }
         btnRow2.addView(restoreBtn)
+        SegmentStyle.applyRow(
+            btnRow2,
+            listOf(
+                SegmentStyle.Fill(theme.primary, Color.WHITE),
+                null
+            ),
+            theme.outline,
+            theme.onSurface
+        )
 
         bottomBar.addView(btnRow2)
 

@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-5.0.4-blue)
+![Version](https://img.shields.io/badge/version-5.0.5-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.0.5** | 505 | 分隔线结构根治（独立分隔View删掉，线直接画进段右边缘压住填充，永无缝隙）；工坊四行回标准圆角胶囊；网络两行纵padding清零绿顶住横线；夜间模式改名主题配色；Splash/洞洞板/预览遮罩跟随夜间（点阵绿保留）；对话框标题消息中央着色（排行/编辑/LAN标题日间可见）；快捷管理底栏改分段胶囊；系统信息与域名端口按钮改主题绿圆角边框 |
 | **5.0.4** | 504 | 根因修复夜间模式不生效：setNightMode 用 apply()（异步落盘）后紧跟杀进程重启，落盘根本没执行，新进程读旧值；改 commit() 同步落盘（同 setLangExplicit），重启即生效 |
 | **5.0.3** | 503 | 根因修复4项：①夜间模式不生效——主题加载处用未调 load() 的 SettingsManager 新实例读 nightMode 恒为 true，6 处改直读落盘值；②输入框/按钮边框重叠+填充错位——胶囊行拿顶部 padding 当间距，边框圈住含 padding 的盒子致上沿浮空重叠，4 行改 padding 清零 + topMargin 8dp；③工坊底栏四行显式全宽+对话框 row2 加 8dp 间距；④分隔线不可见——1dp outline 在深底对比度不足，改走 onSurface 40% 透明（两档自适应）；状态栏字号 15sp 改 13sp |
 | **5.0.2** | 502 | 重大修复8合1：①根治开关消失——MaterialSwitch 在 AppCompat/MaterialComponents 主题下 materialSwitchStyle 落空致 thumb/track 全 null（0尺寸隐形），新增 Theme.TermLou.Switch（M3深色）给4处开关包主题；②分段条填充/边框错位——边框改 foreground 浮层，填充全幅顶满像素对齐；③工坊二级页底栏改文件/网络式无边框全宽分段条；④终端两键行/网络两行之间加横向分隔线；⑤段间分隔线核验；⑥所有分段选中段填充统一品牌绿 cPrimary；⑦命令输入框与按钮行间距 8px 改 8dp；⑧设置页新增"界面设置"大标题（字号/语言/夜间模式三个小标题，语言上移），完整浅色主题（Scheme.light 映射+全站硬编码白字走主题色，终端模拟器与wheel特效保持深色，切换重启生效） |

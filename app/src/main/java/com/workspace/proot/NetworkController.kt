@@ -341,7 +341,7 @@ class NetworkController(
         }
         fun gridRow(vararg buttons: Button): LinearLayout = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 2, 0, 2)
+            setPadding(0, 0, 0, 0)
             for (b in buttons) addView(b)
         }
         netToggleBtn = barButton(activity.getString(R.string.net_capture_start)) {
@@ -449,13 +449,13 @@ class NetworkController(
         }
         fun modeButton(text: String, onClick: () -> Unit): Button = Button(activity).apply {
             this.text = text
-            setTextColor(scope.theme.onSurface)
+            setTextColor(scope.theme.primary)
             textSize = UiTokens.TEXT_BODY
             isAllCaps = true
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            ButtonStyle.apply(this, scope.cOutline)
+            ButtonStyle.outlined(this, scope.theme.primary)
             setOnClickListener { onClick() }
         }
         val modeRow = LinearLayout(activity).apply {
@@ -475,8 +475,8 @@ class NetworkController(
             .setView(ScrollView(activity).apply { addView(body) })
             .setPositiveButton(activity.getString(R.string.close), null)
             .create()
-        DialogStyler.apply(dialog, scope.theme)
         dialog.show()
+        DialogStyler.apply(dialog, scope.theme)
     }
 
     fun refreshNetTab() {

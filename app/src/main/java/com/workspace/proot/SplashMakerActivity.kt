@@ -105,9 +105,22 @@ class SplashMakerActivity : AppCompatActivity() {
         ).apply { weight = 1f })
         styleGroup = RadioGroup(this).apply {
             orientation = RadioGroup.HORIZONTAL
-            addView(RadioButton(this@SplashMakerActivity).apply { text = getString(R.string.sm_outline); id = 1001; isChecked = true })
-            addView(RadioButton(this@SplashMakerActivity).apply { text = getString(R.string.sm_block); id = 1002 })
-            addView(RadioButton(this@SplashMakerActivity).apply { text = getString(R.string.sm_mixed); id = 1003 })
+            addView(RadioButton(this@SplashMakerActivity).apply {
+                text = getString(R.string.sm_outline)
+                id = 1001
+                isChecked = true
+                setTextColor(theme.onSurface)
+            })
+            addView(RadioButton(this@SplashMakerActivity).apply {
+                text = getString(R.string.sm_block)
+                id = 1002
+                setTextColor(theme.onSurface)
+            })
+            addView(RadioButton(this@SplashMakerActivity).apply {
+                text = getString(R.string.sm_mixed)
+                id = 1003
+                setTextColor(theme.onSurface)
+            })
             setOnCheckedChangeListener { _, checkedId ->
                 selectedStyle = when (checkedId) {
                     1002 -> 1
@@ -171,8 +184,7 @@ class SplashMakerActivity : AppCompatActivity() {
             row1,
             listOf(null, null),
             theme.outline,
-            theme.onSurface,
-            SegmentStyle.Bar(0f, false)
+            theme.onSurface
         )
         SegmentStyle.applyRow(
             row2,
@@ -181,8 +193,7 @@ class SplashMakerActivity : AppCompatActivity() {
                 null
             ),
             theme.outline,
-            theme.onSurface,
-            SegmentStyle.Bar(0f, false)
+            theme.onSurface
         )
         root.addView(bottomBar)
         rootFrame = FrameLayout(this).apply {
@@ -688,8 +699,10 @@ class SplashMakerActivity : AppCompatActivity() {
         val cellsData = if (sampling) overlayCells!!.map { it }
         else if (cells.isEmpty()) SplashTokens.defaultCells()
         else cells.map { it }
-        // 全屏黑底仅动画（无进度条/文字），叠加在现有界面之上，结束即移除，不重建视图
-        val overlay = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        // 全屏底仅动画（无进度条/文字），叠加在现有界面之上，结束即移除，不重建视图
+        val overlay = FrameLayout(this).apply {
+            setBackgroundColor(if (nightTheme.night) Color.BLACK else 0xFFF5F5F5.toInt())
+        }
         val sv = SplashView(this, cellsData, showProgress = false)
         overlay.addView(sv, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         rootFrame.addView(overlay, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
@@ -749,17 +762,16 @@ class SplashMakerActivity : AppCompatActivity() {
             )
         }
 
-        private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF141414.toInt() }
         private val solidPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
         private val borderThinPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            color = Color.WHITE
+            color = if (nightTheme.night) Color.WHITE else Color.BLACK
             alpha = 30
             strokeWidth = 1f * d
         }
         private val borderGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            color = Color.WHITE
+            color = if (nightTheme.night) Color.WHITE else Color.BLACK
         }
         private val bgPaint2 = Paint(Paint.ANTI_ALIAS_FLAG)
 
@@ -781,7 +793,7 @@ class SplashMakerActivity : AppCompatActivity() {
         }
 
         init {
-            setBackgroundColor(0xFF141414.toInt())
+            setBackgroundColor(if (nightTheme.night) 0xFF141414.toInt() else 0xFFF5F5F5.toInt())
         }
 
         private var sampleDownX = 0f

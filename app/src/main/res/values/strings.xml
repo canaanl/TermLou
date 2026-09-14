@@ -94,7 +94,7 @@
     <string name="lang_title">语言</string>
     <string name="lang_sub_zh">中文 · 跟随开关切换，切换将重启应用</string>
     <string name="lang_sub_en">English · toggle to switch, switching restarts the app</string>
-    <string name="settings_night_title">夜间模式</string>
+    <string name="settings_night_title">主题配色</string>
     <string name="settings_night_sub">深色界面，切换后重启生效</string>
 
     <!-- 终端/文件 -->

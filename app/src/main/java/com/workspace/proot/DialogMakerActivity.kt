@@ -211,8 +211,7 @@ val testRow = LinearLayout(this).apply {
             testRow,
             listOf(SegmentStyle.Fill(theme.primary, Color.WHITE)),
             theme.outline,
-            theme.onSurface,
-            SegmentStyle.Bar(0f, false)
+            theme.onSurface
         )
         bottomBar.addView(testRow)
         val row2 = LinearLayout(this).apply {
@@ -243,8 +242,7 @@ val testRow = LinearLayout(this).apply {
                 null
             ),
             theme.outline,
-            theme.onSurface,
-            SegmentStyle.Bar(0f, false)
+            theme.onSurface
         )
         bottomBar.addView(row2)
         root.addView(bottomBar)

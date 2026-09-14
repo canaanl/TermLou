@@ -23,6 +23,24 @@ object ButtonStyle {
             setColor(Color.WHITE)
             cornerRadius = radius
         }
+button.background = RippleDrawable(rippleColor, content, mask)
+        button.isAllCaps = false
+    }
+
+    /** 空心描边按钮：透明底 + 主题色圆角描边 + 涟漪，文字色由调用方定。 */
+    fun outlined(button: Button, borderColor: Int) {
+        val d = button.resources.displayMetrics.density
+        val radius = CORNER_RADIUS_DP * d
+
+        val content = GradientDrawable().apply {
+            setColor(Color.TRANSPARENT)
+            cornerRadius = radius
+            setStroke(d.toInt().coerceAtLeast(1), borderColor)
+        }
+        val mask = GradientDrawable().apply {
+            setColor(Color.WHITE)
+            cornerRadius = radius
+        }
         button.background = RippleDrawable(rippleColor, content, mask)
         button.isAllCaps = false
     }

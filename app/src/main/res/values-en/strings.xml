@@ -94,7 +94,7 @@
     <string name="lang_title">LANGUAGE</string>
     <string name="lang_sub_zh">中文 · 跟随开关切换，切换将重启应用</string>
     <string name="lang_sub_en">English · toggle to switch, switching restarts the app</string>
-    <string name="settings_night_title">NIGHT MODE</string>
+    <string name="settings_night_title">THEME</string>
     <string name="settings_night_sub">Dark interface, takes effect after restart</string>
 
     <!-- Terminal/files -->
