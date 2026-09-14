@@ -46,10 +46,11 @@
     <string name="settings_quick_title">快捷启动</string>
     <string name="settings_quick_desc">在磁贴上快捷启动你所选的应用</string>
     <string name="pick_app">选择应用</string>
-    <string name="settings_dialog_ws_title">弹窗工坊</string>
+    <string name="settings_workshop_title">工坊</string>
+    <string name="settings_dialog_ws_title">弹窗</string>
     <string name="settings_dialog_ws_desc">图形化设计脚本浮窗，保存模板供 termlou-ui 复用</string>
     <string name="open_workshop">打开工坊</string>
-    <string name="settings_splash_title">启动工坊</string>
+    <string name="settings_splash_title">启动页</string>
     <string name="settings_splash_desc">自由绘制开屏图像，保存后下次启动生效</string>
     <string name="settings_advanced">高级</string>
 

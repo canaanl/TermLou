@@ -62,12 +62,12 @@ class SettingsUiController(
         settingsInner.addView(divider())
         buildQuickSection(settingsInner)
         settingsInner.addView(divider())
+        sectionTitle(settingsInner, activity.getString(R.string.settings_workshop_title))
         buildWorkshopRow(
             settingsInner,
             activity.getString(R.string.settings_dialog_ws_title),
             activity.getString(R.string.settings_dialog_ws_desc)
         ) { overlay.openDialogMaker() }
-        settingsInner.addView(divider())
         buildWorkshopRow(
             settingsInner,
             activity.getString(R.string.settings_splash_title),
@@ -76,8 +76,8 @@ class SettingsUiController(
         settingsInner.addView(divider())
         buildUpstreamSection(settingsInner, density)
         lan.buildSettingsBlock(settingsInner)
-        settingsInner.addView(divider())
         buildKeepAliveRow(settingsInner)
+        settingsInner.addView(divider())
         buildStorageRow(settingsInner)
 
         settingsWrapper.addView(settingsScroll, LinearLayout.LayoutParams(
@@ -324,7 +324,7 @@ private fun divider(): View = View(activity).apply {
     }
 
     private fun buildWorkshopRow(parent: LinearLayout, title: String, desc: String, onOpen: () -> Unit) {
-        sectionTitle(parent, title)
+        sectionTitle(parent, title, body = true)
         sectionDesc(parent, desc)
         parent.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL

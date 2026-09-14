@@ -46,10 +46,11 @@
     <string name="settings_quick_title">QUICK LAUNCH</string>
     <string name="settings_quick_desc">Launch your chosen apps from the tile</string>
     <string name="pick_app">CHOOSE APPS</string>
-    <string name="settings_dialog_ws_title">DIALOG WORKSHOP</string>
+    <string name="settings_workshop_title">WORKSHOP</string>
+    <string name="settings_dialog_ws_title">DIALOG</string>
     <string name="settings_dialog_ws_desc">Design script dialogs visually for termlou-ui reuse</string>
     <string name="open_workshop">OPEN WORKSHOP</string>
-    <string name="settings_splash_title">SPLASH WORKSHOP</string>
+    <string name="settings_splash_title">SPLASH</string>
     <string name="settings_splash_desc">Draw the boot splash, applied on next launch</string>
     <string name="settings_advanced">ADVANCED</string>
 

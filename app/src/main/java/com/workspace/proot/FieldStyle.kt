@@ -8,6 +8,9 @@ import android.widget.EditText
 object FieldStyle {
     private const val RADIUS_DP = 8f
     private const val STROKE_DP = 1f
+    private const val HINT_ALPHA = 0x80
+    private const val ALPHA_SHIFT = 24
+    private const val RGB_MASK = 0x00FFFFFF
 
     fun applyOutlined(
         edit: EditText,
@@ -23,7 +26,7 @@ object FieldStyle {
             setColor(Color.TRANSPARENT)
         }
         edit.setTextColor(onSurface)
-        edit.setHintTextColor(onSurfaceVariant)
+        edit.setHintTextColor((onSurfaceVariant and RGB_MASK) or (HINT_ALPHA shl ALPHA_SHIFT))
         edit.textSize = textSizeSp
     }
 }

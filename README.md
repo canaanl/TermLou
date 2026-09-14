@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-5.0.16-blue)
+![Version](https://img.shields.io/badge/version-5.0.17-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.0.17** | 517 | 分割线按大标题归位：后台持久化归入「高级」，其与系统信息之间补线；工坊区加「工坊/WORKSHOP」大标题，弹窗/启动页降为小标题（去「工坊」二字）并去掉两者之间的线；全部输入框 hint 调淡（50% 透明），不再像已输入的真实值 |
 | **5.0.16** | 516 | 设置页分割线按大标题划分（去掉上游代理↔LAN、启动命令↔磁贴命令间的线，补后台持久化↔系统信息间的线）；命令区加「初始命令/INITIAL COMMANDS」大标题，原「初始命令」改名「启动命令」并与磁贴命令同列小标题；字号滑块由 MD2 绿圆点改 M3 竖条 handle（4dp×44dp，Material3 sliderStyle） |
 | **5.0.15** | 515 | 安全审查12项全修：workspace根守卫按解析后路径做（+move target校验+6单测）；RootfsExtractor补tar逃逸校验与链接映射；runInProot复用buildProotArgs（带kill-on-exit）+128KB截断；SOCKS5中继可abort；multipart boundary截断；resize显式子协议；Runner引用配平；OverlayBridge原子计数+rename检查；DnsMap首次映射；globalN分母+绝对平局带；net_spawn关fd；Patcher原子写+组名循环 |
 | **5.0.14** | 514 | 修滑动闪烁：删掉5.0.13的filler view，空行色（霜→面板罩→框罩三层离线算好）直接写进容器背景上层，下半格仍用霜色，两层静态LayerDrawable永不切换，无view无显隐，闪烁结构性消失 |
