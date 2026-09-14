@@ -487,14 +487,14 @@ private fun divider(): View = View(activity).apply {
 
 private fun buildLanguageRow(parent: LinearLayout) {
         val langZh = AppLang.isChinese(activity)
-        sectionTitle(parent, activity.getString(R.string.lang_title), body = true)
         parent.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, 0)
+            setPadding(0, 0, 0, 4)
             addView(TextView(activity).apply {
-                text = if (langZh) "🇨🇳" else "🇺🇸"
+                text = activity.getString(R.string.lang_title) + " " + if (langZh) "🇨🇳" else "🇺🇸"
                 setTextColor(scope.cOnSurface)
+                typeface = Typeface.DEFAULT_BOLD
                 textSize = UiTokens.TEXT_BODY
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
@@ -515,7 +515,7 @@ private fun buildLanguageRow(parent: LinearLayout) {
             })
         })
         parent.addView(TextView(activity).apply {
-            text = activity.getString(if (langZh) R.string.lang_sub_zh else R.string.lang_sub_en)
+            text = activity.getString(R.string.settings_restart_hint)
             setTextColor(scope.cOnSurfaceVariant)
             textSize = UiTokens.TEXT_META
             setPadding(0, 0, 0, 0)
@@ -523,14 +523,14 @@ private fun buildLanguageRow(parent: LinearLayout) {
     }
 
     private fun buildNightRow(parent: LinearLayout) {
-        sectionTitle(parent, activity.getString(R.string.settings_night_title), body = true)
         parent.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, 0)
+            setPadding(0, 0, 0, 4)
             addView(TextView(activity).apply {
-                text = if (scope.settingsManager.nightMode) "🌙" else "☀️"
+                text = activity.getString(R.string.settings_night_title) + " " + if (scope.settingsManager.nightMode) "🌙" else "☀️"
                 setTextColor(scope.cOnSurface)
+                typeface = Typeface.DEFAULT_BOLD
                 textSize = UiTokens.TEXT_BODY
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
@@ -547,7 +547,7 @@ private fun buildLanguageRow(parent: LinearLayout) {
             })
         })
         parent.addView(TextView(activity).apply {
-            text = activity.getString(R.string.settings_night_sub)
+            text = activity.getString(R.string.settings_restart_hint)
             setTextColor(scope.cOnSurfaceVariant)
             textSize = UiTokens.TEXT_META
             setPadding(0, 0, 0, 0)
