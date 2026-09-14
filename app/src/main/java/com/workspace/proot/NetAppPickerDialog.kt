@@ -12,7 +12,12 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import com.google.android.material.switchmaterial.SwitchMaterial
+import android.content.res.ColorStateList
+import com.google.android.material.materialswitch.MaterialSwitch
+
+private const val COLOR_MASK_RGB = 0x00FFFFFF
+private const val COLOR_ALPHA = 0x66
+private const val ALPHA_SHIFT = 24
 
 class NetAppPickerDialog(
     private val ctx: Activity,
@@ -25,7 +30,7 @@ class NetAppPickerDialog(
 ) {
     private lateinit var listInner: LinearLayout
     private lateinit var searchInput: EditText
-    private lateinit var sysSwitch: SwitchMaterial
+    private lateinit var sysSwitch: MaterialSwitch
     private val selected = sm.loadCaptureApps().toMutableSet()
 
     fun show() {
@@ -55,7 +60,23 @@ class NetAppPickerDialog(
         }
         content.addView(searchInput)
 
-        sysSwitch = SwitchMaterial(ctx).apply { isChecked = sm.includeSystemApps() }
+        sysSwitch = MaterialSwitch(ctx).apply {
+            thumbTintList = ColorStateList(
+                arrayOf(
+                    intArrayOf(android.R.attr.state_checked),
+                    intArrayOf(-android.R.attr.state_checked)
+                ),
+                intArrayOf(accent, onSurfaceVariant)
+            )
+            trackTintList = ColorStateList(
+                arrayOf(
+                    intArrayOf(android.R.attr.state_checked),
+                    intArrayOf(-android.R.attr.state_checked)
+                ),
+                intArrayOf((accent and COLOR_MASK_RGB) or (COLOR_ALPHA shl ALPHA_SHIFT), (onSurfaceVariant and COLOR_MASK_RGB) or (COLOR_ALPHA shl ALPHA_SHIFT))
+            )
+            isChecked = sm.includeSystemApps()
+        }
         content.addView(LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL

@@ -401,7 +401,19 @@ class TerminalController(
 
     fun refreshAllRows() {
         scope.shortcutManager.refreshAllRows(rowTop, rowBottom, shortcutInner, ::createShortcutKey, ::createCtrlKey)
+        styleShortcutSegments()
         wheelController?.refreshAll()
+    }
+
+    /** 快捷键两行渲染为 M3 分段组（Ctrl 键武装时点亮为错误语义色）。 */
+    private fun styleShortcutSegments() {
+        val ctrlFill = if (scope.terminalManager.ctrlMode) {
+            SegmentStyle.Fill(scope.cError, 0xFFFFFFFF.toInt())
+        } else {
+            null
+        }
+        SegmentStyle.applyRow(rowTop, listOf(null, null, null, ctrlFill), scope.cOutline, scope.cOnSurface)
+        SegmentStyle.applyRow(rowBottom, listOf(null, null, null, null), scope.cOutline, scope.cOnSurface)
     }
 
     /** 霜罩盖在底色上的合成色（src-over，随主题自适应）。 */
@@ -445,8 +457,7 @@ class TerminalController(
     }
 
     private fun updateCtrlButtonColor() {
-        val color = if (scope.terminalManager.ctrlMode) scope.cError else scope.cOutline
-        ctrlButton?.let { ButtonStyle.apply(it, color) }
+        ctrlButton?.let { styleShortcutSegments() }
     }
 
     private fun setCtrlArmed(armed: Boolean, feedback: String?, feedbackMs: Long) {

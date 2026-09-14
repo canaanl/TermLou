@@ -27,6 +27,8 @@ class AppScope(
     var cPrimary = 0
     var cError = 0
     var cTertiary = 0
+    var cSecondaryContainer = 0
+    var cOnSecondaryContainer = 0
 
     lateinit var settingsManager: SettingsManager
     lateinit var terminalManager: TerminalManager

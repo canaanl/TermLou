@@ -17,8 +17,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleCoroutineScope
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.slider.Slider
-import com.google.android.material.switchmaterial.SwitchMaterial
 
 /**
  * 设置域：整页设置内容构建（字号/命令/磁贴/快捷/工坊/上游/LAN/保活/存储/语言）。
@@ -36,7 +36,7 @@ class SettingsUiController(
 ) {
     private var suppressSwitch = false
     private var batteryOptPending = false
-    private var keepAliveSwitch: SwitchMaterial? = null
+    private var keepAliveSwitch: MaterialSwitch? = null
 
     fun buildInto(settingsWrapper: LinearLayout) {
         val density = activity.resources.displayMetrics.density
@@ -157,12 +157,10 @@ class SettingsUiController(
         sectionDesc(parent, activity.getString(R.string.settings_shell_desc))
         val shellEdit = EditText(activity).apply {
             setText(scope.settingsManager.shellCmd)
-            setTextColor(Color.WHITE)
-            setBackgroundColor(scope.cOutline)
-            textSize = UiTokens.TEXT_BODY
             setPadding(12, 8, 12, 8)
             setHint(activity.getString(R.string.hint_shell_cmd))
-            setHintTextColor(scope.cOnSurfaceVariant)
+        }.also {
+            FieldStyle.applyOutlined(it, scope.cOutline, scope.cOnSurface, scope.cOnSurfaceVariant, UiTokens.TEXT_BODY)
         }
         parent.addView(shellEdit)
         parent.addView(LinearLayout(activity).apply {
@@ -200,6 +198,15 @@ class SettingsUiController(
                     activity.hideIme()
                 }
             })
+            SegmentStyle.applyRow(
+                this,
+                listOf(
+                    SegmentStyle.Fill(scope.cSecondaryContainer, scope.cOnSecondaryContainer),
+                    null
+                ),
+                scope.cOutline,
+                scope.cOnSurface
+            )
         })
     }
 
@@ -208,12 +215,10 @@ class SettingsUiController(
         sectionDesc(parent, activity.getString(R.string.settings_tile_desc))
         val tileEdit = EditText(activity).apply {
             setText(scope.settingsManager.tileCommand)
-            setTextColor(Color.WHITE)
-            setBackgroundColor(scope.cOutline)
-            textSize = UiTokens.TEXT_BODY
             setPadding(12, 8, 12, 8)
             setHint(activity.getString(R.string.hint_tile_cmd))
-            setHintTextColor(scope.cOnSurfaceVariant)
+        }.also {
+            FieldStyle.applyOutlined(it, scope.cOutline, scope.cOnSurface, scope.cOnSurfaceVariant, UiTokens.TEXT_BODY)
         }
         parent.addView(tileEdit)
         parent.addView(LinearLayout(activity).apply {
@@ -251,6 +256,15 @@ class SettingsUiController(
                     activity.hideIme()
                 }
             })
+            SegmentStyle.applyRow(
+                this,
+                listOf(
+                    SegmentStyle.Fill(scope.cSecondaryContainer, scope.cOnSecondaryContainer),
+                    null
+                ),
+                scope.cOutline,
+                scope.cOnSurface
+            )
         })
     }
 
@@ -282,6 +296,15 @@ class SettingsUiController(
                 ButtonStyle.apply(this, scope.cOutline)
                 setOnClickListener { this@SettingsUiController.overlay.onQuickInitClick() }
             })
+            SegmentStyle.applyRow(
+                this,
+                listOf(
+                    SegmentStyle.Fill(scope.cSecondaryContainer, scope.cOnSecondaryContainer),
+                    null
+                ),
+                scope.cOutline,
+                scope.cOnSurface
+            )
         })
     }
 
@@ -308,16 +331,18 @@ class SettingsUiController(
         sectionDesc(parent, activity.getString(R.string.upstream_desc))
         val upEdit = EditText(activity).apply {
             setText(scope.settingsManager.netUpstream())
-            setTextColor(Color.WHITE)
-            setHintTextColor(scope.cOnSurfaceVariant)
             setHint("socks5://127.0.0.1:1080")
-            textSize = UiTokens.TEXT_BODY
             setSingleLine(true)
             setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
-            setBackgroundColor(UiTokens.searchBg)
+        }.also {
+            FieldStyle.applyOutlined(it, scope.cOutline, scope.cOnSurface, scope.cOnSurfaceVariant, UiTokens.TEXT_BODY)
         }
         parent.addView(upEdit)
-        parent.addView(LinearLayout(activity).apply {
+        parent.addView(buildUpstreamButtons(upEdit, density))
+    }
+
+    private fun buildUpstreamButtons(upEdit: EditText, density: Float): LinearLayout =
+        LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, (8 * density).toInt(), 0, 0)
             addView(Button(activity).apply {
@@ -353,8 +378,16 @@ class SettingsUiController(
                     activity.hideIme()
                 }
             })
-        })
-    }
+            SegmentStyle.applyRow(
+                this,
+                listOf(
+                    SegmentStyle.Fill(scope.cSecondaryContainer, scope.cOnSecondaryContainer),
+                    null
+                ),
+                scope.cOutline,
+                scope.cOnSurface
+            )
+        }
 
     private fun buildKeepAliveRow(parent: LinearLayout) {
         parent.addView(LinearLayout(activity).apply {
@@ -368,7 +401,7 @@ class SettingsUiController(
                 textSize = UiTokens.TEXT_BODY
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
-            val keepAliveSw = SwitchMaterial(ContextThemeWrapper(activity, R.style.Theme_TermLou_Slider)).apply {
+            val keepAliveSw = MaterialSwitch(ContextThemeWrapper(activity, R.style.Theme_TermLou_Slider)).apply {
                 elevation = 8f
                 thumbTintList = controlTint()
                 trackTintList = switchTrackTint()
@@ -446,7 +479,7 @@ class SettingsUiController(
                 textSize = UiTokens.TEXT_TITLE
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
-            addView(SwitchMaterial(ContextThemeWrapper(activity, R.style.Theme_TermLou_Slider)).apply {
+            addView(MaterialSwitch(ContextThemeWrapper(activity, R.style.Theme_TermLou_Slider)).apply {
                 elevation = 8f
                 thumbTintList = controlTint()
                 trackTintList = switchTrackTint()

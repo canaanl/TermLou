@@ -21,28 +21,25 @@ class UiBuilder(
     fun createStatusBar(): TextView {
         return TextView(activity).apply {
             text = "Workspace Terminal"
-            typeface = Typeface.MONOSPACE
-            setTextColor(UiTokens.statusGreen)
-            textSize = UiTokens.TEXT_META
+            setTextColor(theme.onSurface)
+            textSize = UiTokens.TEXT_BODY
             setPadding(16, 8, 16, 0)
-            setBackgroundColor(theme.surfaceVariant)
+            setBackgroundColor(theme.surfaceContainer)
         }
     }
 
     fun createTabHost(): Pair<FrameLayout, View> {
         val density = activity.resources.displayMetrics.density
-        val tabTextSize = UiTokens.TEXT_TITLE
 
         val tabHost = FrameLayout(activity).apply {
-            setBackgroundColor(theme.surfaceVariant)
+            setBackgroundColor(theme.surfaceContainer)
         }
         val tabIndicator = View(activity).apply {
-            val r = (tabTextSize + 16 - 4) / 2f * density
             background = GradientDrawable().apply {
-                setColor(theme.surface)
-                cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
+                setColor(theme.primary)
+                cornerRadius = 0f
             }
-            layoutParams = FrameLayout.LayoutParams(1, (tabTextSize * density + 16 * density - 4 * density).toInt()).apply {
+            layoutParams = FrameLayout.LayoutParams(1, (3 * density).toInt()).apply {
                 gravity = Gravity.BOTTOM
             }
         }
@@ -110,7 +107,7 @@ class UiBuilder(
     fun createShortcutContainer(): ShortcutViews {
         val shortcutInner = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(theme.surfaceVariant)
+            setBackgroundColor(theme.surfaceContainer)
         }
         val shortcutContainer = HorizontalScrollView(activity).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
@@ -137,7 +134,6 @@ class UiBuilder(
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            ButtonStyle.apply(this, theme.outline)
             setOnClickListener { onImportClick() }
         }
         val importFolderBtn = Button(activity).apply {
@@ -148,11 +144,19 @@ class UiBuilder(
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            ButtonStyle.apply(this, theme.outline)
             setOnClickListener { onImportFolderClick() }
         }
         fileBottomBar.addView(importBtn)
         fileBottomBar.addView(importFolderBtn)
+        SegmentStyle.applyRow(
+            fileBottomBar,
+            listOf(
+                SegmentStyle.Fill(theme.secondaryContainer, theme.onSecondaryContainer),
+                null
+            ),
+            theme.outline,
+            theme.onSurface
+        )
         return fileBottomBar
     }
 
@@ -174,7 +178,6 @@ class UiBuilder(
             } else {
                 LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            ButtonStyle.apply(this, theme.outline)
             setOnClickListener { onClick(seq, hasCtrl, ctrlSeq) }
         }
     }
@@ -193,7 +196,6 @@ class UiBuilder(
             } else {
                 LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            ButtonStyle.apply(this, theme.outline)
             setOnClickListener { onClick() }
         }
     }

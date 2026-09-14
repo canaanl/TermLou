@@ -25,6 +25,7 @@ class LanController(
 ) {
     private lateinit var lanToggleBtn: Button
     private lateinit var lanAuthBtn: Button
+    private var lanBtnRow: LinearLayout? = null
     private lateinit var lanStatusText: TextView
     private lateinit var lanUrlText: TextView
 
@@ -52,9 +53,18 @@ class LanController(
             setOnClickListener { copyLanUrl() }
         }
         parent.addView(lanUrlText)
-        parent.addView(LinearLayout(activity).apply {
+        val lanBtnRow = buildLanButtons()
+        this.lanBtnRow = lanBtnRow
+        parent.addView(lanBtnRow)
+        applyLanSegments()
+        refreshLanRow()
+    }
+
+    private fun buildLanButtons(): LinearLayout {
+        val density = activity.resources.displayMetrics.density
+        return LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, (8 * activity.resources.displayMetrics.density).toInt(), 0, 0)
+            setPadding(0, (8 * density).toInt(), 0, 0)
             lanToggleBtn = Button(activity).apply {
                 text = activity.getString(R.string.lan_start)
                 setTextColor(Color.WHITE)
@@ -65,7 +75,6 @@ class LanController(
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     marginEnd = 4
                 }
-                ButtonStyle.apply(this, scope.cPrimary)
                 setOnClickListener {
                     if (LanShareService.isRunning) stopLan() else startLan()
                 }
@@ -80,13 +89,22 @@ class LanController(
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     marginStart = 4
                 }
-                ButtonStyle.apply(this, scope.cOutline)
                 setOnClickListener { showLanAuthDialog() }
             }
             addView(lanToggleBtn)
             addView(lanAuthBtn)
-        })
-        refreshLanRow()
+        }
+    }
+
+    private fun applyLanSegments() {
+        val row = lanBtnRow ?: return
+        val running = LanShareService.isRunning
+        val fill = if (running) {
+            SegmentStyle.Fill(scope.cError, 0xFFFFFFFF.toInt())
+        } else {
+            SegmentStyle.Fill(scope.cSecondaryContainer, scope.cOnSecondaryContainer)
+        }
+        SegmentStyle.applyRow(row, listOf(fill, null), scope.cOutline, scope.cOnSurface)
     }
 
     fun refreshLanRow() {
@@ -106,9 +124,9 @@ class LanController(
             activity.getString(R.string.lan_url_preview_ip_fmt, ip)
         }
         lanToggleBtn.text = if (running) activity.getString(R.string.lan_stop) else activity.getString(R.string.lan_start)
-        ButtonStyle.apply(lanToggleBtn, if (running) scope.cError else scope.cPrimary)
         lanAuthBtn.isEnabled = !running
         lanAuthBtn.alpha = if (running) 0.5f else 1f
+        applyLanSegments()
     }
 
     private fun startLan() {
@@ -147,23 +165,19 @@ class LanController(
         val userEdit = EditText(activity).apply {
             setText(scope.settingsManager.lanUser())
             hint = activity.getString(R.string.hint_lan_user)
-            setTextColor(Color.WHITE)
-            setHintTextColor(scope.cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_BODY
             setSingleLine(true)
             setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
-            setBackgroundColor(UiTokens.searchBg)
+        }.also {
+            FieldStyle.applyOutlined(it, scope.cOutline, scope.cOnSurface, scope.cOnSurfaceVariant, UiTokens.TEXT_BODY)
         }
         val passEdit = EditText(activity).apply {
             setText(scope.settingsManager.lanPass())
             hint = activity.getString(R.string.hint_password)
-            setTextColor(Color.WHITE)
-            setHintTextColor(scope.cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_BODY
             setSingleLine(true)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
-            setBackgroundColor(UiTokens.searchBg)
+        }.also {
+            FieldStyle.applyOutlined(it, scope.cOutline, scope.cOnSurface, scope.cOnSurfaceVariant, UiTokens.TEXT_BODY)
         }
         val body = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL

@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-4.9.8-blue)
+![Version](https://img.shields.io/badge/version-5.0.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.0.0** | 500 | 外观对齐 Material Design（纯样式）：成对按钮改 M3 分段按钮（圆角描边容器+段间分隔线，主段填充副段透明），终端十二键、文件页两键、LAN 启动/认证、网络两行、设置保存/重置与上游代理同格化；磁贴开关/保留后台/语言与 App 选择对话框换 M3 MaterialSwitch（品牌绿保留）；Tab 指示器改 3dp 主题色下划亮线；输入框改 8dp 圆角 1dp 描边空心字段；状态条改 surfaceContainer+onSurface 常规字体；按钮去掉 3D 唇边改圆角胶囊+涟漪，主题色不变 |
 | **4.9.8** | 491 | 根因修复磁贴双跑：每次点击生成唯一意图ID（pending文件名+EXTRA透传），消费端按ID精确去重，同一次点击只执行一次，不丢任何意图 |
 | **4.9.6** | 489 | 彻底去掉白帧：辉光扩散与松手补齐上限均为0.92亮白blend，删除整白绘制分支与onEnd，全链路无纯白帧；单层wheel上半区空行底色改霜罩合成色，与非聚焦区同色接平 |
 | **4.9.5** | 488 | 快捷栏入口空条：预排版与监听器统一公式（去+8dp）+纠正后显式requestLayout；长按收尾改线性补齐到0.92取消整白帧；BAND空白区（白框以外）长按进设置；遮罩改冷灰霜色+淡噪点颗粒，中心不动 |

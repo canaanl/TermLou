@@ -154,7 +154,7 @@ class MainActivity : AppCompatActivity() {
         settingsTab = tabViews[3]
         for (tv in tabViews) toolbar.addView(tv)
         tabViews.forEachIndexed { i, iv ->
-            iv.setColorFilter(if (i == currentTab) Color.WHITE else scope.cSurfaceVariant)
+            iv.setColorFilter(if (i == currentTab) Color.WHITE else scope.cOnSurfaceVariant)
         }
         tabHost.addView(toolbar)
 
@@ -292,7 +292,7 @@ class MainActivity : AppCompatActivity() {
         val views = listOf(terminalArea, filesArea, networkArea, settingsWrapper)
 
         for (i in 0..3) {
-            tabs[i].setColorFilter(if (i == tabIndex) Color.WHITE else scope.cSurfaceVariant)
+            tabs[i].setColorFilter(if (i == tabIndex) Color.WHITE else scope.cOnSurfaceVariant)
         }
         if (tabIndex != prev) {
             tabs[tabIndex].animate().cancel()
@@ -403,6 +403,8 @@ class MainActivity : AppCompatActivity() {
         scope.cPrimary = t.primary
         scope.cError = t.error
         scope.cTertiary = t.tertiary
+        scope.cSecondaryContainer = t.secondaryContainer
+        scope.cOnSecondaryContainer = t.onSecondaryContainer
     }
 
     private fun loadSettings() {

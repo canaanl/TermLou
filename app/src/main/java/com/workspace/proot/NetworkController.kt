@@ -29,6 +29,8 @@ class NetworkController(
     private lateinit var netBraceMenu: BraceMenu
     private lateinit var netFlowList: LinearLayout
     private lateinit var netToggleBtn: Button
+    private var netRow1: LinearLayout? = null
+    private var netRow2: LinearLayout? = null
 
     private lateinit var netDashboard: LinearLayout
     private lateinit var netSearch: EditText
@@ -326,7 +328,7 @@ class NetworkController(
     private fun downArrow(): String = "↓"
 
     private fun createNetBottomBar(): LinearLayout {
-        fun barButton(text: String, color: Int, onClick: () -> Unit): Button = Button(activity).apply {
+        fun barButton(text: String, onClick: () -> Unit): Button = Button(activity).apply {
             this.text = text
             setTextColor(Color.WHITE)
             textSize = UiTokens.TEXT_BODY
@@ -335,45 +337,74 @@ class NetworkController(
             ellipsize = android.text.TextUtils.TruncateAt.END
             setPadding(3, 0, 3, 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            ButtonStyle.apply(this, color)
             setOnClickListener { onClick() }
         }
         fun gridRow(vararg buttons: Button): LinearLayout = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(4, 2, 4, 2)
+            setPadding(0, 2, 0, 2)
             for (b in buttons) addView(b)
         }
-        netToggleBtn = barButton(activity.getString(R.string.net_capture_start), scope.cPrimary) {
+        netToggleBtn = barButton(activity.getString(R.string.net_capture_start)) {
             if (NetVpnService.isRunning) stopNet() else startNet()
         }
+        val row1 = gridRow(
+            netToggleBtn,
+            barButton(activity.getString(R.string.net_pick_apps)) {
+                NetAppPickerDialog(
+                    activity, scope.cPrimary, scope.cOnSurfaceVariant,
+                    activity.overlayCommands.loadAppCache(), scope.settingsManager,
+                    { count ->
+                        refreshNetTab()
+                        if (count > 1) status.showTempStatus(activity.getString(R.string.net_multi_app_warn))
+                    }, scope.theme
+                ).show()
+            }
+        )
+        val row2 = gridRow(
+            barButton(activity.getString(R.string.net_clear)) {
+                FlowLog.clear()
+                DnsEvents.clear()
+                DnsMap.clear()
+                netExpandedIds.clear()
+                VpnFlowExporter.clearNow()
+                renderNetFlows()
+                status.showTempStatus(activity.getString(R.string.net_cleared))
+            },
+            barButton(activity.getString(R.string.net_rank)) { showNetRankDialog() }
+        )
+        this.netRow1 = row1
+        this.netRow2 = row2
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(scope.cSurface)
-            addView(gridRow(
-                netToggleBtn,
-                barButton(activity.getString(R.string.net_pick_apps), scope.cOutline) {
-                    NetAppPickerDialog(
-                        activity, scope.cPrimary, scope.cOnSurfaceVariant,
-                        activity.overlayCommands.loadAppCache(), scope.settingsManager,
-                        { count ->
-                            refreshNetTab()
-                            if (count > 1) status.showTempStatus(activity.getString(R.string.net_multi_app_warn))
-                        }, scope.theme
-                    ).show()
-                }
-            ))
-            addView(gridRow(
-                barButton(activity.getString(R.string.net_clear), scope.cOutline) {
-                    FlowLog.clear()
-                    DnsEvents.clear()
-                    DnsMap.clear()
-                    netExpandedIds.clear()
-                    VpnFlowExporter.clearNow()
-                    renderNetFlows()
-                    status.showTempStatus(activity.getString(R.string.net_cleared))
-                },
-                barButton(activity.getString(R.string.net_rank), scope.cOutline) { showNetRankDialog() }
-            ))
+            addView(row1)
+            addView(row2)
+            applyNetSegments()
+        }
+    }
+
+    private fun applyNetSegments() {
+        val row1 = netRow1
+        if (row1 != null) {
+            val running = NetVpnService.isRunning
+            val hasApps = scope.settingsManager.loadCaptureApps().isNotEmpty()
+            val fill = when {
+                !running && !hasApps -> null
+                running -> SegmentStyle.Fill(scope.cError, 0xFFFFFFFF.toInt())
+                else -> SegmentStyle.Fill(scope.cSecondaryContainer, scope.cOnSecondaryContainer)
+            }
+            SegmentStyle.applyRow(row1, listOf(fill, null), scope.cOutline, scope.cOnSurface)
+        }
+        netRow2?.let {
+            SegmentStyle.applyRow(
+                it,
+                listOf(
+                    SegmentStyle.Fill(scope.cSecondaryContainer, scope.cOnSecondaryContainer),
+                    null
+                ),
+                scope.cOutline,
+                scope.cOnSurface
+            )
         }
     }
 
@@ -456,12 +487,11 @@ class NetworkController(
             if (!running && !hasApps) {
                 netToggleBtn.isEnabled = false
                 netToggleBtn.alpha = 0.5f
-                ButtonStyle.apply(netToggleBtn, scope.cOutline)
             } else {
                 netToggleBtn.isEnabled = true
                 netToggleBtn.alpha = 1f
-                ButtonStyle.apply(netToggleBtn, if (running) scope.cError else scope.cPrimary)
             }
+            applyNetSegments()
         }
         renderNetFlows()
         val runningNow = NetVpnService.isRunning
