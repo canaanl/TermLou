@@ -45,6 +45,37 @@ import android.view.animation.DecelerateInterpolator
 /** 快捷栏↔wheel 推送切换的时长（毫秒）。 */
 private const val BAND_SWITCH_MS = 240L
 
+/** termux 配色表特殊槽位（长稳 ABI）：前景 256 / 背景 257 / 光标 258，共 259 槽。 */
+private const val TERM_FG = 256
+private const val TERM_BG = 257
+private const val TERM_CURSOR = 258
+private const val MIN_COLOR_SLOTS = 259
+
+/** 浅底不可读的 ANSI 槽位（其余红蓝品红等在白底对比度足够，沿用默认）。 */
+private const val ANSI_GREEN = 2
+private const val ANSI_YELLOW = 3
+private const val ANSI_CYAN = 6
+private const val ANSI_WHITE = 7
+private const val ANSI_BRIGHT_GREEN = 10
+private const val ANSI_BRIGHT_YELLOW = 11
+private const val ANSI_BRIGHT_CYAN = 14
+private const val ANSI_BRIGHT_WHITE = 15
+
+/** 日间终端配色：白底黑字 + 加深变体。 */
+private val DAY_SCHEME = listOf(
+    TERM_FG to "#111111",
+    TERM_BG to "#FFFFFF",
+    TERM_CURSOR to "#111111",
+    ANSI_GREEN to "#007A00",
+    ANSI_YELLOW to "#7A6A00",
+    ANSI_CYAN to "#007A7A",
+    ANSI_WHITE to "#666666",
+    ANSI_BRIGHT_GREEN to "#00A000",
+    ANSI_BRIGHT_YELLOW to "#9A8F00",
+    ANSI_BRIGHT_CYAN to "#00A0A0",
+    ANSI_BRIGHT_WHITE to "#808080"
+)
+
 /**
  * 缁堢鍩燂細缁堢瑙嗗浘/鎷ㄨ疆/蹇嵎閿銆乻hell 鍚姩锛堝惈寮€灞忥級銆乮nstallRootfs銆? * 瀛楀彿/ctrl 閿€乀erminalSessionClient/ViewClient 瀹炵幇銆? * 鍘?MainActivity 缁堢鐩稿叧 ~550 琛屾敹褰掓澶勶紱Activity 浠呬繚鐣?showTab 澹炽€? */
 class TerminalController(
@@ -169,8 +200,6 @@ class TerminalController(
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
             )
-            // 仿真器自带深色配色、容器底在日间是浅的：显示区钉死深色，两档白字可读（夜间与原来逐位一致）。
-            setBackgroundColor(ThemeColors.default(true).surface)
             addView(terminalView)
         }
         terminalArea.addView(terminalWrapper)
@@ -420,13 +449,19 @@ class TerminalController(
     }
 
     /** 霜罩盖在底色上的合成色（src-over，随主题自适应）。 */
-    private fun frostBlended(base: Int): Int {
-        val scrim = WheelLevelFrame.SCRIM_COLOR
+    private fun frostBlended(base: Int): Int {        val scrim = WheelLevelFrame.SCRIM_COLOR
         val a = (scrim ushr 24) / 255f
         val r = ((scrim shr 16) and 0xFF) * a + ((base shr 16) and 0xFF) * (1f - a)
         val g = ((scrim shr 8) and 0xFF) * a + ((base shr 8) and 0xFF) * (1f - a)
         val b = (scrim and 0xFF) * a + (base and 0xFF) * (1f - a)
         return (0xFF shl 24) or (r.toInt() shl 16) or (g.toInt() shl 8) or b.toInt()
+    }
+
+    /** 日间终端配色：白底黑字 + 浅底可读的 ANSI 变体；夜间沿用仿真器默认深色不动。 */
+    private fun applyDayScheme(session: TerminalSession) {
+        val colors = session.emulator.mColors
+        if (colors.mCurrentColors.size < MIN_COLOR_SLOTS) return
+        for ((index, hex) in DAY_SCHEME) colors.tryParseColor(index, hex)
     }
 
     private fun createShortcutKey(label: String, seq: String, hasCtrl: Boolean = false, ctrlSeq: String = "", widthPx: Int = 0): Button {
@@ -658,6 +693,7 @@ class TerminalController(
                         this@TerminalController
                     )
                     tm.setSession(newSession)
+                    if (!scope.theme.night) applyDayScheme(newSession)
                     terminalView.attachSession(newSession)
                     activity.showTerminalView()
                     val remaining = maxOf(0L, 800L - (System.currentTimeMillis() - splashStartTime))

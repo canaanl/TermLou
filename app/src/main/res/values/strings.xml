@@ -306,7 +306,7 @@
     <string name="sm_block">块面</string>
     <string name="sm_mixed">混合</string>
     <string name="sm_invert">反选</string>
-    <string name="sm_undo">返回</string>
+    <string name="sm_undo">撤销</string>
     <string name="sm_import">导入照片</string>
     <string name="sm_preview">预览</string>
     <string name="sm_save">保存</string>

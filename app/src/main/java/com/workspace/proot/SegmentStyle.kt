@@ -80,11 +80,13 @@ object SegmentStyle {
         for (i in 0 until n) {
             val child = row.getChildAt(i) as Button
             val fill = fills.getOrNull(segment)
+            // 填充圆角比边框小一个线宽：描边居中压边，同半径会在拐角透出底色楔形缝。
+            val fillRadius = if (bar.bordered) (radius - stroke).coerceAtLeast(0f) else radius
             val round = Round(segment == 0, fills.isNotEmpty() && segment == fills.lastIndex)
             // 压在填充上的线用深色（切断感），压在空心段上的线用浅色（可见性）。
             val divColor = if (fill != null) DIVIDER_DARK else dividerColor(onSurface)
             val divider = Divider(divColor, stroke, fills.isNotEmpty() && segment != fills.lastIndex)
-            styleSegment(child, fill, Shape(radius, divider), onSurface, round)
+            styleSegment(child, fill, Shape(fillRadius, divider), onSurface, round)
             segment++
         }
     }
