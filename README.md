@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-5.0.13-blue)
+![Version](https://img.shields.io/badge/version-5.0.14-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -325,6 +325,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.0.14** | 514 | 修滑动闪烁：删掉5.0.13的filler view，空行色（霜→面板罩→框罩三层离线算好）直接写进容器背景上层，下半格仍用霜色，两层静态LayerDrawable永不切换，无view无显隐，闪烁结构性消失 |
 | **5.0.13** | 513 | 空行底与两侧同色：加filler view（上半格等大，仅单层wheel露空行时出现），底色按霜→面板罩→框罩三层叠离线算好逐位一致，显隐挂wheel/upper可见性回调 |
 | **5.0.12** | 512 | 回滚：TerminalController整文件回到5.0.9（塌缩机制与按键底改色一次清掉，双层wheel与霜行设计原样回来，去绿等已验收不动） |
 | **5.0.11** | 511 | 藏缝：按键区底改与仿真器底同色（夜间从默认配色表实时读257槽、日间纯白），余边上下无色差，肉眼无边界；像素还在，只是看不见 |
