@@ -33,7 +33,8 @@
     <string name="settings_ui_title">界面设置</string>
     <string name="settings_font_title">终端字号设置</string>
     <string name="font_changed_fmt">终端字号已切换: %1$s</string>
-    <string name="settings_shell_title">初始命令</string>
+    <string name="settings_commands_title">初始命令</string>
+    <string name="settings_shell_title">启动命令</string>
     <string name="settings_shell_desc">终端启动时自动执行的命令</string>
     <string name="hint_shell_cmd">输入启动命令</string>
     <string name="shell_saved">Shell 命令已保存</string>

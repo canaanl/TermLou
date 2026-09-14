@@ -439,7 +439,7 @@ class MainActivity : AppCompatActivity() {
 internal class TickSlider(context: android.content.Context) : com.google.android.material.slider.Slider(context) {
     private val activeTick = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
     private val inactiveTick = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
-    private val tickRadius = 3f * context.resources.displayMetrics.density
+    private val tickRadius = 2f * context.resources.displayMetrics.density
 
     fun setTickColors(active: Int, inactive: Int) {
         activeTick.color = active

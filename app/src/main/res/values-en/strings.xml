@@ -33,6 +33,7 @@
     <string name="settings_ui_title">DISPLAY</string>
     <string name="settings_font_title">TERMINAL FONT SIZE</string>
     <string name="font_changed_fmt">Font size: %1$s</string>
+    <string name="settings_commands_title">INITIAL COMMANDS</string>
     <string name="settings_shell_title">STARTUP COMMAND</string>
     <string name="settings_shell_desc">Command auto-run at terminal startup</string>
     <string name="hint_shell_cmd">Enter startup command</string>

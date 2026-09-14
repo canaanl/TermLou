@@ -9,7 +9,19 @@
         <item name="android:backgroundDimEnabled">false</item>
     </style>
 
-    <style name="Theme.TermLou.Slider" parent="Theme.MaterialComponents.NoActionBar" />
+    <!-- 字号滑块：Material3 主题提供 M3 sliderStyle（竖条 handle 轨道/拇指），
+         MaterialComponents 主题系只有 MD2 圆点样式。拇指尺寸走 M3 style 覆盖。 -->
+    <style name="Theme.TermLou.Slider" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="sliderStyle">@style/Widget.TermLou.Slider</item>
+    </style>
+
+    <style name="Widget.TermLou.Slider" parent="Widget.Material3.Slider">
+        <item name="thumbWidth">4dp</item>
+        <item name="thumbHeight">44dp</item>
+        <item name="trackHeight">4dp</item>
+        <item name="trackStopIndicatorSize">0dp</item>
+        <item name="labelBehavior">gone</item>
+    </style>
 
     <!-- 开关专用：Material3 主题提供 materialSwitchStyle（M3 thumb/track drawable），
          AppCompat/MaterialComponents 主题系均无此 attr，直接 new MaterialSwitch 会落空到

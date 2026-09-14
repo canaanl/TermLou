@@ -56,8 +56,8 @@ class SettingsUiController(
 
         buildDisplaySection(settingsInner, density)
         settingsInner.addView(divider())
+        sectionTitle(settingsInner, activity.getString(R.string.settings_commands_title))
         buildShellSection(settingsInner)
-        settingsInner.addView(divider())
         buildTileSection(settingsInner)
         settingsInner.addView(divider())
         buildQuickSection(settingsInner)
@@ -75,8 +75,8 @@ class SettingsUiController(
         ) { overlay.openSplashMaker() }
         settingsInner.addView(divider())
         buildUpstreamSection(settingsInner, density)
-        settingsInner.addView(divider())
         lan.buildSettingsBlock(settingsInner)
+        settingsInner.addView(divider())
         buildKeepAliveRow(settingsInner)
         buildStorageRow(settingsInner)
 
@@ -166,7 +166,7 @@ private fun divider(): View = View(activity).apply {
     }
 
     private fun buildShellSection(parent: LinearLayout) {
-        sectionTitle(parent, activity.getString(R.string.settings_shell_title))
+        sectionTitle(parent, activity.getString(R.string.settings_shell_title), body = true)
         sectionDesc(parent, activity.getString(R.string.settings_shell_desc))
         val shellEdit = EditText(activity).apply {
             setText(scope.settingsManager.shellCmd)
@@ -226,7 +226,7 @@ private fun divider(): View = View(activity).apply {
     }
 
     private fun buildTileSection(parent: LinearLayout) {
-        sectionTitle(parent, activity.getString(R.string.settings_tile_title))
+        sectionTitle(parent, activity.getString(R.string.settings_tile_title), body = true)
         sectionDesc(parent, activity.getString(R.string.settings_tile_desc))
         val tileEdit = EditText(activity).apply {
             setText(scope.settingsManager.tileCommand)
