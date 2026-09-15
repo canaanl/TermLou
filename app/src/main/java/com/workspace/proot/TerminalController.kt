@@ -232,6 +232,7 @@ class TerminalController(
         }
         columnsWrapper = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
+            addView(SegmentStyle.hDivider(activity, scope.cOnSurface))
             addView(rowTop)
             addView(SegmentStyle.hDivider(activity, scope.cOnSurface))
             addView(rowBottom)

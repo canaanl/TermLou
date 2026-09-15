@@ -377,6 +377,7 @@ class NetworkController(
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(scope.cSurface)
+            addView(SegmentStyle.hDivider(activity, scope.cOnSurface))
             addView(row1)
             addView(SegmentStyle.hDivider(activity, scope.cOnSurface))
             addView(row2)

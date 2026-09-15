@@ -39,9 +39,10 @@ object DialogStyler {
             }
         }
         // setItems 列表弹窗的行文字走平台主题色（浅色下会残留白字），统一着主题前景色。
-        dialog.listView?.let { lv ->
-            for (i in 0 until lv.childCount) {
-                (lv.getChildAt(i) as? TextView)?.setTextColor(theme.onSurface)
+        // 需等 ListView 完成布局、行 view 建立后再上色（紧随 show() 同步执行时 childCount 为 0）。
+        dialog.listView?.post {
+            for (i in 0 until dialog.listView.childCount) {
+                (dialog.listView.getChildAt(i) as? TextView)?.setTextColor(theme.onSurface)
             }
         }
     }

@@ -64,6 +64,7 @@ class WorkspaceController(
         filesArea.addView(filesHeader)
         filesArea.addView(filesListRoot)
 
+        filesArea.addView(SegmentStyle.hDivider(activity, scope.cOnSurface))
         filesArea.addView(scope.uiBuilder.createFileBottomBar(
             onImportClick = { pickFiles() },
             onImportFolderClick = { pickFolder() }

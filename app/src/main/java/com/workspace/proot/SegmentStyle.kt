@@ -50,6 +50,8 @@ object SegmentStyle {
     }
 
     /** 把一行按钮渲染成分段组：fills 顺序对应各段（null = 未选中/透明）。 */
+    // outline 参数保留兼容既有调用：描边已统一走 dividerColor(onSurface)，深浅两档可见。
+    @Suppress("UNUSED_PARAMETER")
     fun applyRow(
         row: LinearLayout,
         fills: List<Fill?>,
@@ -67,7 +69,8 @@ object SegmentStyle {
         row.foreground = if (bar.bordered) {
             GradientDrawable().apply {
                 cornerRadius = radius
-                setStroke(stroke, outline)
+                // 外描边不能直接用 outline（深色底上不可见），与段间分隔线同用 onSurface 40% 透明。
+                setStroke(stroke, dividerColor(onSurface))
                 setColor(Color.TRANSPARENT)
             }
         } else {
