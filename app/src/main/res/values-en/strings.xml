@@ -35,28 +35,28 @@
     <string name="font_changed_fmt">Font size: %1$s</string>
     <string name="settings_commands_title">INITIAL COMMANDS</string>
     <string name="settings_shell_title">STARTUP COMMAND</string>
-    <string name="settings_shell_desc">Command auto-run at terminal startup</string>
+    <string name="settings_shell_desc">Runs automatically at terminal startup</string>
     <string name="hint_shell_cmd">Enter startup command</string>
     <string name="shell_saved">Shell command saved</string>
     <string name="shell_inited_idle">Initialized (not started)</string>
     <string name="settings_tile_title">TILE COMMAND</string>
-    <string name="settings_tile_desc">Command run when tapping the quick-settings tile</string>
+    <string name="settings_tile_desc">Triggered automatically on tile tap</string>
     <string name="hint_tile_cmd">Enter one-tap tile command</string>
     <string name="tile_cmd_saved">Tile command saved</string>
     <string name="settings_quick_title">QUICK LAUNCH</string>
-    <string name="settings_quick_desc">Launch your chosen apps from the tile</string>
+    <string name="settings_quick_desc">Quick-open on tile tap</string>
     <string name="pick_app">CHOOSE APPS</string>
     <string name="settings_workshop_title">WORKSHOP</string>
     <string name="settings_dialog_ws_title">DIALOG</string>
-    <string name="settings_dialog_ws_desc">Design script dialogs visually for termlou-ui reuse</string>
+    <string name="settings_dialog_ws_desc">Visual script design for termlou-ui</string>
     <string name="open_workshop">OPEN WORKSHOP</string>
     <string name="settings_splash_title">SPLASH</string>
-    <string name="settings_splash_desc">Draw the boot splash, applied on next launch</string>
+    <string name="settings_splash_desc">Draw the boot splash; image import supported</string>
     <string name="settings_advanced">ADVANCED</string>
 
     <!-- Settings: upstream -->
     <string name="upstream_title">UPSTREAM PROXY</string>
-    <string name="upstream_desc">Empty = built-in direct (recommended, with logs and blocking); a socks5:// URL uses an external proxy (e.g. inside proot), logs and blocking unavailable.</string>
+    <string name="upstream_desc">Empty = built-in direct; socks5 supported</string>
     <string name="upstream_saved">Upstream saved, takes effect after restart</string>
     <string name="upstream_cleared">Restored built-in direct</string>
 

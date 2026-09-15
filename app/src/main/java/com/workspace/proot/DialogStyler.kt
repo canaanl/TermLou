@@ -38,6 +38,12 @@ object DialogStyler {
                 it.isAllCaps = true
             }
         }
+        // setItems 列表弹窗的行文字走平台主题色（浅色下会残留白字），统一着主题前景色。
+        dialog.listView?.let { lv ->
+            for (i in 0 until lv.childCount) {
+                (lv.getChildAt(i) as? TextView)?.setTextColor(theme.onSurface)
+            }
+        }
     }
 
 }

@@ -35,28 +35,28 @@
     <string name="font_changed_fmt">终端字号已切换: %1$s</string>
     <string name="settings_commands_title">初始命令</string>
     <string name="settings_shell_title">启动命令</string>
-    <string name="settings_shell_desc">终端启动时自动执行的命令</string>
+    <string name="settings_shell_desc">终端启动时自动执行</string>
     <string name="hint_shell_cmd">输入启动命令</string>
     <string name="shell_saved">Shell 命令已保存</string>
     <string name="shell_inited_idle">已初始化（不启动）</string>
     <string name="settings_tile_title">磁贴命令</string>
-    <string name="settings_tile_desc">点击快速设置磁贴时执行的命令</string>
+    <string name="settings_tile_desc">点击磁贴时自动触发</string>
     <string name="hint_tile_cmd">输入磁贴一键命令</string>
     <string name="tile_cmd_saved">磁贴命令已保存</string>
     <string name="settings_quick_title">快捷启动</string>
-    <string name="settings_quick_desc">在磁贴上快捷启动你所选的应用</string>
+    <string name="settings_quick_desc">点击磁贴时快速打开</string>
     <string name="pick_app">选择应用</string>
     <string name="settings_workshop_title">工坊</string>
     <string name="settings_dialog_ws_title">弹窗</string>
-    <string name="settings_dialog_ws_desc">图形化设计脚本浮窗，保存模板供 termlou-ui 复用</string>
+    <string name="settings_dialog_ws_desc">termlou-ui图形化脚本设计</string>
     <string name="open_workshop">打开工坊</string>
     <string name="settings_splash_title">启动页</string>
-    <string name="settings_splash_desc">自由绘制开屏图像，保存后下次启动生效</string>
+    <string name="settings_splash_desc">自由绘制开屏图像，支持图片导入</string>
     <string name="settings_advanced">高级</string>
 
     <!-- 设置：上游代理 -->
     <string name="upstream_title">上游代理</string>
-    <string name="upstream_desc">留空 = 内置直连（推荐，支持连接记录与屏蔽）；填 socks5://地址 走外部代理（如 proot 里运行的代理），此时记录与屏蔽不可用。</string>
+    <string name="upstream_desc">留空=内置直连，支持socks5</string>
     <string name="upstream_saved">上游已保存，重启抓包后生效</string>
     <string name="upstream_cleared">已恢复内置直连</string>
 

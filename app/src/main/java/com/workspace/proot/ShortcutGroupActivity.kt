@@ -79,7 +79,7 @@ class ShortcutGroupActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
             )
-            setPadding(0, (4 * d).toInt(), 0, (4 * d).toInt())
+            setPadding(0, 0, 0, (4 * d).toInt())
         }
         root.addView(recyclerView)
 
@@ -156,22 +156,20 @@ class ShortcutGroupActivity : Activity() {
         val nameEdit = EditText(this).apply {
             setText(oldLabel)
             hint = getString(R.string.sc_name_hint)
-            setTextColor(theme.onSurface)
-            setHintTextColor(theme.onSurfaceVariant)
-            setBackgroundColor(theme.outline)
             setPadding((8 * d).toInt(), (6 * d).toInt(), (8 * d).toInt(), (6 * d).toInt())
+        }.also {
+            FieldStyle.applyOutlined(it, theme.outline, theme.onSurface, theme.onSurfaceVariant, UiTokens.TEXT_BODY)
         }
         val cmdEdit = EditText(this).apply {
             setText(oldCmd)
             hint = getString(R.string.sc_cmd_hint)
-            setTextColor(theme.onSurface)
-            setHintTextColor(theme.onSurfaceVariant)
-            setBackgroundColor(theme.outline)
             setPadding((8 * d).toInt(), (6 * d).toInt(), (8 * d).toInt(), (6 * d).toInt())
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = (8 * d).toInt() }
+        }.also {
+            FieldStyle.applyOutlined(it, theme.outline, theme.onSurface, theme.onSurfaceVariant, UiTokens.TEXT_BODY)
         }
         val body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
