@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-5.0.22-blue)
+![Version](https://img.shields.io/badge/version-5.0.23-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -329,6 +329,7 @@ echo "https://example.com" | termlou-clipboard
 | **5.0.20** | 520 | 默认 Pi 安装/更新命令重写：加 `--retry 5 --retry-all-errors --retry-delay 2` 网络容错、`tar -tzf` 完整性校验、解到 `/tmp/pi.new` 落盘前验活、按新旧清单差集清理旧版本残留文件与空目录、收尾用 `$HOME/.local/bin/pi` 绝对路径校验（命令以 `\r` 结尾） |
 | **5.0.21** | 521 | 命令组左滑「移出命令组/删除命令」弹窗浅色下白字修复（ListView 行着色延后到布局完成）；分段按钮外描边改用 onSurface 40% 透明（深色下边框可见，快捷命令管理/两个工坊二级页一致）；终端/文件/网络三个 tab 键区顶部加分隔线与显示区分离 |
 | **5.0.22** | 522 | 应用图标重绘：纯黑背景 + 大品牌绿文件夹，内嵌黑边白线闪电+下划线终端标志；单色图标镂空同步 |
+| **5.0.23** | 523 | 应用图标微调：文件夹缩小居中、四周留黑边；闪电与下划线黑边统一等粗；闪电填充改闪电黄，下划线保持白色 |
 | **5.0.18** | 518 | 语言/主题配色改为与后台持久化同款并排行（粗体小标题+动态 emoji 在左、开关在右），去掉独立标题行；两行描述统一为「自动重启后生效 / Takes effect after restart」，删除旧的 lang_sub_zh/lang_sub_en/settings_night_sub |
 | **5.0.17** | 517 | 分割线按大标题归位：后台持久化归入「高级」，其与系统信息之间补线；工坊区加「工坊/WORKSHOP」大标题，弹窗/启动页降为小标题（去「工坊」二字）并去掉两者之间的线；全部输入框 hint 调淡（50% 透明），不再像已输入的真实值 |
 | **5.0.16** | 516 | 设置页分割线按大标题划分（去掉上游代理↔LAN、启动命令↔磁贴命令间的线，补后台持久化↔系统信息间的线）；命令区加「初始命令/INITIAL COMMANDS」大标题，原「初始命令」改名「启动命令」并与磁贴命令同列小标题；字号滑块由 MD2 绿圆点改 M3 竖条 handle（4dp×44dp，Material3 sliderStyle） |
