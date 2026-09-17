@@ -188,6 +188,29 @@ class SettingsManager(private val prefs: SharedPreferences) {
         val before = lastUsed.size
         lastUsed.keys.removeAll { it !in keep }
         if (lastUsed.size != before) saveLastUsedMap(lastUsed)
+
+        pruneBanditMap(keep)
+    }
+
+    private fun pruneBanditMap(keep: Set<String>) {
+        val bandit = loadBanditMap()
+        var changed = false
+        val bit = bandit.entries.iterator()
+        while (bit.hasNext()) {
+            val (_, inner) = bit.next()
+            val it3 = inner.entries.iterator()
+            while (it3.hasNext()) {
+                if (it3.next().key !in keep) {
+                    it3.remove()
+                    changed = true
+                }
+            }
+            if (inner.isEmpty()) {
+                bit.remove()
+                changed = true
+            }
+        }
+        if (changed) saveBanditMap(bandit)
     }
 
     fun clearCommandUsage(id: String) {
@@ -215,6 +238,13 @@ class SettingsManager(private val prefs: SharedPreferences) {
 
         val lastUsed = loadLastUsedMap()
         if (lastUsed.remove(id) != null) saveLastUsedMap(lastUsed)
+
+        val bandit = loadBanditMap()
+        var banditChanged = false
+        for (inner in bandit.values) {
+            if (inner.remove(id) != null) banditChanged = true
+        }
+        if (banditChanged) saveBanditMap(bandit)
     }
 
     fun loadFavoriteApps(): MutableList<FavoriteApp> {
@@ -340,6 +370,91 @@ class SettingsManager(private val prefs: SharedPreferences) {
         val map = loadLastUsedMap()
         map[id] = System.currentTimeMillis()
         saveLastUsedMap(map)
+    }
+
+    fun loadBanditMap(): MutableMap<String, MutableMap<String, Float>> {
+        val map = mutableMapOf<String, MutableMap<String, Float>>()
+        try {
+            val obj = org.json.JSONObject(prefs.getString("tuiBandit", "{}"))
+            val it = obj.keys()
+            while (it.hasNext()) {
+                val state = it.next()
+                val inner = mutableMapOf<String, Float>()
+                val io = obj.getJSONObject(state)
+                val it2 = io.keys()
+                while (it2.hasNext()) {
+                    val k = it2.next()
+                    inner[k] = io.optDouble(k, 0.0).toFloat()
+                }
+                map[state] = inner
+            }
+        } catch (_: Exception) {}
+        return map
+    }
+
+    fun saveBanditMap(map: Map<String, Map<String, Float>>) {
+        val obj = org.json.JSONObject()
+        for ((state, inner) in map) {
+            obj.put(state, org.json.JSONObject().apply {
+                for ((k, v) in inner) put(k, v.toDouble())
+            })
+        }
+        prefs.edit().putString("tuiBandit", obj.toString()).apply()
+    }
+
+    /** 猜中率计数：每次有效推荐记 shown，点中第 1 位再记 top1。只后台记数，不展示。 */
+    fun recordHit(hit: Boolean) {
+        prefs.edit()
+            .putLong("tuiHitShown", prefs.getLong("tuiHitShown", 0L) + 1)
+            .putLong("tuiHitTop1", prefs.getLong("tuiHitTop1", 0L) + if (hit) 1L else 0L)
+            .apply()
+    }
+
+    fun loadHitStats(): Pair<Long, Long> {
+        return try {
+            prefs.getLong("tuiHitShown", 0L) to prefs.getLong("tuiHitTop1", 0L)
+        } catch (_: Exception) {
+            0L to 0L
+        }
+    }
+
+    /** 回放日志追加（状态，前文，点击），超上限丢最旧；坏串直接丢弃不抛。 */
+    fun appendReplay(state: String, anchor: List<String>, tappedId: String) {
+        try {
+            val arr = org.json.JSONArray(prefs.getString("tuiReplay", "[]"))
+            arr.put(org.json.JSONObject().apply {
+                put("s", state)
+                put("a", org.json.JSONArray().apply {
+                    for (a in anchor) put(a)
+                })
+                put("t", tappedId)
+            })
+            while (arr.length() > BanditTuner.REPLAY_CAP) arr.remove(0)
+            prefs.edit().putString("tuiReplay", arr.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun loadReplay(): List<ReplaySample> {
+        val out = mutableListOf<ReplaySample>()
+        try {
+            val arr = org.json.JSONArray(prefs.getString("tuiReplay", "[]"))
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                out.add(ReplaySample(o.getString("s"), readReplayAnchor(o.optJSONArray("a")), o.getString("t")))
+            }
+        } catch (_: Exception) {}
+        return out
+    }
+
+    private fun readReplayAnchor(ja: org.json.JSONArray?): MutableList<String> {
+        val anchor = mutableListOf<String>()
+        if (ja == null) return anchor
+        for (j in 0 until ja.length()) anchor.add(ja.getString(j))
+        return anchor
+    }
+
+    fun clearReplay() {
+        prefs.edit().remove("tuiReplay").apply()
     }
 
     fun includeSystemApps(): Boolean = prefs.getBoolean("includeSystemApps", false)

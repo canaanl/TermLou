@@ -25,6 +25,7 @@ class ShortcutManager(
     private var usageMap = settingsManager.loadUsageMap()
     private var seqMap = settingsManager.loadSeqMap()
     private var lastUsedMap = settingsManager.loadLastUsedMap()
+    private var banditMap = settingsManager.loadBanditMap()
     private var lastClickContext: Pair<String, String>? = null
     private var prevContext: List<String> = emptyList()
     private val TIE_BAND = 0.05f
@@ -60,6 +61,7 @@ class ShortcutManager(
         usageMap = settingsManager.loadUsageMap()
         seqMap = settingsManager.loadSeqMap()
         lastUsedMap = settingsManager.loadLastUsedMap()
+        banditMap = settingsManager.loadBanditMap()
     }
 
     override fun execute(item: ShortcutItem) {
@@ -67,6 +69,9 @@ class ShortcutManager(
             is ShortcutItem.Command -> {
                 reloadUsage()
                 val state = TuiStateDetector.refresh()
+                val anchor = prevContext.toList()
+                val now = System.currentTimeMillis()
+                recordHitSample(state, item.id, now)
                 if (lastClickContext?.first != state) lastClickContext = null
                 val counted: Int
                 if (lastClickContext?.second == item.id) {
@@ -81,6 +86,9 @@ class ShortcutManager(
                     counted = stateMap[item.id]!!
                 }
                 onCardUsed(item.label, state, counted)
+                BanditTuner.onTap(banditMap, state, item.id)
+                settingsManager.saveBanditMap(banditMap)
+                settingsManager.appendReplay(state, anchor, item.id)
                 writeFn(buildWritePayload(interpretEscapes(item.cmd)))
                 onCommandExecuted()
                 prevContext = (prevContext + item.id).takeLast(2)
@@ -139,23 +147,46 @@ class ShortcutManager(
         val stateUsage = usageMap[state]
         val seq = seqMap[state] ?: emptyList()
         val now = System.currentTimeMillis()
+        return pickBest(list, state, stateUsage, seq, now)?.first
+    }
+
+    /** 顶层列表选优：返回（位置，归一命令 id，组取其最佳成员）。并列由轮换分裁决。 */
+    private fun pickBest(
+        list: List<ShortcutItem>,
+        state: String,
+        stateUsage: Map<String, Int>?,
+        seq: List<String>,
+        now: Long
+    ): Pair<Int, String?>? {
         var best: Int? = null
+        var bestId: String? = null
         var bestScore = 0f
         var bestUsed = 0L
+        var bestW = 0f
         for ((i, item) in list.withIndex()) {
             val (score, id) = itemScore(item, stateUsage, seq, now)
             if (score <= 0f) continue
             val used = id?.let { lastUsedMap[it] } ?: 0L
+            val w = id?.let { BanditTuner.weightOf(banditMap, state, it) } ?: 0f
             val band = maxOf(bestScore * TIE_BAND, ABS_TIE)
             val clearWin = score > bestScore + band
-            val tieWin = score >= bestScore - band && used > bestUsed
+            val tieWin = score >= bestScore - band && BanditTuner.winsTie(w, bestW, used, bestUsed)
             if (best == null || clearWin || tieWin) {
                 best = i
+                bestId = id
                 bestScore = score
                 bestUsed = used
+                bestW = w
             }
         }
-        return best
+        return best?.let { it to bestId }
+    }
+
+    /** 命中采样：必须在本次点击记分之前算，否则自证。无有效推荐时不记。 */
+    private fun recordHitSample(state: String, tappedId: String, now: Long) {
+        val top = pickBest(lastList, state, usageMap[state], seqMap[state] ?: emptyList(), now)?.second
+        if (top == null) return
+        settingsManager.recordHit(tappedId == top)
     }
 
     private fun bestMemberIndex(members: List<ShortcutItem.Command>): Int? {
@@ -166,19 +197,22 @@ class ShortcutManager(
         var best: Int? = null
         var bestScore = 0f
         var bestUsed = 0L
+        var bestW = 0f
         for ((i, m) in members.withIndex()) {
             val score = CommandRecommender.summonScore(
                 m.id, stateUsage, seq, prevContext, usageMap, lastUsedMap, now
             )
             if (score <= 0f) continue
             val used = lastUsedMap[m.id] ?: 0L
+            val w = BanditTuner.weightOf(banditMap, state, m.id)
             val band = maxOf(bestScore * TIE_BAND, ABS_TIE)
             val clearWin = score > bestScore + band
-            val tieWin = score >= bestScore - band && used > bestUsed
+            val tieWin = score >= bestScore - band && BanditTuner.winsTie(w, bestW, used, bestUsed)
             if (best == null || clearWin || tieWin) {
                 best = i
                 bestScore = score
                 bestUsed = used
+                bestW = w
             }
         }
         return best

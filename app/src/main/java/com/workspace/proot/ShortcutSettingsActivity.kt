@@ -393,6 +393,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
                 put("usage", org.json.JSONObject(prefs.getString("tuiUsageMap", "{}")))
                 put("seq", org.json.JSONObject(prefs.getString("tuiSeqMap", "{}")))
                 put("lastUsed", org.json.JSONObject(prefs.getString("cmdLastUsed", "{}")))
+                put("bandit", org.json.JSONObject(prefs.getString("tuiBandit", "{}")))
             }
             val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
             val dir = File(cacheDir, "tmp").apply { mkdirs() }
@@ -438,7 +439,8 @@ class ShortcutSettingsActivity : ComponentActivity() {
         val items: MutableList<ShortcutItem>,
         val usage: MutableMap<String, MutableMap<String, Int>>,
         val seq: MutableMap<String, MutableList<String>>,
-        val lastUsed: MutableMap<String, Long>
+        val lastUsed: MutableMap<String, Long>,
+        val bandit: MutableMap<String, MutableMap<String, Float>>
     )
 
     /** 信封校验硬失败；条目校验宽松容错（缺 id 补、坏条目跳过、组不变式 ≥2）。 */
@@ -501,7 +503,23 @@ class ShortcutSettingsActivity : ComponentActivity() {
             for (k in lu.keys()) lastUsed[k] = lu.optLong(k, 0L)
         }
 
-        return WheelBackup(list, usage, seq, lastUsed)
+        val bandit = parseBanditMap(obj)
+
+        return WheelBackup(list, usage, seq, lastUsed, bandit)
+    }
+
+    private fun parseBanditMap(obj: org.json.JSONObject): MutableMap<String, MutableMap<String, Float>> {
+        val bandit = mutableMapOf<String, MutableMap<String, Float>>()
+        obj.optJSONObject("bandit")?.let { bo ->
+            for (state in bo.keys()) {
+                val inner = mutableMapOf<String, Float>()
+                bo.optJSONObject(state)?.let { io ->
+                    for (k in io.keys()) inner[k] = io.optDouble(k, 0.0).toFloat()
+                }
+                if (inner.isNotEmpty()) bandit[state] = inner
+            }
+        }
+        return bandit
     }
 
     private fun applyRestore(b: WheelBackup) {
@@ -530,6 +548,15 @@ class ShortcutSettingsActivity : ComponentActivity() {
         settingsManager.saveSeqMap(seq)
 
         settingsManager.saveLastUsedMap(b.lastUsed.filterKeys { it in ids })
+
+        val bandit = mutableMapOf<String, MutableMap<String, Float>>()
+        for ((state, inner) in b.bandit) {
+            val f = inner.filterKeys { it in ids }
+            if (f.isNotEmpty()) bandit[state] = f.toMutableMap()
+        }
+        settingsManager.saveBanditMap(bandit)
+        // 回放是度量纪元：恢复后旧 id 引用失效，直接开新纪元；命中计数累积保留。
+        settingsManager.clearReplay()
 
         items.clear()
         items.addAll(b.items)

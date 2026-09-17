@@ -33,8 +33,8 @@ android {
         applicationId = "com.workspace.proot"
         minSdk = 26
         targetSdk = 34
-        versionCode = 524
-        versionName = "5.0.24"
+        versionCode = 525
+        versionName = "5.0.25"
         ndk { abiFilters.add("arm64-v8a") }
     }
 
@@ -93,6 +93,7 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     // Testing
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     testImplementation("io.mockk:mockk:1.13.10")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
