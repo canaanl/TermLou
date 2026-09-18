@@ -15,8 +15,9 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 笔记主页：列表态（默认）/ 编辑态。编辑态底部上行 [＋标签][＋待办]，
- * 固定下行 [新建][保存][待办][标签]。草稿只放内存，切页不丢，点保存才落盘。
+ * 笔记主页：列表态（默认）/ 编辑态。底部单行三键按状态切换，
+ * 列表 [新建][待办][标签]，编辑 [保存][＋待办][＋标签]。
+ * 草稿只放内存，切页不丢，点保存才落盘。
  */
 class NotesActivity : NotesPageActivity() {
 
@@ -28,6 +29,7 @@ class NotesActivity : NotesPageActivity() {
     private lateinit var listScroll: ScrollView
     private lateinit var listInner: LinearLayout
     private lateinit var editorBox: LinearLayout
+    private lateinit var listRow: LinearLayout
     private lateinit var editRow: LinearLayout
     private lateinit var editorTitle: TextView
     private lateinit var tagRow: LinearLayout
@@ -141,31 +143,12 @@ class NotesActivity : NotesPageActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(theme.surface)
         }
-        editRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(theme.surface)
-            setPadding(4, 0, 4, 0)
-            addView(segButton(getString(R.string.notes_insert_tag)) {
-                current?.let { showTagDialog(it, body) }
-            })
-            addView(segButton(getString(R.string.notes_insert_todo)) {
-                showTodoDialog(body)
-            })
-            visibility = android.view.View.GONE
-        }
-        SegmentStyle.applyRow(
-            editRow,
-            listOf(null, null),
-            theme.outline,
-            theme.onSurface,
-            SegmentStyle.Bar(0f, false)
-        )
-        val fixed = LinearLayout(this).apply {
+        bar.addView(divider())
+        listRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(theme.surface)
             setPadding(4, 0, 4, 0)
             addView(segButton(getString(R.string.notes_new)) { onNewPressed() })
-            addView(segButton(getString(R.string.save)) { onSavePressed() })
             addView(segButton(getString(R.string.notes_todo_tab)) {
                 startActivity(android.content.Intent(this@NotesActivity, NotesTodoActivity::class.java))
             })
@@ -174,14 +157,34 @@ class NotesActivity : NotesPageActivity() {
             })
         }
         SegmentStyle.applyRow(
-            fixed,
-            listOf(null, null, null, null),
+            listRow,
+            listOf(null, null, null),
             theme.outline,
             theme.onSurface,
             SegmentStyle.Bar(0f, false)
         )
+        editRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(theme.surface)
+            setPadding(4, 0, 4, 0)
+            addView(segButton(getString(R.string.save)) { onSavePressed() })
+            addView(segButton(getString(R.string.notes_insert_todo)) {
+                showTodoDialog(body)
+            })
+            addView(segButton(getString(R.string.notes_insert_tag)) {
+                current?.let { showTagDialog(it) }
+            })
+            visibility = android.view.View.GONE
+        }
+        SegmentStyle.applyRow(
+            editRow,
+            listOf(null, null, null),
+            theme.outline,
+            theme.onSurface,
+            SegmentStyle.Bar(0f, false)
+        )
+        bar.addView(listRow)
         bar.addView(editRow)
-        bar.addView(fixed)
         return bar
     }
 
@@ -189,6 +192,7 @@ class NotesActivity : NotesPageActivity() {
         stashDraft()
         current = null
         dirty = false
+        listRow.visibility = android.view.View.VISIBLE
         editRow.visibility = android.view.View.GONE
         editorBox.visibility = android.view.View.GONE
         listScroll.visibility = android.view.View.VISIBLE
@@ -208,6 +212,7 @@ class NotesActivity : NotesPageActivity() {
         refreshTagRow()
         listScroll.visibility = android.view.View.GONE
         editorBox.visibility = android.view.View.VISIBLE
+        listRow.visibility = android.view.View.GONE
         editRow.visibility = android.view.View.VISIBLE
     }
 
@@ -225,30 +230,45 @@ class NotesActivity : NotesPageActivity() {
     private fun refreshTagRow() {
         val cur = current ?: return
         tagRow.removeAllViews()
-        val d = density()
         for (tag in store.tagsOf(cur)) {
-            tagRow.addView(TextView(this).apply {
-                text = "#$tag"
-                setTextColor(theme.onSurface)
-                textSize = UiTokens.TEXT_COMPACT
-                setPadding((10 * d).toInt(), (4 * d).toInt(), (10 * d).toInt(), (4 * d).toInt())
-                background = GradientDrawable().apply {
-                    cornerRadius = (14 * d)
-                    setStroke((1 * d).toInt().coerceAtLeast(1), theme.outline)
-                    setColor(android.graphics.Color.TRANSPARENT)
-                }
-                val lp = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                lp.marginEnd = (6 * d).toInt()
-                layoutParams = lp
-                setOnClickListener {
-                    store.detachTag(cur, tag)
-                    refreshTagRow()
-                    showHint(getString(R.string.notes_tag_removed))
-                }
-            })
+            tagRow.addView(tagCapsule(tag) { removeTagEverywhere(cur, tag) })
         }
+    }
+
+    private fun tagCapsule(tag: String, onClick: () -> Unit): TextView {
+        val d = density()
+        return TextView(this).apply {
+            text = tag
+            setTextColor(theme.onSurface)
+            textSize = UiTokens.TEXT_COMPACT
+            maxLines = 1
+            setPadding((12 * d).toInt(), (4 * d).toInt(), (12 * d).toInt(), (4 * d).toInt())
+            background = GradientDrawable().apply {
+                cornerRadius = (12 * d)
+                setStroke((1 * d).toInt().coerceAtLeast(1), theme.outline)
+                setColor(theme.surfaceVariant)
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginEnd = (6 * d).toInt() }
+            setOnClickListener { onClick() }
+        }
+    }
+
+    private fun removeTagEverywhere(noteName: String, tag: String) {
+        store.detachTag(noteName, tag)
+        val before = body.text?.toString().orEmpty()
+        val token = Regex("(?<![\\p{L}\\p{N}_])#" + Regex.escape(tag) + "(?![\\p{L}\\p{N}_])")
+        val after = token.replace(before, "")
+        if (after != before) {
+            suppressWatch = true
+            body.setText(after)
+            suppressWatch = false
+            dirty = true
+            refreshEditorTitle()
+        }
+        refreshTagRow()
+        showHint(getString(R.string.notes_tag_removed))
     }
 
     private fun renderList() {
@@ -320,8 +340,8 @@ class NotesActivity : NotesPageActivity() {
         }
     }
 
-    /** 挂标签：存索引 +（编辑态）正文光标处插入 #标签。 */
-    private fun showTagDialog(noteName: String, target: EditText?) {
+    /** 挂标签：只写 header 索引，不再往正文插入 #标签。 */
+    private fun showTagDialog(noteName: String) {
         val d = density()
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -363,7 +383,6 @@ class NotesActivity : NotesPageActivity() {
                 val picked = parseTags(input.text?.toString().orEmpty())
                 if (picked.isEmpty()) return@setPositiveButton
                 store.attachTags(noteName, picked)
-                if (target != null) insertAtCursor(target, picked.joinToString(" ") { "#$it" }, false)
                 if (current == noteName) refreshTagRow()
                 if (current == null) renderList()
             }

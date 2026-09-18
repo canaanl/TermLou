@@ -99,7 +99,7 @@ abstract class NotesPageActivity : AppCompatActivity() {
         Button(this).apply {
             this.text = text
             setTextColor(Color.WHITE)
-            textSize = UiTokens.TEXT_BODY
+            textSize = AppLang.bottomButtonTextSize(this@NotesPageActivity)
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             setPadding(3, 0, 3, 0)

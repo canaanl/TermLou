@@ -331,7 +331,7 @@ class NetworkController(
         fun barButton(text: String, onClick: () -> Unit): Button = Button(activity).apply {
             this.text = text
             setTextColor(Color.WHITE)
-            textSize = UiTokens.TEXT_BODY
+            textSize = AppLang.bottomButtonTextSize(activity)
             isAllCaps = true
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END

@@ -130,7 +130,7 @@ class UiBuilder(
         val importBtn = Button(activity).apply {
             text = activity.getString(R.string.setup_import_file)
             setTextColor(Color.WHITE)
-            textSize = UiTokens.TEXT_BODY
+            textSize = AppLang.bottomButtonTextSize(activity)
             setPadding(3, 0, 3, 0)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
@@ -140,7 +140,7 @@ class UiBuilder(
         val importFolderBtn = Button(activity).apply {
             text = activity.getString(R.string.setup_import_folder)
             setTextColor(Color.WHITE)
-            textSize = UiTokens.TEXT_BODY
+            textSize = AppLang.bottomButtonTextSize(activity)
             setPadding(3, 0, 3, 0)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
@@ -150,7 +150,7 @@ class UiBuilder(
         val notesBtn = Button(activity).apply {
             text = activity.getString(R.string.notes_title)
             setTextColor(Color.WHITE)
-            textSize = UiTokens.TEXT_BODY
+            textSize = AppLang.bottomButtonTextSize(activity)
             setPadding(3, 0, 3, 0)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END

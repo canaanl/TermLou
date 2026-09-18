@@ -24,6 +24,9 @@ object AppLang {
         }
     }
 
+    fun bottomButtonTextSize(ctx: Context): Float =
+        if (isChinese(ctx)) UiTokens.TEXT_BODY else UiTokens.TEXT_COMPACT
+
     fun apply(ctx: Context) {
         val zh = isChinese(ctx)
         AppCompatDelegate.setApplicationLocales(
