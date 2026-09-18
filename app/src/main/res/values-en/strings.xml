@@ -239,6 +239,7 @@
     <string name="sc_confirm">OK</string>
     <string name="sc_delete">DELETE</string>
     <string name="sc_default_pi">INSTALL/UPDATE PI</string>
+    <string name="sc_default_opencode">INSTALL/UPDATE OPENCODE</string>
     <string name="sc_default_group">COMMAND GROUP</string>
     <string name="sc_group_fmt">Group · %1$d commands</string>
     <string name="sc_backup">BACKUP</string>

@@ -83,4 +83,18 @@ class SettingsManagerTest {
         every { res.getStringArray(any()) } returns arrayOf("a", "b", "c", "d", "e")
         assertEquals(listOf("a", "b", "c", "d", "e"), manager.fontNames(ctx))
     }
+
+    @Test
+    fun `loadShortcuts seeds opencode default when empty`() {
+        every { prefs.getString("shortcuts", "[]") } returns "[]"
+        val ctx = mockk<android.content.Context>(relaxed = true)
+        every { ctx.getString(any()) } returns "opencode安装/更新"
+        val list = manager.loadShortcuts(ctx)
+        val opencode = list.filterIsInstance<ShortcutItem.Command>()
+            .firstOrNull { it.cmd.contains("opencode.ai/install") }
+        assertTrue(opencode != null)
+        assertTrue(opencode!!.cmd.contains(".opencode/bin"))
+        assertTrue(opencode.cmd.trimEnd().endsWith("--version"))
+        verify { editor.putString("shortcuts", any()) }
+    }
 }

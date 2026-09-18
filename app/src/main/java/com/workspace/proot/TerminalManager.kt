@@ -38,27 +38,13 @@ class TerminalManager(
         val bashrc = File(lxRoot, "root/.bashrc")
         val bashrcState = File(lxRoot, "root/.term_lou_state")
         val savedCmd = if (bashrcState.exists()) bashrcState.readText().trim() else ""
-        val marker = "# TERMLOU_V6"
-        val needWrite = !bashrc.exists() || !bashrc.readText().contains(marker) || savedCmd != shellCmd
+        val existing = if (bashrc.exists()) bashrc.readText() else ""
+        val needWrite = !bashrc.exists() ||
+            !existing.contains(BashrcManager.START_MARK) ||
+            !existing.contains(BashrcManager.END_MARK) ||
+            savedCmd != shellCmd
         if (needWrite) {
-            val cmdLine = if (shellCmd.isNotBlank()) "$shellCmd\n" else ""
-            val content = marker + "\n" +
-                "export PATH=\"\$HOME/.local/bin:\$PATH\"\n" +
-                "alias id='id 2>/dev/null'\nalias groups='groups 2>/dev/null'\n" +
-                "for gid in \$(id -G 2>/dev/null); do\n" +
-                "  grep -q \":\$gid:\" /etc/group 2>/dev/null || echo \"g\$gid:x:\$gid:\" >> /etc/group\n" +
-                "done\n" +
-                "apt-get clean -qq 2>/dev/null\n" +
-                "rm -rf /data/* /data/.* 2>/dev/null\n" +
-                "export HISTFILESIZE=100\n" +
-                "export HISTSIZE=100\n" +
-                "export PS1='\\[\\e[32m\\]\\u@\\h\\[\\e[0m\\]:\\[\\e[34m\\]\\w\\[\\e[0m\\]\\\\$ '\n" +
-                "export LANG=C.UTF-8\n" +
-                "alias ls='ls --color=auto'\n" +
-                "alias grep='grep --color=auto'\n" +
-                "command -v curl >/dev/null 2>&1 && [ -f /etc/ssl/certs/ca-certificates.crt ] || (dpkg --configure -a 2>/dev/null; apt-get update -qq 2>/dev/null; apt-get install -y -qq curl ca-certificates tar 2>/dev/null; update-ca-certificates -f 2>/dev/null)\n" +
-                cmdLine
-            bashrc.writeText(content)
+            bashrc.writeText(BashrcManager.merge(existing, shellCmd))
             bashrcState.writeText(shellCmd)
         }
 
@@ -163,7 +149,7 @@ class TerminalManager(
             "TMPDIR=/tmp",
             "BUN_INSTALL_CACHE_DIR=/tmp/bun-cache",
             "HOME=/root",
-            "PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "PATH=/root/.local/bin:/root/.opencode/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "TERM=xterm-256color",
             "LANG=C.UTF-8",
             "LC_ALL=C.UTF-8",
@@ -185,7 +171,7 @@ class TerminalManager(
             "PROOT_TMP_DIR" to wsTmp.absolutePath,
             "TMPDIR" to "/tmp",
             "HOME" to "/root",
-            "PATH" to "/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "PATH" to "/root/.local/bin:/root/.opencode/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "TERM" to "xterm-256color",
             "LANG" to "C.UTF-8",
             "LC_ALL" to "C.UTF-8"

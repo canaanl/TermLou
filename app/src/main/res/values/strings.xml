@@ -239,6 +239,7 @@
     <string name="sc_confirm">确定</string>
     <string name="sc_delete">删除</string>
     <string name="sc_default_pi">Pi安装/更新</string>
+    <string name="sc_default_opencode">opencode安装/更新</string>
     <string name="sc_default_group">命令组</string>
     <string name="sc_group_fmt">命令组 · %1$d 个命令</string>
     <string name="sc_backup">备份</string>
