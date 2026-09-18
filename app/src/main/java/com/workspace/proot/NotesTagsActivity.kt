@@ -47,6 +47,7 @@ class NotesTagsActivity : NotesPageActivity() {
         setContentView(root)
         watchText(searchInput) {
             query = searchInput.text?.toString().orEmpty()
+            if (filterTag != null && query.isNotEmpty()) filterTag = null
             render()
         }
         render()

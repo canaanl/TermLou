@@ -15,8 +15,8 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 笔记主页：列表态（默认）/ 编辑态。标题下工具行 [＋标签][＋待办]，
- * 底部四键 [保存][总览][待办][标签]。草稿只放内存，切页不丢，点保存才落盘。
+ * 笔记主页：列表态（默认）/ 编辑态。编辑态底部上行 [＋标签][＋待办]，
+ * 固定下行 [新建][保存][待办][标签]。草稿只放内存，切页不丢，点保存才落盘。
  */
 class NotesActivity : NotesPageActivity() {
 
@@ -28,6 +28,7 @@ class NotesActivity : NotesPageActivity() {
     private lateinit var listScroll: ScrollView
     private lateinit var listInner: LinearLayout
     private lateinit var editorBox: LinearLayout
+    private lateinit var editRow: LinearLayout
     private lateinit var editorTitle: TextView
     private lateinit var tagRow: LinearLayout
     private lateinit var body: EditText
@@ -81,9 +82,15 @@ class NotesActivity : NotesPageActivity() {
         val scrolled = scrollColumn()
         listScroll = scrolled.first
         listInner = scrolled.second
-        content.addView(listScroll)
+        content.addView(
+            listScroll,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { weight = 1f }
+        )
         editorBox = buildEditorBox()
-        content.addView(editorBox)
+        content.addView(
+            editorBox,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { weight = 1f }
+        )
         root.addView(content)
         root.addView(buildBottomBar())
         setContentView(root)
@@ -114,17 +121,6 @@ class NotesActivity : NotesPageActivity() {
         }
         tagScroll.addView(tagRow)
         box.addView(tagScroll)
-        val tools = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding((12 * d).toInt(), (2 * d).toInt(), (12 * d).toInt(), (6 * d).toInt())
-            addView(toolButton(getString(R.string.notes_insert_tag)) {
-                current?.let { showTagDialog(it, body) }
-            })
-            addView(toolButton(getString(R.string.notes_insert_todo)) {
-                showTodoDialog(body)
-            })
-        }
-        box.addView(tools)
         body = EditText(this).apply {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             setTextColor(theme.onSurface)
@@ -141,15 +137,35 @@ class NotesActivity : NotesPageActivity() {
     }
 
     private fun buildBottomBar(): LinearLayout {
-        val row = LinearLayout(this).apply {
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(theme.surface)
+        }
+        editRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(theme.surfaceVariant)
-            val d = density()
-            setPadding((12 * d).toInt(), (8 * d).toInt(), (12 * d).toInt(), (12 * d).toInt())
-            addView(segButton(getString(R.string.save)) { onSavePressed() })
-            addView(segButton(getString(R.string.notes_overview)) {
-                startActivity(android.content.Intent(this@NotesActivity, NotesOverviewActivity::class.java))
+            setBackgroundColor(theme.surface)
+            setPadding(4, 0, 4, 0)
+            addView(segButton(getString(R.string.notes_insert_tag)) {
+                current?.let { showTagDialog(it, body) }
             })
+            addView(segButton(getString(R.string.notes_insert_todo)) {
+                showTodoDialog(body)
+            })
+            visibility = android.view.View.GONE
+        }
+        SegmentStyle.applyRow(
+            editRow,
+            listOf(null, null),
+            theme.outline,
+            theme.onSurface,
+            SegmentStyle.Bar(0f, false)
+        )
+        val fixed = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(theme.surface)
+            setPadding(4, 0, 4, 0)
+            addView(segButton(getString(R.string.notes_new)) { onNewPressed() })
+            addView(segButton(getString(R.string.save)) { onSavePressed() })
             addView(segButton(getString(R.string.notes_todo_tab)) {
                 startActivity(android.content.Intent(this@NotesActivity, NotesTodoActivity::class.java))
             })
@@ -158,18 +174,22 @@ class NotesActivity : NotesPageActivity() {
             })
         }
         SegmentStyle.applyRow(
-            row,
+            fixed,
             listOf(null, null, null, null),
             theme.outline,
-            theme.onSurface
+            theme.onSurface,
+            SegmentStyle.Bar(0f, false)
         )
-        return row
+        bar.addView(editRow)
+        bar.addView(fixed)
+        return bar
     }
 
     private fun showList() {
         stashDraft()
         current = null
         dirty = false
+        editRow.visibility = android.view.View.GONE
         editorBox.visibility = android.view.View.GONE
         listScroll.visibility = android.view.View.VISIBLE
         renderList()
@@ -188,6 +208,7 @@ class NotesActivity : NotesPageActivity() {
         refreshTagRow()
         listScroll.visibility = android.view.View.GONE
         editorBox.visibility = android.view.View.VISIBLE
+        editRow.visibility = android.view.View.VISIBLE
     }
 
     /** 切走前把未保存正文暂存内存草稿。 */
@@ -246,7 +267,7 @@ class NotesActivity : NotesPageActivity() {
         }
         for (entry in notes) {
             listInner.addView(textRow("${entry.name}.${NotesStore.EXT}", rowSub(entry)) { openNote(entry.name) }.apply {
-                setOnLongClickListener { rowMenu(entry.name); true }
+                setOnLongClickListener { showRenameDialog(entry.name); true }
             })
             listInner.addView(divider())
         }
@@ -258,34 +279,19 @@ class NotesActivity : NotesPageActivity() {
         return if (tags.isEmpty()) date else "$tags · $date"
     }
 
-    private fun rowMenu(name: String) {
-        val items = arrayOf(
-            getString(R.string.notes_rename),
-            getString(R.string.notes_manage_tags),
-            getString(R.string.notes_delete)
-        )
-        AlertDialog.Builder(this)
-            .setTitle("$name.${NotesStore.EXT}")
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> showRenameDialog(name)
-                    1 -> showTagDialog(name, null)
-                    else -> confirmDelete(name)
-                }
-            }
-            .showStyled(theme)
+    private fun onNewPressed() {
+        inputDialog(
+            getString(R.string.notes_new),
+            getString(R.string.notes_name_hint),
+            "",
+            getString(R.string.notes_new)
+        ) { raw -> openNote(store.createNote(raw)) }
     }
 
     private fun onSavePressed() {
         val cur = current
         if (cur == null) {
             showHint(getString(R.string.notes_empty_hint))
-            inputDialog(
-                getString(R.string.notes_save_note),
-                getString(R.string.notes_name_hint),
-                "",
-                getString(R.string.save)
-            ) { raw -> openNote(store.createNote(raw)) }
             return
         }
         drafts.remove(cur)
@@ -312,19 +318,6 @@ class NotesActivity : NotesPageActivity() {
             if (current == null) renderList()
             showHint(getString(R.string.notes_renamed))
         }
-    }
-
-    private fun confirmDelete(name: String) {
-        AlertDialog.Builder(this)
-            .setMessage(getString(R.string.notes_confirm_delete_fmt, "$name.${NotesStore.EXT}"))
-            .setPositiveButton(getString(R.string.notes_delete)) { _, _ ->
-                drafts.remove(name)
-                store.deleteNote(name)
-                if (current == name) showList() else renderList()
-                showHint(getString(R.string.notes_deleted))
-            }
-            .setNegativeButton(getString(R.string.cancel), null)
-            .showStyled(theme)
     }
 
     /** 挂标签：存索引 +（编辑态）正文光标处插入 #标签。 */

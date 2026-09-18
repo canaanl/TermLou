@@ -102,7 +102,7 @@ abstract class NotesPageActivity : AppCompatActivity() {
             textSize = UiTokens.TEXT_BODY
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding((8 * density()).toInt(), 0, (8 * density()).toInt(), 0)
+            setPadding(3, 0, 3, 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener { onClick() }
         }

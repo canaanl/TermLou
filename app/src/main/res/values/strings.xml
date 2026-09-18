@@ -366,26 +366,20 @@
     <string name="notes_title">笔记</string>
     <string name="notes_empty_hint">文件空</string>
     <string name="notes_empty_list">暂无笔记</string>
-    <string name="notes_save_note">保存笔记</string>
+    <string name="notes_new">新建</string>
     <string name="notes_name_hint">名称（留空用时间戳）</string>
     <string name="notes_rename">重命名</string>
     <string name="notes_delete">删除</string>
-    <string name="notes_manage_tags">挂标签</string>
     <string name="notes_add_tags">添加标签</string>
     <string name="notes_tag_hint">输入标签，用空格分隔</string>
     <string name="notes_common_tags">已有标签</string>
     <string name="notes_add_todo">添加待办</string>
     <string name="notes_todo_hint">输入待办内容</string>
-    <string name="notes_add">添加</string>
     <string name="notes_insert_tag">＋标签</string>
     <string name="notes_insert_todo">＋待办</string>
-    <string name="notes_overview">总览</string>
     <string name="notes_todo_tab">待办</string>
     <string name="notes_tags_tab">标签</string>
-    <string name="notes_stat_fmt">笔记 %1$d · 标签 %2$d · 待办 %3$d</string>
-    <string name="notes_stat_todo_fmt">✔完成 %1$d · ☐未完成 %2$d</string>
     <string name="notes_no_tags">暂无标签</string>
-    <string name="notes_others">其他</string>
     <string name="notes_pieces_fmt">%1$d篇</string>
     <string name="notes_todo_empty">暂无待办</string>
     <string name="notes_done_fmt">已完成 %1$d</string>
@@ -398,5 +392,6 @@
     <string name="notes_edit_todo">改待办内容</string>
     <string name="notes_back_tags">‹ 全部标签</string>
     <string name="notes_search_tag">搜索标签</string>
+    <string name="notes_search_todo">搜索待办</string>
     <string name="notes_tagged_fmt">「%1$s」的笔记</string>
 </resources>

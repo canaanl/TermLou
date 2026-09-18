@@ -366,26 +366,20 @@
     <string name="notes_title">Notes</string>
     <string name="notes_empty_hint">File is empty</string>
     <string name="notes_empty_list">No notes yet</string>
-    <string name="notes_save_note">Save note</string>
+    <string name="notes_new">New</string>
     <string name="notes_name_hint">Name (blank = timestamp)</string>
     <string name="notes_rename">Rename</string>
     <string name="notes_delete">Delete</string>
-    <string name="notes_manage_tags">Tags</string>
     <string name="notes_add_tags">Add tags</string>
     <string name="notes_tag_hint">Enter tags, space separated</string>
     <string name="notes_common_tags">Existing tags</string>
     <string name="notes_add_todo">Add todo</string>
     <string name="notes_todo_hint">Enter todo text</string>
-    <string name="notes_add">Add</string>
     <string name="notes_insert_tag">+Tag</string>
     <string name="notes_insert_todo">+Todo</string>
-    <string name="notes_overview">Overview</string>
     <string name="notes_todo_tab">Todos</string>
     <string name="notes_tags_tab">Tags</string>
-    <string name="notes_stat_fmt">Notes %1$d · Tags %2$d · Todos %3$d</string>
-    <string name="notes_stat_todo_fmt">Done %1$d · Open %2$d</string>
     <string name="notes_no_tags">No tags yet</string>
-    <string name="notes_others">Others</string>
     <string name="notes_pieces_fmt">%1$d</string>
     <string name="notes_todo_empty">No todos yet</string>
     <string name="notes_done_fmt">Done %1$d</string>
@@ -398,5 +392,6 @@
     <string name="notes_edit_todo">Edit todo</string>
     <string name="notes_back_tags">‹ All tags</string>
     <string name="notes_search_tag">Search tags</string>
+    <string name="notes_search_todo">Search todos</string>
     <string name="notes_tagged_fmt">Notes with %1$s</string>
 </resources>

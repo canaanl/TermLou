@@ -69,12 +69,6 @@
             android:theme="@style/Theme.TermLou" />
 
         <activity
-            android:name="com.workspace.proot.NotesOverviewActivity"
-            android:screenOrientation="portrait"
-            android:exported="false"
-            android:theme="@style/Theme.TermLou" />
-
-        <activity
             android:name="com.workspace.proot.NotesTodoActivity"
             android:screenOrientation="portrait"
             android:exported="false"
