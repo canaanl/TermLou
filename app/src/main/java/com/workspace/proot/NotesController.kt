@@ -7,7 +7,6 @@ import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
-import android.view.MotionEvent
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -93,12 +92,11 @@ class NotesController(
         root.addView(navRow)
         root.addView(editRow)
         notesArea.addView(
-            root,
+            buildSwipe(root),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT
             )
         )
-        watchSwipe(notesArea)
         watchText(body) {
             val cur = current
             if (!suppressWatch && cur != null) {
@@ -108,8 +106,29 @@ class NotesController(
         showList()
     }
 
-    private fun buildHintView(): TextView {
-        val d = density()
+    /** 横滑切换容器：左滑去网络，右滑编辑态退列表、列表态回文件。 */
+    private fun buildSwipe(root: LinearLayout): TabSwipeLayout =
+        TabSwipeLayout(
+            activity,
+            onSwipeRight = {
+                if (activity.currentTab == 2 && !activity.isSetupVisible()) {
+                    if (current != null) showList() else activity.showTab(1)
+                }
+            },
+            onSwipeLeft = {
+                if (activity.currentTab == 2 && !activity.isSetupVisible()) activity.showTab(3)
+            }
+        ).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(
+                root,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
+
+    private fun buildHintView(): TextView {        val d = density()
         return TextView(activity).apply {
             setTextColor(theme.onSurfaceVariant)
             textSize = UiTokens.TEXT_COMPACT
@@ -256,35 +275,6 @@ class NotesController(
             elevation = (6 * d)
             contentDescription = activity.getString(R.string.notes_new)
             setOnClickListener { onNewPressed() }
-        }
-    }
-
-    /** 区域级横滑：左滑去网络，右滑编辑态退列表、列表态回文件。 */
-    private fun watchSwipe(notesArea: LinearLayout) {
-        val threshold = (50 * density()).toInt()
-        var downX = 0f
-        var downY = 0f
-        notesArea.setOnTouchListener { _, ev ->
-            when (ev.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    downX = ev.x
-                    downY = ev.y
-                }
-                MotionEvent.ACTION_UP -> {
-                    val dx = ev.x - downX
-                    val dy = kotlin.math.abs(ev.y - downY)
-                    if (kotlin.math.abs(dx) > threshold && kotlin.math.abs(dx) > dy) {
-                        if (activity.currentTab == 2 && !activity.isSetupVisible()) {
-                            if (dx > 0) {
-                                if (current != null) showList() else activity.showTab(1)
-                            } else {
-                                activity.showTab(3)
-                            }
-                        }
-                    }
-                }
-            }
-            false
         }
     }
 
