@@ -73,12 +73,32 @@ class NotesTagsActivity : NotesPageActivity() {
             return
         }
         for ((name, count) in tags) {
-            listInner.addView(textRow("#$name", getString(R.string.notes_pieces_fmt, count)) {
+            listInner.addView(tagRow(name, count) {
                 filterTag = name
                 query = ""
                 if (searchInput.text?.isNotEmpty() == true) searchInput.setText("") else render()
             })
             listInner.addView(divider())
+        }
+    }
+
+    private fun tagRow(name: String, count: Int, onClick: () -> Unit): LinearLayout {
+        val d = density()
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (10 * d).toInt())
+            addView(tagCapsule(name) { onClick() })
+            addView(TextView(this@NotesTagsActivity).apply {
+                text = getString(R.string.notes_pieces_fmt, count)
+                setTextColor(theme.onSurfaceVariant)
+                textSize = UiTokens.TEXT_COMPACT
+                gravity = Gravity.END
+                layoutParams = LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                ).apply { marginStart = (8 * d).toInt() }
+            })
+            setOnClickListener { onClick() }
         }
     }
 
@@ -94,13 +114,25 @@ class NotesTagsActivity : NotesPageActivity() {
                 render()
             }
         })
-        listInner.addView(TextView(this).apply {
-            text = getString(R.string.notes_tagged_fmt, "#$tag")
-            setTextColor(theme.onSurfaceVariant)
-            textSize = UiTokens.TEXT_COMPACT
-            setPadding((16 * d).toInt(), 0, (16 * d).toInt(), (6 * d).toInt())
-        })
         val notes = store.notesWithTag(tag)
+        listInner.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding((16 * d).toInt(), (2 * d).toInt(), (16 * d).toInt(), (6 * d).toInt())
+            addView(tagCapsule(tag) {
+                filterTag = null
+                render()
+            })
+            addView(TextView(this@NotesTagsActivity).apply {
+                text = getString(R.string.notes_pieces_fmt, notes.size)
+                setTextColor(theme.onSurfaceVariant)
+                textSize = UiTokens.TEXT_COMPACT
+                gravity = Gravity.END
+                layoutParams = LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                ).apply { marginStart = (8 * d).toInt() }
+            })
+        })
         if (notes.isEmpty()) {
             listInner.addView(emptyText(getString(R.string.notes_empty_list)))
             return

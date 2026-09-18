@@ -26,6 +26,7 @@
     <!-- Tabs -->
     <string name="tab_terminal">TERMINAL</string>
     <string name="tab_files">FILES</string>
+    <string name="tab_notes">NOTES</string>
     <string name="tab_network">NETWORK</string>
     <string name="tab_settings">SETTINGS</string>
 
@@ -393,5 +394,4 @@
     <string name="notes_back_tags">‹ All tags</string>
     <string name="notes_search_tag">Search tags</string>
     <string name="notes_search_todo">Search todos</string>
-    <string name="notes_tagged_fmt">Notes with %1$s</string>
 </resources>

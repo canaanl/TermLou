@@ -1,7 +1,6 @@
 package com.workspace.proot
 
 import android.app.AlertDialog
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.widget.EditText
@@ -232,26 +231,6 @@ class NotesActivity : NotesPageActivity() {
         tagRow.removeAllViews()
         for (tag in store.tagsOf(cur)) {
             tagRow.addView(tagCapsule(tag) { removeTagEverywhere(cur, tag) })
-        }
-    }
-
-    private fun tagCapsule(tag: String, onClick: () -> Unit): TextView {
-        val d = density()
-        return TextView(this).apply {
-            text = tag
-            setTextColor(theme.onSurface)
-            textSize = UiTokens.TEXT_COMPACT
-            maxLines = 1
-            setPadding((12 * d).toInt(), (4 * d).toInt(), (12 * d).toInt(), (4 * d).toInt())
-            background = GradientDrawable().apply {
-                cornerRadius = (12 * d)
-                setStroke((1 * d).toInt().coerceAtLeast(1), theme.outline)
-                setColor(theme.surfaceVariant)
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { marginEnd = (6 * d).toInt() }
-            setOnClickListener { onClick() }
         }
     }
 

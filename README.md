@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-5.0.29-blue)
+![Version](https://img.shields.io/badge/version-5.0.30-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -333,6 +333,7 @@ echo "https://example.com" | termlou-clipboard
 | **5.0.24** | 524 | 应用图标再调：文件夹收至显示宽度 70%（x29–79、y32–76）；顶部两段台阶压到 8 高；黑边统一单侧 1.0（闪电线宽 2，下划线黑 8 + 白 6） |
 | **5.0.25** | 525 | 推荐加轮换分：并列带内由可学习的轮换分裁决（点+0.1封顶1.0、其他×0.95衰减，冷启动回退按最近使用）；后台记猜中率与回放日志（各500条内），备份带轮换分 |
 | **5.0.26** | 526 | bashrc 不再整文件覆盖：改为只替换受管段（TERMLOU_START/END），用户与安装器追加的内容永远保留；新增 `~/.term_lou_env` 用户环境兜底文件（app 永不覆盖）；PATH 内建 `~/.opencode/bin`；新增 opencode 官方安装默认命令（curl 安装 + 自动软链到 ~/.local/bin） |
+| **5.0.30** | 530 | 笔记独立成第 3 个 tab（终端/文件/笔记/网络/设置）：点图标打开笔记页，滑动链保持终端↔文件↔网络↔设置；笔记 tab 复用原文件图标，文件 tab 换文件夹形图标；文件底栏去掉“笔记”键回到两键；标签搜索页与编辑页 header 同款胶囊（列表行 [胶囊][N篇]，笔记头 [胶囊][N篇]，点胶囊回全部标签） |
 | **5.0.29** | 529 | 笔记底部加顶部分隔线并改成两套三键：列表 [新建][待办][标签]，编辑 [保存][＋待办][＋标签]；编辑页 header 标签改胶囊显示，新增标签只写 header 索引不再插正文，点击胶囊移除 header 的同时清理正文中的同名 #标签；文件/网络/笔记固定底部键英文用小字号避免换行省略 |
 | **5.0.28** | 528 | 笔记本四修：①修正文写不了（编辑区/列表区挂进页面时漏 weight，正文 EditText 高度塌成 0）②底部键全改文件页底栏同款扁平分段条（Bar 无圆角无外框、分隔线全高贯通、同字号同内边距）③删总览页，底栏固定 [新建][保存][待办][标签]（保存只写盘、列表态点保存仅提示文件空；新建在保存左边、列表/编辑态均可建）④编辑态底部上行新增 [＋标签][＋待办]（列表态隐藏）；列表长按只剩重命名；待办页顶部改真搜索（实时按文字过滤），标签页在笔记视图下输入自动退回过滤 |
 | **5.0.27** | 527 | 新增笔记本：文件页底部栏第三键进入，workspace/Notes 纯 .txt + 隐藏索引（标签/待办/时间戳，索引丢了打开即按目录重建）；列表态默认（不自动开最近），无文件时点保存提示「文件空」并弹新建窗（留空=时间戳，重名自动加后缀）；编辑态标题下 [＋标签][＋待办] 工具行（挂索引+正文光标处插 #标签/- [ ] 行）；底部 [保存][总览][待办][标签] 四键开工坊式新页：总览（计数+标签饼图图例+待办进度）、待办（顶部新增/行内改/底部已完成未完成过滤）、标签（搜索+点标签筛选） |

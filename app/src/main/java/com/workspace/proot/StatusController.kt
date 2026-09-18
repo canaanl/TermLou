@@ -96,7 +96,7 @@ class StatusController(
 
     /** 浠呯綉缁?璁剧疆 Tab 灞曠ず鐨?2 绉掍复鏃舵彁绀猴紙缁堢/鏂囦欢 Tab 涓嶆墦鎵帮級銆?*/
     fun showTempStatus(msg: String) {
-        if (activity.currentTab != 2 && activity.currentTab != 3) return
+        if (activity.currentTab != 3 && activity.currentTab != 4) return
         statusGen++
         setStatusTextAnimated(msg)
         settingsStatusJob?.let { scope.mainHandler.removeCallbacks(it) }

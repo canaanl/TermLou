@@ -49,7 +49,7 @@ class WorkspaceController(
         val filesScroll = TabSwipeScrollView(
             activity,
             onSwipeRight = { if (activity.currentTab == 1 && !activity.isSetupVisible()) activity.showTerminalView() },
-            onSwipeLeft = { if (activity.currentTab == 1 && !activity.isSetupVisible()) activity.showTab(2) }
+            onSwipeLeft = { if (activity.currentTab == 1 && !activity.isSetupVisible()) activity.showTab(3) }
         )
         filesScroll.addView(fileList)
 
@@ -67,10 +67,7 @@ class WorkspaceController(
         filesArea.addView(SegmentStyle.hDivider(activity, scope.cOnSurface))
         filesArea.addView(scope.uiBuilder.createFileBottomBar(
             onImportClick = { pickFiles() },
-            onImportFolderClick = { pickFolder() },
-            onNotesClick = {
-                activity.startActivity(Intent(activity, NotesActivity::class.java))
-            }
+            onImportFolderClick = { pickFolder() }
         ))
     }
 

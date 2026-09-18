@@ -46,6 +46,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tabIndicator: View
     private lateinit var terminalTab: ImageView
     private lateinit var filesTab: ImageView
+    private lateinit var notesTab: ImageView
     private lateinit var networkTab: ImageView
     private lateinit var settingsTab: ImageView
     private lateinit var terminalArea: LinearLayout
@@ -150,11 +151,15 @@ class MainActivity : AppCompatActivity() {
         val tabViews = scope.uiBuilder.createTabBar()
         terminalTab = tabViews[0]
         filesTab = tabViews[1]
-        networkTab = tabViews[2]
-        settingsTab = tabViews[3]
+        notesTab = tabViews[2]
+        networkTab = tabViews[3]
+        settingsTab = tabViews[4]
         for (tv in tabViews) toolbar.addView(tv)
         tabViews.forEachIndexed { i, iv ->
             iv.setColorFilter(if (i == currentTab) scope.cOnSurface else scope.cOnSurfaceVariant)
+            iv.setOnClickListener {
+                if (i == 2) startActivity(Intent(this, NotesActivity::class.java)) else showTab(i)
+            }
         }
         tabHost.addView(toolbar)
 
@@ -187,7 +192,7 @@ class MainActivity : AppCompatActivity() {
         content.addView(terminalController.buildSetupArea())
 
         tabHost.post {
-            val tabW = tabHost.width / 4
+            val tabW = tabHost.width / 5
             if (tabW > 0) {
                 val lp = tabIndicator.layoutParams
                 lp.width = tabW
@@ -259,7 +264,7 @@ class MainActivity : AppCompatActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         tabHost.post {
-            val tabW = tabHost.width / 4
+            val tabW = tabHost.width / 5
             if (tabW > 0) {
                 val lp = tabIndicator.layoutParams
                 lp.width = tabW
@@ -283,15 +288,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     internal fun showTab(tabIndex: Int) {
+        if (tabIndex == 2) {
+            startActivity(Intent(this, NotesActivity::class.java))
+            return
+        }
         if (tabIndex != 0) hideIme()
         terminalController.hideSetup()
         val prev = currentTab
         currentTab = tabIndex
 
-        val tabs = listOf(terminalTab, filesTab, networkTab, settingsTab)
+        val tabs = listOf(terminalTab, filesTab, notesTab, networkTab, settingsTab)
         val views = listOf(terminalArea, filesArea, networkArea, settingsWrapper)
+        val viewIndex = if (tabIndex > 2) tabIndex - 1 else tabIndex
 
-        for (i in 0..3) {
+        for (i in tabs.indices) {
             tabs[i].setColorFilter(if (i == tabIndex) scope.cOnSurface else scope.cOnSurfaceVariant)
         }
         if (tabIndex != prev) {
@@ -305,7 +315,7 @@ class MainActivity : AppCompatActivity() {
         statusController.bumpGen()
         refreshStatusBar()
 
-        val showView = views[tabIndex]
+        val showView = views[viewIndex]
         if (showView.visibility != View.VISIBLE) {
             val visibleIndex = views.indexOfFirst { it.visibility == View.VISIBLE }
             if (visibleIndex >= 0) {
@@ -320,7 +330,7 @@ class MainActivity : AppCompatActivity() {
 
         if (tabIndex == 0) terminalController.terminalView.requestFocus()
         if (tabIndex == 1) workspaceController.refreshFileList()
-        if (tabIndex == 2) networkController.refreshNetTab()
+        if (tabIndex == 3) networkController.refreshNetTab()
     }
 
     internal fun showTerminalView() {
@@ -334,7 +344,7 @@ class MainActivity : AppCompatActivity() {
     internal fun isSetupVisible(): Boolean = terminalController.isSetupVisible()
 
     private fun animateTabIndicator(tabIndex: Int) {
-        val tabW = tabHost.width / 4
+        val tabW = tabHost.width / 5
         if (tabW <= 0) return
         tabIndicator.animate()
             .translationX((tabIndex * tabW).toFloat())
@@ -379,8 +389,8 @@ class MainActivity : AppCompatActivity() {
                 val p = workspaceController.getRelativePath()
                 if (p.isEmpty()) "Files" else "Files | $p"
             }
-            2 -> networkController.netStatusLine()
-            3 -> "Settings"
+            3 -> networkController.netStatusLine()
+            4 -> "Settings"
             else -> statusController.terminalBaseText()
         })
     }

@@ -26,6 +26,7 @@
     <!-- Tab -->
     <string name="tab_terminal">终端</string>
     <string name="tab_files">文件</string>
+    <string name="tab_notes">笔记</string>
     <string name="tab_network">网络</string>
     <string name="tab_settings">设置</string>
 
@@ -393,5 +394,4 @@
     <string name="notes_back_tags">‹ 全部标签</string>
     <string name="notes_search_tag">搜索标签</string>
     <string name="notes_search_todo">搜索待办</string>
-    <string name="notes_tagged_fmt">「%1$s」的笔记</string>
 </resources>

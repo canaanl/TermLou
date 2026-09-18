@@ -54,7 +54,7 @@ class NetworkController(
     private val chartPalette = listOf(UiTokens.primaryGreen, UiTokens.amber, UiTokens.linkCyan, UiTokens.totalText)
 
     private val netFlowRunnable: Runnable = Runnable {
-        if (netFlowDirty && activity.currentTab == 2) {
+        if (netFlowDirty && activity.currentTab == 3) {
             netFlowDirty = false
             renderNetFlows()
         }
@@ -63,7 +63,7 @@ class NetworkController(
     private val netTicker: Runnable = Runnable {
         netTickerPosted = false
         if (!NetVpnService.isRunning) return@Runnable
-        if (activity.currentTab == 2) {
+        if (activity.currentTab == 3) {
             renderDashboard(FlowLog.list())
             netTickerPosted = true
             scope.mainHandler.postDelayed(netTicker, 1000L)
@@ -79,8 +79,8 @@ class NetworkController(
         }
         val networkScroll = TabSwipeScrollView(
             activity,
-            onSwipeRight = { if (activity.currentTab == 2 && !activity.isSetupVisible()) activity.showFilesView() },
-            onSwipeLeft = { if (activity.currentTab == 2 && !activity.isSetupVisible()) activity.showTab(3) }
+            onSwipeRight = { if (activity.currentTab == 3 && !activity.isSetupVisible()) activity.showFilesView() },
+            onSwipeLeft = { if (activity.currentTab == 3 && !activity.isSetupVisible()) activity.showTab(4) }
         )
         networkInner = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -498,7 +498,7 @@ class NetworkController(
         }
         renderNetFlows()
         val runningNow = NetVpnService.isRunning
-        if (runningNow && activity.currentTab == 2 && !netTickerPosted) {
+        if (runningNow && activity.currentTab == 3 && !netTickerPosted) {
             netTickerPosted = true
             scope.mainHandler.postDelayed(netTicker, 1000L)
         } else if (!runningNow) {
@@ -792,7 +792,7 @@ class NetworkController(
     }
 
     fun onResume() {
-        if (activity.currentTab == 2) refreshNetTab()
+        if (activity.currentTab == 3) refreshNetTab()
     }
 
     fun onDestroy() {

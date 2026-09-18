@@ -42,7 +42,7 @@ class SettingsUiController(
         val density = activity.resources.displayMetrics.density
         val settingsScroll = TabSwipeScrollView(
             activity,
-            onSwipeRight = { if (activity.currentTab == 3 && !activity.isSetupVisible()) activity.showTab(2) }
+            onSwipeRight = { if (activity.currentTab == 4 && !activity.isSetupVisible()) activity.showTab(3) }
         ).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply {
                 weight = 1f

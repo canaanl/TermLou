@@ -52,6 +52,7 @@ class UiBuilder(
         val icons = listOf(
             R.drawable.ic_tab_terminal to R.string.tab_terminal,
             R.drawable.ic_tab_files to R.string.tab_files,
+            R.drawable.ic_tab_notes to R.string.tab_notes,
             R.drawable.ic_tab_network to R.string.tab_network,
             R.drawable.ic_tab_settings to R.string.tab_settings
         )
@@ -119,8 +120,7 @@ class UiBuilder(
 
     fun createFileBottomBar(
         onImportClick: () -> Unit,
-        onImportFolderClick: () -> Unit,
-        onNotesClick: () -> Unit
+        onImportFolderClick: () -> Unit
     ): LinearLayout {
         val fileBottomBar = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -147,23 +147,11 @@ class UiBuilder(
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener { onImportFolderClick() }
         }
-        val notesBtn = Button(activity).apply {
-            text = activity.getString(R.string.notes_title)
-            setTextColor(Color.WHITE)
-            textSize = AppLang.bottomButtonTextSize(activity)
-            setPadding(3, 0, 3, 0)
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            setOnClickListener { onNotesClick() }
-        }
         fileBottomBar.addView(importBtn)
         fileBottomBar.addView(importFolderBtn)
-        fileBottomBar.addView(notesBtn)
         SegmentStyle.applyRow(
             fileBottomBar,
             listOf(
-                null,
                 null,
                 null
             ),
