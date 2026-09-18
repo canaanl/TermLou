@@ -1,6 +1,8 @@
 package com.workspace.proot
 
+import android.animation.LayoutTransition
 import android.app.AlertDialog
+import android.graphics.Color
 import android.graphics.Paint
 import android.os.Bundle
 import android.view.Gravity
@@ -10,19 +12,28 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 /**
- * 待办页：顶部搜索框实时过滤；行内点框切换完成、点文字改内容、长按删除；
- * 底部 [已完成 n][未完成 n] 并排过滤，再点一次回到全部。变更即落盘。
+ * 待办页：顶部搜索框实时过滤；整行点按切换状态、长按删除；
+ * 文字只能在所属笔记里改。底部 [已完成 n][未完成 n] 二选一，
+ * 默认未完成（error 红填充）。变更即落盘。
  * 新增待办只在笔记编辑器的 [＋待办] 里做。
  */
 class NotesTodoActivity : NotesPageActivity() {
 
-    /** null = 全部，true = 只看已完成，false = 只看未完成。 */
-    private var filter: Boolean? = null
+    /** true = 只看已完成，false = 只看未完成（默认）。 */
+    private var filter = false
     private var query = ""
 
     private lateinit var listInner: LinearLayout
     private lateinit var doneBtn: android.widget.Button
     private lateinit var openBtn: android.widget.Button
+    private var transitionSeq = 0
+    private val changeTransition = LayoutTransition().apply {
+        enableTransitionType(LayoutTransition.CHANGE_DISAPPEARING)
+        disableTransitionType(LayoutTransition.APPEARING)
+        disableTransitionType(LayoutTransition.DISAPPEARING)
+        disableTransitionType(LayoutTransition.CHANGE_APPEARING)
+        disableTransitionType(LayoutTransition.CHANGING)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,6 +51,7 @@ class NotesTodoActivity : NotesPageActivity() {
             scrolled.first,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { weight = 1f }
         )
+        root.addView(divider())
         root.addView(buildFilterBar())
         setContentView(root)
         render()
@@ -77,32 +89,20 @@ class NotesTodoActivity : NotesPageActivity() {
             setBackgroundColor(theme.surface)
             setPadding(4, 0, 4, 0)
         }
-        doneBtn = segButton("") { filter = if (filter == true) null else true; render() }
-        openBtn = segButton("") { filter = if (filter == false) null else false; render() }
+        doneBtn = segButton("") { filter = true; render() }
+        openBtn = segButton("") { filter = false; render() }
         row.addView(doneBtn)
         row.addView(openBtn)
         return row
     }
 
     private fun render() {
-        val (done, open) = store.todoCounts()
-        doneBtn.text = getString(R.string.notes_done_fmt, done)
-        openBtn.text = getString(R.string.notes_open_fmt, open)
-        val bar = doneBtn.parent as LinearLayout
-        SegmentStyle.applyRow(
-            bar,
-            listOf(
-                if (filter == true) SegmentStyle.Fill(theme.primary, theme.onPrimary) else null,
-                if (filter == false) SegmentStyle.Fill(theme.primary, theme.onPrimary) else null
-            ),
-            theme.outline,
-            theme.onSurface,
-            SegmentStyle.Bar(0f, false)
-        )
+        updateFilterBar()
+        listInner.layoutTransition = null
         listInner.removeAllViews()
         val q = query.trim().lowercase()
         val items = store.todos().filter {
-            (filter == null || it.done == filter) && (q.isEmpty() || it.text.lowercase().contains(q))
+            it.done == filter && (q.isEmpty() || it.text.lowercase().contains(q))
         }
         if (items.isEmpty()) {
             listInner.addView(TextView(this).apply {
@@ -117,8 +117,24 @@ class NotesTodoActivity : NotesPageActivity() {
         }
         for (item in items) {
             listInner.addView(todoRow(item))
-            listInner.addView(divider())
+            listInner.addView(divider().apply { tag = "div:" + item.id })
         }
+    }
+
+    private fun updateFilterBar() {
+        val (done, open) = store.todoCounts()
+        doneBtn.text = getString(R.string.notes_done_fmt, done)
+        openBtn.text = getString(R.string.notes_open_fmt, open)
+        SegmentStyle.applyRow(
+            doneBtn.parent as LinearLayout,
+            listOf(
+                if (filter) SegmentStyle.Fill(theme.primary, theme.onPrimary) else null,
+                if (!filter) SegmentStyle.Fill(theme.error, Color.WHITE) else null
+            ),
+            theme.outline,
+            theme.onSurface,
+            SegmentStyle.Bar(0f, false)
+        )
     }
 
     private fun todoRow(item: TodoItem): LinearLayout {
@@ -127,38 +143,68 @@ class NotesTodoActivity : NotesPageActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding((8 * d).toInt(), (8 * d).toInt(), (8 * d).toInt(), (8 * d).toInt())
+            tag = "row:" + item.id
             addView(TextView(this@NotesTodoActivity).apply {
                 text = if (item.done) "☑" else "☐"
                 setTextColor(if (item.done) theme.primary else theme.onSurface)
                 textSize = UiTokens.TEXT_TITLE
                 setPadding(0, 0, (10 * d).toInt(), 0)
-                setOnClickListener {
-                    store.setTodoDone(item.id, !item.done)
-                    render()
+            })
+            addView(LinearLayout(this@NotesTodoActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                addView(TextView(this@NotesTodoActivity).apply {
+                    text = item.text
+                    setTextColor(if (item.done) theme.onSurfaceVariant else theme.onSurface)
+                    textSize = UiTokens.TEXT_BODY
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    if (item.done) paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
+                })
+                if (item.note.isNotEmpty()) {
+                    addView(TextView(this@NotesTodoActivity).apply {
+                        text = item.note
+                        setTextColor(theme.onSurfaceVariant)
+                        textSize = UiTokens.TEXT_META
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                    })
                 }
             })
-            addView(TextView(this@NotesTodoActivity).apply {
-                text = item.text
-                setTextColor(if (item.done) theme.onSurfaceVariant else theme.onSurface)
-                textSize = UiTokens.TEXT_BODY
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                if (item.done) paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
-                setOnClickListener { editTodoDialog(item) }
-            })
+            setOnClickListener { toggleTodoAnimated(this, item) }
             setOnLongClickListener { confirmDeleteTodo(item); true }
         }
     }
 
-    private fun editTodoDialog(item: TodoItem) {
-        inputDialog(
-            getString(R.string.notes_edit_todo),
-            getString(R.string.notes_todo_hint),
-            item.text,
-            getString(R.string.save)
-        ) { raw ->
-            store.setTodoText(item.id, raw)
-            render()
-        }
+    /** 点按整行切换：本行向右飞出，下方行上滑补位（只摘除本行，不全量重绘）。 */
+    private fun toggleTodoAnimated(row: LinearLayout, item: TodoItem) {
+        row.isClickable = false
+        row.animate().cancel()
+        val distance = (listInner.width - row.left).toFloat().coerceAtLeast(row.width.toFloat())
+        transitionSeq++
+        val seq = transitionSeq
+        row.animate()
+            .translationX(distance)
+            .alpha(0f)
+            .setDuration(TOGGLE_ANIM_MS)
+            .withEndAction {
+                store.setTodoDone(item.id, !item.done)
+                listInner.layoutTransition = changeTransition
+                listInner.removeView(row)
+                listInner.findViewWithTag<android.view.View>("div:" + item.id)?.let {
+                    listInner.removeView(it)
+                }
+                updateFilterBar()
+                if (listInner.childCount == 0) {
+                    listInner.layoutTransition = null
+                    render()
+                } else {
+                    listInner.postDelayed({
+                        if (transitionSeq == seq) listInner.layoutTransition = null
+                    }, TRANSITION_CLEAR_MS)
+                }
+            }
+            .start()
     }
 
     private fun confirmDeleteTodo(item: TodoItem) {
@@ -171,5 +217,10 @@ class NotesTodoActivity : NotesPageActivity() {
             }
             .setNegativeButton(getString(R.string.cancel), null)
             .showStyled(theme)
+    }
+
+    companion object {
+        private const val TOGGLE_ANIM_MS = 220L
+        private const val TRANSITION_CLEAR_MS = 350L
     }
 }

@@ -138,7 +138,7 @@ class NotesTagsActivity : NotesPageActivity() {
             return
         }
         for (entry in notes) {
-            listInner.addView(textRow("${entry.name}.${NotesStore.EXT}", "") {
+            listInner.addView(textRow(entry.name, "") {
                 startActivity(Intent(this@NotesTagsActivity, MainActivity::class.java).apply {
                     putExtra(EXTRA_OPEN, entry.name)
                 })

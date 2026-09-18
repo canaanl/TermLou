@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-5.0.36-blue)
+![Version](https://img.shields.io/badge/version-5.0.37-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -333,6 +333,7 @@ echo "https://example.com" | termlou-clipboard
 | **5.0.24** | 524 | 应用图标再调：文件夹收至显示宽度 70%（x29–79、y32–76）；顶部两段台阶压到 8 高；黑边统一单侧 1.0（闪电线宽 2，下划线黑 8 + 白 6） |
 | **5.0.25** | 525 | 推荐加轮换分：并列带内由可学习的轮换分裁决（点+0.1封顶1.0、其他×0.95衰减，冷启动回退按最近使用）；后台记猜中率与回放日志（各500条内），备份带轮换分 |
 | **5.0.26** | 526 | bashrc 不再整文件覆盖：改为只替换受管段（TERMLOU_START/END），用户与安装器追加的内容永远保留；新增 `~/.term_lou_env` 用户环境兜底文件（app 永不覆盖）；PATH 内建 `~/.opencode/bin`；新增 opencode 官方安装默认命令（curl 安装 + 自动软链到 ~/.local/bin） |
+| **5.0.37** | 537 | 待办收进笔记 header 归属：＋待办只写本笔记索引不再插正文，编辑器标签行下设待办区（点行切换/点字改/长按删），重命名重映射、删笔记级联；待办页整行点按切换＋右飞出行动画（下方上滑补位），筛选改 error 红、默认未完成、去“全部”，顶部补横线，行加归属笔记副行；笔记名全局去 .txt，编辑器标题居中 18sp |
 | **5.0.36** | 536 | 笔记列表行标签改胶囊＋日期右对齐；通知全迁状态栏（`Notes ｜ …「X」`）：主界面直发，待办/标签子页暂存返回再弹（60 秒超期丢弃）；删各页 transient 提示行 |
 | **5.0.35** | 535 | 标签胶囊按内容哈希着色：色相 360 桶、淡色填充＋同色系描边，同标签天然同色；标签筛选页点标签进入后笔记行不再显示标签 |
 | **5.0.34** | 534 | 修笔记 tab 内滑动卡死：区域级 OnTouchListener 挂 ViewGroup 上会被消费触摸的 children 屏蔽而失聪，改 TabSwipeLayout 容器级拦截（与文件/网络页同机制） |

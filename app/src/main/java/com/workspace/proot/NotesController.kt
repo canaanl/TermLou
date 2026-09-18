@@ -43,6 +43,7 @@ class NotesController(
     private lateinit var fab: TextView
     private lateinit var editorTitle: TextView
     private lateinit var tagRow: LinearLayout
+    private lateinit var todoBox: LinearLayout
     private lateinit var body: EditText
 
     private fun density(): Float = activity.resources.displayMetrics.density
@@ -131,6 +132,7 @@ class NotesController(
         } else if (cur != null) {
             refreshEditorTitle()
             refreshTagRow()
+            refreshTodoBox()
         } else {
             renderList()
         }
@@ -154,7 +156,8 @@ class NotesController(
         editorTitle = TextView(activity).apply {
             setTextColor(theme.onSurface)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            textSize = UiTokens.TEXT_BODY
+            textSize = UiTokens.TEXT_TITLE
+            gravity = Gravity.CENTER
             setPadding((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (4 * d).toInt())
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
@@ -170,6 +173,11 @@ class NotesController(
         }
         tagScroll.addView(tagRow)
         box.addView(tagScroll)
+        todoBox = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = android.view.View.GONE
+        }
+        box.addView(todoBox)
         body = EditText(activity).apply {
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             setTextColor(theme.onSurface)
@@ -217,7 +225,7 @@ class NotesController(
             setBackgroundColor(theme.surface)
             setPadding(4, 0, 4, 0)
             addView(segButton(activity.getString(R.string.notes_insert_todo)) {
-                showTodoDialog(body)
+                showTodoDialog()
             })
             addView(segButton(activity.getString(R.string.notes_insert_tag)) {
                 current?.let { showTagDialog(it) }
@@ -282,6 +290,7 @@ class NotesController(
         suppressWatch = false
         refreshEditorTitle()
         refreshTagRow()
+        refreshTodoBox()
         listScroll.visibility = android.view.View.GONE
         editorBox.visibility = android.view.View.VISIBLE
         fab.visibility = android.view.View.GONE
@@ -291,7 +300,7 @@ class NotesController(
 
     private fun refreshEditorTitle() {
         val cur = current ?: return
-        editorTitle.text = "$cur.${NotesStore.EXT}"
+        editorTitle.text = cur
     }
 
     private fun refreshTagRow() {
@@ -314,6 +323,7 @@ class NotesController(
             store.saveNote(noteName, after)
         }
         refreshTagRow()
+        refreshTodoBox()
         status.showTempStatus("Notes | ${activity.getString(R.string.notes_tag_removed)}「$tag」")
     }
 
@@ -347,7 +357,7 @@ class NotesController(
             orientation = LinearLayout.VERTICAL
             setPadding((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (10 * d).toInt())
             addView(TextView(activity).apply {
-                text = "${entry.name}.${NotesStore.EXT}"
+                text = entry.name
                 setTextColor(theme.onSurface)
                 textSize = UiTokens.TEXT_BODY
                 maxLines = 1
@@ -396,6 +406,7 @@ class NotesController(
                 current = name
                 refreshEditorTitle()
                 refreshTagRow()
+                refreshTodoBox()
             }
             if (current == null) renderList()
             status.showTempStatus("Notes | ${activity.getString(R.string.notes_renamed)}「$name」")
@@ -452,27 +463,82 @@ class NotesController(
             .showStyled(theme)
     }
 
-    /** 加待办：进全局列表 + 正文光标处插入 "- [ ] 内容"行。 */
-    private fun showTodoDialog(target: EditText?) {
+    /** 加待办：只进本笔记 header，不再往正文插入。 */
+    private fun showTodoDialog() {
+        val cur = current ?: return
         inputDialog(
             activity.getString(R.string.notes_add_todo),
             activity.getString(R.string.notes_todo_hint),
             "",
             activity.getString(R.string.notes_add_todo)
         ) { raw ->
-            val item = store.addTodo(raw) ?: return@inputDialog
-            if (target != null) insertAtCursor(target, "- [ ] ${item.text}", true)
+            if (store.addTodo(raw, cur) != null) refreshTodoBox()
         }
     }
 
-    private fun insertAtCursor(edit: EditText, snippet: String, lineBreak: Boolean) {
-        val pos = edit.selectionStart.coerceAtLeast(0)
-        val cur = edit.text?.toString().orEmpty()
-        val glue = if (pos <= 0) "" else {
-            val prev = cur[pos - 1]
-            if (prev == '\n') "" else if (lineBreak) "\n" else " "
+    private fun refreshTodoBox() {
+        val cur = current ?: return
+        todoBox.removeAllViews()
+        val items = store.todosOf(cur)
+        todoBox.visibility =
+            if (items.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
+        for (item in items) {
+            todoBox.addView(noteTodoRow(item))
         }
-        edit.text?.insert(pos, glue + snippet)
+    }
+
+    private fun noteTodoRow(item: TodoItem): LinearLayout {
+        val d = density()
+        return LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding((16 * d).toInt(), (6 * d).toInt(), (16 * d).toInt(), (6 * d).toInt())
+            addView(TextView(activity).apply {
+                text = if (item.done) "☑" else "☐"
+                setTextColor(if (item.done) theme.primary else theme.onSurface)
+                textSize = UiTokens.TEXT_TITLE
+                setPadding(0, 0, (10 * d).toInt(), 0)
+                setOnClickListener { toggleTodo(item) }
+            })
+            addView(TextView(activity).apply {
+                text = item.text
+                setTextColor(if (item.done) theme.onSurfaceVariant else theme.onSurface)
+                textSize = UiTokens.TEXT_BODY
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                if (item.done) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
+                setOnClickListener { editTodoText(item) }
+            })
+            setOnClickListener { toggleTodo(item) }
+            setOnLongClickListener { confirmDeleteNoteTodo(item); true }
+        }
+    }
+
+    private fun toggleTodo(item: TodoItem) {
+        store.setTodoDone(item.id, !item.done)
+        refreshTodoBox()
+    }
+
+    private fun editTodoText(item: TodoItem) {
+        inputDialog(
+            activity.getString(R.string.notes_edit_todo),
+            activity.getString(R.string.notes_todo_hint),
+            item.text,
+            activity.getString(R.string.save)
+        ) { raw ->
+            store.setTodoText(item.id, raw)
+            refreshTodoBox()
+        }
+    }
+
+    private fun confirmDeleteNoteTodo(item: TodoItem) {
+        AlertDialog.Builder(activity)
+            .setMessage(activity.getString(R.string.notes_confirm_delete_fmt, item.text))
+            .setPositiveButton(activity.getString(R.string.notes_delete)) { _, _ ->
+                store.deleteTodo(item.id)
+                refreshTodoBox()
+            }
+            .setNegativeButton(activity.getString(R.string.cancel), null)
+            .showStyled(theme)
     }
 
     private fun parseTags(raw: String): List<String> =

@@ -14,12 +14,13 @@ data class NoteEntry(
     val updatedAt: Long = 0L
 )
 
-/** 全局待办项：与某篇笔记无关，整个笔记本共用一条。 */
+/** 待办项：note 为所属笔记名（空 = 老数据无归属，仅全局可见）。 */
 data class TodoItem(
     val id: String,
     val text: String,
     val done: Boolean = false,
-    val createdAt: Long = 0L
+    val createdAt: Long = 0L,
+    val note: String = ""
 )
 
 /**
@@ -100,6 +101,9 @@ class NotesStore(notesDir: File) {
             m.updatedAt = System.currentTimeMillis()
             meta[name] = m
         }
+        for (i in todos.indices) {
+            if (todos[i].note == old) todos[i] = todos[i].copy(note = name)
+        }
         persist()
         return name
     }
@@ -107,6 +111,7 @@ class NotesStore(notesDir: File) {
     fun deleteNote(name: String) {
         runCatching { noteFile(name).delete() }
         meta.remove(name)
+        todos.removeAll { it.note == name }
         persist()
     }
 
@@ -144,11 +149,15 @@ class NotesStore(notesDir: File) {
     /** 未完成在前，其次按创建时间。 */
     fun todos(): List<TodoItem> = todos.sortedWith(compareBy<TodoItem> { it.done }.thenBy { it.createdAt })
 
+    /** 某篇笔记的待办，同全局排序。 */
+    fun todosOf(note: String): List<TodoItem> =
+        todos().filter { it.note == note }
+
     /** 空内容返回 null，不落盘。 */
-    fun addTodo(text: String): TodoItem? {
+    fun addTodo(text: String, note: String = ""): TodoItem? {
         val clean = text.trim()
         if (clean.isEmpty()) return null
-        val item = TodoItem(UUID.randomUUID().toString(), clean, false, System.currentTimeMillis())
+        val item = TodoItem(UUID.randomUUID().toString(), clean, false, System.currentTimeMillis(), note)
         todos.add(item)
         persist()
         return item
@@ -277,7 +286,8 @@ class NotesStore(notesDir: File) {
                 o.optString(KEY_ID, UUID.randomUUID().toString()),
                 text,
                 o.optBoolean(KEY_DONE, false),
-                numOf(o, KEY_CREATED, 0L)
+                numOf(o, KEY_CREATED, 0L),
+                o.optString(KEY_NOTE, "")
             )
         }
     }
@@ -306,6 +316,7 @@ class NotesStore(notesDir: File) {
                     .put(KEY_TEXT, t.text)
                     .put(KEY_DONE, t.done)
                     .put(KEY_CREATED, t.createdAt)
+                    .put(KEY_NOTE, t.note)
             )
         }
         val doc = MiniJson.Obj()
@@ -319,7 +330,7 @@ class NotesStore(notesDir: File) {
         const val EXT = "txt"
         const val INDEX_DIR = ".termlou-notes"
         private const val INDEX_FILE = "index.json"
-        private const val INDEX_VERSION = 1
+        private const val INDEX_VERSION = 2
         private const val FIRST_SUFFIX = 2
         private const val MAX_SUFFIX_TRIES = 9999
         private const val TMP_SUFFIX = ".tmp"
@@ -331,6 +342,7 @@ class NotesStore(notesDir: File) {
         private const val KEY_TEXT = "text"
         private const val KEY_ID = "id"
         private const val KEY_DONE = "done"
+        private const val KEY_NOTE = "note"
         private const val KEY_CREATED = "createdAt"
         private const val KEY_UPDATED = "updatedAt"
 

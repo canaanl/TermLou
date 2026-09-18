@@ -127,6 +127,40 @@ class NotesStoreTest {
     }
 
     @Test
+    fun `todos carry note attribution and filter by note`() {
+        store.addTodo("global")
+        store.addTodo("mine", "n1")
+        assertEquals(listOf("mine"), store.todosOf("n1").map { it.text })
+        assertEquals(2, store.todos().size)
+    }
+
+    @Test
+    fun `todo attribution survives reload`() {
+        store.addTodo("mine", "n1")
+        val reloaded = NotesStore(dir)
+        reloaded.reload()
+        assertEquals("n1", reloaded.todos().single().note)
+    }
+
+    @Test
+    fun `rename remaps todo attribution`() {
+        store.createNote("a")
+        store.addTodo("x", "a")
+        store.renameNote("a", "b")
+        assertEquals(listOf("x"), store.todosOf("b").map { it.text })
+        assertTrue(store.todosOf("a").isEmpty())
+    }
+
+    @Test
+    fun `delete cascades note todos`() {
+        store.createNote("a")
+        store.addTodo("x", "a")
+        store.addTodo("global")
+        store.deleteNote("a")
+        assertEquals(listOf("global"), store.todos().map { it.text })
+    }
+
+    @Test
     fun `tags attach detach counts and filter`() {
         store.createNote("a")
         store.createNote("b")
