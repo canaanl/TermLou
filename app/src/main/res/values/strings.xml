@@ -364,8 +364,6 @@
     <string name="lan_port_busy_fmt">端口 %1$d 起 20 个均被占用：%2$s</string>
     <string name="lan_pty_fail_fmt">pty 启动失败: %1$s: %2$s</string>
     <string name="notes_back">‹</string>
-    <string name="notes_title">笔记</string>
-    <string name="notes_empty_hint">文件空</string>
     <string name="notes_empty_list">暂无笔记</string>
     <string name="notes_new">新建</string>
     <string name="notes_name_hint">名称（留空用时间戳）</string>
@@ -385,7 +383,6 @@
     <string name="notes_todo_empty">暂无待办</string>
     <string name="notes_done_fmt">已完成 %1$d</string>
     <string name="notes_open_fmt">未完成 %1$d</string>
-    <string name="notes_saved">已保存</string>
     <string name="notes_deleted">已删除</string>
     <string name="notes_renamed">已重命名</string>
     <string name="notes_tag_removed">已移除标签</string>

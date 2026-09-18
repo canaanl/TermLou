@@ -18,6 +18,7 @@ import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -51,8 +52,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var settingsTab: ImageView
     private lateinit var terminalArea: LinearLayout
     private lateinit var filesArea: LinearLayout
+    private lateinit var notesArea: LinearLayout
     private lateinit var networkArea: LinearLayout
     private lateinit var settingsWrapper: LinearLayout
+    private lateinit var notesController: NotesController
 
     internal var currentTab = 0
     private var animating = false
@@ -114,6 +117,16 @@ class MainActivity : AppCompatActivity() {
         ) {
             permLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+        notesController = NotesController(this, scope)
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (!notesController.handleBack()) {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                    isEnabled = true
+                }
+            }
+        })
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val ch = NotificationChannel(
@@ -157,9 +170,6 @@ class MainActivity : AppCompatActivity() {
         for (tv in tabViews) toolbar.addView(tv)
         tabViews.forEachIndexed { i, iv ->
             iv.setColorFilter(if (i == currentTab) scope.cOnSurface else scope.cOnSurfaceVariant)
-            iv.setOnClickListener {
-                if (i == 2) startActivity(Intent(this, NotesActivity::class.java)) else showTab(i)
-            }
         }
         tabHost.addView(toolbar)
 
@@ -172,6 +182,11 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
         }
         workspaceController.buildInto(filesArea)
+
+        notesArea = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        notesController.buildInto(notesArea)
 
         networkArea = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -211,6 +226,9 @@ class MainActivity : AppCompatActivity() {
         slideContainer.addView(filesArea, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
         ))
+        slideContainer.addView(notesArea, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+        ))
         slideContainer.addView(networkArea, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
         ))
@@ -236,6 +254,7 @@ class MainActivity : AppCompatActivity() {
             startForegroundService(Intent(this, TermKeepAliveService::class.java))
         }
         workspaceController.handleShareIntent(intent)
+        handleOpenNoteExtra(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -250,6 +269,13 @@ class MainActivity : AppCompatActivity() {
                 scope.terminalManager.session?.write(data, 0, data.size)
             }
         )
+        handleOpenNoteExtra(intent)
+    }
+
+    private fun handleOpenNoteExtra(intent: Intent) {
+        val name = intent.getStringExtra(NotesPageActivity.EXTRA_OPEN) ?: return
+        showTab(2)
+        notesController.openNote(name)
     }
 
     override fun onResume() {
@@ -258,6 +284,7 @@ class MainActivity : AppCompatActivity() {
         terminalController.onResume()
         networkController.onResume()
         settingsUiController.onResume()
+        notesController.refresh()
         refreshStatusBar()
     }
 
@@ -288,18 +315,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     internal fun showTab(tabIndex: Int) {
-        if (tabIndex == 2) {
-            startActivity(Intent(this, NotesActivity::class.java))
-            return
-        }
         if (tabIndex != 0) hideIme()
         terminalController.hideSetup()
         val prev = currentTab
         currentTab = tabIndex
 
         val tabs = listOf(terminalTab, filesTab, notesTab, networkTab, settingsTab)
-        val views = listOf(terminalArea, filesArea, networkArea, settingsWrapper)
-        val viewIndex = if (tabIndex > 2) tabIndex - 1 else tabIndex
+        val views = listOf(terminalArea, filesArea, notesArea, networkArea, settingsWrapper)
 
         for (i in tabs.indices) {
             tabs[i].setColorFilter(if (i == tabIndex) scope.cOnSurface else scope.cOnSurfaceVariant)
@@ -315,7 +337,7 @@ class MainActivity : AppCompatActivity() {
         statusController.bumpGen()
         refreshStatusBar()
 
-        val showView = views[viewIndex]
+        val showView = views[tabIndex]
         if (showView.visibility != View.VISIBLE) {
             val visibleIndex = views.indexOfFirst { it.visibility == View.VISIBLE }
             if (visibleIndex >= 0) {
@@ -330,6 +352,7 @@ class MainActivity : AppCompatActivity() {
 
         if (tabIndex == 0) terminalController.terminalView.requestFocus()
         if (tabIndex == 1) workspaceController.refreshFileList()
+        if (tabIndex == 2) notesController.refresh()
         if (tabIndex == 3) networkController.refreshNetTab()
     }
 
@@ -389,6 +412,7 @@ class MainActivity : AppCompatActivity() {
                 val p = workspaceController.getRelativePath()
                 if (p.isEmpty()) "Files" else "Files | $p"
             }
+            2 -> "Notes"
             3 -> networkController.netStatusLine()
             4 -> "Settings"
             else -> statusController.terminalBaseText()
