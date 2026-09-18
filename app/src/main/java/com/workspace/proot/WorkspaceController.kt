@@ -67,7 +67,10 @@ class WorkspaceController(
         filesArea.addView(SegmentStyle.hDivider(activity, scope.cOnSurface))
         filesArea.addView(scope.uiBuilder.createFileBottomBar(
             onImportClick = { pickFiles() },
-            onImportFolderClick = { pickFolder() }
+            onImportFolderClick = { pickFolder() },
+            onNotesClick = {
+                activity.startActivity(Intent(activity, NotesActivity::class.java))
+            }
         ))
     }
 

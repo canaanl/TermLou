@@ -119,7 +119,8 @@ class UiBuilder(
 
     fun createFileBottomBar(
         onImportClick: () -> Unit,
-        onImportFolderClick: () -> Unit
+        onImportFolderClick: () -> Unit,
+        onNotesClick: () -> Unit
     ): LinearLayout {
         val fileBottomBar = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -146,11 +147,23 @@ class UiBuilder(
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener { onImportFolderClick() }
         }
+        val notesBtn = Button(activity).apply {
+            text = activity.getString(R.string.notes_title)
+            setTextColor(Color.WHITE)
+            textSize = UiTokens.TEXT_BODY
+            setPadding(3, 0, 3, 0)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener { onNotesClick() }
+        }
         fileBottomBar.addView(importBtn)
         fileBottomBar.addView(importFolderBtn)
+        fileBottomBar.addView(notesBtn)
         SegmentStyle.applyRow(
             fileBottomBar,
             listOf(
+                null,
                 null,
                 null
             ),
