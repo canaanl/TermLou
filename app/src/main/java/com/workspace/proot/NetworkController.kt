@@ -79,7 +79,7 @@ class NetworkController(
         }
         val networkScroll = TabSwipeScrollView(
             activity,
-            onSwipeRight = { if (activity.currentTab == 3 && !activity.isSetupVisible()) activity.showFilesView() },
+            onSwipeRight = { if (activity.currentTab == 3 && !activity.isSetupVisible()) activity.showTab(2) },
             onSwipeLeft = { if (activity.currentTab == 3 && !activity.isSetupVisible()) activity.showTab(4) }
         )
         networkInner = LinearLayout(activity).apply {
