@@ -136,6 +136,7 @@ class NotesStoreTest {
 
     @Test
     fun `todo attribution survives reload`() {
+        store.createNote("n1")
         store.addTodo("mine", "n1")
         val reloaded = NotesStore(dir)
         reloaded.reload()
@@ -158,6 +159,20 @@ class NotesStoreTest {
         store.addTodo("global")
         store.deleteNote("a")
         assertEquals(listOf("global"), store.todos().map { it.text })
+    }
+
+    @Test
+    fun `external note deletion prunes its attributed todos and self-heals index`() {
+        store.createNote("a")
+        store.addTodo("x", "a")
+        store.addTodo("global")
+        store.noteFile("a").delete()
+        val reloaded = NotesStore(dir)
+        reloaded.reload()
+        assertEquals(listOf("global"), reloaded.todos().map { it.text })
+        val again = NotesStore(dir)
+        again.reload()
+        assertEquals(listOf("global"), again.todos().map { it.text })
     }
 
     @Test

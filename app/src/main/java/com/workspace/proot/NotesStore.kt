@@ -35,7 +35,8 @@ class NotesStore(notesDir: File) {
 
     private data class NoteMeta(var tags: List<String>, var createdAt: Long, var updatedAt: Long)
 
-    /** 目录扫描 + 索引合并：目录里有但索引没有的补条目，文件没了的清条目，索引丢了就地重建。 */
+    /** 目录扫描 + 索引合并：目录里有但索引没有的补条目，文件没了的清条目，
+     *  归属笔记已被删的待办一并剪掉，索引丢了就地重建。 */
     fun reload() {
         root.mkdirs()
         val disk = diskNames()
@@ -46,9 +47,12 @@ class NotesStore(notesDir: File) {
         }
         meta.clear()
         meta.putAll(nextMeta)
+        val loaded = readTodos(idx)
+        val kept = loaded.filter { it.note.isEmpty() || nextMeta.containsKey(it.note) }
         todos.clear()
-        todos.addAll(readTodos(idx))
-        if (idx == null || indexNames(idx) != disk) persist()
+        todos.addAll(kept)
+        val pruned = kept.size != loaded.size
+        if (idx == null || pruned || indexNames(idx) != disk) persist()
     }
 
     /** 按更新时间倒序，时间相同按名称。 */
