@@ -42,7 +42,7 @@ class NotesController(
     private lateinit var editRow: LinearLayout
     private lateinit var fab: TextView
     private lateinit var editorTitle: TextView
-    private lateinit var tagRow: LinearLayout
+    private lateinit var tagRow: TagFlowLayout
     private lateinit var todoBox: LinearLayout
     private lateinit var body: EditText
 
@@ -163,16 +163,20 @@ class NotesController(
             ellipsize = android.text.TextUtils.TruncateAt.END
         }
         box.addView(editorTitle)
-        val tagScroll = HorizontalScrollView(activity).apply {
-            isHorizontalScrollBarEnabled = false
-        }
-        tagRow = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+        tagRow = TagFlowLayout(activity).apply {
             setPadding((12 * d).toInt(), 0, (12 * d).toInt(), (4 * d).toInt())
         }
-        tagScroll.addView(tagRow)
-        box.addView(tagScroll)
+        val tagScroll = MaxHeightScrollView(activity).apply {
+            maxHeight = activity.resources.displayMetrics.heightPixels / TAG_AREA_DIVISOR
+            isVerticalScrollBarEnabled = false
+            addView(tagRow)
+        }
+        box.addView(
+            tagScroll,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
         todoBox = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             visibility = android.view.View.GONE
@@ -356,31 +360,37 @@ class NotesController(
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (10 * d).toInt())
-            addView(TextView(activity).apply {
-                text = entry.name
-                setTextColor(theme.onSurface)
-                textSize = UiTokens.TEXT_BODY
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-            })
             addView(LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, (4 * d).toInt(), 0, 0)
-                for (tag in entry.tags) {
-                    addView(tagCapsule(tag) { onClick() })
-                }
+                addView(TextView(activity).apply {
+                    text = entry.name
+                    setTextColor(theme.onSurface)
+                    textSize = UiTokens.TEXT_BODY
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    layoutParams = LinearLayout.LayoutParams(
+                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                    )
+                })
                 addView(TextView(activity).apply {
                     text = ROW_FMT.format(Date(entry.updatedAt))
                     setTextColor(theme.onSurfaceVariant)
                     textSize = UiTokens.TEXT_META
                     maxLines = 1
-                    gravity = Gravity.END
                     layoutParams = LinearLayout.LayoutParams(
-                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
                     ).apply { marginStart = (8 * d).toInt() }
                 })
             })
+            if (entry.tags.isNotEmpty()) {
+                addView(TagFlowLayout(activity).apply {
+                    setPadding(0, (4 * d).toInt(), 0, 0)
+                    for (tag in entry.tags) {
+                        addView(tagCapsule(tag) { onClick() })
+                    }
+                })
+            }
             setOnClickListener { onClick() }
         }
     }
@@ -436,7 +446,7 @@ class NotesController(
             })
             val chips = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
             for (tag in existing) {
-                chips.addView(toolButton("#$tag") {
+                chips.addView(tagCapsule(tag) {
                     val cur = input.text?.toString().orEmpty()
                     val sep = if (cur.isBlank()) "" else " "
                     input.setText("$cur$sep$tag")
@@ -556,21 +566,6 @@ class NotesController(
             setOnClickListener { onClick() }
         }
 
-    private fun toolButton(text: String, onClick: () -> Unit): Button =
-        Button(activity).apply {
-            this.text = text
-            setTextColor(theme.onSurface)
-            textSize = UiTokens.TEXT_BODY
-            val d = density()
-            setPadding((12 * d).toInt(), (4 * d).toInt(), (12 * d).toInt(), (4 * d).toInt())
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginStart = (4 * d).toInt()
-                marginEnd = (4 * d).toInt()
-            }
-            ButtonStyle.outlined(this, theme.outline)
-            setOnClickListener { onClick() }
-        }
-
     private fun tagCapsule(tag: String, onClick: () -> Unit): TextView {
         val d = density()
         val (fill, edge) = tagCapsuleColors(tag)
@@ -580,6 +575,15 @@ class NotesController(
             textSize = UiTokens.TEXT_COMPACT
             maxLines = 1
             setPadding((12 * d).toInt(), (4 * d).toInt(), (12 * d).toInt(), (4 * d).toInt())
+            if (tag.length > MARQUEE_CHARS) {
+                setSingleLine()
+                ellipsize = android.text.TextUtils.TruncateAt.MARQUEE
+                marqueeRepeatLimit = MARQUEE_FOREVER
+                maxWidth = (MARQUEE_MAX_DP * d).toInt()
+                isSelected = true
+            } else {
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
             background = GradientDrawable().apply {
                 cornerRadius = (12 * d)
                 setStroke((1 * d).toInt().coerceAtLeast(1), edge)
@@ -644,5 +648,6 @@ class NotesController(
         private const val GLASS_ALPHA = 0x33
         private const val GLASS_EDGE_ALPHA = 0x66
         private const val FAB_PLUS_SP = 28f
+        private const val TAG_AREA_DIVISOR = 3
     }
 }

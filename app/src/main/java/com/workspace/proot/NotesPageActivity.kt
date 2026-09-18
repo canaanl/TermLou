@@ -70,22 +70,8 @@ abstract class NotesPageActivity : AppCompatActivity() {
             setOnClickListener { onClick() }
         }
 
-    /** 空心描边小键（工具行用，如 ＋标签 / ＋待办）。 */
-    protected fun toolButton(text: String, onClick: () -> Unit): Button =
-        Button(this).apply {
-            this.text = text
-            setTextColor(theme.onSurface)
-            textSize = UiTokens.TEXT_BODY
-            setPadding((12 * density()).toInt(), (4 * density()).toInt(), (12 * density()).toInt(), (4 * density()).toInt())
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginStart = (4 * density()).toInt()
-                marginEnd = (4 * density()).toInt()
-            }
-            ButtonStyle.outlined(this, theme.outline)
-            setOnClickListener { onClick() }
-        }
-
-    /** 标签胶囊：按标签内容算出的淡色填充 + 同色系描边 + 纯词（无 #）。 */
+    /** 标签胶囊：按标签内容算出的淡色填充 + 同色系描边 + 纯词（无 #）。
+     * 超过字数阈值的长词循环滚动，短词静态包裹。 */
     protected fun tagCapsule(tag: String, onClick: () -> Unit): TextView {
         val d = density()
         val (fill, edge) = tagCapsuleColors(tag)
@@ -95,6 +81,15 @@ abstract class NotesPageActivity : AppCompatActivity() {
             textSize = UiTokens.TEXT_COMPACT
             maxLines = 1
             setPadding((12 * d).toInt(), (4 * d).toInt(), (12 * d).toInt(), (4 * d).toInt())
+            if (tag.length > MARQUEE_CHARS) {
+                setSingleLine()
+                ellipsize = android.text.TextUtils.TruncateAt.MARQUEE
+                marqueeRepeatLimit = MARQUEE_FOREVER
+                maxWidth = (MARQUEE_MAX_DP * d).toInt()
+                isSelected = true
+            } else {
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
             background = GradientDrawable().apply {
                 cornerRadius = (12 * d)
                 setStroke((1 * d).toInt().coerceAtLeast(1), edge)
@@ -230,3 +225,6 @@ private const val FILL_SAT = 0.35f
 private const val FILL_VAL = 0.95f
 private const val EDGE_SAT = 0.50f
 private const val EDGE_VAL = 0.70f
+internal const val MARQUEE_CHARS = 8
+internal const val MARQUEE_MAX_DP = 200
+internal const val MARQUEE_FOREVER = -1
