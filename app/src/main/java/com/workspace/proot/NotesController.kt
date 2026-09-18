@@ -60,9 +60,9 @@ class NotesController(
         }
         val content = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0
-            ).apply { weight = 1f }
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+            )
         }
         val scrolled = scrollColumn()
         listScroll = scrolled.first
@@ -85,21 +85,19 @@ class NotesController(
             addView(fab)
         }
         root.addView(frame)
-        hintView = TextView(activity).apply {
-            setTextColor(theme.onSurfaceVariant)
-            textSize = UiTokens.TEXT_COMPACT
-            maxLines = 1
-            visibility = android.view.View.GONE
-            val d = density()
-            setPadding((48 * d).toInt(), 0, (16 * d).toInt(), (6 * d).toInt())
-        }
+        hintView = buildHintView()
         root.addView(hintView)
         root.addView(divider())
         navRow = buildNavRow()
         editRow = buildEditRow()
         root.addView(navRow)
         root.addView(editRow)
-        notesArea.addView(root)
+        notesArea.addView(
+            root,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT
+            )
+        )
         watchSwipe(notesArea)
         watchText(body) {
             val cur = current
@@ -108,6 +106,17 @@ class NotesController(
             }
         }
         showList()
+    }
+
+    private fun buildHintView(): TextView {
+        val d = density()
+        return TextView(activity).apply {
+            setTextColor(theme.onSurfaceVariant)
+            textSize = UiTokens.TEXT_COMPACT
+            maxLines = 1
+            visibility = android.view.View.GONE
+            setPadding((48 * d).toInt(), 0, (16 * d).toInt(), (6 * d).toInt())
+        }
     }
 
     /** 主界面 onResume 与切到本 tab 时都调：重载索引并刷新当前视图。 */
