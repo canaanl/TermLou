@@ -138,8 +138,7 @@ class NotesTagsActivity : NotesPageActivity() {
             return
         }
         for (entry in notes) {
-            val sub = entry.tags.filter { it != tag }.joinToString(" ") { "#$it" }
-            listInner.addView(textRow("${entry.name}.${NotesStore.EXT}", sub) {
+            listInner.addView(textRow("${entry.name}.${NotesStore.EXT}", "") {
                 startActivity(Intent(this@NotesTagsActivity, MainActivity::class.java).apply {
                     putExtra(EXTRA_OPEN, entry.name)
                 })

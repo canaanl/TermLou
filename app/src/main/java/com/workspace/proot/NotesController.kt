@@ -506,6 +506,7 @@ class NotesController(
 
     private fun tagCapsule(tag: String, onClick: () -> Unit): TextView {
         val d = density()
+        val (fill, edge) = tagCapsuleColors(tag)
         return TextView(activity).apply {
             text = tag
             setTextColor(theme.onSurface)
@@ -514,8 +515,8 @@ class NotesController(
             setPadding((12 * d).toInt(), (4 * d).toInt(), (12 * d).toInt(), (4 * d).toInt())
             background = GradientDrawable().apply {
                 cornerRadius = (12 * d)
-                setStroke((1 * d).toInt().coerceAtLeast(1), theme.outline)
-                setColor(theme.surfaceVariant)
+                setStroke((1 * d).toInt().coerceAtLeast(1), edge)
+                setColor(fill)
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT

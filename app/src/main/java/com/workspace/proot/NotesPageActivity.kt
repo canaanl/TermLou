@@ -123,9 +123,10 @@ abstract class NotesPageActivity : AppCompatActivity() {
             setOnClickListener { onClick() }
         }
 
-    /** 标签胶囊：底色 + 描边 + 纯词（无 #，数据仍是 #标签）。 */
+    /** 标签胶囊：按标签内容算出的淡色填充 + 同色系描边 + 纯词（无 #）。 */
     protected fun tagCapsule(tag: String, onClick: () -> Unit): TextView {
         val d = density()
+        val (fill, edge) = tagCapsuleColors(tag)
         return TextView(this).apply {
             text = tag
             setTextColor(theme.onSurface)
@@ -134,8 +135,8 @@ abstract class NotesPageActivity : AppCompatActivity() {
             setPadding((12 * d).toInt(), (4 * d).toInt(), (12 * d).toInt(), (4 * d).toInt())
             background = GradientDrawable().apply {
                 cornerRadius = (12 * d)
-                setStroke((1 * d).toInt().coerceAtLeast(1), theme.outline)
-                setColor(theme.surfaceVariant)
+                setStroke((1 * d).toInt().coerceAtLeast(1), edge)
+                setColor(fill)
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
@@ -233,3 +234,20 @@ abstract class NotesPageActivity : AppCompatActivity() {
         private const val HINT_MS = 2200L
     }
 }
+
+/**
+ * 标签胶囊配色：色相由标签内容哈希决定（同标签天然同色），
+ * 填充淡色 + 描边同色系加深。返回 (fill, edge)。
+ */
+internal fun tagCapsuleColors(tag: String): Pair<Int, Int> {
+    val hue = ((tag.hashCode() and 0x7fffffff) % HUE_BUCKETS).toFloat()
+    val fill = android.graphics.Color.HSVToColor(floatArrayOf(hue, FILL_SAT, FILL_VAL))
+    val edge = android.graphics.Color.HSVToColor(floatArrayOf(hue, EDGE_SAT, EDGE_VAL))
+    return fill to edge
+}
+
+private const val HUE_BUCKETS = 360
+private const val FILL_SAT = 0.35f
+private const val FILL_VAL = 0.95f
+private const val EDGE_SAT = 0.50f
+private const val EDGE_VAL = 0.70f
