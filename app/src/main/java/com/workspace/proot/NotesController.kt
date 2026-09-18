@@ -2,8 +2,6 @@ package com.workspace.proot
 
 import android.app.AlertDialog
 import android.graphics.drawable.GradientDrawable
-import android.os.Handler
-import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
@@ -26,7 +24,8 @@ import java.util.Locale
  */
 class NotesController(
     private val activity: MainActivity,
-    scope: AppScope
+    scope: AppScope,
+    private val status: StatusController
 ) {
 
     private val theme: ThemeColors = scope.theme
@@ -45,10 +44,6 @@ class NotesController(
     private lateinit var editorTitle: TextView
     private lateinit var tagRow: LinearLayout
     private lateinit var body: EditText
-
-    private val hintHandler = Handler(Looper.getMainLooper())
-    private var hintView: TextView? = null
-    private var hintTask: Runnable? = null
 
     private fun density(): Float = activity.resources.displayMetrics.density
 
@@ -84,8 +79,6 @@ class NotesController(
             addView(fab)
         }
         root.addView(frame)
-        hintView = buildHintView()
-        root.addView(hintView)
         root.addView(divider())
         navRow = buildNavRow()
         editRow = buildEditRow()
@@ -127,16 +120,6 @@ class NotesController(
                 )
             )
         }
-
-    private fun buildHintView(): TextView {        val d = density()
-        return TextView(activity).apply {
-            setTextColor(theme.onSurfaceVariant)
-            textSize = UiTokens.TEXT_COMPACT
-            maxLines = 1
-            visibility = android.view.View.GONE
-            setPadding((48 * d).toInt(), 0, (16 * d).toInt(), (6 * d).toInt())
-        }
-    }
 
     /** 主界面 onResume 与切到本 tab 时都调：重载索引并刷新当前视图。 */
     fun refresh() {
@@ -331,7 +314,7 @@ class NotesController(
             store.saveNote(noteName, after)
         }
         refreshTagRow()
-        showHint(activity.getString(R.string.notes_tag_removed))
+        status.showTempStatus("Notes | ${activity.getString(R.string.notes_tag_removed)}「$tag」")
     }
 
     private fun renderList() {
@@ -350,7 +333,7 @@ class NotesController(
         }
         for (entry in notes) {
             listInner.addView(
-                textRow("${entry.name}.${NotesStore.EXT}", rowSub(entry)) { openNote(entry.name) }.apply {
+                noteRow(entry) { openNote(entry.name) }.apply {
                     setOnLongClickListener { showRenameDialog(entry.name); true }
                 }
             )
@@ -358,10 +341,38 @@ class NotesController(
         }
     }
 
-    private fun rowSub(entry: NoteEntry): String {
-        val tags = entry.tags.joinToString(" ") { "#$it" }
-        val date = ROW_FMT.format(Date(entry.updatedAt))
-        return if (tags.isEmpty()) date else "$tags · $date"
+    private fun noteRow(entry: NoteEntry, onClick: () -> Unit): LinearLayout {
+        val d = density()
+        return LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (10 * d).toInt())
+            addView(TextView(activity).apply {
+                text = "${entry.name}.${NotesStore.EXT}"
+                setTextColor(theme.onSurface)
+                textSize = UiTokens.TEXT_BODY
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            addView(LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, (4 * d).toInt(), 0, 0)
+                for (tag in entry.tags) {
+                    addView(tagCapsule(tag) { onClick() })
+                }
+                addView(TextView(activity).apply {
+                    text = ROW_FMT.format(Date(entry.updatedAt))
+                    setTextColor(theme.onSurfaceVariant)
+                    textSize = UiTokens.TEXT_META
+                    maxLines = 1
+                    gravity = Gravity.END
+                    layoutParams = LinearLayout.LayoutParams(
+                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                    ).apply { marginStart = (8 * d).toInt() }
+                })
+            })
+            setOnClickListener { onClick() }
+        }
     }
 
     private fun onNewPressed() {
@@ -387,7 +398,7 @@ class NotesController(
                 refreshTagRow()
             }
             if (current == null) renderList()
-            showHint(activity.getString(R.string.notes_renamed))
+            status.showTempStatus("Notes | ${activity.getString(R.string.notes_renamed)}「$name」")
         }
     }
 
@@ -467,16 +478,6 @@ class NotesController(
     private fun parseTags(raw: String): List<String> =
         raw.split(TAG_SPLIT).map { it.trim().removePrefix("#") }.filter { it.isNotEmpty() }.distinct()
 
-    private fun showHint(text: String) {
-        val hv = hintView ?: return
-        hintTask?.let { hintHandler.removeCallbacks(it) }
-        hv.text = text
-        hv.visibility = android.view.View.VISIBLE
-        val task = Runnable { hv.visibility = android.view.View.GONE }
-        hintTask = task
-        hintHandler.postDelayed(task, HINT_MS)
-    }
-
     private fun segButton(text: String, onClick: () -> Unit): Button =
         Button(activity).apply {
             this.text = text
@@ -521,31 +522,6 @@ class NotesController(
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { marginEnd = (6 * d).toInt() }
-            setOnClickListener { onClick() }
-        }
-    }
-
-    private fun textRow(title: String, sub: String, onClick: () -> Unit): LinearLayout {
-        val d = density()
-        return LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (10 * d).toInt())
-            addView(TextView(activity).apply {
-                text = title
-                setTextColor(theme.onSurface)
-                textSize = UiTokens.TEXT_BODY
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-            })
-            if (sub.isNotEmpty()) {
-                addView(TextView(activity).apply {
-                    text = sub
-                    setTextColor(theme.onSurfaceVariant)
-                    textSize = UiTokens.TEXT_META
-                    maxLines = 1
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                })
-            }
             setOnClickListener { onClick() }
         }
     }
@@ -597,7 +573,6 @@ class NotesController(
     companion object {
         private val ROW_FMT = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
         private val TAG_SPLIT = Regex("[\\s,，、]+")
-        private const val HINT_MS = 2200L
         private const val RGB_MASK = 0x00FFFFFF
         private const val ALPHA_SHIFT = 24
         private const val GLASS_ALPHA = 0x33

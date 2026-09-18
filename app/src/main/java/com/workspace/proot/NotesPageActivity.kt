@@ -3,8 +3,6 @@ package com.workspace.proot
 import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
-import android.os.Handler
-import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
@@ -17,7 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import java.io.File
 
 /**
- * 笔记四页共享基座：主题（跟随夜间模式）、NotesStore、标题栏、顶部提示、
+ * 笔记子页共享基座：主题（跟随夜间模式）、NotesStore、标题栏、
  * 分段键行、输入弹窗。子页只管摆自己的内容。
  */
 abstract class NotesPageActivity : AppCompatActivity() {
@@ -32,67 +30,31 @@ abstract class NotesPageActivity : AppCompatActivity() {
         NotesStore(File(filesDir, "$WORKSPACE_DIR/$NOTES_DIR")).also { it.reload() }
     }
 
-    private val hintHandler = Handler(Looper.getMainLooper())
-    private var hintView: TextView? = null
-    private var hintTask: Runnable? = null
-
     protected fun density(): Float = resources.displayMetrics.density
 
-    /** 标题栏：surfaceVariant 底 + 左侧返回 + 标题；下方自带一条 transient 提示行。 */
+    /** 标题栏：surfaceVariant 底 + 左侧返回 + 标题。通知统一走主界面状态栏。 */
     protected fun buildTitleBar(title: String): LinearLayout {
         val d = density()
-        val bar = LinearLayout(this).apply {
+        return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(theme.surfaceVariant)
             setPadding((16 * d).toInt(), (12 * d).toInt(), (16 * d).toInt(), (12 * d).toInt())
+            addView(TextView(this@NotesPageActivity).apply {
+                text = getString(R.string.notes_back)
+                setTextColor(theme.onSurface)
+                textSize = UiTokens.TEXT_TITLE
+                setPadding(0, 0, (12 * d).toInt(), 0)
+                setOnClickListener { finish() }
+            })
+            addView(TextView(this@NotesPageActivity).apply {
+                text = title
+                setTextColor(theme.onSurface)
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                textSize = UiTokens.TEXT_TITLE
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
         }
-        bar.addView(TextView(this).apply {
-            text = getString(R.string.notes_back)
-            setTextColor(theme.onSurface)
-            textSize = UiTokens.TEXT_TITLE
-            setPadding(0, 0, (12 * d).toInt(), 0)
-            setOnClickListener { finish() }
-        })
-        bar.addView(TextView(this).apply {
-            text = title
-            setTextColor(theme.onSurface)
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            textSize = UiTokens.TEXT_TITLE
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        })
-        hintView = TextView(this).apply {
-            setTextColor(theme.onSurfaceVariant)
-            textSize = UiTokens.TEXT_COMPACT
-            maxLines = 1
-            visibility = android.view.View.GONE
-            setPadding(0, 0, 0, 0)
-        }
-        val wrap = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(theme.surfaceVariant)
-            addView(bar)
-            hintView?.let { hv ->
-                val row = LinearLayout(this@NotesPageActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    setPadding((48 * d).toInt(), 0, (16 * d).toInt(), (6 * d).toInt())
-                    addView(hv)
-                }
-                addView(row)
-            }
-        }
-        return wrap
-    }
-
-    /** 顶部提示（如"文件空"）：显示后自动消失。 */
-    protected fun showHint(text: String) {
-        val hv = hintView ?: return
-        hintTask?.let { hintHandler.removeCallbacks(it) }
-        hv.text = text
-        hv.visibility = android.view.View.VISIBLE
-        val task = Runnable { hv.visibility = android.view.View.GONE }
-        hintTask = task
-        hintHandler.postDelayed(task, HINT_MS)
     }
 
     /** 分段键行里的一个键（外观由 applyRow 统一渲染）。 */
@@ -220,19 +182,36 @@ abstract class NotesPageActivity : AppCompatActivity() {
         })
     }
 
-    override fun onDestroy() {
-        hintTask?.let { hintHandler.removeCallbacks(it) }
-        super.onDestroy()
-    }
-
     companion object {
         const val PREFS_NAME = "term-lou-settings"
         const val NIGHT_KEY = "nightMode"
         const val WORKSPACE_DIR = "workspace"
         const val NOTES_DIR = "Notes"
         const val EXTRA_OPEN = "open_note"
-        private const val HINT_MS = 2200L
     }
+}
+
+/**
+ * 子页通知暂存：待办/标签是独立 Activity，状态栏被盖住看不见，
+ * 通知先暂存，主界面 onResume 回来再弹。超期或进程重建自动丢弃。
+ */
+internal object NoteNotify {
+    private var message: String? = null
+    private var atMs: Long = 0L
+
+    fun post(text: String) {
+        message = text
+        atMs = System.currentTimeMillis()
+    }
+
+    fun takeIfFresh(): String? {
+        val msg = message ?: return null
+        message = null
+        if (System.currentTimeMillis() - atMs > FRESH_WINDOW_MS) return null
+        return msg
+    }
+
+    private const val FRESH_WINDOW_MS = 60_000L
 }
 
 /**

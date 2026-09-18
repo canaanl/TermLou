@@ -117,7 +117,7 @@ class MainActivity : AppCompatActivity() {
         ) {
             permLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        notesController = NotesController(this, scope)
+        notesController = NotesController(this, scope, statusController)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (!notesController.handleBack()) {
@@ -286,6 +286,7 @@ class MainActivity : AppCompatActivity() {
         settingsUiController.onResume()
         notesController.refresh()
         refreshStatusBar()
+        NoteNotify.takeIfFresh()?.let { statusController.showTempStatus(it) }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

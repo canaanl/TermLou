@@ -167,7 +167,7 @@ class NotesTodoActivity : NotesPageActivity() {
             .setPositiveButton(getString(R.string.notes_delete)) { _, _ ->
                 store.deleteTodo(item.id)
                 render()
-                showHint(getString(R.string.notes_deleted))
+                NoteNotify.post("Notes | ${getString(R.string.notes_deleted)}「${item.text}」")
             }
             .setNegativeButton(getString(R.string.cancel), null)
             .showStyled(theme)
