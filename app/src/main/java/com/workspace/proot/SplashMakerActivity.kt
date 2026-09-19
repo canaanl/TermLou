@@ -39,12 +39,12 @@ private const val ALPHA_SHIFT = 24
 class SplashMakerActivity : AppCompatActivity() {
 
     private lateinit var board: SplashBoard
-    private val cells = mutableSetOf<Pair<Int, Int>>()
+    private val cells = mutableMapOf<Pair<Int, Int>, Int>()
     private val undoStack = mutableListOf<MutableList<Pair<Int, Int>>>()
     private var saving = false
     private var photoBitmap: Bitmap? = null
     private var isPhotoSampling = false
-    private var overlayCells: Set<Pair<Int, Int>>? = null
+    private var overlayCells: MutableMap<Pair<Int, Int>, Int>? = null
     private lateinit var photoView: ImageView
     private lateinit var boardContainer: FrameLayout
     private lateinit var styleGroup: RadioGroup
@@ -272,13 +272,16 @@ class SplashMakerActivity : AppCompatActivity() {
                         if (r in 0 until SplashTokens.ROWS / 2 && c in 0 until SplashTokens.COLS / 2) {
                             val rr = r * 2
                             val cc = c * 2
-                            cells.add(rr to cc)
-                            cells.add(rr + 1 to cc)
-                            cells.add(rr to cc + 1)
-                            cells.add(rr + 1 to cc + 1)
+                            cells[rr to cc] = SplashTokens.LEVEL_FULL
+                            cells[rr + 1 to cc] = SplashTokens.LEVEL_FULL
+                            cells[rr to cc + 1] = SplashTokens.LEVEL_FULL
+                            cells[rr + 1 to cc + 1] = SplashTokens.LEVEL_FULL
                         }
                     } else {
-                        if (r in 0 until SplashTokens.ROWS && c in 0 until SplashTokens.COLS) cells.add(r to c)
+                        if (r in 0 until SplashTokens.ROWS && c in 0 until SplashTokens.COLS) {
+                            cells[r to c] = o.optInt("v", SplashTokens.LEVEL_FULL)
+                                .coerceIn(SplashTokens.LEVEL_OFF, SplashTokens.LEVEL_FULL)
+                        }
                     }
                 }
             }
@@ -330,11 +333,12 @@ class SplashMakerActivity : AppCompatActivity() {
 
     /** 把当前 overlay 版画并入 cells（保存时调用）。 */
     private fun commitPhotoSampling() {
-        if (overlayCells != null) {
+        val overlay = overlayCells
+        if (overlay != null) {
             cells.clear()
-            cells.addAll(overlayCells!!)
+            cells.putAll(overlay)
             undoStack.clear()
-            undoStack.add(cells.toMutableList())
+            undoStack.add(cells.keys.toMutableList())
         }
     }
 
@@ -380,13 +384,21 @@ class SplashMakerActivity : AppCompatActivity() {
             cachedGray = gray
             if (selectedStyle == 0 || selectedStyle == 2) {
                 // 简单版边缘提取（Sobel + 固定分位双阈值）
-                val edge = extractEdges(gray, bRows, bCols)
+                val out = extractEdges(gray, bRows, bCols)
                 // 闭运算补桥：连通边缘断点 → 线条连续
-                cachedEdge = closeMask(edge, bRows, bCols)
+                cachedEdge = closeMask(out.mask, bRows, bCols)
+                cachedEdgeMag = out.mag
+                cachedEdgeHi = out.hi
+                cachedEdgeLo = out.lo
             } else {
                 cachedEdge = BooleanArray(0)
+                cachedEdgeMag = FloatArray(0)
             }
-            cachedOtsu = if (selectedStyle == 1 || selectedStyle == 2) otsu(gray, bRows, bCols) else 0
+            cachedThresholds = if (selectedStyle == 1 || selectedStyle == 2) {
+                val hist = IntArray(256)
+                for (g in gray) hist[g.coerceIn(0, 255)]++
+                SplashTokens.otsu2(hist, gray.size)
+            } else 0 to 255
             cacheScale = photoScale
             cacheStyle = selectedStyle
             cacheBC = bCols
@@ -394,51 +406,60 @@ class SplashMakerActivity : AppCompatActivity() {
         }
         val gray = cachedGray
         val edgeMask = cachedEdge
-        val newSet = mutableSetOf<Pair<Int, Int>>()
+        val edgeMag = cachedEdgeMag
+        val (t1, t2) = cachedThresholds
+        val newSet = mutableMapOf<Pair<Int, Int>, Int>()
+        fun emit(r: Int, c: Int, v: Int) {
+            val out = if (invertEnabled) SplashTokens.invertLevel(v) else v
+            if (out > SplashTokens.LEVEL_OFF) newSet[r to c] = out
+        }
+        fun edgeLevel(i: Int): Int {
+            if (i >= edgeMask.size || !edgeMask[i]) return SplashTokens.LEVEL_OFF
+            val mag = if (i < edgeMag.size) edgeMag[i] else 0f
+            return maxOf(1, SplashTokens.quantizeEdge(mag, cachedEdgeHi, cachedEdgeLo))
+        }
         when (selectedStyle) {
-            1 -> { // 块面：Otsu 自适应
-                val th = cachedOtsu
+            1 -> { // 块面：Otsu 双阈值分三档
                 for (r in 0 until rows) for (c in 0 until cols) {
                     val gx = offsetX + (c + 0.5f) * pixelSize
                     val gy = offsetY + (r + 0.5f) * pixelSize
                     val inPhoto = gx >= pL && gx < pR && gy >= pT && gy < pB
-                    var lit = false
+                    var v = SplashTokens.LEVEL_OFF
                     if (inPhoto) {
                         val bx = ((gx - pL) / photoW * bCols).toInt().coerceIn(0, bCols - 1)
                         val by = ((gy - pT) / photoH * bRows).toInt().coerceIn(0, bRows - 1)
-                        lit = gray[by * bCols + bx] < th
+                        v = SplashTokens.quantizeBlock(gray[by * bCols + bx], t1, t2)
                     }
-                    if (lit != invertEnabled) newSet.add(r to c)
+                    emit(r, c, v)
                 }
             }
-            0 -> { // 轮廓：细线化连续边缘
+            0 -> { // 轮廓：细线化连续边缘按强度分档
                 for (r in 0 until rows) for (c in 0 until cols) {
                     val gx = offsetX + (c + 0.5f) * pixelSize
                     val gy = offsetY + (r + 0.5f) * pixelSize
                     val inPhoto = gx >= pL && gx < pR && gy >= pT && gy < pB
-                    var lit = false
+                    var v = SplashTokens.LEVEL_OFF
                     if (inPhoto) {
                         val bx = ((gx - pL) / photoW * bCols).toInt().coerceIn(0, bCols - 1)
                         val by = ((gy - pT) / photoH * bRows).toInt().coerceIn(0, bRows - 1)
-                        lit = edgeMask[by * bCols + bx]
+                        v = edgeLevel(by * bCols + bx)
                     }
-                    if (lit != invertEnabled) newSet.add(r to c)
+                    emit(r, c, v)
                 }
             }
-            else -> { // 混合：块面(Otsu) 与 细线化边缘 相或
-                val th = cachedOtsu
+            else -> { // 混合：块面与细线化边缘取最大档
                 for (r in 0 until rows) for (c in 0 until cols) {
                     val gx = offsetX + (c + 0.5f) * pixelSize
                     val gy = offsetY + (r + 0.5f) * pixelSize
                     val inPhoto = gx >= pL && gx < pR && gy >= pT && gy < pB
-                    var lit = false
+                    var v = SplashTokens.LEVEL_OFF
                     if (inPhoto) {
                         val bx = ((gx - pL) / photoW * bCols).toInt().coerceIn(0, bCols - 1)
                         val by = ((gy - pT) / photoH * bRows).toInt().coerceIn(0, bRows - 1)
                         val i = by * bCols + bx
-                        lit = gray[i] < th || edgeMask[i]
+                        v = maxOf(SplashTokens.quantizeBlock(gray[i], t1, t2), edgeLevel(i))
                     }
-                    if (lit != invertEnabled) newSet.add(r to c)
+                    emit(r, c, v)
                 }
             }
         }
@@ -454,9 +475,12 @@ class SplashMakerActivity : AppCompatActivity() {
     private var cacheStyle = -1
     private var cacheBC = -1
     private var cacheBR = -1
-    private var cachedOtsu = 0
+    private var cachedThresholds = 0 to 255
     private var cachedGray = IntArray(0)
     private var cachedEdge = BooleanArray(0)
+    private var cachedEdgeMag = FloatArray(0)
+    private var cachedEdgeHi = 0f
+    private var cachedEdgeLo = 0f
 
     /** 一次性把原图降到宽≤2*COLS（保持比例），回收中间层级，仅返回最终小图。 */
     private fun buildRenderSrc(bmp: Bitmap): Bitmap {
@@ -578,8 +602,11 @@ class SplashMakerActivity : AppCompatActivity() {
     }
 
 
+    /** 边缘提取输出：闭运算前的二值掩膜 + 原始 Sobel 幅值 + 自适应双阈值（供灰阶分档）。 */
+    private data class EdgeOut(val mask: BooleanArray, val mag: FloatArray, val hi: Float, val lo: Float)
+
     /** 完整边缘提取：高斯平滑 → 局部对比度归一化(照明不变) → 真 Sobel → 非极大值抑制(细线) → 双阈值滞后(接轮廓/杀噪) → 去孤立斑。 */
-    private fun extractEdges(gray: IntArray, br: Int, bc: Int): BooleanArray {
+    private fun extractEdges(gray: IntArray, br: Int, bc: Int): EdgeOut {
         val n = br * bc
         val f = FloatArray(n)
         for (i in 0 until n) f[i] = gray[i] / 255f
@@ -635,7 +662,7 @@ class SplashMakerActivity : AppCompatActivity() {
         val vals = FloatArray(n)
         var vc = 0
         for (i in 0 until n) if (nms[i] > 0f) { vals[vc] = nms[i]; vc++ }
-        if (vc == 0) return BooleanArray(n)
+        if (vc == 0) return EdgeOut(BooleanArray(n), FloatArray(n), 0f, 0f)
         vals.sort(0, vc)
         val hi = vals[((vc - 1) * 0.92).toInt()]
         val lo = hi * 0.4f
@@ -683,34 +710,7 @@ class SplashMakerActivity : AppCompatActivity() {
                 for (kk in 0 until cp) edge[comp[kk]] = false
             }
         }
-        return edge
-    }
-
-    private fun otsu(gray: IntArray, rows: Int, cols: Int): Int {
-        val hist = IntArray(256)
-        for (i in gray.indices) hist[gray[i].coerceIn(0, 255)]++
-        val total = rows * cols
-        var sum = 0.0
-        for (i in 0 until 256) sum += i * hist[i]
-        var bgSum = 0.0
-        var bgW = 0
-        var bestTh = 127
-        var bestVar = -1.0
-        for (t in 0 until 256) {
-            bgW += hist[t]
-            if (bgW == 0) continue
-            val fgW = total - bgW
-            if (fgW == 0) break
-            bgSum += t * hist[t]
-            val bgMean = bgSum / bgW
-            val fgMean = (sum - bgSum) / fgW
-            val v = bgW.toDouble() * fgW.toDouble() * (bgMean - fgMean) * (bgMean - fgMean)
-            if (v > bestVar) {
-                bestVar = v
-                bestTh = t
-            }
-        }
-        return bestTh
+        return EdgeOut(edge, mag, hi, lo)
     }
 
     private fun undo() {
@@ -729,9 +729,9 @@ class SplashMakerActivity : AppCompatActivity() {
 
     private fun preview() {
         val sampling = isPhotoSampling && overlayCells != null
-        val cellsData = if (sampling) overlayCells!!.map { it }
+        val cellsData = if (sampling) overlayCells!!.map { (p, v) -> SplashTokens.SplashCell(p.first, p.second, v) }
         else if (cells.isEmpty()) SplashTokens.defaultCells()
-        else cells.map { it }
+        else cells.map { (p, v) -> SplashTokens.SplashCell(p.first, p.second, v) }
         // 全屏底仅动画（无进度条/文字），叠加在现有界面之上，结束即移除，不重建视图
         val overlay = FrameLayout(this).apply {
             setBackgroundColor(if (nightTheme.night) Color.BLACK else 0xFFF5F5F5.toInt())
@@ -756,8 +756,10 @@ class SplashMakerActivity : AppCompatActivity() {
             val obj = MiniJson.Obj()
             obj.put("rows", SplashTokens.ROWS).put("cols", SplashTokens.COLS)
             val arr = MiniJson.Arr()
-            val sorted = cells.sortedWith(compareBy({ it.first }, { it.second }))
-            for ((r, c) in sorted) arr.put(MiniJson.Obj().put("r", r).put("c", c))
+            val sorted = cells.keys.sortedWith(compareBy({ it.first }, { it.second }))
+            for ((r, c) in sorted) {
+                arr.put(MiniJson.Obj().put("r", r).put("c", c).put("v", cells[r to c] ?: SplashTokens.LEVEL_FULL))
+            }
             obj.put("cells", arr)
             val tmp = File(splashFile.parentFile, "splash.json.tmp")
             tmp.writeText(obj.toString())
@@ -768,8 +770,8 @@ class SplashMakerActivity : AppCompatActivity() {
         }
     }
 
-    /** 洞洞板：96×40 网格，未绘制均一暗色；有像素以品牌渐变显示；越界白圈呼吸（采样态禁用）。 */
-    inner class SplashBoard(context: Context, private val data: MutableSet<Pair<Int, Int>>) : View(context) {
+    /** 洞洞板：96×40 网格，未绘制均一暗色；有像素以品牌渐变显示，亮度跟灰阶档；越界白圈呼吸（采样态禁用）。 */
+    inner class SplashBoard(context: Context, private val data: MutableMap<Pair<Int, Int>, Int>) : View(context) {
 
         private val d = resources.displayMetrics.density
         private var pixelSize = 0f
@@ -947,7 +949,8 @@ class SplashMakerActivity : AppCompatActivity() {
             val inside = row in 0 until rows && col in 0 until cols
             if (inside) {
                 val p = row to col
-                if (data.add(p)) {
+                if (!data.containsKey(p)) {
+                    data[p] = SplashTokens.LEVEL_FULL
                     undoStack.lastOrNull()?.add(p)
                 }
                 if (!fingerInside) {
@@ -995,8 +998,10 @@ class SplashMakerActivity : AppCompatActivity() {
             // 已点亮像素：采样态显示 overlay 版画，否则显示手绘
             val drawData = if (isPhotoSampling && overlayCells != null) overlayCells!! else data
             val radius = pixelSize * SplashTokens.PIXEL_RADIUS_FACTOR
-            for ((r, c) in drawData) {
+            for ((pos, v) in drawData) {
+                val (r, c) = pos
                 solidPaint.color = SplashTokens.cellColor(c)
+                solidPaint.alpha = SplashTokens.LEVEL_ALPHAS[v.coerceIn(0, SplashTokens.LEVEL_FULL)]
                 val l = offsetX + (c + 0.5f) * pixelSize - pixelSize * 0.5f
                 val t = offsetY + (r + 0.5f) * pixelSize - pixelSize * 0.5f
                 canvas.drawRoundRect(l, t, l + pixelSize, t + pixelSize, radius, radius, solidPaint)

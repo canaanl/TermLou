@@ -21,10 +21,10 @@ import kotlin.math.sin
 /**
  * 开屏动画：点阵飞入 + 品牌渐变 + 呼吸光晕。
  * 点阵默认 TERMLOU（SplashTokens.defaultCells），可传自定义 cells（启动工坊保存的 splash.json）。
- * @param customCells 自定义像素 (row, col)；null = 默认 LOGO
+ * @param customCells 自定义像素 (row, col, 灰阶档）；null = 默认 LOGO
  * @param showProgress 是否显示进度条/状态文字（预览模式 false）
  */
-class SplashView(context: Context, customCells: List<Pair<Int, Int>>? = null, private val showProgress: Boolean = true) : View(context) {
+class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? = null, private val showProgress: Boolean = true) : View(context) {
 
     companion object {
         private const val DAY_BG = 0xFFF5F5F5.toInt()
@@ -110,19 +110,24 @@ class SplashView(context: Context, customCells: List<Pair<Int, Int>>? = null, pr
         postDelayed(breatheRunnable, 16)
     }
 
-    private fun buildGrid(customCells: List<Pair<Int, Int>>?) {
+    private fun buildGrid(customCells: List<SplashTokens.SplashCell>?) {
         val list = customCells ?: SplashTokens.defaultCells()
-        for ((r, col) in list) {
+        for (cell in list) {
+            val (r, col, v) = cell
             cells.add(
                 Cell(
                     col,
                     offsetX + (col + 0.5f) * pixelSize,
                     offsetY + (r + 0.5f) * pixelSize,
-                    SplashTokens.cellColor(col)
+                    SplashTokens.cellColor(col),
+                    v.coerceIn(SplashTokens.LEVEL_OFF, SplashTokens.LEVEL_FULL)
                 )
             )
         }
     }
+
+    private fun levelFactor(v: Int): Float =
+        SplashTokens.LEVEL_ALPHAS[v.coerceIn(SplashTokens.LEVEL_OFF, SplashTokens.LEVEL_FULL)] / 255f
 
     private fun buildParticles() {
         val margin = SplashTokens.PARTICLE_MARGIN_DP * density
@@ -153,7 +158,7 @@ class SplashView(context: Context, customCells: List<Pair<Int, Int>>? = null, pr
                 (cell.col % (SplashTokens.COLS_PER_LETTER + 1)) * SplashTokens.FLY_DELAY_COL +
                 (0..SplashTokens.FLY_DELAY_RAND).random()
             val duration = SplashTokens.FLY_DURATION_BASE + (0..SplashTokens.FLY_DURATION_RANGE.toInt()).random()
-            particles.add(Particle(sx, sy, cell.tx, cell.ty, delay, duration, cell.color))
+            particles.add(Particle(sx, sy, cell.tx, cell.ty, delay, duration, cell.color, cell.level))
         }
     }
 
@@ -246,7 +251,7 @@ class SplashView(context: Context, customCells: List<Pair<Int, Int>>? = null, pr
         val y = p.sy + (p.ty - p.sy) * local
         val size = pixelSize * SplashTokens.PARTICLE_SIZE_FACTOR
         particlePaint.shader = null
-        particlePaint.color = SplashTokens.lerpAlpha(p.color, (60 + 180 * local).toInt())
+        particlePaint.color = SplashTokens.lerpAlpha(p.color, ((60 + 180 * local) * levelFactor(p.level)).toInt())
         canvas.drawRoundRect(
             x - size / 2f, y - size / 2f,
             x + size / 2f, y + size / 2f,
@@ -285,7 +290,7 @@ class SplashView(context: Context, customCells: List<Pair<Int, Int>>? = null, pr
                     val cell = cells[i]
                     val l = cell.tx - pixelSize * 0.5f
                     val t = cell.ty - pixelSize * 0.5f
-                    glowPaint.color = SplashTokens.lerpAlpha(cell.color, 110)
+                    glowPaint.color = SplashTokens.lerpAlpha(cell.color, (110 * levelFactor(cell.level)).toInt())
                     canvas.drawRoundRect(l - 1f, t - 1f, l + pixelSize + 1f, t + pixelSize + 1f, radius, radius, glowPaint)
                 }
             }
@@ -306,9 +311,11 @@ class SplashView(context: Context, customCells: List<Pair<Int, Int>>? = null, pr
                 val cell = cells[i]
                 val l = cell.tx - pixelSize * 0.5f
                 val t = cell.ty - pixelSize * 0.5f
+                solidPaint.alpha = SplashTokens.LEVEL_ALPHAS[cell.level]
                 canvas.drawRoundRect(l, t, l + pixelSize, t + pixelSize, radius, radius, solidPaint)
             }
         }
+        solidPaint.alpha = 255
         solidPaint.shader = null
     }
 
@@ -374,9 +381,9 @@ class SplashView(context: Context, customCells: List<Pair<Int, Int>>? = null, pr
         drawStatus(canvas)
     }
 
-    private class Cell(val col: Int, val tx: Float, val ty: Float, val color: Int)
+    private class Cell(val col: Int, val tx: Float, val ty: Float, val color: Int, val level: Int)
     private class Particle(
         val sx: Float, val sy: Float, val tx: Float, val ty: Float,
-        val delay: Float, val duration: Float, val color: Int
+        val delay: Float, val duration: Float, val color: Int, val level: Int
     )
 }

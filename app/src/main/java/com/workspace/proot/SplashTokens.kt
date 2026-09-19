@@ -14,6 +14,17 @@ object SplashTokens {
 
     const val GRID_WIDTH_PCT = 0.9f
 
+    /** 灰阶档数（含灭）：0=灭，1=弱，2=中，3=强。 */
+    const val GRAY_LEVELS = 4
+    const val LEVEL_OFF = 0
+    const val LEVEL_FULL = 3
+
+    /** 各档渲染透明度（弱/中/强）。 */
+    val LEVEL_ALPHAS = intArrayOf(0, 90, 160, 255)
+
+    /** 照片转化单元：行、列、灰阶档（缺省满级，兼容老文件）。 */
+    data class SplashCell(val r: Int, val c: Int, val v: Int = LEVEL_FULL)
+
     const val CONVERGE_MS = 2000
     const val FADE_OUT_MS = 240
 
@@ -53,9 +64,65 @@ object SplashTokens {
     /** 像素渐变色：按列从左到右 brand 渐变。 */
     fun cellColor(col: Int): Int = lerpColor(GREEN, CYAN, col / (COLS - 1f))
 
+    /** 块面映射：暗→强，中→中，亮→灭。 */
+    fun quantizeBlock(gray: Int, t1: Int, t2: Int): Int =
+        if (gray < t1) 3 else if (gray < t2) 2 else 0
+
+    /** 边缘映射：强边→强，弱边→弱，无边→灭。 */
+    fun quantizeEdge(mag: Float, hi: Float, lo: Float): Int =
+        if (mag >= hi) 3 else if (mag >= lo) 1 else 0
+
+    /** 反选：档位取反（灭↔强，弱↔中）。 */
+    fun invertLevel(v: Int): Int = (LEVEL_FULL - v).coerceIn(LEVEL_OFF, LEVEL_FULL)
+
+    /**
+     * Otsu 双阈值：枚举 t1<t2 使三类类间方差最大。
+     * 返回 (t1, t2)，恒满足 0<=t1<t2<=255。
+     */
+    fun otsu2(hist: IntArray, total: Int): Pair<Int, Int> {
+        val p = DoubleArray(256)
+        for (i in 0 until 256) p[i] = hist[i].toDouble() / total
+        val cumW = DoubleArray(256)
+        val cumM = DoubleArray(256)
+        var w = 0.0
+        var m = 0.0
+        for (i in 0 until 256) {
+            w += p[i]
+            m += i * p[i]
+            cumW[i] = w
+            cumM[i] = m
+        }
+        val totalMean = m
+        var bestT1 = 0
+        var bestT2 = 1
+        var bestVar = -1.0
+        for (t1 in 0 until 255) {
+            val w0 = cumW[t1]
+            if (w0 <= 0.0) continue
+            val m0 = cumM[t1] / w0
+            for (t2 in t1 + 1 until 256) {
+                val w1 = cumW[t2] - cumW[t1]
+                if (w1 <= 0.0) continue
+                val w2 = 1.0 - cumW[t2]
+                if (w2 <= 0.0) continue
+                val m1 = (cumM[t2] - cumM[t1]) / w1
+                val m2 = (totalMean - cumM[t2]) / w2
+                val v = w0 * (m0 - totalMean) * (m0 - totalMean) +
+                    w1 * (m1 - totalMean) * (m1 - totalMean) +
+                    w2 * (m2 - totalMean) * (m2 - totalMean)
+                if (v > bestVar) {
+                    bestVar = v
+                    bestT1 = t1
+                    bestT2 = t2
+                }
+            }
+        }
+        return bestT1 to bestT2
+    }
+
     /** 默认 TERMLOU 点阵（18 行 × 7 字母，1 拆 4），映射到 ROWS 网格：行 + LOGO_ROW_OFFSET。 */
-    fun defaultCells(): List<Pair<Int, Int>> {
-        val out = mutableListOf<Pair<Int, Int>>()
+    fun defaultCells(): List<SplashCell> {
+        val out = mutableListOf<SplashCell>()
         var cx = 0
         val letters = listOf(
             SplashLetters.T, SplashLetters.E, SplashLetters.R,
@@ -65,7 +132,7 @@ object SplashTokens {
         for (letter in letters) {
             for (r in 0 until LOGO_ROWS) {
                 for (c in 0 until COLS_PER_LETTER) {
-                    if (letter[r][c]) out.add(r + LOGO_ROW_OFFSET to cx + c)
+                    if (letter[r][c]) out.add(SplashCell(r + LOGO_ROW_OFFSET, cx + c))
                 }
             }
             cx += COLS_PER_LETTER + 1

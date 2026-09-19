@@ -785,19 +785,27 @@ class TerminalController(
         }
     }
 
-    private fun loadSplashCells(): List<Pair<Int, Int>>? {
+    private fun loadSplashCells(): List<SplashTokens.SplashCell>? {
         runCatching {
             val f = TermlouDirs.base(activity)
             val splashJson = File(f, "splash.json")
             if (!splashJson.exists()) return null
             val obj = MiniJson.parse(splashJson.readText())
             val arr = obj.optArr("cells") ?: return null
-            val out = mutableListOf<Pair<Int, Int>>()
+            val out = mutableListOf<SplashTokens.SplashCell>()
             for (i in 0 until arr.length()) {
                 val o = arr.getObj(i) ?: continue
                 val r = o.optInt("r", -1)
                 val c = o.optInt("c", -1)
-                if (r in 0 until SplashTokens.ROWS && c in 0 until SplashTokens.COLS) out.add(r to c)
+                if (r in 0 until SplashTokens.ROWS && c in 0 until SplashTokens.COLS) {
+                    out.add(
+                        SplashTokens.SplashCell(
+                            r, c,
+                            o.optInt("v", SplashTokens.LEVEL_FULL)
+                                .coerceIn(SplashTokens.LEVEL_OFF, SplashTokens.LEVEL_FULL)
+                        )
+                    )
+                }
             }
             return if (out.isEmpty()) null else out
         }
