@@ -114,6 +114,7 @@ class AppPickerDialog(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
             topMargin = (12 * density).toInt()
+            bottomMargin = (20 * density).toInt()
         })
 
         val dialog = AlertDialog.Builder(ctx)
