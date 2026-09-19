@@ -304,9 +304,6 @@
     <string name="dm_note_output">Runtime output area</string>
 
     <!-- Splash workshop -->
-    <string name="sm_outline">Outline</string>
-    <string name="sm_block">Blocks</string>
-    <string name="sm_mixed">Mixed</string>
     <string name="sm_invert">Invert</string>
     <string name="sm_undo">UNDO</string>
     <string name="sm_import">IMPORT PHOTO</string>

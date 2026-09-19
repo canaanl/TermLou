@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-5.0.46-blue)
+![Version](https://img.shields.io/badge/version-5.0.47-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -333,6 +333,7 @@ echo "https://example.com" | termlou-clipboard
 | **5.0.24** | 524 | 应用图标再调：文件夹收至显示宽度 70%（x29–79、y32–76）；顶部两段台阶压到 8 高；黑边统一单侧 1.0（闪电线宽 2，下划线黑 8 + 白 6） |
 | **5.0.25** | 525 | 推荐加轮换分：并列带内由可学习的轮换分裁决（点+0.1封顶1.0、其他×0.95衰减，冷启动回退按最近使用）；后台记猜中率与回放日志（各500条内），备份带轮换分 |
 | **5.0.26** | 526 | bashrc 不再整文件覆盖：改为只替换受管段（TERMLOU_START/END），用户与安装器追加的内容永远保留；新增 `~/.term_lou_env` 用户环境兜底文件（app 永不覆盖）；PATH 内建 `~/.opencode/bin`；新增 opencode 官方安装默认命令（curl 安装 + 自动软链到 ~/.local/bin） |
+| **5.0.47** | 547 | 照片转化改 6 档灰阶（分位阈值自适应，alpha 0/55/110/160/210/255）；删轮廓/混合整条线（风格单选组、边缘管线、旧字符串），反选保留；存读/开机/手绘零回归 |
 | **5.0.46** | 546 | 开屏照片转化加 4 档灰阶：块面 Otsu 双阈值／轮廓边缘强度量化／混合取最大，反选取反档位；编辑器按档 alpha 预览，存盘带档、老文件按满级读；开机粒子亮度跟随 |
 | **5.0.45** | 545 | 图标终端迷你标去横线只留箭头（pivot 同步居中，tab 栏本体不动） |
 | **5.0.44** | 544 | 图标三格整体缩约 30%（9 格 2.5 间距，等格等距对齐不变，终端描边补到 3 保可见） |

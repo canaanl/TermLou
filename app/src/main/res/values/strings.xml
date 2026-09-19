@@ -304,9 +304,6 @@
     <string name="dm_note_output">运行时输出区</string>
 
     <!-- 启动工坊 -->
-    <string name="sm_outline">轮廓</string>
-    <string name="sm_block">块面</string>
-    <string name="sm_mixed">混合</string>
     <string name="sm_invert">反选</string>
     <string name="sm_undo">撤销</string>
     <string name="sm_import">导入照片</string>

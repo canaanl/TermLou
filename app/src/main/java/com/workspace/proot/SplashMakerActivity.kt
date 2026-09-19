@@ -19,8 +19,6 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.RadioButton
-import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -47,10 +45,8 @@ class SplashMakerActivity : AppCompatActivity() {
     private var overlayCells: MutableMap<Pair<Int, Int>, Int>? = null
     private lateinit var photoView: ImageView
     private lateinit var boardContainer: FrameLayout
-    private lateinit var styleGroup: RadioGroup
     private lateinit var styleBar: LinearLayout
     private lateinit var rootFrame: FrameLayout
-    private var selectedStyle = 0
     private var invertEnabled = false
     private var photoOffsetX = 0f
     private var photoOffsetY = 0f
@@ -109,53 +105,16 @@ class SplashMakerActivity : AppCompatActivity() {
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.MATCH_PARENT
         ).apply { weight = 1f })
-        styleGroup = RadioGroup(this).apply {
-            orientation = RadioGroup.HORIZONTAL
-            val radioTint = ColorStateList(
-                arrayOf(
-                    intArrayOf(android.R.attr.state_checked),
-                    intArrayOf(-android.R.attr.state_checked)
-                ),
-                intArrayOf(theme.primary, theme.onSurfaceVariant)
-            )
-            addView(RadioButton(this@SplashMakerActivity).apply {
-                text = getString(R.string.sm_outline)
-                id = 1001
-                isChecked = true
-                setTextColor(theme.onSurface)
-                androidx.core.widget.CompoundButtonCompat.setButtonTintList(this, radioTint)
-            })
-            addView(RadioButton(this@SplashMakerActivity).apply {
-                text = getString(R.string.sm_block)
-                id = 1002
-                setTextColor(theme.onSurface)
-                androidx.core.widget.CompoundButtonCompat.setButtonTintList(this, radioTint)
-            })
-            addView(RadioButton(this@SplashMakerActivity).apply {
-                text = getString(R.string.sm_mixed)
-                id = 1003
-                setTextColor(theme.onSurface)
-                androidx.core.widget.CompoundButtonCompat.setButtonTintList(this, radioTint)
-            })
-            setOnCheckedChangeListener { _, checkedId ->
-                selectedStyle = when (checkedId) {
-                    1002 -> 1
-                    1003 -> 2
-                    else -> 0
-                }
-                if (isPhotoSampling) generatePhotoCells()
-            }
-        }
-        // 取景态工具栏：风格单选 + 反选开关，两者同步显隐
+        // 取景态工具栏：反选开关（风格只剩灰阶分带，无需单选）
         styleBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             visibility = View.GONE
             gravity = android.view.Gravity.CENTER_VERTICAL
             setPadding((12 * density()).toInt(), (8 * density()).toInt(), (12 * density()).toInt(), 0)
-            addView(styleGroup, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             addView(TextView(this@SplashMakerActivity).apply {
                 text = getString(R.string.sm_invert)
                 setTextColor(theme.onSurface)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(MaterialSwitch(ContextThemeWrapper(this@SplashMakerActivity, R.style.Theme_TermLou_Switch)).apply {
                 showText = false
@@ -342,7 +301,7 @@ class SplashMakerActivity : AppCompatActivity() {
         }
     }
 
-    /** 取景采样：轮廓/块面/混合三风格映射为 overlay 版画（支持反选）。 */
+    /** 取景采样：灰阶分带映射为 overlay 版画（支持反选）。 */
     private fun generatePhotoCells() {
         val bmp = photoBitmap ?: return
         val w = board.width
@@ -366,11 +325,11 @@ class SplashMakerActivity : AppCompatActivity() {
         val pT = photoTop
         val pR = photoLeft + photoW
         val pB = photoTop + photoH
-        // 缓冲分辨率封顶 ≤2×网格：输出本就 cols×rows，2× 余量足够，限制边缘/高斯/排序规模
+        // 缓冲分辨率封顶 ≤2×网格：输出本就 cols×rows，2× 余量足够，限制排序规模
         val bCols = minOf(2 * cols, maxOf(1, kotlin.math.ceil(photoW / pixelSize).toInt()))
         val bRows = minOf(2 * rows, maxOf(1, kotlin.math.ceil(photoH / pixelSize).toInt()))
-        // 拖动只改 offset：key 不变 → 跳过降采样/边缘/Otsu，只重跑映射循环
-        if (photoScale != cacheScale || selectedStyle != cacheStyle || bCols != cacheBC || bRows != cacheBR) {
+        // 拖动只改 offset：key 不变 → 跳过降采样/分位阈值，只重跑映射循环
+        if (photoScale != cacheScale || bCols != cacheBC || bRows != cacheBR) {
             val src = renderSrc ?: bmp
             // 从缓存工作位图分级降采样到 bCols×bRows（逐次减半 + FILTER，去混叠/摩尔纹）
             val scaled = downscaleProgressive(src, bCols, bRows)
@@ -382,86 +341,28 @@ class SplashMakerActivity : AppCompatActivity() {
                 }
             }
             cachedGray = gray
-            if (selectedStyle == 0 || selectedStyle == 2) {
-                // 简单版边缘提取（Sobel + 固定分位双阈值）
-                val out = extractEdges(gray, bRows, bCols)
-                // 闭运算补桥：连通边缘断点 → 线条连续
-                cachedEdge = closeMask(out.mask, bRows, bCols)
-                cachedEdgeMag = out.mag
-                cachedEdgeHi = out.hi
-                cachedEdgeLo = out.lo
-            } else {
-                cachedEdge = BooleanArray(0)
-                cachedEdgeMag = FloatArray(0)
-            }
-            cachedThresholds = if (selectedStyle == 1 || selectedStyle == 2) {
-                val hist = IntArray(256)
-                for (g in gray) hist[g.coerceIn(0, 255)]++
-                SplashTokens.otsu2(hist, gray.size)
-            } else 0 to 255
+            val hist = IntArray(256)
+            for (g in gray) hist[g.coerceIn(0, 255)]++
+            cachedThresholds = SplashTokens.percentileThresholds(hist, gray.size)
             cacheScale = photoScale
-            cacheStyle = selectedStyle
             cacheBC = bCols
             cacheBR = bRows
         }
         val gray = cachedGray
-        val edgeMask = cachedEdge
-        val edgeMag = cachedEdgeMag
-        val (t1, t2) = cachedThresholds
+        val thresholds = cachedThresholds
         val newSet = mutableMapOf<Pair<Int, Int>, Int>()
-        fun emit(r: Int, c: Int, v: Int) {
+        for (r in 0 until rows) for (c in 0 until cols) {
+            val gx = offsetX + (c + 0.5f) * pixelSize
+            val gy = offsetY + (r + 0.5f) * pixelSize
+            val inPhoto = gx >= pL && gx < pR && gy >= pT && gy < pB
+            var v = SplashTokens.LEVEL_OFF
+            if (inPhoto) {
+                val bx = ((gx - pL) / photoW * bCols).toInt().coerceIn(0, bCols - 1)
+                val by = ((gy - pT) / photoH * bRows).toInt().coerceIn(0, bRows - 1)
+                v = SplashTokens.quantizeBands(gray[by * bCols + bx], thresholds)
+            }
             val out = if (invertEnabled) SplashTokens.invertLevel(v) else v
             if (out > SplashTokens.LEVEL_OFF) newSet[r to c] = out
-        }
-        fun edgeLevel(i: Int): Int {
-            if (i >= edgeMask.size || !edgeMask[i]) return SplashTokens.LEVEL_OFF
-            val mag = if (i < edgeMag.size) edgeMag[i] else 0f
-            return maxOf(1, SplashTokens.quantizeEdge(mag, cachedEdgeHi, cachedEdgeLo))
-        }
-        when (selectedStyle) {
-            1 -> { // 块面：Otsu 双阈值分三档
-                for (r in 0 until rows) for (c in 0 until cols) {
-                    val gx = offsetX + (c + 0.5f) * pixelSize
-                    val gy = offsetY + (r + 0.5f) * pixelSize
-                    val inPhoto = gx >= pL && gx < pR && gy >= pT && gy < pB
-                    var v = SplashTokens.LEVEL_OFF
-                    if (inPhoto) {
-                        val bx = ((gx - pL) / photoW * bCols).toInt().coerceIn(0, bCols - 1)
-                        val by = ((gy - pT) / photoH * bRows).toInt().coerceIn(0, bRows - 1)
-                        v = SplashTokens.quantizeBlock(gray[by * bCols + bx], t1, t2)
-                    }
-                    emit(r, c, v)
-                }
-            }
-            0 -> { // 轮廓：细线化连续边缘按强度分档
-                for (r in 0 until rows) for (c in 0 until cols) {
-                    val gx = offsetX + (c + 0.5f) * pixelSize
-                    val gy = offsetY + (r + 0.5f) * pixelSize
-                    val inPhoto = gx >= pL && gx < pR && gy >= pT && gy < pB
-                    var v = SplashTokens.LEVEL_OFF
-                    if (inPhoto) {
-                        val bx = ((gx - pL) / photoW * bCols).toInt().coerceIn(0, bCols - 1)
-                        val by = ((gy - pT) / photoH * bRows).toInt().coerceIn(0, bRows - 1)
-                        v = edgeLevel(by * bCols + bx)
-                    }
-                    emit(r, c, v)
-                }
-            }
-            else -> { // 混合：块面与细线化边缘取最大档
-                for (r in 0 until rows) for (c in 0 until cols) {
-                    val gx = offsetX + (c + 0.5f) * pixelSize
-                    val gy = offsetY + (r + 0.5f) * pixelSize
-                    val inPhoto = gx >= pL && gx < pR && gy >= pT && gy < pB
-                    var v = SplashTokens.LEVEL_OFF
-                    if (inPhoto) {
-                        val bx = ((gx - pL) / photoW * bCols).toInt().coerceIn(0, bCols - 1)
-                        val by = ((gy - pT) / photoH * bRows).toInt().coerceIn(0, bRows - 1)
-                        val i = by * bCols + bx
-                        v = maxOf(SplashTokens.quantizeBlock(gray[i], t1, t2), edgeLevel(i))
-                    }
-                    emit(r, c, v)
-                }
-            }
         }
         overlayCells = newSet
         board.invalidate()
@@ -470,17 +371,12 @@ class SplashMakerActivity : AppCompatActivity() {
     /** 缓存工作位图：导入时一次性把原图降到宽≤2*COLS，采样缓冲只从小图降采样，拖动/缩放不再碰原图。 */
     private var renderSrc: Bitmap? = null
 
-    /** 拖动缓存：仅 offset 变化时 key 不变 → 跳过降采样/边缘/Otsu，只重跑映射循环。 */
+    /** 拖动缓存：仅 offset 变化时 key 不变 → 跳过降采样/分位阈值，只重跑映射循环。 */
     private var cacheScale = -1f
-    private var cacheStyle = -1
     private var cacheBC = -1
     private var cacheBR = -1
-    private var cachedThresholds = 0 to 255
+    private var cachedThresholds = IntArray(0)
     private var cachedGray = IntArray(0)
-    private var cachedEdge = BooleanArray(0)
-    private var cachedEdgeMag = FloatArray(0)
-    private var cachedEdgeHi = 0f
-    private var cachedEdgeLo = 0f
 
     /** 一次性把原图降到宽≤2*COLS（保持比例），回收中间层级，仅返回最终小图。 */
     private fun buildRenderSrc(bmp: Bitmap): Bitmap {
@@ -546,171 +442,6 @@ class SplashMakerActivity : AppCompatActivity() {
             }
         Canvas(out).drawBitmap(cur, android.graphics.Rect(0, 0, cw, ch), android.graphics.Rect(0, 0, tw, th), paint)
         return out
-    }
-
-    /** 5×5 可分离高斯平滑（两趟 1D），压制纹理噪声。 */
-    private fun gaussianBlur(f: FloatArray, br: Int, bc: Int): FloatArray {
-        val k = floatArrayOf(0.0545f, 0.2442f, 0.4026f, 0.2442f, 0.0545f)
-        val tmp = FloatArray(br * bc)
-        val out = FloatArray(br * bc)
-        for (r in 0 until br) {
-            for (c in 0 until bc) {
-                var s = 0f
-                for (kk in 0 until 5) {
-                    val cc = (c + kk - 2).coerceIn(0, bc - 1)
-                    s += k[kk] * f[r * bc + cc]
-                }
-                tmp[r * bc + c] = s
-            }
-        }
-        for (r in 0 until br) {
-            for (c in 0 until bc) {
-                var s = 0f
-                for (kk in 0 until 5) {
-                    val rr = (r + kk - 2).coerceIn(0, br - 1)
-                    s += k[kk] * tmp[rr * bc + c]
-                }
-                out[r * bc + c] = s
-            }
-        }
-        return out
-    }
-
-    /** 形态学闭运算（先膨胀再腐蚀 1 格），连通边缘上的 1–2 格断点，线条更连续。 */
-    private fun closeMask(mask: BooleanArray, br: Int, bc: Int): BooleanArray {
-        val dil = BooleanArray(br * bc)
-        for (r in 0 until br) for (c in 0 until bc) {
-            val r0 = if (r > 0) r - 1 else r
-            val r1 = if (r < br - 1) r + 1 else r
-            val c0 = if (c > 0) c - 1 else c
-            val c1 = if (c < bc - 1) c + 1 else c
-            var on = false
-            outer@ for (rr in r0..r1) for (cc in c0..c1) if (mask[rr * bc + cc]) { on = true; break@outer }
-            dil[r * bc + c] = on
-        }
-        val ero = BooleanArray(br * bc)
-        for (r in 0 until br) for (c in 0 until bc) {
-            val r0 = if (r > 0) r - 1 else r
-            val r1 = if (r < br - 1) r + 1 else r
-            val c0 = if (c > 0) c - 1 else c
-            val c1 = if (c < bc - 1) c + 1 else c
-            var all = true
-            outer@ for (rr in r0..r1) for (cc in c0..c1) if (!dil[rr * bc + cc]) { all = false; break@outer }
-            ero[r * bc + c] = all
-        }
-        return ero
-    }
-
-
-    /** 边缘提取输出：闭运算前的二值掩膜 + 原始 Sobel 幅值 + 自适应双阈值（供灰阶分档）。 */
-    private data class EdgeOut(val mask: BooleanArray, val mag: FloatArray, val hi: Float, val lo: Float)
-
-    /** 完整边缘提取：高斯平滑 → 局部对比度归一化(照明不变) → 真 Sobel → 非极大值抑制(细线) → 双阈值滞后(接轮廓/杀噪) → 去孤立斑。 */
-    private fun extractEdges(gray: IntArray, br: Int, bc: Int): EdgeOut {
-        val n = br * bc
-        val f = FloatArray(n)
-        for (i in 0 until n) f[i] = gray[i] / 255f
-        // 局部均值 μ 与 E[x²]，σ² = E[x²]-μ²
-        val mu = gaussianBlur(f, br, bc)
-        val sq = FloatArray(n)
-        for (i in 0 until n) sq[i] = f[i] * f[i]
-        val mu2 = gaussianBlur(sq, br, bc)
-        val norm = FloatArray(n)
-        for (i in 0 until n) {
-            val m = mu[i]
-            var v = mu2[i] - m * m
-            if (v < 0f) v = 0f
-            val s = kotlin.math.sqrt(v) + 1e-3f
-            norm[i] = ((f[i] - m) / s).coerceIn(-4f, 4f)
-        }
-        // 真 Sobel 幅值与梯度方向
-        val mag = FloatArray(n)
-        val gxv = FloatArray(n)
-        val gyv = FloatArray(n)
-        for (r in 1 until br - 1) {
-            for (c in 1 until bc - 1) {
-                val i = r * bc + c
-                val gx = (norm[i - bc + 1] + 2f * norm[i + 1] + norm[i + bc + 1]) -
-                    (norm[i - bc - 1] + 2f * norm[i - 1] + norm[i + bc - 1])
-                val gy = (norm[i + bc - 1] + 2f * norm[i + bc] + norm[i + bc + 1]) -
-                    (norm[i - bc - 1] + 2f * norm[i - bc] + norm[i - bc + 1])
-                gxv[i] = gx
-                gyv[i] = gy
-                mag[i] = kotlin.math.sqrt(gx * gx + gy * gy)
-            }
-        }
-        // 非极大值抑制：沿梯度方向保留局部最大 → 细线
-        val nms = FloatArray(n)
-        for (r in 1 until br - 1) {
-            for (c in 1 until bc - 1) {
-                val i = r * bc + c
-                if (mag[i] <= 0f) continue
-                val deg = Math.toDegrees(Math.atan2(gyv[i].toDouble(), gxv[i].toDouble())).toFloat()
-                val ad = if (deg < 0f) deg + 180f else deg
-                val n1: Int
-                val n2: Int
-                when {
-                    ad < 22.5f || ad >= 157.5f -> { n1 = i - 1; n2 = i + 1 }
-                    ad < 67.5f -> { n1 = i - bc - 1; n2 = i + bc + 1 }
-                    ad < 112.5f -> { n1 = i - bc; n2 = i + bc }
-                    else -> { n1 = i - bc + 1; n2 = i + bc - 1 }
-                }
-                if (mag[i] >= mag[n1] && mag[i] > mag[n2]) nms[i] = mag[i]
-            }
-        }
-        // 双阈值滞后：强边为种子，弱边仅在 8 邻接强边时保留（自适应阈值）
-        val vals = FloatArray(n)
-        var vc = 0
-        for (i in 0 until n) if (nms[i] > 0f) { vals[vc] = nms[i]; vc++ }
-        if (vc == 0) return EdgeOut(BooleanArray(n), FloatArray(n), 0f, 0f)
-        vals.sort(0, vc)
-        val hi = vals[((vc - 1) * 0.92).toInt()]
-        val lo = hi * 0.4f
-        val edge = BooleanArray(n)
-        val stack = IntArray(n)
-        var sp = 0
-        for (i in 0 until n) if (nms[i] >= hi) { edge[i] = true; stack[sp++] = i }
-        while (sp > 0) {
-            val p = stack[--sp]
-            val r = p / bc
-            val c = p % bc
-            val r0 = if (r > 0) r - 1 else r
-            val r1 = if (r < br - 1) r + 1 else r
-            val c0 = if (c > 0) c - 1 else c
-            val c1 = if (c < bc - 1) c + 1 else c
-            for (rr in r0..r1) for (cc in c0..c1) {
-                val q = rr * bc + cc
-                if (!edge[q] && nms[q] >= lo) { edge[q] = true; stack[sp++] = q }
-            }
-        }
-        // 去孤立斑：剔除 <4 格连通域
-        val seen = BooleanArray(n)
-        val comp = IntArray(n)
-        for (i in 0 until n) {
-            if (!edge[i] || seen[i]) continue
-            var cp = 0
-            var csp = 0
-            comp[csp++] = i
-            seen[i] = true
-            while (csp > 0) {
-                val p = comp[--csp]
-                cp++
-                val r = p / bc
-                val c = p % bc
-                val r0 = if (r > 0) r - 1 else r
-                val r1 = if (r < br - 1) r + 1 else r
-                val c0 = if (c > 0) c - 1 else c
-                val c1 = if (c < bc - 1) c + 1 else c
-                for (rr in r0..r1) for (cc in c0..c1) {
-                    val q = rr * bc + cc
-                    if (edge[q] && !seen[q]) { seen[q] = true; comp[csp++] = q }
-                }
-            }
-            if (cp < 4) {
-                for (kk in 0 until cp) edge[comp[kk]] = false
-            }
-        }
-        return EdgeOut(edge, mag, hi, lo)
     }
 
     private fun undo() {

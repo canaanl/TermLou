@@ -14,13 +14,13 @@ object SplashTokens {
 
     const val GRID_WIDTH_PCT = 0.9f
 
-    /** 灰阶档数（含灭）：0=灭，1=弱，2=中，3=强。 */
-    const val GRAY_LEVELS = 4
+    /** 灰阶档数（含灭）：0=灭，1..5 由暗到亮。 */
+    const val GRAY_LEVELS = 6
     const val LEVEL_OFF = 0
-    const val LEVEL_FULL = 3
+    const val LEVEL_FULL = 5
 
-    /** 各档渲染透明度（弱/中/强）。 */
-    val LEVEL_ALPHAS = intArrayOf(0, 90, 160, 255)
+    /** 各档渲染透明度（由暗到亮梯度≥45）。 */
+    val LEVEL_ALPHAS = intArrayOf(0, 55, 110, 160, 210, 255)
 
     /** 照片转化单元：行、列、灰阶档（缺省满级，兼容老文件）。 */
     data class SplashCell(val r: Int, val c: Int, val v: Int = LEVEL_FULL)
@@ -64,60 +64,39 @@ object SplashTokens {
     /** 像素渐变色：按列从左到右 brand 渐变。 */
     fun cellColor(col: Int): Int = lerpColor(GREEN, CYAN, col / (COLS - 1f))
 
-    /** 块面映射：暗→强，中→中，亮→灭。 */
-    fun quantizeBlock(gray: Int, t1: Int, t2: Int): Int =
-        if (gray < t1) 3 else if (gray < t2) 2 else 0
+    /** 分带映射：灰度下方的阈值越少档位越高（暗→强，亮→灭）。 */
+    fun quantizeBands(gray: Int, thresholds: IntArray): Int {
+        var v = 0
+        for (t in thresholds) {
+            if (gray < t) v++
+        }
+        return v.coerceIn(LEVEL_OFF, LEVEL_FULL)
+    }
 
-    /** 边缘映射：强边→强，弱边→弱，无边→灭。 */
-    fun quantizeEdge(mag: Float, hi: Float, lo: Float): Int =
-        if (mag >= hi) 3 else if (mag >= lo) 1 else 0
-
-    /** 反选：档位取反（灭↔强，弱↔中）。 */
+    /** 反选：档位取反（灭↔强）。 */
     fun invertLevel(v: Int): Int = (LEVEL_FULL - v).coerceIn(LEVEL_OFF, LEVEL_FULL)
 
     /**
-     * Otsu 双阈值：枚举 t1<t2 使三类类间方差最大。
-     * 返回 (t1, t2)，恒满足 0<=t1<t2<=255。
+     * 分位阈值：按像素量把直方图切成 (bands) 等份，返回 bands-1 个阈值。
+     * 自适应明暗照片；退化直方图（空/单值）返回合法非降序列，不崩。
      */
-    fun otsu2(hist: IntArray, total: Int): Pair<Int, Int> {
-        val p = DoubleArray(256)
-        for (i in 0 until 256) p[i] = hist[i].toDouble() / total
-        val cumW = DoubleArray(256)
-        val cumM = DoubleArray(256)
-        var w = 0.0
-        var m = 0.0
+    fun percentileThresholds(hist: IntArray, total: Int, bands: Int = GRAY_LEVELS): IntArray {
+        if (total <= 0 || bands <= 1) return IntArray(maxOf(0, bands - 1))
+        val out = IntArray(bands - 1)
+        var acc = 0L
+        var k = 0
         for (i in 0 until 256) {
-            w += p[i]
-            m += i * p[i]
-            cumW[i] = w
-            cumM[i] = m
-        }
-        val totalMean = m
-        var bestT1 = 0
-        var bestT2 = 1
-        var bestVar = -1.0
-        for (t1 in 0 until 255) {
-            val w0 = cumW[t1]
-            if (w0 <= 0.0) continue
-            val m0 = cumM[t1] / w0
-            for (t2 in t1 + 1 until 256) {
-                val w1 = cumW[t2] - cumW[t1]
-                if (w1 <= 0.0) continue
-                val w2 = 1.0 - cumW[t2]
-                if (w2 <= 0.0) continue
-                val m1 = (cumM[t2] - cumM[t1]) / w1
-                val m2 = (totalMean - cumM[t2]) / w2
-                val v = w0 * (m0 - totalMean) * (m0 - totalMean) +
-                    w1 * (m1 - totalMean) * (m1 - totalMean) +
-                    w2 * (m2 - totalMean) * (m2 - totalMean)
-                if (v > bestVar) {
-                    bestVar = v
-                    bestT1 = t1
-                    bestT2 = t2
-                }
+            acc += hist[i].coerceAtLeast(0)
+            while (k < bands - 1 && acc * bands >= (k + 1L) * total) {
+                out[k] = i
+                k++
             }
         }
-        return bestT1 to bestT2
+        while (k < bands - 1) {
+            out[k] = 255
+            k++
+        }
+        return out
     }
 
     /** 默认 TERMLOU 点阵（18 行 × 7 字母，1 拆 4），映射到 ROWS 网格：行 + LOGO_ROW_OFFSET。 */

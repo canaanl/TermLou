@@ -7,59 +7,58 @@ import org.junit.Test
 class SplashTokensTest {
 
     @Test
-    fun `quantizeBlock maps dark mid bright`() {
-        assertEquals(3, SplashTokens.quantizeBlock(10, 80, 170))
-        assertEquals(2, SplashTokens.quantizeBlock(120, 80, 170))
-        assertEquals(0, SplashTokens.quantizeBlock(200, 80, 170))
-        assertEquals(2, SplashTokens.quantizeBlock(80, 80, 170))
-        assertEquals(0, SplashTokens.quantizeBlock(170, 80, 170))
+    fun `quantizeBands maps dark to bright across thresholds`() {
+        val t = intArrayOf(40, 80, 120, 160, 200)
+        assertEquals(5, SplashTokens.quantizeBands(10, t))
+        assertEquals(4, SplashTokens.quantizeBands(60, t))
+        assertEquals(3, SplashTokens.quantizeBands(100, t))
+        assertEquals(2, SplashTokens.quantizeBands(140, t))
+        assertEquals(1, SplashTokens.quantizeBands(190, t))
+        assertEquals(0, SplashTokens.quantizeBands(220, t))
+        assertEquals(4, SplashTokens.quantizeBands(40, t))
     }
 
     @Test
-    fun `quantizeEdge maps strong weak none`() {
-        assertEquals(3, SplashTokens.quantizeEdge(10f, 8f, 3f))
-        assertEquals(1, SplashTokens.quantizeEdge(5f, 8f, 3f))
-        assertEquals(0, SplashTokens.quantizeEdge(1f, 8f, 3f))
+    fun `invertLevel mirrors six levels`() {
+        assertEquals(5, SplashTokens.invertLevel(0))
+        assertEquals(0, SplashTokens.invertLevel(5))
+        assertEquals(3, SplashTokens.invertLevel(2))
     }
 
     @Test
-    fun `invertLevel mirrors levels`() {
-        assertEquals(3, SplashTokens.invertLevel(0))
-        assertEquals(2, SplashTokens.invertLevel(1))
-        assertEquals(1, SplashTokens.invertLevel(2))
-        assertEquals(0, SplashTokens.invertLevel(3))
-    }
-
-    @Test
-    fun `otsu2 separates trimodal histogram`() {
+    fun `percentileThresholds splits even populations`() {
         val hist = IntArray(256)
-        for (i in 20..40) hist[i] = 50
-        for (i in 110..130) hist[i] = 50
-        for (i in 200..220) hist[i] = 50
-        val (t1, t2) = SplashTokens.otsu2(hist, 21 * 50 * 3)
-        assertTrue(t1 in 0..255)
-        assertTrue(t2 in 0..255)
-        assertTrue(t1 < t2)
-        assertTrue(t1 in 35..115)
-        assertTrue(t2 in 125..205)
+        for (i in 0 until 60) hist[i] = 10
+        for (i in 60 until 120) hist[i] = 10
+        for (i in 120 until 180) hist[i] = 10
+        for (i in 180 until 256) hist[i] = 10
+        val total = 256 * 10
+        val t = SplashTokens.percentileThresholds(hist, total)
+        assertEquals(5, t.size)
+        for (i in 0 until t.size) {
+            assertTrue(t[i] in 0..255)
+            if (i > 0) assertTrue(t[i] >= t[i - 1])
+        }
+        assertTrue(t[0] in 30..70)
+        assertTrue(t[4] in 190..230)
     }
 
     @Test
-    fun `otsu2 handles degenerate histogram`() {
-        val hist = IntArray(256)
-        hist[128] = 100
-        val (t1, t2) = SplashTokens.otsu2(hist, 100)
-        assertTrue(t1 in 0..255)
-        assertTrue(t2 in 0..255)
-        assertTrue(t1 < t2)
+    fun `percentileThresholds handles degenerate input`() {
+        assertEquals(5, SplashTokens.percentileThresholds(IntArray(256), 0).size)
+        val single = IntArray(256)
+        single[128] = 100
+        val t = SplashTokens.percentileThresholds(single, 100)
+        assertEquals(5, t.size)
+        for (v in t) assertTrue(v in 0..255)
     }
 
     @Test
     fun `level alphas are non-decreasing full opaque`() {
         val a = SplashTokens.LEVEL_ALPHAS
-        assertEquals(4, a.size)
+        assertEquals(6, a.size)
         assertEquals(0, a[0])
-        assertEquals(255, a[3])
-        assertTrue(a[0] <= a[1] && a[1] <= a[2] && a[2] <= a[3])
+        assertEquals(255, a[5])
+        for (i in 1 until a.size) assertTrue(a[i] >= a[i - 1])
     }
 }
