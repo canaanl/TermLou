@@ -19,10 +19,20 @@ class SplashTokensTest {
     }
 
     @Test
-    fun `invertLevel mirrors six levels`() {
-        assertEquals(5, SplashTokens.invertLevel(0))
-        assertEquals(0, SplashTokens.invertLevel(5))
-        assertEquals(3, SplashTokens.invertLevel(2))
+    fun `bandToLevel normalizes to full range`() {
+        assertEquals(0, SplashTokens.bandToLevel(0, 2))
+        assertEquals(19, SplashTokens.bandToLevel(1, 2))
+        assertEquals(0, SplashTokens.bandToLevel(0, 6))
+        assertEquals(19, SplashTokens.bandToLevel(5, 6))
+        assertEquals(7, SplashTokens.bandToLevel(2, 6))
+        assertEquals(19, SplashTokens.bandToLevel(0, 1))
+    }
+
+    @Test
+    fun `invertLevel mirrors full range`() {
+        assertEquals(19, SplashTokens.invertLevel(0))
+        assertEquals(0, SplashTokens.invertLevel(19))
+        assertEquals(10, SplashTokens.invertLevel(9))
     }
 
     @Test
@@ -33,7 +43,7 @@ class SplashTokensTest {
         for (i in 120 until 180) hist[i] = 10
         for (i in 180 until 256) hist[i] = 10
         val total = 256 * 10
-        val t = SplashTokens.percentileThresholds(hist, total)
+        val t = SplashTokens.percentileThresholds(hist, total, 6)
         assertEquals(5, t.size)
         for (i in 0 until t.size) {
             assertTrue(t[i] in 0..255)
@@ -45,20 +55,20 @@ class SplashTokensTest {
 
     @Test
     fun `percentileThresholds handles degenerate input`() {
-        assertEquals(5, SplashTokens.percentileThresholds(IntArray(256), 0).size)
+        assertEquals(5, SplashTokens.percentileThresholds(IntArray(256), 0, 6).size)
         val single = IntArray(256)
         single[128] = 100
-        val t = SplashTokens.percentileThresholds(single, 100)
+        val t = SplashTokens.percentileThresholds(single, 100, 6)
         assertEquals(5, t.size)
         for (v in t) assertTrue(v in 0..255)
     }
 
     @Test
-    fun `level alphas are non-decreasing full opaque`() {
+    fun `level alphas span full range monotonic`() {
         val a = SplashTokens.LEVEL_ALPHAS
-        assertEquals(6, a.size)
+        assertEquals(20, a.size)
         assertEquals(0, a[0])
-        assertEquals(255, a[5])
+        assertEquals(255, a[19])
         for (i in 1 until a.size) assertTrue(a[i] >= a[i - 1])
     }
 }

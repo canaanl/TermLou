@@ -14,13 +14,13 @@ object SplashTokens {
 
     const val GRID_WIDTH_PCT = 0.9f
 
-    /** 灰阶档数（含灭）：0=灭，1..5 由暗到亮。 */
-    const val GRAY_LEVELS = 6
+    /** 灰阶档数上限（含灭）：0=灭，19=最亮。滑块值+2=实际档数。 */
+    const val MAX_LEVELS = 20
     const val LEVEL_OFF = 0
-    const val LEVEL_FULL = 5
+    const val LEVEL_FULL = 19
 
-    /** 各档渲染透明度（由暗到亮梯度≥45）。 */
-    val LEVEL_ALPHAS = intArrayOf(0, 55, 110, 160, 210, 255)
+    /** 各档渲染透明度（等比 0..255）。 */
+    val LEVEL_ALPHAS = IntArray(MAX_LEVELS) { 255 * it / (MAX_LEVELS - 1) }
 
     /** 照片转化单元：行、列、灰阶档（缺省满级，兼容老文件）。 */
     data class SplashCell(val r: Int, val c: Int, val v: Int = LEVEL_FULL)
@@ -64,13 +64,19 @@ object SplashTokens {
     /** 像素渐变色：按列从左到右 brand 渐变。 */
     fun cellColor(col: Int): Int = lerpColor(GREEN, CYAN, col / (COLS - 1f))
 
-    /** 分带映射：灰度下方的阈值越少档位越高（暗→强，亮→灭）。 */
+    /** 分带映射：灰度下方的阈值越少档位越高（暗→强，亮→灭），返回 0..档数-1。 */
     fun quantizeBands(gray: Int, thresholds: IntArray): Int {
         var v = 0
         for (t in thresholds) {
             if (gray < t) v++
         }
-        return v.coerceIn(LEVEL_OFF, LEVEL_FULL)
+        return v
+    }
+
+    /** 档位序号归一到 0..19（2 档→{0,19}），渲染与存盘统一口径。 */
+    fun bandToLevel(band: Int, bands: Int): Int {
+        if (bands <= 1) return LEVEL_FULL
+        return (band * LEVEL_FULL / (bands - 1)).coerceIn(LEVEL_OFF, LEVEL_FULL)
     }
 
     /** 反选：档位取反（灭↔强）。 */
@@ -80,7 +86,7 @@ object SplashTokens {
      * 分位阈值：按像素量把直方图切成 (bands) 等份，返回 bands-1 个阈值。
      * 自适应明暗照片；退化直方图（空/单值）返回合法非降序列，不崩。
      */
-    fun percentileThresholds(hist: IntArray, total: Int, bands: Int = GRAY_LEVELS): IntArray {
+    fun percentileThresholds(hist: IntArray, total: Int, bands: Int = MAX_LEVELS): IntArray {
         if (total <= 0 || bands <= 1) return IntArray(maxOf(0, bands - 1))
         val out = IntArray(bands - 1)
         var acc = 0L
