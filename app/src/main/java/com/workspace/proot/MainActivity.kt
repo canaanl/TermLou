@@ -321,8 +321,8 @@ class MainActivity : AppCompatActivity() {
         val prev = currentTab
         currentTab = tabIndex
 
-        val tabs = listOf(terminalTab, filesTab, notesTab, networkTab, settingsTab)
-        val views = listOf(terminalArea, filesArea, notesArea, networkArea, settingsWrapper)
+        val tabs = listOf(terminalTab, notesTab, filesTab, networkTab, settingsTab)
+        val views = listOf(terminalArea, notesArea, filesArea, networkArea, settingsWrapper)
 
         for (i in tabs.indices) {
             tabs[i].setColorFilter(if (i == tabIndex) scope.cOnSurface else scope.cOnSurfaceVariant)

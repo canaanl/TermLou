@@ -94,9 +94,9 @@ class StatusController(
         if (::statusView.isInitialized) statusView.text = text
     }
 
-    /** 浠呯綉缁?璁剧疆 Tab 灞曠ず鐨?2 绉掍复鏃舵彁绀猴紙缁堢/鏂囦欢 Tab 涓嶆墦鎵帮級銆?*/
+    /** 终端 Tab 不打扰；其余 Tab 展示 2 秒临时提示。 */
     fun showTempStatus(msg: String) {
-        if (activity.currentTab != 2 && activity.currentTab != 3 && activity.currentTab != 4) return
+        if (activity.currentTab == 0) return
         statusGen++
         setStatusTextAnimated(msg)
         settingsStatusJob?.let { scope.mainHandler.removeCallbacks(it) }
