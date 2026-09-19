@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-5.0.41-blue)
+![Version](https://img.shields.io/badge/version-5.0.42-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -333,6 +333,7 @@ echo "https://example.com" | termlou-clipboard
 | **5.0.24** | 524 | 应用图标再调：文件夹收至显示宽度 70%（x29–79、y32–76）；顶部两段台阶压到 8 高；黑边统一单侧 1.0（闪电线宽 2，下划线黑 8 + 白 6） |
 | **5.0.25** | 525 | 推荐加轮换分：并列带内由可学习的轮换分裁决（点+0.1封顶1.0、其他×0.95衰减，冷启动回退按最近使用）；后台记猜中率与回放日志（各500条内），备份带轮换分 |
 | **5.0.26** | 526 | bashrc 不再整文件覆盖：改为只替换受管段（TERMLOU_START/END），用户与安装器追加的内容永远保留；新增 `~/.term_lou_env` 用户环境兜底文件（app 永不覆盖）；PATH 内建 `~/.opencode/bin`；新增 opencode 官方安装默认命令（curl 安装 + 自动软链到 ~/.local/bin） |
+| **5.0.42** | 542 | 图标改横排三迷你标：直接复用 tab 原路径（终端黑／笔记奶白 `#FDF5E6`／地球蓝 `#42A5F5`），monochrome 同步文件夹＋终端 |
 | **5.0.41** | 541 | 修换位遗留：showTab 双列表顺序对齐新下标（卡死＋错位根因），状态栏通知守卫放行笔记页；图标三符号居左对齐、铅笔改 45°书写态、下划线细到 1/5 短到 2/3 |
 | **5.0.40** | 540 | Tab 换位终端→笔记→文件（1↔2 全量迁移：图标顺序/滑动链/返回键/状态栏/打开直达）；App 图标文件夹内三排小符号（缩小终端＋黄身红尖铅笔＋双蓝地球，monochrome 同步简化）；FAB 改拟态凸起（表层底色＋右下暗投影＋左上高光，＋号保持品牌绿） |
 | **5.0.39** | 539 | 修孤儿待办：外部删除笔记文件后 reload 只保留无归属或归属笔记仍在磁盘的待办，并落盘自愈索引（此前只有连索引一起删才干净） |
