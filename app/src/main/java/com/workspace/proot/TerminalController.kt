@@ -151,7 +151,7 @@ class TerminalController(
                 } else if (event.action == MotionEvent.ACTION_UP) {
                     val dx = event.x - touchStartX
                     if (dx < -swipeThreshold && activity.currentTab == 0 && setupArea.visibility != View.VISIBLE) {
-                        activity.showFilesView()
+                        activity.showNotesView()
                     }
                 }
                 false

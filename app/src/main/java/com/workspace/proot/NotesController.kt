@@ -18,7 +18,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 笔记 tab 内容区（主界面第 2 位，可滑动切换）：列表态 / 编辑态。
+ * 笔记 tab 内容区（主界面第 1 位，可滑动切换）：列表态 / 编辑态。
  * 底部单排三键按状态切换，列表 [待办][标签] + 右下角新建 FAB，编辑 [＋待办][＋标签]。
  * 正文每次改动直写落盘，无保存键、无草稿。Dialog/跳转全部直调 MainActivity。
  */
@@ -100,17 +100,17 @@ class NotesController(
         showList()
     }
 
-    /** 横滑切换容器：左滑去网络，右滑编辑态退列表、列表态回文件。 */
+    /** 横滑切换容器：左滑去文件，右滑编辑态退列表、列表态回终端。 */
     private fun buildSwipe(root: LinearLayout): TabSwipeLayout =
         TabSwipeLayout(
             activity,
             onSwipeRight = {
-                if (activity.currentTab == 2 && !activity.isSetupVisible()) {
-                    if (current != null) showList() else activity.showTab(1)
+                if (activity.currentTab == 1 && !activity.isSetupVisible()) {
+                    if (current != null) showList() else activity.showTab(0)
                 }
             },
             onSwipeLeft = {
-                if (activity.currentTab == 2 && !activity.isSetupVisible()) activity.showTab(3)
+                if (activity.currentTab == 1 && !activity.isSetupVisible()) activity.showTab(2)
             }
         ).apply {
             orientation = LinearLayout.VERTICAL
@@ -140,7 +140,7 @@ class NotesController(
 
     /** 返回键：编辑态退回列表并消费，否则放行。 */
     fun handleBack(): Boolean {
-        if (activity.currentTab == 2 && current != null) {
+        if (activity.currentTab == 1 && current != null) {
             showList()
             return true
         }
@@ -246,21 +246,33 @@ class NotesController(
         return row
     }
 
-    /** 毛玻璃悬浮新建键：半透明圆 + 品牌绿加号，只在列表态显示。 */
+    /** 拟态凸起悬浮新建键：底色圆 + 右下暗投影 + 左上亮高光 + 品牌绿加号，只在列表态显示。 */
     private fun buildFab(): TextView {
         val d = density()
         val size = (56 * d).toInt()
-        val glass = (theme.onSurface and RGB_MASK) or (GLASS_ALPHA shl ALPHA_SHIFT)
-        val glassEdge = (theme.onSurface and RGB_MASK) or (GLASS_EDGE_ALPHA shl ALPHA_SHIFT)
+        val shadow = (NEU_SHADOW_DP * d).toInt()
+        val face = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(theme.surface)
+        }
+        val darkShadow = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(mixColor(theme.surface, 0xFF000000.toInt(), NEU_DARK_RATIO))
+        }
+        val lightShadow = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(mixColor(theme.surface, 0xFFFFFFFF.toInt(), NEU_LIGHT_RATIO))
+        }
         return TextView(activity).apply {
             text = "＋"
             gravity = Gravity.CENTER
             setTextColor(theme.primary)
             textSize = FAB_PLUS_SP
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(glass)
-                setStroke((1 * d).toInt().coerceAtLeast(1), glassEdge)
+            background = android.graphics.drawable.LayerDrawable(
+                arrayOf(darkShadow, lightShadow, face)
+            ).apply {
+                setLayerInset(0, shadow, shadow, 0, 0)
+                setLayerInset(1, 0, 0, shadow, shadow)
             }
             layoutParams = FrameLayout.LayoutParams(size, size).apply {
                 gravity = Gravity.BOTTOM or Gravity.END
@@ -271,6 +283,16 @@ class NotesController(
             contentDescription = activity.getString(R.string.notes_new)
             setOnClickListener { onNewPressed() }
         }
+    }
+
+    private fun mixColor(base: Int, target: Int, ratio: Float): Int {
+        val r = (android.graphics.Color.red(base) * (1f - ratio) +
+            android.graphics.Color.red(target) * ratio).toInt()
+        val g = (android.graphics.Color.green(base) * (1f - ratio) +
+            android.graphics.Color.green(target) * ratio).toInt()
+        val b = (android.graphics.Color.blue(base) * (1f - ratio) +
+            android.graphics.Color.blue(target) * ratio).toInt()
+        return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
     }
 
     private fun showList() {
@@ -643,11 +665,10 @@ class NotesController(
     companion object {
         private val ROW_FMT = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
         private val TAG_SPLIT = Regex("[\\s,，、]+")
-        private const val RGB_MASK = 0x00FFFFFF
-        private const val ALPHA_SHIFT = 24
-        private const val GLASS_ALPHA = 0x33
-        private const val GLASS_EDGE_ALPHA = 0x66
         private const val FAB_PLUS_SP = 28f
+        private const val NEU_SHADOW_DP = 3
+        private const val NEU_DARK_RATIO = 0.45f
+        private const val NEU_LIGHT_RATIO = 0.18f
         private const val TAG_AREA_DIVISOR = 3
     }
 }

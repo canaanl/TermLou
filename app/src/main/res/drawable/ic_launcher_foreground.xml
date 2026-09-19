@@ -17,24 +17,67 @@
         android:pathData="M35,44 H73 Q79,44 79,50 V70 Q79,76 73,76 H35 Q29,76 29,70 V50 Q29,44 35,44 Z"
         android:fillColor="#FF2D7D46" />
 
+    <!-- 第一排：缩小终端符号 -->
     <path
-        android:pathData="M51,54 L40,64 H45 L41,72 L53,61 H48 L52,54 Z"
+        android:pathData="M48.5,47 L43,52 H45.5 L43,56 L49.5,50.5 H47 L49,47 Z"
         android:fillColor="#FFEB3B"
         android:strokeColor="#FF000000"
-        android:strokeWidth="2"
+        android:strokeWidth="1.5"
         android:strokeLineJoin="round" />
 
     <path
-        android:pathData="M56,69 H70"
+        android:pathData="M57,52.5 H67"
         android:strokeColor="#FF000000"
-        android:strokeWidth="8"
+        android:strokeWidth="4.5"
         android:strokeLineCap="round"
         android:fillColor="#00000000" />
 
     <path
-        android:pathData="M56,69 H70"
+        android:pathData="M57,52.5 H67"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="6"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- 第二排：铅笔（黄身红尖） -->
+    <path
+        android:pathData="M42,58.5 H60 Q62,58.5 62,60.5 Q62,62.5 60,62.5 H42 Q40,62.5 40,60.5 Q40,58.5 42,58.5 Z"
+        android:fillColor="#FFEB3B"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1" />
+
+    <path
+        android:pathData="M60,58.5 H62.5 V62.5 H60 Z"
+        android:fillColor="#FFBDBDBD" />
+
+    <path
+        android:pathData="M62.5,58.5 L69,60.5 L62.5,62.5 Z"
+        android:fillColor="#FFF44336"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1"
+        android:strokeLineJoin="round" />
+
+    <path
+        android:pathData="M66.3,59.6 L69,60.5 L66.3,61.4 Z"
+        android:fillColor="#FF212121" />
+
+    <!-- 第三排：地球（浅蓝面＋深蓝经纬） -->
+    <path
+        android:pathData="M49,69.5 A5,5 0 1,0 59,69.5 A5,5 0 1,0 49,69.5 Z"
+        android:fillColor="#FF64B5F6"
+        android:strokeColor="#FF1565C0"
+        android:strokeWidth="1.25" />
+
+    <path
+        android:pathData="M54,64.5 C56.8,66.8 56.8,72.2 54,74.5 C51.2,72.2 51.2,66.8 54,64.5 Z"
+        android:strokeColor="#FF1565C0"
+        android:strokeWidth="1"
+        android:fillColor="#00000000" />
+
+    <path
+        android:pathData="M49.5,69.5 H58.5"
+        android:strokeColor="#FF1565C0"
+        android:strokeWidth="1"
         android:strokeLineCap="round"
         android:fillColor="#00000000" />
 </vector>

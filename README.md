@@ -4,7 +4,7 @@
 >
 > An Android terminal built for **people who don't write code** — a full Debian GNU/Linux environment, file manager, network inspection and script-driven floating UI, all inside a single App.
 
-![Version](https://img.shields.io/badge/version-5.0.39-blue)
+![Version](https://img.shields.io/badge/version-5.0.40-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -333,6 +333,7 @@ echo "https://example.com" | termlou-clipboard
 | **5.0.24** | 524 | 应用图标再调：文件夹收至显示宽度 70%（x29–79、y32–76）；顶部两段台阶压到 8 高；黑边统一单侧 1.0（闪电线宽 2，下划线黑 8 + 白 6） |
 | **5.0.25** | 525 | 推荐加轮换分：并列带内由可学习的轮换分裁决（点+0.1封顶1.0、其他×0.95衰减，冷启动回退按最近使用）；后台记猜中率与回放日志（各500条内），备份带轮换分 |
 | **5.0.26** | 526 | bashrc 不再整文件覆盖：改为只替换受管段（TERMLOU_START/END），用户与安装器追加的内容永远保留；新增 `~/.term_lou_env` 用户环境兜底文件（app 永不覆盖）；PATH 内建 `~/.opencode/bin`；新增 opencode 官方安装默认命令（curl 安装 + 自动软链到 ~/.local/bin） |
+| **5.0.40** | 540 | Tab 换位终端→笔记→文件（1↔2 全量迁移：图标顺序/滑动链/返回键/状态栏/打开直达）；App 图标文件夹内三排小符号（缩小终端＋黄身红尖铅笔＋双蓝地球，monochrome 同步简化）；FAB 改拟态凸起（表层底色＋右下暗投影＋左上高光，＋号保持品牌绿） |
 | **5.0.39** | 539 | 修孤儿待办：外部删除笔记文件后 reload 只保留无归属或归属笔记仍在磁盘的待办，并落盘自愈索引（此前只有连索引一起删才干净） |
 | **5.0.38** | 538 | 标签胶囊超 8 字循环滚动（短词静态），推荐标签改共用胶囊（同尺寸同色）；编辑页与笔记列表的标签行改自写 TagFlowLayout 换行（不再横向滚动），列表日期移到标题行右侧，编辑页标签区限高（屏高 1/3）超出竖向滚动防挤正文 |
 | **5.0.37** | 537 | 待办收进笔记 header 归属：＋待办只写本笔记索引不再插正文，编辑器标签行下设待办区（点行切换/点字改/长按删），重命名重映射、删笔记级联；待办页整行点按切换＋右飞出行动画（下方上滑补位），筛选改 error 红、默认未完成、去“全部”，顶部补横线，行加归属笔记副行；笔记名全局去 .txt，编辑器标题居中 18sp |

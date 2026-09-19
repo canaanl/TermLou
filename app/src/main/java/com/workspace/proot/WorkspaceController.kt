@@ -48,8 +48,8 @@ class WorkspaceController(
         }
         val filesScroll = TabSwipeScrollView(
             activity,
-            onSwipeRight = { if (activity.currentTab == 1 && !activity.isSetupVisible()) activity.showTerminalView() },
-            onSwipeLeft = { if (activity.currentTab == 1 && !activity.isSetupVisible()) activity.showTab(2) }
+            onSwipeRight = { if (activity.currentTab == 2 && !activity.isSetupVisible()) activity.showTab(1) },
+            onSwipeLeft = { if (activity.currentTab == 2 && !activity.isSetupVisible()) activity.showTab(3) }
         )
         filesScroll.addView(fileList)
 

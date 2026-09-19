@@ -51,8 +51,8 @@ class UiBuilder(
     fun createTabBar(): List<ImageView> {
         val icons = listOf(
             R.drawable.ic_tab_terminal to R.string.tab_terminal,
-            R.drawable.ic_tab_files to R.string.tab_files,
             R.drawable.ic_tab_notes to R.string.tab_notes,
+            R.drawable.ic_tab_files to R.string.tab_files,
             R.drawable.ic_tab_network to R.string.tab_network,
             R.drawable.ic_tab_settings to R.string.tab_settings
         )

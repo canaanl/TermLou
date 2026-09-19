@@ -78,7 +78,7 @@ class FileListManager(
                         statusText?.text = newDir.name
                         statusTextRestoreRunnable?.let { mainHandler?.removeCallbacks(it) }
                         val r = Runnable {
-                            if (currentTab == 1) {
+                            if (currentTab == 2) {
                                 val p = getRelativePath()
                                 statusText?.text = if (p.isEmpty()) "Files" else "Files | $p"
                             }
@@ -144,7 +144,7 @@ class FileListManager(
                         statusText?.text = fullName
                         statusTextRestoreRunnable?.let { mainHandler?.removeCallbacks(it) }
                         val r = Runnable {
-                            if (currentTab == 1) {
+                            if (currentTab == 2) {
                                 val p = getRelativePath()
                                 statusText?.text = if (p.isEmpty()) "Files" else "Files | $p"
                             }
@@ -207,7 +207,7 @@ class FileListManager(
                     statusText?.text = fullName
                     statusTextRestoreRunnable?.let { mainHandler?.removeCallbacks(it) }
                     val r = Runnable {
-                        if (currentTab == 1) {
+                        if (currentTab == 2) {
                             val p = getRelativePath()
                             statusText?.text = if (p.isEmpty()) "Files" else "Files | $p"
                         }

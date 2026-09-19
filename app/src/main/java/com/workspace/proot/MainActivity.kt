@@ -163,8 +163,8 @@ class MainActivity : AppCompatActivity() {
         }
         val tabViews = scope.uiBuilder.createTabBar()
         terminalTab = tabViews[0]
-        filesTab = tabViews[1]
-        notesTab = tabViews[2]
+        notesTab = tabViews[1]
+        filesTab = tabViews[2]
         networkTab = tabViews[3]
         settingsTab = tabViews[4]
         for (tv in tabViews) toolbar.addView(tv)
@@ -274,7 +274,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleOpenNoteExtra(intent: Intent) {
         val name = intent.getStringExtra(NotesPageActivity.EXTRA_OPEN) ?: return
-        showTab(2)
+        showTab(1)
         notesController.openNote(name)
     }
 
@@ -352,8 +352,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (tabIndex == 0) terminalController.terminalView.requestFocus()
-        if (tabIndex == 1) workspaceController.refreshFileList()
-        if (tabIndex == 2) notesController.refresh()
+        if (tabIndex == 1) notesController.refresh()
+        if (tabIndex == 2) workspaceController.refreshFileList()
         if (tabIndex == 3) networkController.refreshNetTab()
     }
 
@@ -362,6 +362,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     internal fun showFilesView() {
+        showTab(2)
+    }
+
+    internal fun showNotesView() {
         showTab(1)
     }
 
@@ -409,11 +413,11 @@ class MainActivity : AppCompatActivity() {
     internal fun refreshStatusBar() {
         if (isFinishing || isDestroyed) return
         statusController.setStatusText(when (currentTab) {
-            1 -> {
+            1 -> "Notes"
+            2 -> {
                 val p = workspaceController.getRelativePath()
                 if (p.isEmpty()) "Files" else "Files | $p"
             }
-            2 -> "Notes"
             3 -> networkController.netStatusLine()
             4 -> "Settings"
             else -> statusController.terminalBaseText()
