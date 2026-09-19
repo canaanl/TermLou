@@ -4,6 +4,7 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -16,11 +17,11 @@ import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sin
 
 /**
- * 开屏动画：点阵飞入 + 品牌渐变 + 呼吸光晕。
+ * 开屏动画：点阵飞入 + 品牌渐变。
  * 点阵默认 TERMLOU（SplashTokens.defaultCells），可传自定义 cells（启动工坊保存的 splash.json）。
+ * 背景与已落位像素预渲染进静态层位图，逐帧只贴图 + 画飞行中粒子。
  * @param customCells 自定义像素 (row, col, 灰阶档）；null = 默认 LOGO
  * @param showProgress 是否显示进度条/状态文字（预览模式 false）
  */
@@ -56,7 +57,6 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
     private val particles = ArrayList<Particle>()
 
     private val particlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val solidPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -76,20 +76,37 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
     private var pendingDismiss: (() -> Unit)? = null
     private var detached = false
 
+    /** 静态层：背景径向渐变 + 已落位实色，尺寸变化时重建，逐帧只贴图。 */
+    private var layer: Bitmap? = null
+    private var layerCanvas: Canvas? = null
+    private var layerW = 0
+    private var layerH = 0
+    private var settledDrawn = BooleanArray(0)
+    private var tickPosted = false
+
     private val breatheRunnable = object : Runnable {
         override fun run() {
+            tickPosted = false
             if (detached || dismissing) return
             invalidate()
-            postDelayed(this, 16)
+            if (!isSettled()) postTick()
         }
     }
+
+    /** 按需刷帧：仅在聚合未完成或进度条未收敛时续跑，静止即停。 */
+    private fun postTick() {
+        if (tickPosted || detached || dismissing) return
+        tickPosted = true
+        postDelayed(breatheRunnable, 16)
+    }
+
+    private fun isSettled(): Boolean =
+        convergeFinished && (!showProgress || shownProgress >= targetProgress - 0.002f)
 
     private val startTime = System.currentTimeMillis()
     private var sawStatus = false
     private var targetProgress = 0.15f
     private var shownProgress = 0f
-
-    private val glowBase = pixelSize * SplashTokens.GLOW_FACTOR
 
     var statusText: String = ""
         set(value) {
@@ -100,6 +117,7 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
     init {
         buildGrid(customCells)
         buildParticles()
+        settledDrawn = BooleanArray(particles.size)
         setupPaints()
         setBackgroundColor(bgColor)
         layoutParams = FrameLayout.LayoutParams(
@@ -107,7 +125,7 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
             FrameLayout.LayoutParams.MATCH_PARENT
         )
         startConverge()
-        postDelayed(breatheRunnable, 16)
+        postTick()
     }
 
     private fun buildGrid(customCells: List<SplashTokens.SplashCell>?) {
@@ -164,7 +182,6 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
 
     private fun setupPaints() {
         particlePaint.style = Paint.Style.FILL
-        glowPaint.style = Paint.Style.FILL
         solidPaint.style = Paint.Style.FILL
         bgPaint.style = Paint.Style.FILL
         trackPaint.color = if (night) UiTokens.whiteFaint else DAY_TRACK
@@ -182,6 +199,7 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
                 override fun onAnimationEnd(animation: Animator) {
                     convergeFinished = true
                     invalidate()
+                    postTick()
                     pendingDismiss?.let {
                         pendingDismiss = null
                         if (!detached) it()
@@ -201,6 +219,7 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
         if (dismissing) return
         dismissing = true
         targetProgress = 1f
+        postTick()
         if (convergeFinished || convergeAnim == null) {
             snapped = true
             fadeOut(done)
@@ -234,6 +253,9 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
         pendingDismiss = null
         convergeAnim?.cancel()
         removeCallbacks(breatheRunnable)
+        layer?.recycle()
+        layer = null
+        layerCanvas = null
         super.onDetachedFromWindow()
     }
 
@@ -271,32 +293,29 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
         bgPaint.shader = null
     }
 
-    private fun drawLetters(canvas: Canvas, elapsed: Float) {
-        for (i in particles.indices) {
-            val p = particles[i]
-            val local = pProgress(p, elapsed)
-            if (local > 0f && local < 1f) drawParticle(canvas, p, local)
-        }
-
+    /** 确保静态层存在且尺寸匹配：背景 + 已落位实色一次画好，逐帧只贴图。 */
+    private fun ensureLayer(): Boolean {
+        val w = width
+        val h = height
+        if (w <= 0 || h <= 0) return false
+        if (layer != null && layerW == w && layerH == h) return true
+        layer?.recycle()
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        drawBackdrop(c)
         val radius = pixelSize * SplashTokens.PIXEL_RADIUS_FACTOR
-
-        // setShadowLayer 走软件模糊，逐帧对已落位像素绘制代价极高。
-        // 只在聚合动画进行中给正在落位的点阵加光晕；聚合完成后为纯色像素，避免每帧固定卡顿。
-        if (!convergeFinished) {
-            val breathe = 1f + 0.3f * sin(System.currentTimeMillis() * 0.004f)
-            glowPaint.setShadowLayer(glowBase * breathe, 0f, 0f, UiTokens.letterGlow)
-            for (i in particles.indices) {
-                if (pProgress(particles[i], elapsed) >= 1f) {
-                    val cell = cells[i]
-                    val l = cell.tx - pixelSize * 0.5f
-                    val t = cell.ty - pixelSize * 0.5f
-                    glowPaint.color = SplashTokens.lerpAlpha(cell.color, (110 * levelFactor(cell.level)).toInt())
-                    canvas.drawRoundRect(l - 1f, t - 1f, l + pixelSize + 1f, t + pixelSize + 1f, radius, radius, glowPaint)
-                }
-            }
-            glowPaint.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
+        for (i in particles.indices) {
+            if (settledDrawn[i]) drawSolid(c, i, radius)
         }
+        layer = bmp
+        layerCanvas = c
+        layerW = w
+        layerH = h
+        return true
+    }
 
+    /** 把一个已落位像素画进静态层（品牌按列渐变，档位透明度）。 */
+    private fun drawSolid(canvas: Canvas, i: Int, radius: Float) {
         var shader = gradientShader
         if (shader == null) {
             shader = LinearGradient(
@@ -306,17 +325,35 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
             gradientShader = shader
         }
         solidPaint.shader = shader
-        for (i in particles.indices) {
-            if (pProgress(particles[i], elapsed) >= 1f) {
-                val cell = cells[i]
-                val l = cell.tx - pixelSize * 0.5f
-                val t = cell.ty - pixelSize * 0.5f
-                solidPaint.alpha = SplashTokens.LEVEL_ALPHAS[cell.level]
-                canvas.drawRoundRect(l, t, l + pixelSize, t + pixelSize, radius, radius, solidPaint)
-            }
-        }
+        val cell = cells[i]
+        val l = cell.tx - pixelSize * 0.5f
+        val t = cell.ty - pixelSize * 0.5f
+        solidPaint.alpha = SplashTokens.LEVEL_ALPHAS[cell.level]
+        canvas.drawRoundRect(l, t, l + pixelSize, t + pixelSize, radius, radius, solidPaint)
         solidPaint.alpha = 255
         solidPaint.shader = null
+    }
+
+    private fun drawLetters(canvas: Canvas, elapsed: Float) {
+        if (!ensureLayer()) {
+            canvas.drawColor(bgColor)
+            return
+        }
+        val lc = layerCanvas ?: return
+        val radius = pixelSize * SplashTokens.PIXEL_RADIUS_FACTOR
+        // 本帧新落位的像素补画进静态层（只在落位时画一次，不逐帧重画）
+        for (i in particles.indices) {
+            if (!settledDrawn[i] && pProgress(particles[i], elapsed) >= 1f) {
+                drawSolid(lc, i, radius)
+                settledDrawn[i] = true
+            }
+        }
+        layer?.let { canvas.drawBitmap(it, 0f, 0f, null) }
+        // 逐帧只画仍在飞行中的粒子
+        for (i in particles.indices) {
+            val local = pProgress(particles[i], elapsed)
+            if (local > 0f && local < 1f) drawParticle(canvas, particles[i], local)
+        }
     }
 
     private fun advanceProgress(text: String) {
@@ -328,6 +365,7 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
             else -> min(0.95f, targetProgress + 0.10f)
         }
         if (target > targetProgress) targetProgress = target
+        postTick()
     }
 
     private fun drawStatus(canvas: Canvas) {
@@ -374,8 +412,6 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
     }
 
     override fun onDraw(canvas: Canvas) {
-        canvas.drawColor(bgColor)
-        drawBackdrop(canvas)
         val t = convergeAnim?.animatedValue as? Float ?: 0f
         drawLetters(canvas, t * SplashTokens.CONVERGE_MS)
         drawStatus(canvas)

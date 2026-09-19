@@ -430,11 +430,16 @@ class TerminalController(
         if (File(scope.lxRoot, "etc/passwd").exists()) {
             setupArea.visibility = View.GONE
             scope.fromTile = tileCommand != null
-            val splash = SplashView(activity, loadSplashCells())
-            rootLayout.addView(splash)
-            splash.bringToFront()
-            splashStartTime = System.currentTimeMillis()
-            startShell(splash)
+            // splash.json 读取与点数构造较重，移出主线程避免首帧顿卡
+            activity.lifecycleScope.launch {
+                val cells = withContext(Dispatchers.IO) { loadSplashCells() }
+                if (activity.isFinishing || activity.isDestroyed) return@launch
+                val splash = SplashView(activity, cells)
+                rootLayout.addView(splash)
+                splash.bringToFront()
+                splashStartTime = System.currentTimeMillis()
+                startShell(splash)
+            }
         } else {
             setupArea.visibility = View.VISIBLE
         }

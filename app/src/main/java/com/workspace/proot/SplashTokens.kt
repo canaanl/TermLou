@@ -38,7 +38,6 @@ object SplashTokens {
     const val PIXEL_RADIUS_FACTOR = 0.26f
     const val PARTICLE_SIZE_FACTOR = 0.8f
     const val PARTICLE_CORNER_FACTOR = 0.3f
-    const val GLOW_FACTOR = 1.1f
 
     val GREEN = UiTokens.primaryGreen
     val CYAN = UiTokens.tertiaryBlue
