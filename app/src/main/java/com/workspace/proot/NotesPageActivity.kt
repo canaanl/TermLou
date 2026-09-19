@@ -77,7 +77,7 @@ abstract class NotesPageActivity : AppCompatActivity() {
         val (fill, edge) = tagCapsuleColors(tag)
         return TextView(this).apply {
             text = tag
-            setTextColor(theme.onSurface)
+            setTextColor(TAG_TEXT_COLOR)
             textSize = UiTokens.TEXT_COMPACT
             maxLines = 1
             setPadding((12 * d).toInt(), (4 * d).toInt(), (12 * d).toInt(), (4 * d).toInt())
@@ -157,7 +157,7 @@ abstract class NotesPageActivity : AppCompatActivity() {
             this.hint = hint
             setText(initial)
             setSelection(initial.length)
-            FieldStyle.applyOutlined(this, theme.outline, theme.onSurface, theme.onSurfaceVariant, UiTokens.TEXT_BODY)
+            FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
             setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (10 * d).toInt())
         }
         box.addView(input)
@@ -227,4 +227,7 @@ private const val EDGE_SAT = 0.50f
 private const val EDGE_VAL = 0.70f
 internal const val MARQUEE_CHARS = 8
 internal const val MARQUEE_MAX_DP = 200
+
+/** 标签胶囊文字：填充是固定淡色（与主题无关），文字同样固定深色，两主题一致才可读。 */
+internal val TAG_TEXT_COLOR: Int = ThemeColors.default(night = false).onSurface
 internal const val MARQUEE_FOREVER = -1

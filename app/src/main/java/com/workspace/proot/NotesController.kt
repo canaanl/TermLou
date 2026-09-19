@@ -454,7 +454,7 @@ class NotesController(
         }
         val input = EditText(activity).apply {
             hint = activity.getString(R.string.notes_tag_hint)
-            FieldStyle.applyOutlined(this, theme.outline, theme.onSurface, theme.onSurfaceVariant, UiTokens.TEXT_BODY)
+            FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
             setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (10 * d).toInt())
         }
         box.addView(input)
@@ -593,7 +593,7 @@ class NotesController(
         val (fill, edge) = tagCapsuleColors(tag)
         return TextView(activity).apply {
             text = tag
-            setTextColor(theme.onSurface)
+            setTextColor(TAG_TEXT_COLOR)
             textSize = UiTokens.TEXT_COMPACT
             maxLines = 1
             setPadding((12 * d).toInt(), (4 * d).toInt(), (12 * d).toInt(), (4 * d).toInt())
@@ -642,7 +642,7 @@ class NotesController(
             this.hint = hint
             setText(initial)
             setSelection(initial.length)
-            FieldStyle.applyOutlined(this, theme.outline, theme.onSurface, theme.onSurfaceVariant, UiTokens.TEXT_BODY)
+            FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
             setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (10 * d).toInt())
         }
         box.addView(input)

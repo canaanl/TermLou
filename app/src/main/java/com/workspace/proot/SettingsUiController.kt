@@ -173,7 +173,7 @@ private fun divider(): View = View(activity).apply {
             setPadding(12, 8, 12, 8)
             setHint(activity.getString(R.string.hint_shell_cmd))
         }.also {
-            FieldStyle.applyOutlined(it, scope.cOutline, scope.cOnSurface, scope.cOnSurfaceVariant, UiTokens.TEXT_BODY)
+            FieldStyle.applyOutlined(it, scope.theme, UiTokens.TEXT_BODY)
         }
         parent.addView(shellEdit)
         // 根因记录：行间距必须用 topMargin，不能用顶部 padding——胶囊边框圈的是整个
@@ -233,7 +233,7 @@ private fun divider(): View = View(activity).apply {
             setPadding(12, 8, 12, 8)
             setHint(activity.getString(R.string.hint_tile_cmd))
         }.also {
-            FieldStyle.applyOutlined(it, scope.cOutline, scope.cOnSurface, scope.cOnSurfaceVariant, UiTokens.TEXT_BODY)
+            FieldStyle.applyOutlined(it, scope.theme, UiTokens.TEXT_BODY)
         }
         parent.addView(tileEdit)
         parent.addView(LinearLayout(activity).apply {
@@ -350,7 +350,7 @@ private fun divider(): View = View(activity).apply {
             setSingleLine(true)
             setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
         }.also {
-            FieldStyle.applyOutlined(it, scope.cOutline, scope.cOnSurface, scope.cOnSurfaceVariant, UiTokens.TEXT_BODY)
+            FieldStyle.applyOutlined(it, scope.theme, UiTokens.TEXT_BODY)
         }
         parent.addView(upEdit)
         parent.addView(buildUpstreamButtons(upEdit, density), pairRowParams())

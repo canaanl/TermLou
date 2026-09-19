@@ -158,7 +158,7 @@ class ShortcutGroupActivity : Activity() {
             hint = getString(R.string.sc_name_hint)
             setPadding((8 * d).toInt(), (6 * d).toInt(), (8 * d).toInt(), (6 * d).toInt())
         }.also {
-            FieldStyle.applyOutlined(it, theme.outline, theme.onSurface, theme.onSurfaceVariant, UiTokens.TEXT_BODY)
+            FieldStyle.applyOutlined(it, theme, UiTokens.TEXT_BODY)
         }
         val cmdEdit = EditText(this).apply {
             setText(oldCmd)
@@ -169,7 +169,7 @@ class ShortcutGroupActivity : Activity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = (8 * d).toInt() }
         }.also {
-            FieldStyle.applyOutlined(it, theme.outline, theme.onSurface, theme.onSurfaceVariant, UiTokens.TEXT_BODY)
+            FieldStyle.applyOutlined(it, theme, UiTokens.TEXT_BODY)
         }
         val body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL

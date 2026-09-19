@@ -173,7 +173,7 @@ class LanController(
             setSingleLine(true)
             setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
         }.also {
-            FieldStyle.applyOutlined(it, scope.cOutline, scope.cOnSurface, scope.cOnSurfaceVariant, UiTokens.TEXT_BODY)
+            FieldStyle.applyOutlined(it, scope.theme, UiTokens.TEXT_BODY)
         }
         val passEdit = EditText(activity).apply {
             setText(scope.settingsManager.lanPass())
@@ -182,7 +182,7 @@ class LanController(
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
         }.also {
-            FieldStyle.applyOutlined(it, scope.cOutline, scope.cOnSurface, scope.cOnSurfaceVariant, UiTokens.TEXT_BODY)
+            FieldStyle.applyOutlined(it, scope.theme, UiTokens.TEXT_BODY)
         }
         val body = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL

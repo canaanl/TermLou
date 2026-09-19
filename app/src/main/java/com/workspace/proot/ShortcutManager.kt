@@ -249,21 +249,17 @@ class ShortcutManager(
         val nameEdit = EditText(context).apply {
             setText(oldLabel)
             hint = context.getString(R.string.sc_name_hint)
-            setTextColor(theme.onSurface)
-            setHintTextColor(theme.onSurfaceVariant)
-            setBackgroundColor(theme.outline)
             setPadding(8, 6, 8, 6)
+            FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
         }
         val cmdEdit = EditText(context).apply {
             setText(oldCmd)
             hint = context.getString(R.string.sc_cmd_hint)
-            setTextColor(theme.onSurface)
-            setHintTextColor(theme.onSurfaceVariant)
-            setBackgroundColor(theme.outline)
             setPadding(8, 6, 8, 6)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = 8
             }
+            FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
         }
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
