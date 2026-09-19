@@ -19,14 +19,14 @@
 
     <!-- 左格 38-47：tab 终端图标内接居中（黑） -->
     <group
-        android:pivotX="12"
+        android:pivotX="8"
         android:pivotY="12"
         android:scaleX="0.643"
         android:scaleY="0.643"
-        android:translateX="30.5"
+        android:translateX="34.5"
         android:translateY="48">
         <path
-            android:pathData="M5,8 L11,12 L5,16 M13,16 H19"
+            android:pathData="M5,8 L11,12 L5,16"
             android:fillColor="#00000000"
             android:strokeColor="#FF000000"
             android:strokeWidth="3"

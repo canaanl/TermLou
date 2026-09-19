@@ -9,14 +9,14 @@
         android:pathData="M35,36 H73 Q79,36 79,42 V70 Q79,76 73,76 H35 Q29,76 29,70 V42 Q29,36 35,36 Z M29,44 V36 Q29,32 33,32 H51 Q55,32 55,36 V44 Z M35,44 H73 Q79,44 79,50 V70 Q79,76 73,76 H35 Q29,76 29,70 V50 Q29,44 35,44 Z"
         android:fillColor="#FFFFFFFF" />
     <group
-        android:pivotX="12"
+        android:pivotX="8"
         android:pivotY="12"
         android:scaleX="0.85"
         android:scaleY="0.85"
-        android:translateX="29"
+        android:translateX="33.5"
         android:translateY="48">
         <path
-            android:pathData="M5,8 L11,12 L5,16 M13,16 H19"
+            android:pathData="M5,8 L11,12 L5,16"
             android:fillColor="#00000000"
             android:strokeColor="#FFFFFFFF"
             android:strokeWidth="2.6"
