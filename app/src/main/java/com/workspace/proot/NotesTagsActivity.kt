@@ -29,6 +29,7 @@ class NotesTagsActivity : NotesPageActivity() {
         root.addView(buildTitleBar(getString(R.string.notes_tags_tab)))
         searchInput = EditText(this).apply {
             hint = getString(R.string.notes_search_tag)
+            setSingleLine(true)
             FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
             setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (10 * d).toInt())
             layoutParams = LinearLayout.LayoutParams(

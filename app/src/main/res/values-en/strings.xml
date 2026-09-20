@@ -378,7 +378,7 @@
     <string name="notes_tags_tab">Tags</string>
     <string name="notes_no_tags">No tags yet</string>
     <string name="notes_pieces_fmt">%1$d</string>
-    <string name="notes_todo_empty">No todos yet</string>
+    <string name="notes_todo_empty_short">Empty</string>
     <string name="notes_done_fmt">Done %1$d</string>
     <string name="notes_open_fmt">Open %1$d</string>
     <string name="notes_deleted">Deleted</string>

@@ -73,6 +73,7 @@ class NotesTodoActivity : NotesPageActivity() {
         val d = density()
         val input = EditText(this).apply {
             hint = getString(R.string.notes_search_todo)
+            setSingleLine(true)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
             setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (10 * d).toInt())
@@ -174,7 +175,7 @@ class NotesTodoActivity : NotesPageActivity() {
         inner.removeAllViews()
         if (items.isEmpty()) {
             inner.addView(TextView(this).apply {
-                text = getString(R.string.notes_todo_empty)
+                text = getString(R.string.notes_todo_empty_short)
                 setTextColor(theme.onSurfaceVariant)
                 textSize = UiTokens.TEXT_BODY
                 gravity = Gravity.CENTER

@@ -454,6 +454,7 @@ class NotesController(
         }
         val input = EditText(activity).apply {
             hint = activity.getString(R.string.notes_tag_hint)
+            setSingleLine(true)
             FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
             setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (10 * d).toInt())
         }
@@ -642,6 +643,7 @@ class NotesController(
             this.hint = hint
             setText(initial)
             setSelection(initial.length)
+            setSingleLine(true)
             FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
             setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (10 * d).toInt())
         }

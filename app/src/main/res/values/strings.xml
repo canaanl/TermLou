@@ -378,7 +378,7 @@
     <string name="notes_tags_tab">标签</string>
     <string name="notes_no_tags">暂无标签</string>
     <string name="notes_pieces_fmt">%1$d篇</string>
-    <string name="notes_todo_empty">暂无待办</string>
+    <string name="notes_todo_empty_short">暂无</string>
     <string name="notes_done_fmt">已完成 %1$d</string>
     <string name="notes_open_fmt">未完成 %1$d</string>
     <string name="notes_deleted">已删除</string>
