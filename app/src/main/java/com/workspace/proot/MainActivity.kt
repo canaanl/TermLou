@@ -302,6 +302,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        if (::notesController.isInitialized) notesController.flushPendingSave()
+    }
+
     override fun onDestroy() {
         if (isFinishing) {
             stopService(Intent(this, TermKeepAliveService::class.java))
@@ -320,6 +325,7 @@ class MainActivity : AppCompatActivity() {
         terminalController.hideSetup()
         val prev = currentTab
         currentTab = tabIndex
+        if (prev == 1 && tabIndex != 1) notesController.flushPendingSave()
 
         val tabs = listOf(terminalTab, notesTab, filesTab, networkTab, settingsTab)
         val views = listOf(terminalArea, notesArea, filesArea, networkArea, settingsWrapper)

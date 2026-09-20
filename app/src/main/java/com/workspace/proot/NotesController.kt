@@ -2,8 +2,6 @@ package com.workspace.proot
 
 import android.app.AlertDialog
 import android.graphics.drawable.GradientDrawable
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.Gravity
 import android.widget.Button
 import android.widget.EditText
@@ -20,7 +18,7 @@ import java.util.Locale
 /**
  * 笔记 tab 内容区（主界面第 1 位，可滑动切换）：列表态 / 编辑态。
  * 底部单排三键按状态切换，列表 [待办][标签] + 右下角新建 FAB，编辑 [＋待办][＋标签]。
- * 正文每次改动直写落盘，无保存键、无草稿。Dialog/跳转全部直调 MainActivity。
+ * 正文退出编辑器时自动落盘（退列表/切笔记/切 tab/后台/跳子页面），无保存键、无草稿。Dialog/跳转全部直调 MainActivity。
  */
 class NotesController(
     private val activity: MainActivity,
@@ -33,7 +31,6 @@ class NotesController(
         NotesStore(File(activity.filesDir, "workspace/Notes")).also { it.reload() }
 
     private var current: String? = null
-    private var suppressWatch = false
 
     private lateinit var listScroll: ScrollView
     private lateinit var listInner: LinearLayout
@@ -91,12 +88,6 @@ class NotesController(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT
             )
         )
-        watchText(body) {
-            val cur = current
-            if (!suppressWatch && cur != null) {
-                store.saveNote(cur, body.text?.toString().orEmpty())
-            }
-        }
         showList()
     }
 
@@ -203,11 +194,13 @@ class NotesController(
             setBackgroundColor(theme.surface)
             setPadding(4, 0, 4, 0)
             addView(segButton(activity.getString(R.string.notes_todo_tab)) {
+                flushPendingSave()
                 activity.startActivity(
                     android.content.Intent(activity, NotesTodoActivity::class.java)
                 )
             })
             addView(segButton(activity.getString(R.string.notes_tags_tab)) {
+                flushPendingSave()
                 activity.startActivity(
                     android.content.Intent(activity, NotesTagsActivity::class.java)
                 )
@@ -295,7 +288,17 @@ class NotesController(
         return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
     }
 
+    /** 退出保存：正文与落盘不一致才写回一次。退列表/切笔记/切 tab/后台前调用。 */
+    fun flushPendingSave() {
+        val cur = current ?: return
+        val text = body.text?.toString().orEmpty()
+        if (text != store.readNote(cur)) {
+            store.saveNote(cur, text)
+        }
+    }
+
     private fun showList() {
+        flushPendingSave()
         current = null
         fab.visibility = android.view.View.VISIBLE
         navRow.visibility = android.view.View.VISIBLE
@@ -306,14 +309,13 @@ class NotesController(
     }
 
     fun openNote(name: String) {
+        flushPendingSave()
         if (store.listNotes().none { it.name == name }) {
             showList()
             return
         }
         current = name
-        suppressWatch = true
         body.setText(store.readNote(name))
-        suppressWatch = false
         refreshEditorTitle()
         refreshTagRow()
         refreshTodoBox()
@@ -343,9 +345,7 @@ class NotesController(
         val token = Regex("(?<![\\p{L}\\p{N}_])#" + Regex.escape(tag) + "(?![\\p{L}\\p{N}_])")
         val after = token.replace(before, "")
         if (after != before) {
-            suppressWatch = true
             body.setText(after)
-            suppressWatch = false
             store.saveNote(noteName, after)
         }
         refreshTagRow()
@@ -433,6 +433,7 @@ class NotesController(
             old,
             activity.getString(R.string.save)
         ) { raw ->
+            flushPendingSave()
             val name = store.renameNote(old, raw)
             if (current == old) {
                 current = name
@@ -654,14 +655,6 @@ class NotesController(
             .setPositiveButton(confirmText) { _, _ -> onConfirm(input.text?.toString().orEmpty()) }
             .setNegativeButton(activity.getString(R.string.cancel), null)
             .showStyled(theme)
-    }
-
-    private fun watchText(edit: EditText, onChange: () -> Unit) {
-        edit.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
-            override fun afterTextChanged(s: Editable?) = onChange()
-        })
     }
 
     companion object {
