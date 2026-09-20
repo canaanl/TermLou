@@ -1,58 +1,56 @@
 package com.workspace.proot
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.LayoutTransition
+import android.animation.ValueAnimator
 import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.Paint
 import android.os.Bundle
 import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
 /**
- * 待办页：顶部搜索框实时过滤；整行点按切换状态、长按删除；
- * 文字只能在所属笔记里改。底部 [已完成 n][未完成 n] 二选一，
- * 默认未完成（error 红填充）。变更即落盘。
+ * 待办看板：顶部搜索框实时过滤（一次过滤同时分到两列）；
+ * 中间灰线左右分栏，左已完成、右未完成，各列独立滚动、标题冻结；
+ * 正文折行（副行归属笔记保持单行省略），checkbox 相对整行居中；
+ * 整行点按切换：本列右飞摘除，对列按排序位置重建飞入、
+ * 自动滚到该行、dirRowBg 底色闪两次；长按删除；变更即落盘。
  * 新增待办只在笔记编辑器的 [＋待办] 里做。
  */
 class NotesTodoActivity : NotesPageActivity() {
 
-    /** true = 只看已完成，false = 只看未完成（默认）。 */
-    private var filter = false
     private var query = ""
 
-    private lateinit var listInner: LinearLayout
-    private lateinit var doneBtn: android.widget.Button
-    private lateinit var openBtn: android.widget.Button
-    private var transitionSeq = 0
-    private val changeTransition = LayoutTransition().apply {
-        enableTransitionType(LayoutTransition.CHANGE_DISAPPEARING)
-        disableTransitionType(LayoutTransition.APPEARING)
-        disableTransitionType(LayoutTransition.DISAPPEARING)
-        disableTransitionType(LayoutTransition.CHANGE_APPEARING)
-        disableTransitionType(LayoutTransition.CHANGING)
-    }
+    private lateinit var doneTitle: TextView
+    private lateinit var openTitle: TextView
+    private lateinit var doneInner: LinearLayout
+    private lateinit var openInner: LinearLayout
+    private lateinit var doneScroll: ScrollView
+    private lateinit var openScroll: ScrollView
+    private var doneSeq = 0
+    private var openSeq = 0
+    private val doneTransition = newChangeTransition()
+    private val openTransition = newChangeTransition()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val d = density()
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(theme.surface)
         }
         root.addView(buildTitleBar(getString(R.string.notes_todo_tab)))
         root.addView(buildSearchRow())
-        val scrolled = scrollColumn()
-        listInner = scrolled.second
-        listInner.setPadding((8 * d).toInt(), (4 * d).toInt(), (8 * d).toInt(), (8 * d).toInt())
         root.addView(
-            scrolled.first,
+            buildBoard(),
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { weight = 1f }
         )
-        root.addView(divider())
-        root.addView(buildFilterBar())
         setContentView(root)
         render()
     }
@@ -61,6 +59,14 @@ class NotesTodoActivity : NotesPageActivity() {
         super.onResume()
         store.reload()
         render()
+    }
+
+    private fun newChangeTransition(): LayoutTransition = LayoutTransition().apply {
+        enableTransitionType(LayoutTransition.CHANGE_DISAPPEARING)
+        disableTransitionType(LayoutTransition.APPEARING)
+        disableTransitionType(LayoutTransition.DISAPPEARING)
+        disableTransitionType(LayoutTransition.CHANGE_APPEARING)
+        disableTransitionType(LayoutTransition.CHANGING)
     }
 
     private fun buildSearchRow(): LinearLayout {
@@ -83,29 +89,91 @@ class NotesTodoActivity : NotesPageActivity() {
         }
     }
 
-    private fun buildFilterBar(): LinearLayout {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(theme.surface)
-            setPadding(4, 0, 4, 0)
+    /** 双列看板：左已完成｜灰线｜右未完成，标题在滚动区外天然冻结。 */
+    private fun buildBoard(): LinearLayout {
+        val d = density()
+        doneTitle = headerTitle()
+        openTitle = headerTitle()
+        doneInner = columnInner()
+        openInner = columnInner()
+        doneScroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            addView(doneInner, columnScrollParams())
         }
-        doneBtn = segButton("") { filter = true; render() }
-        openBtn = segButton("") { filter = false; render() }
-        row.addView(doneBtn)
-        row.addView(openBtn)
-        return row
+        openScroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            addView(openInner, columnScrollParams())
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(buildColumn(doneTitle, doneScroll))
+            addView(View(this@NotesTodoActivity).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    (1 * d).toInt().coerceAtLeast(1),
+                    LinearLayout.LayoutParams.MATCH_PARENT
+                )
+                setBackgroundColor(theme.outline)
+            })
+            addView(buildColumn(openTitle, openScroll))
+        }
+    }
+
+    private fun columnScrollParams(): ViewGroup.LayoutParams =
+        ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+
+    private fun buildColumn(title: TextView, scroll: ScrollView): LinearLayout =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
+            addView(title)
+            addView(
+                scroll,
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { weight = 1f }
+            )
+        }
+
+    private fun headerTitle(): TextView {
+        val d = density()
+        return TextView(this).apply {
+            gravity = Gravity.CENTER
+            setTextColor(theme.onSurfaceVariant)
+            textSize = UiTokens.TEXT_META
+            setPadding(0, (8 * d).toInt(), 0, (4 * d).toInt())
+        }
+    }
+
+    private fun columnInner(): LinearLayout {
+        val d = density()
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((4 * d).toInt(), (4 * d).toInt(), (4 * d).toInt(), (8 * d).toInt())
+        }
+    }
+
+    /** 一次遍历同时算出两列的过滤结果。 */
+    private fun columnItems(toDone: Boolean): List<TodoItem> {
+        val q = query.trim().lowercase()
+        return store.todos().filter {
+            it.done == toDone && (q.isEmpty() || it.text.lowercase().contains(q))
+        }
     }
 
     private fun render() {
-        updateFilterBar()
-        listInner.layoutTransition = null
-        listInner.removeAllViews()
-        val q = query.trim().lowercase()
-        val items = store.todos().filter {
-            it.done == filter && (q.isEmpty() || it.text.lowercase().contains(q))
-        }
+        val (doneCount, openCount) = store.todoCounts()
+        doneTitle.text = getString(R.string.notes_done_fmt, doneCount)
+        openTitle.text = getString(R.string.notes_open_fmt, openCount)
+        fillColumn(doneInner, columnItems(true))
+        fillColumn(openInner, columnItems(false))
+    }
+
+    private fun fillColumn(inner: LinearLayout, items: List<TodoItem>) {
+        inner.layoutTransition = null
+        inner.removeAllViews()
         if (items.isEmpty()) {
-            listInner.addView(TextView(this).apply {
+            inner.addView(TextView(this).apply {
                 text = getString(R.string.notes_todo_empty)
                 setTextColor(theme.onSurfaceVariant)
                 textSize = UiTokens.TEXT_BODY
@@ -116,25 +184,9 @@ class NotesTodoActivity : NotesPageActivity() {
             return
         }
         for (item in items) {
-            listInner.addView(todoRow(item))
-            listInner.addView(divider().apply { tag = "div:" + item.id })
+            inner.addView(todoRow(item))
+            inner.addView(divider().apply { tag = "div:" + item.id })
         }
-    }
-
-    private fun updateFilterBar() {
-        val (done, open) = store.todoCounts()
-        doneBtn.text = getString(R.string.notes_done_fmt, done)
-        openBtn.text = getString(R.string.notes_open_fmt, open)
-        SegmentStyle.applyRow(
-            doneBtn.parent as LinearLayout,
-            listOf(
-                if (filter) SegmentStyle.Fill(theme.primary, theme.onPrimary) else null,
-                if (!filter) SegmentStyle.Fill(theme.error, Color.WHITE) else null
-            ),
-            theme.outline,
-            theme.onSurface,
-            SegmentStyle.Bar(0f, false)
-        )
     }
 
     private fun todoRow(item: TodoItem): LinearLayout {
@@ -153,12 +205,11 @@ class NotesTodoActivity : NotesPageActivity() {
             addView(LinearLayout(this@NotesTodoActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                // 正文折行不限行数；归属副行保持单行省略
                 addView(TextView(this@NotesTodoActivity).apply {
                     text = item.text
                     setTextColor(if (item.done) theme.onSurfaceVariant else theme.onSurface)
                     textSize = UiTokens.TEXT_BODY
-                    maxLines = 1
-                    ellipsize = android.text.TextUtils.TruncateAt.END
                     if (item.done) paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
                 })
                 if (item.note.isNotEmpty()) {
@@ -176,35 +227,77 @@ class NotesTodoActivity : NotesPageActivity() {
         }
     }
 
-    /** 点按整行切换：本行向右飞出，下方行上滑补位（只摘除本行，不全量重绘）。 */
+    /**
+     * 点按整行切换：本列向右飞出摘除（下方行上滑补位），
+     * 对列按排序位置重建、该行从右侧飞入、滚到该行、底色闪两次。
+     */
     private fun toggleTodoAnimated(row: LinearLayout, item: TodoItem) {
         row.isClickable = false
         row.animate().cancel()
-        val distance = (listInner.width - row.left).toFloat().coerceAtLeast(row.width.toFloat())
-        transitionSeq++
-        val seq = transitionSeq
+        val fromDone = item.done
+        val srcInner = if (fromDone) doneInner else openInner
+        val srcTransition = if (fromDone) doneTransition else openTransition
+        val distance = (srcInner.width - row.left).toFloat().coerceAtLeast(row.width.toFloat())
+        if (fromDone) doneSeq++ else openSeq++
+        val seq = if (fromDone) doneSeq else openSeq
         row.animate()
             .translationX(distance)
             .alpha(0f)
             .setDuration(TOGGLE_ANIM_MS)
             .withEndAction {
                 store.setTodoDone(item.id, !item.done)
-                listInner.layoutTransition = changeTransition
-                listInner.removeView(row)
-                listInner.findViewWithTag<android.view.View>("div:" + item.id)?.let {
-                    listInner.removeView(it)
+                srcInner.layoutTransition = srcTransition
+                srcInner.removeView(row)
+                srcInner.findViewWithTag<View>("div:" + item.id)?.let {
+                    srcInner.removeView(it)
                 }
-                updateFilterBar()
-                if (listInner.childCount == 0) {
-                    listInner.layoutTransition = null
-                    render()
+                val curSeq = if (fromDone) doneSeq else openSeq
+                if (srcInner.childCount == 0) {
+                    srcInner.layoutTransition = null
+                    fillColumn(srcInner, emptyList())
                 } else {
-                    listInner.postDelayed({
-                        if (transitionSeq == seq) listInner.layoutTransition = null
+                    srcInner.postDelayed({
+                        if ((if (fromDone) doneSeq else openSeq) == seq) srcInner.layoutTransition = null
                     }, TRANSITION_CLEAR_MS)
                 }
+                enterDestColumn(item.id, !fromDone)
             }
             .start()
+    }
+
+    /** 对列重建（顺序与 store 一致即对应位置），新行飞入＋定位＋闪两次。 */
+    private fun enterDestColumn(itemId: String, toDone: Boolean) {
+        val dstInner = if (toDone) doneInner else openInner
+        val dstScroll = if (toDone) doneScroll else openScroll
+        val (doneCount, openCount) = store.todoCounts()
+        doneTitle.text = getString(R.string.notes_done_fmt, doneCount)
+        openTitle.text = getString(R.string.notes_open_fmt, openCount)
+        fillColumn(dstInner, columnItems(toDone))
+        // 切换不改文字，目标列必含该条目
+        val row = dstInner.findViewWithTag<LinearLayout>("row:" + itemId) ?: return
+        val w = dstInner.width.toFloat().coerceAtLeast(row.width.toFloat())
+        row.translationX = w
+        row.alpha = 0f
+        row.animate().translationX(0f).alpha(1f).setDuration(TOGGLE_ANIM_MS).start()
+        dstInner.post {
+            dstScroll.smoothScrollTo(0, row.top)
+            flashRow(row)
+        }
+    }
+
+    /** 与文件 tab 文件夹高亮同底色，亮→灭→亮→灭共两次后清掉。 */
+    private fun flashRow(row: LinearLayout) {
+        ValueAnimator.ofArgb(UiTokens.dirRowBg, Color.TRANSPARENT).apply {
+            duration = FLASH_HALF_MS
+            repeatCount = FLASH_REPEATS
+            repeatMode = ValueAnimator.REVERSE
+            addUpdateListener { row.setBackgroundColor(it.animatedValue as Int) }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    row.background = null
+                }
+            })
+        }.start()
     }
 
     private fun confirmDeleteTodo(item: TodoItem) {
@@ -222,5 +315,7 @@ class NotesTodoActivity : NotesPageActivity() {
     companion object {
         private const val TOGGLE_ANIM_MS = 220L
         private const val TRANSITION_CLEAR_MS = 350L
+        private const val FLASH_HALF_MS = 250L
+        private const val FLASH_REPEATS = 3
     }
 }
