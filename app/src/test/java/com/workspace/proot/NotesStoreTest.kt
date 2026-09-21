@@ -87,28 +87,34 @@ class NotesStoreTest {
     }
 
     @Test
-    fun `deleted db rebuilds listing but drops tags and todos`() {
+    fun `deleted db rebuilds everything from txt headers`() {
         store.createNote("k")
         store.attachTags("k", listOf("tag"))
-        store.addTodo("t1")
+        store.saveNote("k", "hello body")
+        store.addTodo("t1", "k")
         runCatching { store.close() }
         assertTrue(dbFile().delete())
         store = NotesStore(dir) { JdbcNotesDb(it.absolutePath) }
         store.reload()
         assertEquals(listOf("k"), names())
-        assertTrue(store.tagsOf("k").isEmpty())
-        assertTrue(store.todos().isEmpty())
+        assertEquals(listOf("tag"), store.tagsOf("k"))
+        assertEquals(listOf("t1"), store.todos().map { it.text })
+        assertEquals("hello body", store.readNote("k"))
         assertTrue(dbFile().isFile)
     }
 
     @Test
-    fun `corrupt db rebuilds from disk`() {
+    fun `corrupt db rebuilds from disk headers`() {
         store.createNote("k")
+        store.attachTags("k", listOf("tag"))
+        store.saveNote("k", "body here")
         runCatching { store.close() }
         dbFile().writeText("{oops")
         store = NotesStore(dir) { JdbcNotesDb(it.absolutePath) }
         store.reload()
         assertEquals(listOf("k"), names())
+        assertEquals(listOf("tag"), store.tagsOf("k"))
+        assertEquals("body here", store.readNote("k"))
     }
 
     @Test
@@ -252,23 +258,110 @@ class NotesStoreTest {
     }
 
     @Test
-    fun `legacy index json migrates into db and is renamed to bak`() {
+    fun `header round-trips tags todos and timestamps`() {
+        val a = store.createNote("a")
+        Thread.sleep(5)
+        store.createNote("b")
+        store.attachTags(a, listOf("w", "x"))
+        store.saveNote(a, "body-a")
+        val t = store.addTodo("job-a", a)!!
+        store.setTodoDone(t.id, true)
         runCatching { store.close() }
-        File(dir, "k.${NotesStore.EXT}").writeText("body text")
-        val idxDir = File(dir, NotesStore.INDEX_DIR).apply { mkdirs() }
-        File(idxDir, "index.json").writeText(
-            "{\"version\":2," +
-                "\"notes\":[{\"name\":\"k\",\"tags\":[\"t\"],\"createdAt\":1000,\"updatedAt\":2000}]," +
-                "\"todos\":[{\"id\":\"x\",\"text\":\"job\",\"done\":false,\"createdAt\":3000,\"note\":\"k\"}]}"
-        )
         assertTrue(dbFile().delete())
         store = NotesStore(dir) { JdbcNotesDb(it.absolutePath) }
-        assertEquals(listOf("t"), store.tagsOf("k"))
-        assertEquals(listOf("job"), store.todos().map { it.text })
-        assertEquals("k", store.todos().single().note)
-        assertEquals("body text", store.readNote("k"))
-        assertFalse(File(idxDir, "index.json").exists())
-        assertTrue(File(idxDir, "index.json.migrated-bak").isFile)
-        assertTrue(dbFile().isFile)
+        store.reload()
+        assertEquals(listOf("w", "x"), store.tagsOf(a))
+        assertEquals(listOf("job-a"), store.todosOf(a).map { it.text })
+        assertTrue(store.todosOf(a).single().done)
+        assertEquals(t.id, store.todosOf(a).single().id)
+        assertEquals("body-a", store.readNote(a))
+        // 时间戳与顺序从头部恢复：删库前后一致
+        val beforeOrder = names()
+        val beforeUpdated = store.listNotes().first { it.name == a }.updatedAt
+        runCatching { store.close() }
+        assertTrue(dbFile().delete())
+        store = NotesStore(dir) { JdbcNotesDb(it.absolutePath) }
+        store.reload()
+        assertEquals(beforeOrder, names())
+        assertEquals(beforeUpdated, store.listNotes().first { it.name == a }.updatedAt)
+    }
+
+    @Test
+    fun `legacy txt without header rebuilds as plain body`() {
+        File(dir, "old.${NotesStore.EXT}").writeText("just body\n---\nnot a header")
+        store.reload()
+        assertEquals(listOf("old"), names())
+        assertTrue(store.tagsOf("old").isEmpty())
+        assertEquals("just body\n---\nnot a header", store.readNote("old"))
+    }
+
+    @Test
+    fun `broken header is treated as plain body`() {
+        File(dir, "bad.${NotesStore.EXT}").writeText("---notes-meta\ncreated: oops\n---\nreal body")
+        store.reload()
+        assertEquals("---notes-meta\ncreated: oops\n---\nreal body", store.readNote("bad"))
+    }
+
+    @Test
+    fun `rename refreshes header and rebuild keeps working`() {
+        store.createNote("a")
+        store.attachTags("a", listOf("t"))
+        store.saveNote("a", "content")
+        assertEquals("b", store.renameNote("a", "b"))
+        runCatching { store.close() }
+        assertTrue(dbFile().delete())
+        store = NotesStore(dir) { JdbcNotesDb(it.absolutePath) }
+        store.reload()
+        assertEquals(listOf("t"), store.tagsOf("b"))
+        assertEquals("content", store.readNote("b"))
+    }
+
+    @Test
+    fun `todo text with pipes and newlines survives header round-trip`() {
+        store.createNote("a")
+        val t = store.addTodo("x | y\nline2 \\ back", "a")!!
+        runCatching { store.close() }
+        assertTrue(dbFile().delete())
+        store = NotesStore(dir) { JdbcNotesDb(it.absolutePath) }
+        store.reload()
+        assertEquals("x | y\nline2 \\ back", store.todosOf("a").single().text)
+        assertEquals(t.id, store.todosOf("a").single().id)
+    }
+
+    @Test
+    fun `fts does not match header-only words`() {
+        store.createNote("a")
+        store.attachTags("a", listOf("独家标签"))
+        store.saveNote("a", "plain body here")
+        assertTrue(store.searchNotes("独家标签").isEmpty())
+        assertEquals(listOf("a"), store.searchNotes("plain body").map { it.name })
+    }
+
+    @Test
+    fun `external db deletion self-heals on next access`() {
+        store.createNote("a")
+        store.attachTags("a", listOf("t"))
+        store.saveNote("a", "v1")
+        runCatching { store.close() }
+        assertTrue(dbFile().delete())
+        // 连接悬空时读写不抛，重建后从头部恢复
+        store.reload()
+        assertEquals(listOf("a"), names())
+        assertEquals(listOf("t"), store.tagsOf("a"))
+        assertEquals("v1", store.readNote("a"))
+        store.saveNote("a", "v2")
+        assertEquals("v2", store.readNote("a"))
+    }
+
+    @Test
+    fun `whole dir deletion returns to empty list without crash`() {
+        store.createNote("a")
+        runCatching { store.close() }
+        assertTrue(dir.deleteRecursively())
+        store.reload()
+        assertTrue(names().isEmpty())
+        assertTrue(dir.isDirectory)
+        assertEquals("fresh", store.createNote("fresh"))
+        assertEquals(listOf("fresh"), names())
     }
 }

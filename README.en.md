@@ -2,7 +2,7 @@
 
 > An Android terminal built for **people who don't code** — Debian GNU/Linux, file management, notes & todos, network inspection and script-driven floating UI, all inside one tap-and-go App.
 
-![Version](https://img.shields.io/badge/version-5.0.56-blue)
+![Version](https://img.shields.io/badge/version-5.0.57-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -56,7 +56,7 @@ Beyond that core, TermLou also grew a complete **notes & todo system** (usable i
 | Files | `androidx.documentfile` (SAF import), `commons-compress` (tar unpacking), `xz` (streaming tar.xz) |
 | Data | `SharedPreferences` + hand-written JSON (command library v2, notes index) |
 | Static analysis | detekt 1.23.1 |
-| Testing | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso (222 unit tests) |
+| Testing | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso (235 unit tests) |
 | CI | GitHub Actions (lint + test + assembleDebug) |
 
 ---
@@ -284,6 +284,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history. Recent versions:
 
 | Version | versionCode | Summary |
 |---------|-------------|---------|
+| **5.0.57** | 557 | Note .txt files now embed metadata headers (tags/todos/timestamps, full restore after db loss; broken headers read as body); connection self-heal (no crash after external db/dir deletion); migration fallback removed |
 | **5.0.56** | 556 | Notes storage moved to SQLite + FTS5 (bundled driver, trigram search; .txt files kept, legacy index.json imported then renamed to .bak; sub-3-char queries fall back to substring scan) |
 | **5.0.55** | 555 | VPN capture now uses system DNS; standalone notes page + notes tile (no Linux boot, leaves nothing behind) |
 | **5.0.54** | 554 | Notes save on exit instead of full rewrite per keystroke |

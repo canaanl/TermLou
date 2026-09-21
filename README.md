@@ -2,7 +2,7 @@
 
 > 一个为**不写代码的人**打造的 Android 终端 —— 把 Debian GNU/Linux、文件管理、笔记待办、网络抓包和脚本浮窗，全部塞进一个"点一下就能用"的 App。
 
-![Version](https://img.shields.io/badge/version-5.0.56-blue)
+![Version](https://img.shields.io/badge/version-5.0.57-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -56,7 +56,7 @@
 | 文件 | `androidx.documentfile`（SAF 导入）、`commons-compress`（tar 解包）、`xz`（tar.xz 流式解压） |
 | 数据 | `SharedPreferences` + 自写 JSON（命令库 v2、笔记索引） |
 | 静态分析 | detekt 1.23.1 |
-| 测试 | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso（222 个单元测试） |
+| 测试 | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso（235 个单元测试） |
 | CI | GitHub Actions（lint + test + assembleDebug） |
 
 ---
@@ -284,6 +284,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.0.57** | 557 | 笔记txt头部嵌入元数据（标签/待办/时间戳，删库按头部全量恢复；坏头当正文）；连接自愈（外部删库/删目录后重建不崩）；去迁移兜底 |
 | **5.0.56** | 556 | 笔记底层换SQLite＋FTS5（bundled驱动，trigram中英可搜；.txt原位保留，旧index.json事务导入后改名.bak；3字以下退化子串扫描） |
 | **5.0.55** | 555 | VPN抓包DNS改系统DNS；新增独立笔记页＋笔记磁贴（不唤醒Linux、用完即走） |
 | **5.0.54** | 554 | 笔记正文改退出自动保存，去掉逐字全量落盘 |

@@ -45,6 +45,7 @@ internal object NotesSql {
             "ORDER BY done ASC, created_at ASC, rowid ASC"
     const val Q_TODO_DONE_COUNT = "SELECT COUNT(*) FROM todos WHERE done <> 0"
     const val Q_TODO_ALL_COUNT = "SELECT COUNT(*) FROM todos"
+    const val Q_TODO_NOTE = "SELECT note FROM todos WHERE id = ?"
     const val Q_FTS_SEARCH = "SELECT name FROM notes_fts WHERE notes_fts MATCH ?"
 
     const val W_UPSERT_NOTE =

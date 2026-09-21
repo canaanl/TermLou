@@ -31,16 +31,26 @@ data class TodoItem(
  */
 class NotesStore(
     notesDir: File,
-    openDb: (File) -> NotesDbBackend = { BundledNotesDb(it.absolutePath) }
+    private val openDb: (File) -> NotesDbBackend = { BundledNotesDb(it.absolutePath) }
 ) {
     private val root: File = notesDir
     private val dbFile: File = File(root, NotesSql.DB_FILE)
-    private val db: NotesDbBackend
+    private var backend: NotesDbBackend
 
     init {
         root.mkdirs()
-        db = openOrRebuild(openDb)
-        migrateIfNeeded()
+        backend = openOrRebuild(openDb)
+    }
+
+    /** 连接自愈：库文件被外部删除（删库/端掉整个目录）时，旧连接悬空会报只读；
+     * 每次用库前判文件在否，没了就关旧连接重建空库，再走正常 reload 语义。 */
+    private fun db(): NotesDbBackend {
+        if (!dbFile.isFile) {
+            runCatching { backend.close() }
+            root.mkdirs()
+            backend = openOrRebuild(openDb)
+        }
+        return backend
     }
 
     /** 目录扫描 + 库合并：目录里有但库里没有的补条目，文件没了的清条目，
@@ -48,26 +58,36 @@ class NotesStore(
     fun reload() {
         root.mkdirs()
         val disk = diskNames()
-        val rows = db.query(NotesSql.Q_NOTE_NAMES, types = NotesSql.T_NAME)
+        val rows = db().query(NotesSql.Q_NOTE_NAMES, types = NotesSql.T_NAME)
             .map { it[0] as String }.toSet()
-        db.transaction {
+        db().transaction {
             for (name in disk - rows) {
-                val t = fileTime(name)
-                db.execArgs(NotesSql.W_INSERT_NOTE, listOf(name, NotesSql.encodeTags(emptyList()), t, t))
-                db.execArgs(NotesSql.W_FTS_INSERT, listOf(name, readNote(name)))
+                val raw = runCatching { noteFile(name).readText(Charsets.UTF_8) }.getOrDefault("")
+                val (head, body) = parseHead(raw)
+                val created = head?.created ?: fileTime(name)
+                val updated = head?.updated ?: fileTime(name)
+                val tags = head?.tags.orEmpty()
+                db().execArgs(NotesSql.W_INSERT_NOTE, listOf(name, NotesSql.encodeTags(tags), created, updated))
+                for (t in head?.todos.orEmpty()) {
+                    db().execArgs(
+                        NotesSql.W_INSERT_TODO,
+                        listOf(t.id, t.text, if (t.done) 1L else 0L, t.createdAt, name)
+                    )
+                }
+                db().execArgs(NotesSql.W_FTS_INSERT, listOf(name, body))
             }
             for (name in rows - disk) {
-                db.execArgs(NotesSql.W_DELETE_NOTE_TODOS, listOf(name))
-                db.execArgs(NotesSql.W_FTS_DELETE, listOf(name))
-                db.execArgs(NotesSql.W_DELETE_NOTE, listOf(name))
+                db().execArgs(NotesSql.W_DELETE_NOTE_TODOS, listOf(name))
+                db().execArgs(NotesSql.W_FTS_DELETE, listOf(name))
+                db().execArgs(NotesSql.W_DELETE_NOTE, listOf(name))
             }
-            db.exec(NotesSql.W_PRUNE_ORPHAN_TODOS)
+            db().exec(NotesSql.W_PRUNE_ORPHAN_TODOS)
         }
     }
 
     /** 按更新时间倒序，时间相同按名称。 */
     fun listNotes(): List<NoteEntry> =
-        db.query(NotesSql.Q_LIST_NOTES, types = NotesSql.T_NOTE_ROW).map { NotesSql.noteEntry(it) }
+        db().query(NotesSql.Q_LIST_NOTES, types = NotesSql.T_NOTE_ROW).map { NotesSql.noteEntry(it) }
 
     /** 全文检索：3 字及以上走 FTS5 trigram；3 字以下 trigram 索引查不到，
      * 退化为标题+正文子串扫描（中文单字可搜）。UI 暂未接线，行为不变。 */
@@ -80,28 +100,35 @@ class NotesStore(
                 e.name.lowercase().contains(folded) || readNote(e.name).lowercase().contains(folded)
             }
         }
-        return db.query(NotesSql.Q_FTS_SEARCH, listOf(NotesSql.escapeMatch(q)), NotesSql.T_NAME)
+        return db().query(NotesSql.Q_FTS_SEARCH, listOf(NotesSql.escapeMatch(q)), NotesSql.T_NAME)
             .mapNotNull { row ->
                 val name = row[0] as String
-                db.query(NotesSql.Q_NOTE_ROW, listOf(name), NotesSql.T_NOTE_ROW)
+                db().query(NotesSql.Q_NOTE_ROW, listOf(name), NotesSql.T_NOTE_ROW)
                     .firstOrNull()?.let { NotesSql.noteEntry(it) }
             }
     }
 
     fun noteFile(name: String): File = File(root, "$name.$EXT")
 
-    fun readNote(name: String): String =
-        runCatching { noteFile(name).readText(Charsets.UTF_8) }.getOrDefault("")
+    /** 读正文：剥掉头部块，UI 永远看不到元数据。 */
+    fun readNote(name: String): String {
+        val raw = runCatching { noteFile(name).readText(Charsets.UTF_8) }.getOrDefault("")
+        return parseHead(raw).second
+    }
 
-    /** 写回已存在的笔记；文件不存在则顺手建出来。 */
+    /** 写回已存在的笔记；文件不存在则顺手建出来。头部与正文单点写透。 */
     fun saveNote(name: String, text: String) {
         root.mkdirs()
-        writeAtomic(noteFile(name), text)
         val now = System.currentTimeMillis()
-        db.transaction {
-            db.execArgs(NotesSql.W_UPSERT_NOTE, listOf(name, NotesSql.encodeTags(emptyList()), now, now))
-            db.execArgs(NotesSql.W_FTS_DELETE, listOf(name))
-            db.execArgs(NotesSql.W_FTS_INSERT, listOf(name, text))
+        val row = db().query(NotesSql.Q_NOTE_ROW, listOf(name), NotesSql.T_NOTE_ROW).firstOrNull()
+        val created = (row?.get(2) as? Long) ?: now
+        val tags = row?.let { NotesSql.decodeTags(it[1] as String) }.orEmpty()
+        val todos = if (row == null) emptyList() else todosOf(name)
+        writeAtomic(noteFile(name), buildHead(created, now, tags, todos) + text)
+        db().transaction {
+            db().execArgs(NotesSql.W_UPSERT_NOTE, listOf(name, NotesSql.encodeTags(tags), created, now))
+            db().execArgs(NotesSql.W_FTS_DELETE, listOf(name))
+            db().execArgs(NotesSql.W_FTS_INSERT, listOf(name, text))
         }
     }
 
@@ -111,10 +138,10 @@ class NotesStore(
         val base = sanitizeName(desired).ifEmpty { defaultName() }
         val name = uniqueName(base)
         val now = System.currentTimeMillis()
-        writeAtomic(noteFile(name), "")
-        db.transaction {
-            db.execArgs(NotesSql.W_INSERT_NOTE, listOf(name, NotesSql.encodeTags(emptyList()), now, now))
-            db.execArgs(NotesSql.W_FTS_INSERT, listOf(name, ""))
+        writeAtomic(noteFile(name), buildHead(now, now, emptyList(), emptyList()))
+        db().transaction {
+            db().execArgs(NotesSql.W_INSERT_NOTE, listOf(name, NotesSql.encodeTags(emptyList()), now, now))
+            db().execArgs(NotesSql.W_FTS_INSERT, listOf(name, ""))
         }
         return name
     }
@@ -129,50 +156,51 @@ class NotesStore(
             if (src.isFile) src.renameTo(noteFile(name))
         }
         val now = System.currentTimeMillis()
-        db.transaction {
-            db.execArgs(NotesSql.W_RENAME_NOTE, listOf(name, now, old))
-            db.execArgs(NotesSql.W_REMAP_TODOS, listOf(name, old))
-            db.execArgs(NotesSql.W_FTS_DELETE, listOf(old))
-            db.execArgs(NotesSql.W_FTS_INSERT, listOf(name, readNote(name)))
+        db().transaction {
+            db().execArgs(NotesSql.W_RENAME_NOTE, listOf(name, now, old))
+            db().execArgs(NotesSql.W_REMAP_TODOS, listOf(name, old))
+            db().execArgs(NotesSql.W_FTS_DELETE, listOf(old))
+            db().execArgs(NotesSql.W_FTS_INSERT, listOf(name, readNote(name)))
         }
+        refreshHeader(name)
         return name
     }
 
     fun deleteNote(name: String) {
         runCatching { noteFile(name).delete() }
-        db.transaction {
-            db.execArgs(NotesSql.W_DELETE_NOTE_TODOS, listOf(name))
-            db.execArgs(NotesSql.W_FTS_DELETE, listOf(name))
-            db.execArgs(NotesSql.W_DELETE_NOTE, listOf(name))
+        db().transaction {
+            db().execArgs(NotesSql.W_DELETE_NOTE_TODOS, listOf(name))
+            db().execArgs(NotesSql.W_FTS_DELETE, listOf(name))
+            db().execArgs(NotesSql.W_DELETE_NOTE, listOf(name))
         }
     }
 
     fun tagsOf(name: String): List<String> =
-        db.query(NotesSql.Q_NOTE_ROW, listOf(name), NotesSql.T_NOTE_ROW)
+        db().query(NotesSql.Q_NOTE_ROW, listOf(name), NotesSql.T_NOTE_ROW)
             .firstOrNull()?.let { NotesSql.decodeTags(it[1] as String) }.orEmpty()
 
     /** 挂标签：存进库（去 "#" 前缀、去空、去重、保序追加）。 */
     fun attachTags(name: String, tags: List<String>) {
         val clean = tags.map { it.trim().removePrefix("#") }.filter { it.isNotEmpty() }.distinct()
         if (clean.isEmpty()) return
-        val row = db.query(NotesSql.Q_NOTE_ROW, listOf(name), NotesSql.T_NOTE_ROW).firstOrNull()
+        val row = db().query(NotesSql.Q_NOTE_ROW, listOf(name), NotesSql.T_NOTE_ROW).firstOrNull()
             ?: return
         val merged = (NotesSql.decodeTags(row[1] as String) + clean).distinct()
-        db.execArgs(
-            NotesSql.W_SET_TAGS,
-            listOf(NotesSql.encodeTags(merged), System.currentTimeMillis(), name)
-        )
+        val now = System.currentTimeMillis()
+        db().execArgs(NotesSql.W_SET_TAGS, listOf(NotesSql.encodeTags(merged), now, name))
+        refreshHeader(name)
     }
 
     fun detachTag(name: String, tag: String) {
-        val row = db.query(NotesSql.Q_NOTE_ROW, listOf(name), NotesSql.T_NOTE_ROW).firstOrNull()
+        val row = db().query(NotesSql.Q_NOTE_ROW, listOf(name), NotesSql.T_NOTE_ROW).firstOrNull()
             ?: return
         val tags = NotesSql.decodeTags(row[1] as String)
         if (!tags.contains(tag)) return
-        db.execArgs(
+        db().execArgs(
             NotesSql.W_SET_TAGS,
             listOf(NotesSql.encodeTags(tags - tag), System.currentTimeMillis(), name)
         )
+        refreshHeader(name)
     }
 
     /** 全部标签及挂载篇数，按篇数倒序（并列保持列表序，与旧版一致）。 */
@@ -188,44 +216,49 @@ class NotesStore(
 
     /** 未完成在前，其次按创建时间（并列按入库序，与旧版一致）。 */
     fun todos(): List<TodoItem> =
-        db.query(NotesSql.Q_TODOS, types = NotesSql.T_TODO_ROW).map { NotesSql.todoItem(it) }
+        db().query(NotesSql.Q_TODOS, types = NotesSql.T_TODO_ROW).map { NotesSql.todoItem(it) }
 
     /** 某篇笔记的待办，同全局排序。 */
     fun todosOf(note: String): List<TodoItem> =
-        db.query(NotesSql.Q_TODOS_OF, listOf(note), NotesSql.T_TODO_ROW).map { NotesSql.todoItem(it) }
+        db().query(NotesSql.Q_TODOS_OF, listOf(note), NotesSql.T_TODO_ROW).map { NotesSql.todoItem(it) }
 
     /** 空内容返回 null，不落盘。 */
     fun addTodo(text: String, note: String = ""): TodoItem? {
         val clean = text.trim()
         if (clean.isEmpty()) return null
         val item = TodoItem(UUID.randomUUID().toString(), clean, false, System.currentTimeMillis(), note)
-        db.execArgs(
+        db().execArgs(
             NotesSql.W_INSERT_TODO,
             listOf(item.id, item.text, if (item.done) 1L else 0L, item.createdAt, item.note)
         )
+        refreshHeader(note)
         return item
     }
 
     fun setTodoDone(id: String, done: Boolean) {
-        db.execArgs(NotesSql.W_SET_TODO_DONE, listOf(if (done) 1L else 0L, id))
+        db().execArgs(NotesSql.W_SET_TODO_DONE, listOf(if (done) 1L else 0L, id))
+        refreshHeader(todoNote(id))
     }
 
     /** 空内容忽略，不改不动。 */
     fun setTodoText(id: String, text: String) {
         val clean = text.trim()
         if (clean.isEmpty()) return
-        db.execArgs(NotesSql.W_SET_TODO_TEXT, listOf(clean, id))
+        db().execArgs(NotesSql.W_SET_TODO_TEXT, listOf(clean, id))
+        refreshHeader(todoNote(id))
     }
 
     fun deleteTodo(id: String) {
-        db.execArgs(NotesSql.W_DELETE_TODO, listOf(id))
+        val note = todoNote(id)
+        db().execArgs(NotesSql.W_DELETE_TODO, listOf(id))
+        refreshHeader(note)
     }
 
     /** 已完成数, 未完成数。 */
     fun todoCounts(): Pair<Int, Int> {
-        val done = (db.query(NotesSql.Q_TODO_DONE_COUNT, types = NotesSql.T_COUNT)
+        val done = (db().query(NotesSql.Q_TODO_DONE_COUNT, types = NotesSql.T_COUNT)
             .firstOrNull()?.get(0) as? Long) ?: 0L
-        val all = (db.query(NotesSql.Q_TODO_ALL_COUNT, types = NotesSql.T_COUNT)
+        val all = (db().query(NotesSql.Q_TODO_ALL_COUNT, types = NotesSql.T_COUNT)
             .firstOrNull()?.get(0) as? Long) ?: 0L
         return done.toInt() to (all - done).toInt()
     }
@@ -234,7 +267,98 @@ class NotesStore(
     fun defaultName(): String = STAMP_FMT.format(Date())
 
     fun close() {
-        runCatching { db.close() }
+        runCatching { backend.close() }
+    }
+
+    /** 按库现状重写该笔记的头部块（无归属待办没有文件可写，直接跳过）。 */
+    private fun refreshHeader(name: String) {
+        if (name.isEmpty()) return
+        val row = db().query(NotesSql.Q_NOTE_ROW, listOf(name), NotesSql.T_NOTE_ROW).firstOrNull()
+            ?: return
+        val tags = NotesSql.decodeTags(row[1] as String)
+        val created = row[2] as Long
+        val updated = row[3] as Long
+        writeAtomic(noteFile(name), buildHead(created, updated, tags, todosOf(name)) + readNote(name))
+    }
+
+    private fun todoNote(id: String): String =
+        db().query(NotesSql.Q_TODO_NOTE, listOf(id), NotesSql.T_NAME)
+            .firstOrNull()?.get(0) as? String ?: ""
+
+    /** 头部块：文件开头的 ---notes-meta 围栏。无头/坏头整篇当正文，老文件天然兼容。 */
+    private data class NoteHead(
+        val created: Long,
+        val updated: Long,
+        val tags: List<String>,
+        val todos: List<TodoItem>
+    )
+
+    private fun buildHead(created: Long, updated: Long, tags: List<String>, todos: List<TodoItem>): String =
+        buildString {
+            append(HEAD_OPEN).append('\n')
+            append("created: ").append(created).append('\n')
+            append("updated: ").append(updated).append('\n')
+            append("tags: ").append(tags.joinToString(", ")).append('\n')
+            for (t in todos) {
+                append("todo: ").append(t.id).append(" | ").append(if (t.done) 1 else 0)
+                    .append(" | ").append(t.createdAt).append(" | ").append(escHead(t.text)).append('\n')
+            }
+            append(HEAD_CLOSE).append('\n').append('\n')
+        }
+
+    private fun parseHead(text: String): Pair<NoteHead?, String> {
+        if (!text.startsWith(HEAD_OPEN + "\n")) return null to text
+        val close = text.indexOf("\n$HEAD_CLOSE\n")
+        if (close < 0) return null to text
+        val lines = text.substring(HEAD_OPEN.length + 1, close).split('\n')
+        var created: Long? = null
+        var updated: Long? = null
+        val tags = ArrayList<String>()
+        val todos = ArrayList<TodoItem>()
+        for (line in lines) {
+            when {
+                line.startsWith("created: ") -> created = line.removePrefix("created: ").trim().toLongOrNull()
+                line.startsWith("updated: ") -> updated = line.removePrefix("updated: ").trim().toLongOrNull()
+                line.startsWith("tags: ") -> tags.addAll(
+                    line.removePrefix("tags: ").split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                )
+                line.startsWith("todo: ") -> parseHeadTodo(line.removePrefix("todo: "))?.let { todos.add(it) }
+            }
+        }
+        val c = created ?: return null to text
+        val u = updated ?: return null to text
+        val body = text.substring(close + HEAD_CLOSE.length + 2).removePrefix("\n")
+        return NoteHead(c, u, tags.distinct(), todos) to body
+    }
+
+    private fun parseHeadTodo(raw: String): TodoItem? {
+        val parts = raw.split(" | ", limit = 4)
+        if (parts.size != 4) return null
+        val created = parts[2].trim().toLongOrNull() ?: return null
+        val text = unescHead(parts[3]).trim()
+        if (text.isEmpty()) return null
+        return TodoItem(parts[0].trim(), text, parts[1].trim() == "1", created)
+    }
+
+    private fun escHead(s: String): String =
+        s.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
+
+    private fun unescHead(s: String): String {
+        val sb = StringBuilder()
+        var i = 0
+        while (i < s.length) {
+            val c = s[i]
+            if (c == '\\' && i + 1 < s.length) {
+                when (s[i + 1]) {
+                    'n' -> { sb.append('\n'); i += 2; continue }
+                    'r' -> { sb.append('\r'); i += 2; continue }
+                    '\\' -> { sb.append('\\'); i += 2; continue }
+                }
+            }
+            sb.append(c)
+            i++
+        }
+        return sb.toString()
     }
 
     private fun openOrRebuild(openDb: (File) -> NotesDbBackend): NotesDbBackend {
@@ -255,44 +379,8 @@ class NotesStore(
         return backend
     }
 
-    /** 旧版 index.json 一次性事务导入（标签/时间戳/待办全保留），成功后改名 .bak 留作回滚。 */
-    private fun migrateIfNeeded() {
-        val idx = indexFile()
-        if (!idx.isFile) return
-        val count = (db.query(NotesSql.Q_TODO_ALL_COUNT, types = NotesSql.T_COUNT)
-            .firstOrNull()?.get(0) as? Long ?: 0L) +
-            (db.query(NotesSql.Q_NOTE_NAMES, types = NotesSql.T_NAME).size)
-        if (count == 0L) {
-            val doc = readIndex() ?: return
-            val now = System.currentTimeMillis()
-            db.transaction {
-                val arr = doc.optArr(KEY_NOTES)
-                if (arr != null) {
-                    for (i in 0 until arr.length()) {
-                        val o = arr.getObj(i) ?: continue
-                        val n = o.optString(KEY_NAME, "")
-                        if (n.isEmpty()) continue
-                        val tags = readTags(o)
-                        db.execArgs(
-                            NotesSql.W_INSERT_NOTE,
-                            listOf(n, NotesSql.encodeTags(tags), numOf(o, KEY_CREATED, now), numOf(o, KEY_UPDATED, now))
-                        )
-                        db.execArgs(NotesSql.W_FTS_INSERT, listOf(n, readNote(n)))
-                    }
-                }
-                for (t in readTodos(doc)) {
-                    db.execArgs(
-                        NotesSql.W_INSERT_TODO,
-                        listOf(t.id, t.text, if (t.done) 1L else 0L, t.createdAt, t.note)
-                    )
-                }
-            }
-        }
-        runCatching { idx.renameTo(File(idx.parentFile, INDEX_BAK)) }
-    }
-
     private fun dbHas(name: String): Boolean =
-        db.query(NotesSql.Q_HAS_NOTE, listOf(name), NotesSql.T_ONE).isNotEmpty()
+        db().query(NotesSql.Q_HAS_NOTE, listOf(name), NotesSql.T_ONE).isNotEmpty()
 
     private fun diskNames(): Set<String> =
         root.listFiles().orEmpty()
@@ -302,8 +390,6 @@ class NotesStore(
 
     private fun fileTime(name: String): Long =
         runCatching { noteFile(name).lastModified() }.getOrDefault(System.currentTimeMillis())
-
-    private fun indexFile(): File = File(File(root, INDEX_DIR), INDEX_FILE)
 
     private fun uniqueName(base: String): String {
         if (!noteFile(base).exists() && !dbHas(base)) return base
@@ -330,67 +416,13 @@ class NotesStore(
         }
     }
 
-    private fun readIndex(): MiniJson.Obj? =
-        runCatching {
-            val f = indexFile()
-            if (!f.isFile) return null
-            MiniJson.parse(f.readText(Charsets.UTF_8))
-        }.getOrNull()
-
-    private fun readTags(o: MiniJson.Obj): List<String> {
-        val arr = o.optArr(KEY_TAGS) ?: return emptyList()
-        val out = ArrayList<String>()
-        for (i in 0 until arr.length()) {
-            arr.getString(i)?.trim()?.takeIf { it.isNotEmpty() }?.let { out.add(it) }
-        }
-        return out.distinct()
-    }
-
-    private fun readTodos(idx: MiniJson.Obj?): List<TodoItem> {
-        val arr = idx?.optArr(KEY_TODOS) ?: return emptyList()
-        val out = ArrayList<TodoItem>()
-        for (i in 0 until arr.length()) {
-            todoOf(arr.getObj(i))?.let { out.add(it) }
-        }
-        return out
-    }
-
-    private fun todoOf(o: MiniJson.Obj?): TodoItem? {
-        val text = o?.optString(KEY_TEXT, "").orEmpty().trim()
-        return if (o == null || text.isEmpty()) {
-            null
-        } else {
-            TodoItem(
-                o.optString(KEY_ID, UUID.randomUUID().toString()),
-                text,
-                o.optBoolean(KEY_DONE, false),
-                numOf(o, KEY_CREATED, 0L),
-                o.optString(KEY_NOTE, "")
-            )
-        }
-    }
-
-    private fun numOf(o: MiniJson.Obj, key: String, default: Long): Long =
-        (o.raw(key) as? Number)?.toLong() ?: default
-
     companion object {
         const val EXT = "txt"
-        const val INDEX_DIR = ".termlou-notes"
-        private const val INDEX_FILE = "index.json"
-        private const val INDEX_BAK = "index.json.migrated-bak"
+        private const val HEAD_OPEN = "---notes-meta"
+        private const val HEAD_CLOSE = "---"
         private const val FIRST_SUFFIX = 2
         private const val MAX_SUFFIX_TRIES = 9999
         private const val TMP_SUFFIX = ".tmp"
-        private const val KEY_NOTES = "notes"
-        private const val KEY_TODOS = "todos"
-        private const val KEY_NAME = "name"
-        private const val KEY_TAGS = "tags"
-        private const val KEY_TEXT = "text"
-        private const val KEY_ID = "id"
-        private const val KEY_DONE = "done"
-        private const val KEY_NOTE = "note"
-        private const val KEY_CREATED = "createdAt"
-        private const val KEY_UPDATED = "updatedAt"
 
         private val STAMP_FMT = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
 
