@@ -75,6 +75,15 @@
             android:theme="@style/Theme.TermLou" />
 
         <activity
+            android:name="com.workspace.proot.NotesStandaloneActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:taskAffinity=".notes"
+            android:theme="@style/Theme.TermLou" />
+
+        <activity
             android:name="com.workspace.proot.TileCommandTrampolineActivity"
             android:exported="false"
             android:excludeFromRecents="true"
@@ -158,6 +167,20 @@
             <meta-data
                 android:name="android.service.quicksettings.tile"
                 android:resource="@xml/quick_settings_launcher_tile" />
+        </service>
+
+        <service
+            android:name=".NotesTileService"
+            android:icon="@drawable/ic_tile_notes"
+            android:label="笔记"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.tile"
+                android:resource="@xml/quick_settings_notes_tile" />
         </service>
     </application>
 </manifest>

@@ -140,9 +140,18 @@ class NotesTagsActivity : NotesPageActivity() {
         }
         for (entry in notes) {
             listInner.addView(textRow(entry.name, "") {
-                startActivity(Intent(this@NotesTagsActivity, MainActivity::class.java).apply {
-                    putExtra(EXTRA_OPEN, entry.name)
-                })
+                if (intent.getBooleanExtra(EXTRA_FROM_STANDALONE, false)) {
+                    startActivity(
+                        Intent(this@NotesTagsActivity, NotesStandaloneActivity::class.java).apply {
+                            putExtra(EXTRA_OPEN, entry.name)
+                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        }
+                    )
+                } else {
+                    startActivity(Intent(this@NotesTagsActivity, MainActivity::class.java).apply {
+                        putExtra(EXTRA_OPEN, entry.name)
+                    })
+                }
             })
             listInner.addView(divider())
         }

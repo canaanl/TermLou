@@ -32,21 +32,24 @@ abstract class NotesPageActivity : AppCompatActivity() {
 
     protected fun density(): Float = resources.displayMetrics.density
 
-    /** 标题栏：surfaceVariant 底 + 左侧返回 + 标题。通知统一走主界面状态栏。 */
-    protected fun buildTitleBar(title: String): LinearLayout {
+    /** 标题栏：surfaceVariant 底 + 左侧返回 + 标题。通知统一走主界面状态栏。
+     * 独立笔记页传 showBack=false：只留标题，返回键直接退出。 */
+    protected fun buildTitleBar(title: String, showBack: Boolean = true): LinearLayout {
         val d = density()
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(theme.surfaceVariant)
             setPadding((16 * d).toInt(), (12 * d).toInt(), (16 * d).toInt(), (12 * d).toInt())
-            addView(TextView(this@NotesPageActivity).apply {
-                text = getString(R.string.notes_back)
-                setTextColor(theme.onSurface)
-                textSize = UiTokens.TEXT_TITLE
-                setPadding(0, 0, (12 * d).toInt(), 0)
-                setOnClickListener { finish() }
-            })
+            if (showBack) {
+                addView(TextView(this@NotesPageActivity).apply {
+                    text = getString(R.string.notes_back)
+                    setTextColor(theme.onSurface)
+                    textSize = UiTokens.TEXT_TITLE
+                    setPadding(0, 0, (12 * d).toInt(), 0)
+                    setOnClickListener { finish() }
+                })
+            }
             addView(TextView(this@NotesPageActivity).apply {
                 text = title
                 setTextColor(theme.onSurface)
@@ -183,6 +186,8 @@ abstract class NotesPageActivity : AppCompatActivity() {
         const val WORKSPACE_DIR = "workspace"
         const val NOTES_DIR = "Notes"
         const val EXTRA_OPEN = "open_note"
+        /** 独立笔记页跳子页时透传：子页点笔记回到独立页，不唤醒主界面/Linux。 */
+        const val EXTRA_FROM_STANDALONE = "from_standalone"
     }
 }
 

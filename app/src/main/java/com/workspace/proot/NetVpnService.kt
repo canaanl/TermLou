@@ -169,8 +169,14 @@ class NetVpnService : VpnService() {
             setMtu(1500)
             addAddress("10.7.0.1", 32)
             addRoute("0.0.0.0", 0)
-            addDnsServer("8.8.8.8")
-            addDnsServer("8.8.4.4")
+            // 抓包 DNS：优先系统 DNS，取不到才回退国内公共 DNS。
+            val sysDns = NetworkUtils.getDnsServers(this@NetVpnService)
+            if (sysDns.isEmpty()) {
+                addDnsServer("114.114.114.114")
+                addDnsServer("223.5.5.5")
+            } else {
+                sysDns.forEach { addDnsServer(it) }
+            }
         }
         val apps = sm.loadCaptureApps()
         if (apps.isEmpty()) {
