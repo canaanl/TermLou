@@ -2,7 +2,7 @@
 
 > An Android terminal built for **people who don't code** — Debian GNU/Linux, file management, notes & todos, network inspection and script-driven floating UI, all inside one tap-and-go App.
 
-![Version](https://img.shields.io/badge/version-5.0.55-blue)
+![Version](https://img.shields.io/badge/version-5.0.56-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -284,6 +284,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history. Recent versions:
 
 | Version | versionCode | Summary |
 |---------|-------------|---------|
+| **5.0.56** | 556 | Notes storage moved to SQLite + FTS5 (bundled driver, trigram search; .txt files kept, legacy index.json imported then renamed to .bak; sub-3-char queries fall back to substring scan) |
 | **5.0.55** | 555 | VPN capture now uses system DNS; standalone notes page + notes tile (no Linux boot, leaves nothing behind) |
 | **5.0.54** | 554 | Notes save on exit instead of full rewrite per keystroke |
 | **5.0.53** | 553 | Notes search/input fields made single-line; empty-column hint unified to "Empty" |

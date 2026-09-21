@@ -2,7 +2,7 @@
 
 > 一个为**不写代码的人**打造的 Android 终端 —— 把 Debian GNU/Linux、文件管理、笔记待办、网络抓包和脚本浮窗，全部塞进一个"点一下就能用"的 App。
 
-![Version](https://img.shields.io/badge/version-5.0.55-blue)
+![Version](https://img.shields.io/badge/version-5.0.56-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -284,6 +284,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.0.56** | 556 | 笔记底层换SQLite＋FTS5（bundled驱动，trigram中英可搜；.txt原位保留，旧index.json事务导入后改名.bak；3字以下退化子串扫描） |
 | **5.0.55** | 555 | VPN抓包DNS改系统DNS；新增独立笔记页＋笔记磁贴（不唤醒Linux、用完即走） |
 | **5.0.54** | 554 | 笔记正文改退出自动保存，去掉逐字全量落盘 |
 | **5.0.53** | 553 | 笔记相关搜索框/输入框改单行定高；看板空列提示统一"暂无" |
