@@ -56,6 +56,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var networkArea: LinearLayout
     private lateinit var settingsWrapper: LinearLayout
     private lateinit var notesController: NotesController
+    private lateinit var tabIntroController: TabIntroController
 
     internal var currentTab = 0
     private var animating = false
@@ -112,14 +113,14 @@ class MainActivity : AppCompatActivity() {
         lanController = LanController(this, scope, statusController)
         overlayCommands = OverlayCommandsController(this, scope, statusController)
         settingsUiController = SettingsUiController(
-            this, scope, statusController, terminalController, lanController, overlayCommands,
-            lifecycleScope
+            this, scope, statusController, terminalController, lanController, overlayCommands
         ) {
             permLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         notesController = NotesController(this, scope, statusController)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                if (::tabIntroController.isInitialized && tabIntroController.close()) return
                 if (!notesController.handleBack()) {
                     isEnabled = false
                     onBackPressedDispatcher.onBackPressed()
@@ -247,6 +248,10 @@ class MainActivity : AppCompatActivity() {
         networkArea.visibility = View.GONE
         settingsWrapper.visibility = View.GONE
 
+        // Tab 介绍页：只挂主界面顶栏五个图标，不切换 Tab；子 Activity 无此 UI，天然不可触发。
+        tabIntroController = TabIntroController(this, rootLayout, scope.theme, scope.wsFiles)
+        tabIntroController.attach(listOf(terminalTab, notesTab, filesTab, networkTab, settingsTab))
+
         overlayCommands.handleNewIntent(intent, null, {}, {})
         terminalController.boot(rootLayout, intent.getStringExtra("tile_command"))
 
@@ -316,6 +321,7 @@ class MainActivity : AppCompatActivity() {
         networkController.onDestroy()
         terminalController.onDestroy()
         statusController.onDestroy()
+        if (::tabIntroController.isInitialized) tabIntroController.onDestroy()
         OverlayBridge.release()
         ClipboardBridge.release()
     }

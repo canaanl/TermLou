@@ -1,6 +1,5 @@
 package com.workspace.proot
 
-import android.app.AlertDialog
 import android.app.usage.StorageStatsManager
 import android.content.Context
 import android.graphics.Canvas
@@ -18,17 +17,22 @@ import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.animation.ValueAnimator
-import androidx.lifecycle.LifecycleCoroutineScope
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-class StorageDialog(
+/**
+ * 系统信息卡片：发行版/版本/代号/架构 + 文件/系统占用饼图 + 图例。
+ * 原 StorageDialog 的内容区解耦为可嵌入视图（终端介绍页复用），Dialog 外壳不再使用。
+ * 每次打开介绍页创建新实例，饼图 sweep 动画自然重播；关闭时取消加载任务。
+ */
+class SystemInfoCardView(
     private val ctx: Context,
     private val theme: ThemeColors,
     private val workspaceDir: File,
-    private val lifecycleScope: LifecycleCoroutineScope
 ) {
     private val excludeDirs = setOf("linux", "tmp")
     private val colorFile = theme.primary
@@ -43,7 +47,11 @@ class StorageDialog(
     private lateinit var codenameValue: TextView
     private lateinit var archValue: TextView
 
-    fun show() {
+    private var loadJob: Job? = null
+
+    val view: LinearLayout = build()
+
+    private fun build(): LinearLayout {
         val density = ctx.resources.displayMetrics.density
         val pad = (24 * density).toInt()
 
@@ -130,14 +138,7 @@ class StorageDialog(
         contentView.addView(columns, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = (8 * density).toInt() })
-
-        val dialog = AlertDialog.Builder(ctx)
-            .setView(contentView)
-            .setPositiveButton(ctx.getString(R.string.close), null)
-            .create()
-        dialog.show()
-        DialogStyler.apply(dialog, theme)
-        loadData()
+        return contentView
     }
 
     private fun addInfoRow(parent: LinearLayout, key: String, keyColor: Int, density: Float): TextView {
@@ -157,8 +158,10 @@ class StorageDialog(
         return valueView
     }
 
-    private fun loadData() {
-        lifecycleScope.launch(Dispatchers.IO) {
+    /** 异步加载占用与发行版数据；数据到达后 setData + startSweep（饼图进入动画）。 */
+    fun load(scope: CoroutineScope): Job {
+        loadJob?.cancel()
+        loadJob = scope.launch(Dispatchers.IO) {
             try {
                 val ssm = ctx.getSystemService(Context.STORAGE_STATS_SERVICE) as StorageStatsManager
                 val stats = ssm.queryStatsForPackage(
@@ -194,6 +197,12 @@ class StorageDialog(
                 }
             }
         }
+        return loadJob!!
+    }
+
+    fun cancel() {
+        loadJob?.cancel()
+        loadJob = null
     }
 
     private fun dirSizeExcluding(dir: File, excludeNames: Set<String>): Long {

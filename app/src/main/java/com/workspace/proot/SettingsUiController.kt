@@ -16,12 +16,12 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.LifecycleCoroutineScope
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.slider.Slider
 
 /**
- * 设置域：整页设置内容构建（字号/命令/磁贴/快捷/工坊/上游/LAN/保活/存储/语言）。
+ * 设置域：整页设置内容构建（字号/命令/磁贴/快捷/工坊/上游/LAN/保活/语言）。
+ * 系统信息已搬到终端 Tab 介绍页顶部，这里不再设入口。
  * 原 MainActivity buildSettingsContent（~545 行）收归此处。
  */
 class SettingsUiController(
@@ -31,7 +31,6 @@ class SettingsUiController(
     private val terminal: TerminalController,
     private val lan: LanController,
     private val overlay: OverlayCommandsController,
-    private val lifecycle: LifecycleCoroutineScope,
     private val requestNotifPerm: () -> Unit
 ) {
     private var suppressSwitch = false
@@ -77,8 +76,6 @@ class SettingsUiController(
         buildUpstreamSection(settingsInner, density)
         lan.buildSettingsBlock(settingsInner)
         buildKeepAliveRow(settingsInner)
-        settingsInner.addView(divider())
-        buildStorageRow(settingsInner)
 
         settingsWrapper.addView(settingsScroll, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
@@ -463,28 +460,6 @@ private fun divider(): View = View(activity).apply {
         }
     }
 
-    private fun buildStorageRow(parent: LinearLayout) {
-        parent.addView(LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(TextView(activity).apply {
-                text = activity.getString(R.string.storage_title)
-                setTextColor(scope.cOnSurface)
-                typeface = Typeface.DEFAULT_BOLD
-                textSize = UiTokens.TEXT_TITLE
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            addView(Button(activity).apply {
-                text = activity.getString(R.string.view)
-                setTextColor(scope.cPrimary)
-                textSize = UiTokens.TEXT_BODY
-                setPadding(16, 6, 16, 6)
-                ButtonStyle.outlined(this, scope.cPrimary)
-                setOnClickListener { showStorageDialog() }
-            })
-        })
-    }
-
 private fun buildLanguageRow(parent: LinearLayout) {
         val langZh = AppLang.isChinese(activity)
         parent.addView(LinearLayout(activity).apply {
@@ -613,9 +588,5 @@ private fun buildLanguageRow(parent: LinearLayout) {
         if (pm.isIgnoringBatteryOptimizations(activity.packageName)) {
             status.showTempStatus(activity.getString(R.string.battery_exempted))
         }
-    }
-
-    private fun showStorageDialog() {
-        StorageDialog(activity, scope.theme, scope.wsFiles, lifecycle).show()
     }
 }

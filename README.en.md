@@ -150,6 +150,7 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 - **Initial command**: run automatically at startup; when launched from the tile, the tile command runs instead
 - **Escape sequences**: commands support `\n` `\r` `\t` `\e` `\cX` (Ctrl+X)
 - **OpenCode AI**: one-tap CLI install; type `opencode` in the terminal for an AI assistant
+- **Tab intro pages**: tap a top tab icon to open its intro (solid page, never switches tabs, Back closes it); the terminal intro carries System info on top (distro + storage pie chart, entry animation preserved)
 
 ### 2. Command Wheel & Groups
 
@@ -218,7 +219,7 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 | Dialog/Splash workshop | Graphical script-dialog design / custom splash |
 | Network upstream proxy | SOCKS5 upstream (empty = built-in direct + capture/blocking) |
 | Background keep-alive | Foreground notification service (low priority, silent) |
-| System info / Storage | Distro info and `/workspace/` pie chart |
+| System info | Moved to the terminal intro (tap the terminal tab icon) |
 
 ---
 
@@ -236,13 +237,14 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 | Action | Gesture |
 |--------|---------|
 | Tab switching | Terminal ↔ Notes ↔ Files ↔ Network ↔ Settings, swipe left/right |
-| Open the command wheel | Short left swipe on the shortcut row (>50dp) |
-| Open library management | Long left swipe on the shortcut row (>100dp) |
+| Tab intro pages | Tap a top tab icon (Back closes it, tabs never switch) |
+| Open the command wheel | **Swipe vertically** on the shortcut row |
+| Open library management | **Long-press** the wheel gray area |
 | Leave the notes editor | Back key returns to the list |
 
 ### Command Wheel
 
-1. Short left swipe on the shortcut row to open the wheel
+1. Swipe vertically on the shortcut row to open the wheel
 2. Scroll horizontally; the centered card is highlighted
 3. Tap the centered card to run; a centered group card expands its member wheel
 
