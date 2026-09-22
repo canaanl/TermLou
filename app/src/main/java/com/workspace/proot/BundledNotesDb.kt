@@ -14,6 +14,10 @@ class BundledNotesDb(path: String) : NotesDbBackend {
         try {
             conn.execSQL("PRAGMA journal_mode=DELETE")
             conn.execSQL("PRAGMA busy_timeout=5000")
+            // 搜索/批量入库调优：页缓存 16MB（默认仅 2MB，万条扫描/建索引全靠它命中内存）、
+            // 临时表走内存（bigram OR 等 MATCH 会建临时结构，默认落盘）
+            conn.execSQL("PRAGMA cache_size=-16384")
+            conn.execSQL("PRAGMA temp_store=MEMORY")
         } catch (e: Exception) {
             runCatching { conn.close() }
             throw e

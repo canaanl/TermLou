@@ -12,15 +12,23 @@ internal class JdbcNotesDb(path: String) : NotesDbBackend {
         DriverManager.getConnection("jdbc:sqlite:$path")
     }
 
+    /** 预编译语句缓存：同 SQL 只 prepare 一次、复用重绑定——万条批量入库与高频搜索不再重复解析 SQL。 */
+    private val stmts = java.util.concurrent.ConcurrentHashMap<String, java.sql.PreparedStatement>()
+
     init {
         try {
             exec("PRAGMA journal_mode=DELETE")
             exec("PRAGMA busy_timeout=5000")
+            exec("PRAGMA cache_size=-16384")
+            exec("PRAGMA temp_store=MEMORY")
         } catch (e: Exception) {
             runCatching { conn.close() }
             throw e
         }
     }
+
+    private fun prep(sql: String): java.sql.PreparedStatement =
+        stmts.computeIfAbsent(sql) { conn.prepareStatement(it) }
 
     @Synchronized
     override fun exec(sql: String) {
@@ -29,25 +37,25 @@ internal class JdbcNotesDb(path: String) : NotesDbBackend {
 
     @Synchronized
     override fun execArgs(sql: String, args: List<Any?>) {
-        conn.prepareStatement(sql).use { ps ->
-            args.forEachIndexed { i, v -> setArg(ps, i + 1, v) }
-            ps.executeUpdate()
-        }
+        val ps = prep(sql)
+        ps.clearParameters()
+        args.forEachIndexed { i, v -> setArg(ps, i + 1, v) }
+        ps.executeUpdate()
     }
 
     @Synchronized
     override fun query(sql: String, args: List<Any?>, types: List<Col>): List<List<Any?>> {
-        conn.prepareStatement(sql).use { ps ->
-            args.forEachIndexed { i, v -> setArg(ps, i + 1, v) }
-            ps.executeQuery().use { rs ->
-                val out = ArrayList<List<Any?>>()
-                while (rs.next()) {
-                    out.add(types.mapIndexed { c, t ->
-                        if (t == Col.INT) rs.getLong(c + 1) else rs.getString(c + 1)
-                    })
-                }
-                return out
+        val ps = prep(sql)
+        ps.clearParameters()
+        args.forEachIndexed { i, v -> setArg(ps, i + 1, v) }
+        ps.executeQuery().use { rs ->
+            val out = ArrayList<List<Any?>>()
+            while (rs.next()) {
+                out.add(types.mapIndexed { c, t ->
+                    if (t == Col.INT) rs.getLong(c + 1) else rs.getString(c + 1)
+                })
             }
+            return out
         }
     }
 
@@ -68,6 +76,8 @@ internal class JdbcNotesDb(path: String) : NotesDbBackend {
 
     @Synchronized
     override fun close() {
+        stmts.values.forEach { runCatching { it.close() } }
+        stmts.clear()
         runCatching { conn.close() }
     }
 

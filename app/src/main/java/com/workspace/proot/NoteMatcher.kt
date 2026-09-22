@@ -23,6 +23,9 @@ object PinyinDict {
     @Volatile
     private var started = false
 
+    @Volatile
+    private var loader: (() -> InputStream?)? = null
+
     val readings: Map<Char, Array<String>> get() = table
 
     /** 替换整表（测试注入 / 资源加载完成）。 */
@@ -40,8 +43,9 @@ object PinyinDict {
         started = false
     }
 
-    /** 后台线程加载一次；失败复位 started，下次进页面重试。 */
+    /** 后台线程加载一次；失败复位 started，下次进页面重试。加载器顺带留档，供写路径同步物化用。 */
     fun loadAsync(open: () -> InputStream?) {
+        loader = open
         if (started) return
         synchronized(this) {
             if (started) return
@@ -55,6 +59,11 @@ object PinyinDict {
             name = "pinyin-dict"
             start()
         }
+    }
+
+    /** 同步确保就绪（写路径物化拼音前调用）：已注册加载器才解析，未注册/已就绪则立即返回。 */
+    fun ensureLoaded() {
+        loader?.let { ensureLoaded(it) }
     }
 
     /** 解析 pinyin.txt 并安装；流打不开或解析为空则静默降级（拼音层不可用）。 */
@@ -77,6 +86,47 @@ object PinyinDict {
             }
             if (map.isNotEmpty()) install(map)
         }
+    }
+
+    // ---------- 写路径物化（存库时把拼音/首字母算好，查询期零计算零读盘） ----------
+
+    /** 主读音拼音串：多音字取第一个读音，非汉字原样（小写）。未就绪返回空串。 */
+    fun primaryPy(text: String): String = buildPy(text, secondary = false)
+
+    /** 副读音拼音串：多音字取第二个读音（无则同主读音）。全文无多音字时留空——与主串同义，省空间。 */
+    fun secondaryPy(text: String): String {
+        if (!loaded) return ""
+        val map = table
+        if (text.none { (map[it]?.size ?: 0) > 1 }) return ""
+        return buildPy(text, secondary = true)
+    }
+
+    /** 拼音首字母串（只取汉字，跳过其它字符）——与首字母层打分同源，保证召回一致。 */
+    fun initials(text: String): String {
+        if (!loaded) return ""
+        val map = table
+        val sb = StringBuilder(text.length)
+        for (ch in text) {
+            if (ch.code < 0x2E80) continue
+            val r = map[ch] ?: continue
+            if (r.isNotEmpty()) sb.append(r[0][0])
+        }
+        return sb.toString()
+    }
+
+    private fun buildPy(text: String, secondary: Boolean): String {
+        if (!loaded) return ""
+        val map = table
+        val sb = StringBuilder(text.length + 8)
+        for (ch in text) {
+            val rs = map[ch]
+            if (rs != null && rs.isNotEmpty()) {
+                sb.append(if (secondary && rs.size > 1) rs[1] else rs[0])
+            } else {
+                sb.append(ch)
+            }
+        }
+        return sb.toString().lowercase(Locale.ROOT)
     }
 }
 
@@ -105,7 +155,12 @@ object NoteMatcher {
     /** 搜索击键防抖：笔记列表 / 独立笔记页共用节奏。 */
     const val SEARCH_DEBOUNCE_MS = 200L
 
-    private const val MAX_FUZZY_TERM = 16
+    /** 容错层启用的词长窗口（召回归约也用同一窗口）。 */
+    const val MIN_FUZZY_TERM = 2
+    const val MAX_FUZZY_TERM = 16
+
+    /** 汉字判定（与容错/拼音层同口径）。 */
+    fun isHan(c: Char): Boolean = c.code >= 0x2E80
 
     /** 分词：去首尾空白、小写、按空白切、去重保序。空串/全空白 → 空列表（调用方视为不过滤）。 */
     fun terms(raw: String): List<String> =
@@ -171,7 +226,7 @@ object NoteMatcher {
         if (field.isEmpty()) return MISS
         val text = field.lowercase(Locale.ROOT).take(MAX_BODY_CHARS)
         if (text.contains(term)) return base
-        if (term.any { isHan(it) } && term.length in 2..MAX_FUZZY_TERM && fuzzyContains(text, term)) {
+        if (term.any { isHan(it) } && term.length in MIN_FUZZY_TERM..MAX_FUZZY_TERM && fuzzyContains(text, term)) {
             return LAYER_FUZZY
         }
         if (PinyinDict.loaded) {
@@ -184,8 +239,6 @@ object NoteMatcher {
     }
 
     // ---------- 容错层 ----------
-
-    private fun isHan(c: Char): Boolean = c.code >= 0x2E80
 
     private fun fuzzyContains(candidate: String, term: String): Boolean {
         if (term.isEmpty() || candidate.isEmpty()) return false
@@ -290,38 +343,37 @@ object NoteMatcher {
         return false
     }
 
-    /** 拉丁查询在正文拼音流上做「按音节贪心消费」：支持跨字边界（西安/xian 等歧义都能中）。 */
+    /** 拉丁查询在正文拼音流上做「按音节贪心消费」：支持跨字边界（西安/xian 等歧义都能中）。
+     *  状态 = 已消费前缀长度 0..len，用两张布尔数组轮转替代逐字新建 HashSet——
+     *  状态机与原实现逐位等价，万条候选精排时省掉每字一次的集合分配。 */
     private fun latinPinyinContains(text: String, term: String): Boolean {
-        var cur = HashSet<Int>()
-        cur.add(0) // qi：term 已消费长度；0 = 从下一个字起头
+        val n = term.length
+        var cur = BooleanArray(n + 1)
+        var next = BooleanArray(n + 1)
+        cur[0] = true // qi：term 已消费长度；0 = 从下一个字起头
         for (ch in text) {
-            val next = HashSet<Int>()
+            next.fill(false)
             val rs = PinyinDict.readings[ch]
             if (rs != null) {
-                for (qi in cur) {
+                for (qi in 0..n) {
+                    if (!cur[qi]) continue
                     for (r in rs) {
                         if (term.startsWith(r, qi)) {
                             val nq = qi + r.length
-                            if (nq == term.length) return true
-                            next.add(nq)
+                            if (nq == n) return true
+                            if (nq < n) next[nq] = true
                         }
                     }
                 }
             }
-            next.add(0) // 任意位置可重新起头
+            next[0] = true // 任意位置可重新起头
+            val tmp = cur
             cur = next
+            next = tmp
         }
         return false
     }
 
-    /** 拼音首字母串（只取汉字，跳过其它字符）。 */
-    private fun initialsOf(text: String): String {
-        val sb = StringBuilder(text.length)
-        for (ch in text) {
-            if (!isHan(ch)) continue
-            val r = PinyinDict.readings[ch] ?: continue
-            if (r.isNotEmpty()) sb.append(r[0][0])
-        }
-        return sb.toString()
-    }
+    /** 拼音首字母串（只取汉字，跳过其它字符）——与入库物化同源，打分与召回永远一致。 */
+    private fun initialsOf(text: String): String = PinyinDict.initials(text)
 }
