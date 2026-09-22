@@ -41,7 +41,7 @@ object AnsiParser {
                 val terminator = input[j]
                 if (terminator == 'm') {
                     val params = input.substring(i + 2, j)
-                    for (p in params.split(';')) applyParam(p, st)
+                    applySgr(params, st)
                 }
                 i = j + 1
             } else {
@@ -118,4 +118,66 @@ object AnsiParser {
             else -> Unit
         }
     }
+
+    /**
+     * SGR 参数序列解析。38/48 是带子参数的扩展色，必须整组消费：
+     * 否则 `38;2;r;g;b` 里的 0..37 会被当成独立 SGR —— 其中的 0 直接触发 reset、
+     * 30..37 改前景，真彩色序列因此把颜色改得乱七八糟。
+     */
+    private fun applySgr(params: String, st: State) {
+        val toks = params.split(';')
+        var i = 0
+        while (i < toks.size) {
+            val code = toks[i].toIntOrNull()
+            if (code == null) { i++; continue } // 空/非法参数：维持旧行为直接忽略
+            if (code == 38 || code == 48) {
+                when (toks.getOrNull(i + 1)?.toIntOrNull()) {
+                    5 -> { // 38;5;n 索引色
+                        toks.getOrNull(i + 2)?.toIntOrNull()?.let { setColor(st, code, color256(it)) }
+                        i += 3
+                    }
+                    2 -> { // 38;2;r;g;b 真彩色
+                        val r = toks.getOrNull(i + 2)?.toIntOrNull()
+                        val g = toks.getOrNull(i + 3)?.toIntOrNull()
+                        val b = toks.getOrNull(i + 4)?.toIntOrNull()
+                        if (r != null && g != null && b != null) {
+                            setColor(
+                                st, code,
+                                0xFF000000.toInt() or
+                                    (r.coerceIn(0, 255) shl 16) or
+                                    (g.coerceIn(0, 255) shl 8) or
+                                    b.coerceIn(0, 255)
+                            )
+                        }
+                        i += 5
+                    }
+                    else -> i += 2 // 形态未知，消费掉 38/48 本身，避免污染后续参数
+                }
+                continue
+            }
+            applyParam(toks[i], st)
+            i++
+        }
+    }
+
+    private fun setColor(st: State, code: Int, color: Int) {
+        if (code == 38) st.fg = color else st.bg = color
+    }
+
+    /** xterm 256 色板 → ARGB（0-15 基础 16 色，16-231 6×6×6 立方，232-255 灰阶）。 */
+    private fun color256(n: Int): Int {
+        val v = n.coerceIn(0, 255)
+        if (v < 16) return basic16[v]
+        if (v < 232) {
+            val c = v - 16
+            val r = CUBE[c / 36]
+            val g = CUBE[(c / 6) % 6]
+            val b = CUBE[c % 6]
+            return 0xFF000000.toInt() or (r shl 16) or (g shl 8) or b
+        }
+        val gray = 8 + (v - 232) * 10
+        return 0xFF000000.toInt() or (gray shl 16) or (gray shl 8) or gray
+    }
+
+    private val CUBE = intArrayOf(0, 95, 135, 175, 215, 255)
 }

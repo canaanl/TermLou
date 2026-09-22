@@ -330,38 +330,48 @@ class WsServer(
             val bIdx = contentType.indexOf("boundary=")
             if (bIdx < 0) return false
             val boundaryStr = "--" + contentType.substring(bIdx + 9).substringBefore(';').trim().trim('"')
-            val bytes = spool.readBytes()
             val boundary = boundaryStr.toByteArray(Charsets.ISO_8859_1)
-            val terminator = (boundaryStr + "--").toByteArray(Charsets.ISO_8859_1)
-            val crlf = byteArrayOf(13, 10, 13, 10)
-            var pos = bytes.indexOfSequence(boundary, 0)
-            if (pos < 0 || bytes.indexOfSequence(terminator, pos) == pos) return false
+            // 分块扫描（不整读进堆），头/正文都按区间取用
+            val parts = MultipartScanner.scan(spool, boundary)
+            if (parts.isEmpty()) return false
+            val root = workspaceRoot().canonicalFile
+            val dirRel = runCatching { dir.canonicalFile.relativeTo(root).path }.getOrNull() ?: return false
             var saved = false
-            while (pos >= 0) {
-                val headEnd = bytes.indexOfSequence(crlf, pos + boundary.size)
-                if (headEnd < 0) break
-                val partHead = String(bytes, pos, headEnd - pos, Charsets.ISO_8859_1)
-                val nameMatch = Regex("filename=\"([^\"]*)\"").find(partHead)
-                val next = bytes.indexOfSequence(boundary, headEnd + 4)
-                if (nameMatch != null && next > 0) {
-                    val fname = File(nameMatch.groupValues[1]).name
-                    if (fname.isNotEmpty() && fname != "." && fname != "..") {
-                        val start = headEnd + 4
-                        val end = next - 2
-                        if (end < start) return false
-                        val target = resolveWorkspaceFile(
-                            dir.relativeTo(workspaceRoot()).path + "/" + fname
-                        ) ?: return false
-                        target.parentFile?.mkdirs()
-                        copyRegion(spool, start, end, target)
-                        saved = true
-                    }
-                }
-                if (bytes.indexOfSequence(terminator, next.coerceAtLeast(0)) == next) break
-                pos = next
+            for (part in parts) {
+                if (part.headerEnd <= part.headerStart) continue
+                val partHead = readRegionString(spool, part.headerStart, part.headerEnd - part.headerStart)
+                    ?: continue
+                val nameMatch = Regex("filename=\"([^\"]*)\"").find(partHead) ?: continue
+                val fname = File(nameMatch.groupValues[1]).name
+                if (fname.isEmpty() || fname == "." || fname == "..") continue
+                val target = resolveWorkspaceFile("$dirRel/$fname") ?: continue
+                // 双保险：目标 canonical 化后必须仍在工作区内（防 ../ 与二次符号链接逃逸）
+                val canonical = runCatching { target.canonicalFile }.getOrNull() ?: continue
+                if (!canonical.path.startsWith(root.path + File.separator)) continue
+                target.parentFile?.mkdirs()
+                copyRegion(spool, part.bodyStart, part.bodyEnd, target)
+                saved = true
             }
             saved
         } catch (_: Exception) { false }
+    }
+
+    /** 读取 spool 上一小段（分段头，扫描器已封顶 32KB）并按 multipart 语义解码。 */
+    private fun readRegionString(spool: File, start: Int, len: Int): String? {
+        if (len <= 0 || len > 64 * 1024) return null
+        return try {
+            java.io.RandomAccessFile(spool, "r").use { raf ->
+                raf.seek(start.toLong())
+                val b = ByteArray(len)
+                var off = 0
+                while (off < len) {
+                    val n = raf.read(b, off, len - off)
+                    if (n <= 0) break
+                    off += n
+                }
+                String(b, 0, off, Charsets.ISO_8859_1)
+            }
+        } catch (_: Exception) { null }
     }
 
     private fun copyRegion(spool: File, start: Int, end: Int, target: File) {
@@ -472,17 +482,6 @@ class WsServer(
                 runCatching { tmp.delete() }
                 return null
             }
-        }
-
-        private fun ByteArray.indexOfSequence(seq: ByteArray, from: Int): Int {
-            if (seq.isEmpty() || size < seq.size) return -1
-            outer@ for (i in from.coerceAtLeast(0)..size - seq.size) {
-                for (j in seq.indices) {
-                    if (this[i + j] != seq[j]) continue@outer
-                }
-                return i
-            }
-            return -1
         }
 
         private fun readBody(input: InputStream, head: ByteArray, bodyStart: Int, len: Int): ByteArray {
@@ -624,7 +623,7 @@ class WsServer(
             if (closed) return
             closed = true
             runCatching { pfd?.close() }
-            runCatching { if (pid > 0) android.system.Os.kill(pid, 9) }
+            killSessionTree(pid)
             runCatching { sessionTmp?.deleteRecursively() }
             runCatching { socket.close() }
         }
@@ -728,4 +727,52 @@ class WsServer(
             os.flush()
         }
     }
+}
+
+/**
+ * 杀掉整个会话进程树。termux_pty 子进程已 setsid（pgid == pid），
+ * 但 proot 再起的 shell/job 可能自建进程组 —— 先趁父进程还在时从 /proc 收集后代，
+ * 再整组补刀、逐个补刀，避免只杀直接 pid 留下一堆孤儿 shell 占着 CPU 和挂载。
+ */
+private fun killSessionTree(pid: Int) {
+    if (pid <= 0) return
+    val descendants = collectDescendants(pid)
+    runCatching { android.system.Os.kill(-pid, 9) }   // 进程组
+    runCatching { android.system.Os.kill(pid, 9) }    // 直接 pid
+    for (d in descendants) runCatching { android.system.Os.kill(d, 9) } // 后代
+}
+
+/** 从 /proc 按 ppid 关系收集 root 的全部后代（BFS，深度封顶）。 */
+private fun collectDescendants(root: Int): List<Int> {
+    val result = ArrayList<Int>()
+    try {
+        val children = HashMap<Int, MutableList<Int>>()
+        for (d in File("/proc").listFiles() ?: emptyArray()) {
+            val name = d.name
+            if (name.isEmpty() || !name.all { it in '0'..'9' }) continue
+            val p = name.toIntOrNull() ?: continue
+            // stat 形如 "pid (comm) state ppid ..."，comm 可含空格/括号，取最后一个 ')' 之后
+            val stat = try { File(d, "stat").readText() } catch (_: Exception) { continue }
+            val rparen = stat.lastIndexOf(')')
+            if (rparen < 0 || rparen + 1 >= stat.length) continue
+            val rest = stat.substring(rparen + 1).trim().split(Regex("\\s+"))
+            if (rest.size < 2) continue
+            val ppid = rest[1].toIntOrNull() ?: continue
+            children.getOrPut(ppid) { ArrayList() }.add(p)
+        }
+        val queue = ArrayDeque<Int>()
+        queue.add(root)
+        var guard = 0
+        while (queue.isNotEmpty() && guard++ < 32) {
+            val cur = queue.removeFirst()
+            for (c in children[cur].orEmpty()) {
+                if (c != root && c !in result) {
+                    result.add(c)
+                    queue.add(c)
+                }
+            }
+        }
+    } catch (_: Exception) {
+    }
+    return result
 }

@@ -27,8 +27,33 @@ class TermKeepAliveService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification())
         KeepAliveWakeLock.init(this)
         KeepAliveWakeLock.setActive(true)
+        // 预热启动（设置里没开保活）：300ms 后自杀并写预热标记。
+        // 生命周期绑定服务本身 —— Activity 随时销毁都不会再把服务/wakelock 留给下一次启动。
+        if (!keepAliveEnabled()) {
+            handler.removeCallbacks(stopWarmup)
+            handler.postDelayed(stopWarmup, WARMUP_STOP_MS)
+        } else {
+            handler.removeCallbacks(stopWarmup)
+        }
         return START_STICKY
     }
+
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private val stopWarmup = Runnable {
+        // 到点仍未被设置项真正开启才停；期间开了保活就永久驻留
+        if (!keepAliveEnabled()) {
+            runCatching {
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .edit().putBoolean(KEY_WARMED, true).apply()
+            }
+            stopSelf()
+        }
+    }
+
+    private fun keepAliveEnabled(): Boolean = try {
+        SettingsManager(getSharedPreferences(PREFS_NAME, MODE_PRIVATE)).let { it.load(); it.keepAlive }
+    } catch (_: Exception) { false }
 
     private fun buildNotification(): Notification {
         val openIntent = Intent(this, MainActivity::class.java).apply {
@@ -48,6 +73,7 @@ class TermKeepAliveService : Service() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
         KeepAliveWakeLock.setActive(false)
         stopForeground(STOP_FOREGROUND_REMOVE)
         synchronized(lock) { if (instance === this) instance = null }
@@ -59,6 +85,9 @@ class TermKeepAliveService : Service() {
     companion object {
         private const val CHANNEL_ID = "term-lou-keepalive"
         private const val NOTIFICATION_ID = 1
+        private const val PREFS_NAME = "term-lou-settings"
+        private const val KEY_WARMED = "fgServiceWarmed"
+        private const val WARMUP_STOP_MS = 300L
         private val lock = Any()
         private var instance: TermKeepAliveService? = null
 

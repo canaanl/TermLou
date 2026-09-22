@@ -15,6 +15,45 @@ class AnsiParserTest {
     }
 
     @Test
+    fun trueColorForegroundConsumesSubParams() {
+        val r = AnsiParser.parse("\u001b[38;2;10;20;30mX")
+        assertEquals(0xFF0A141E.toInt(), r.spans.first().fg)
+    }
+
+    @Test
+    fun indexedColorFrom256Palette() {
+        // xterm 196 = 纯红
+        val r = AnsiParser.parse("\u001b[38;5;196mX")
+        assertEquals(0xFFFF0000.toInt(), r.spans.first().fg)
+        // 232 = 灰阶 (8,8,8)
+        val g = AnsiParser.parse("\u001b[38;5;232mY")
+        assertEquals(0xFF080808.toInt(), g.spans.first().fg)
+    }
+
+    @Test
+    fun trueColorSubParamsDoNotTriggerReset() {
+        // 旧实现把 48;2;0;0;0 的 0 当成 reset，粗体/下划线被莫名其妙清掉
+        val r = AnsiParser.parse("\u001b[1;48;2;0;0;0mX")
+        val s = r.spans.first()
+        assertTrue(s.bold)
+        assertEquals(0xFF000000.toInt(), s.bg)
+    }
+
+    @Test
+    fun trueColorSubParamsDoNotLeakIntoBasicRange() {
+        // 旧实现把 38;2;31;0;0 的 31 当成前景红
+        val r = AnsiParser.parse("\u001b[38;2;31;0;0mX")
+        assertEquals(0xFF1F0000.toInt(), r.spans.first().fg)
+    }
+
+    @Test
+    fun trueColorClearedByReset() {
+        val r = AnsiParser.parse("\u001b[38;2;10;20;30mX\u001b[0mY")
+        assertEquals("XY", r.clean)
+        assertTrue(r.spans.none { it.start == 1 && it.end == 2 })
+    }
+
+    @Test
     fun sgrColorParsed() {
         val r = AnsiParser.parse("\u001b[31mred\u001b[0mrest")
         assertEquals("redrest", r.clean)

@@ -278,8 +278,12 @@ class ShortcutManager(
                 val list = settingsManager.loadShortcuts(context)
                 val id = list.getOrNull(index)?.let { (it as? ShortcutItem.Command)?.id }
                     ?: settingsManager.newId()
-                if (index < 0) list.add(ShortcutItem.Command(id, label, cmd))
-                else list[index] = ShortcutItem.Command(id, label, cmd)
+                when {
+                    index < 0 -> list.add(ShortcutItem.Command(id, label, cmd))
+                    // 对话框停留期间列表可能被别处改短，越界会直接崩；此时按新增处理保住输入
+                    index in list.indices -> list[index] = ShortcutItem.Command(id, label, cmd)
+                    else -> list.add(ShortcutItem.Command(id, label, cmd))
+                }
                 settingsManager.saveShortcuts(list)
                 onSaved()
             }
@@ -299,7 +303,7 @@ class ShortcutManager(
         return s.replace("\\n", "\n").replace("\\r", "\r")
             .replace("\\t", "\t").replace("\\e", "\u001b")
             .replace(Regex("\\\\c([A-Za-z])")) { match ->
-                val key = match.groupValues[1].toLowerCase()
+                val key = match.groupValues[1].lowercase()
                 val code = key[0] - 'a' + 1
                 String(charArrayOf(code.toChar()))
             }

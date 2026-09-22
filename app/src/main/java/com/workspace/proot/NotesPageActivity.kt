@@ -26,9 +26,10 @@ abstract class NotesPageActivity : AppCompatActivity() {
         )
     }
 
-    protected val store: NotesStore by lazy {
+    private val storeLazy = lazy {
         NotesStore(File(filesDir, "$WORKSPACE_DIR/$NOTES_DIR")).also { it.reload() }
     }
+    protected val store: NotesStore by storeLazy
 
     protected fun density(): Float = resources.displayMetrics.density
 
@@ -178,6 +179,12 @@ abstract class NotesPageActivity : AppCompatActivity() {
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
             override fun afterTextChanged(s: Editable?) = onChange()
         })
+    }
+
+    /** 笔记库连接随页面销毁关闭（三个子页共用此基座）。 */
+    override fun onDestroy() {
+        super.onDestroy()
+        if (storeLazy.isInitialized()) runCatching { store.close() }
     }
 
     companion object {

@@ -48,8 +48,9 @@ class TermLouApp : Application() {
                 append(formatThrowable(throwable))
             }
             runCatching { crashLog().writeText(report) }
+            // 通知恒发：进程随后可能被 kill，通知在进程死后仍然留存，保证用户一定看到提示。
+            runCatching { notifyCrash(report) }
             val shown = runCatching { showAndWaitCrashReport(report) }.getOrDefault(false)
-            if (!shown) runCatching { notifyCrash(report) }
             if (shown) {
                 Process.killProcess(Process.myPid())
             } else {
@@ -113,29 +114,57 @@ class TermLouApp : Application() {
         }
     }
 
+    /**
+     * 崩溃浮窗「先挂载、再等用户关闭」：调用方（崩溃线程）必须阻塞到浮窗真正显示并被关闭，
+     * 才允许后续 killProcess —— 否则进程先死，浮窗永远来不及出现。
+     * 挂载失败/超时返回 false，调用方回落到通知与系统默认崩溃处理。
+     */
     private fun showAndWaitCrashReport(report: String): Boolean {
         val canOverlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
         if (!canOverlay) return false
-        val latch = CountDownLatch(1)
+        val attached = java.util.concurrent.atomic.AtomicBoolean(false)
+        val added = CountDownLatch(1)      // 视图已挂载（或挂载失败）
+        val dismissed = CountDownLatch(1)  // 用户已关闭浮窗
         val thread = HandlerThread("crash-report")
         thread.start()
         val handler = Handler(thread.looper)
-        handler.post {
-            val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            val root = createOverlay(report) { latch.countDown() }
-            val params = WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                overlayType(),
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                PixelFormat.TRANSLUCENT
-            )
-            runCatching {
+        val task = Runnable {
+            try {
+                val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                val root = createOverlay(report) { dismissed.countDown() }
+                val params = WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    overlayType(),
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                    PixelFormat.TRANSLUCENT
+                )
                 wm.addView(root, params)
-                latch.await()
-                runCatching { wm.removeView(root) }
+                attached.set(true)
+                added.countDown()
+                try {
+                    dismissed.await() // 阻塞到用户点关闭
+                } finally {
+                    runCatching { wm.removeView(root) }
+                }
+            } catch (_: Throwable) {
+                dismissed.countDown() // 挂载失败/中断：放行调用方，不要卡死
+            } finally {
+                added.countDown()
             }
         }
+        handler.post(task)
+        val timedOut = !runCatching {
+            added.await(OVERLAY_ATTACH_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }.getOrDefault(false)
+        val shown = !timedOut && attached.get()
+        if (!shown) {
+            handler.removeCallbacks(task)
+            dismissed.countDown()
+            thread.quitSafely()
+            return false
+        }
+        runCatching { dismissed.await() }
         thread.quitSafely()
         return true
     }
@@ -189,7 +218,9 @@ class TermLouApp : Application() {
 
     companion object {
         private const val CRASH_CHANNEL = "term-lou-crash"
-        private const val CRASH_NOTIFICATION_ID = 3
+        // 1=保活 2=命令 runner 3=VPN 4=LAN，崩溃通知独占 5，避免与 VPN 通知互相顶掉。
+        private const val CRASH_NOTIFICATION_ID = 5
+        private const val OVERLAY_ATTACH_TIMEOUT_MS = 3000L
 
         /** 进程启动时刻（elapsedRealtime），用于判断磁贴点击是否处于冷启动窗口。 */
         @JvmStatic

@@ -27,6 +27,10 @@ object FlowLog {
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     private var seq = 0L
     @Volatile private var lastNotifyMs = 0L
+    private val notifyExecutor = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "flow-notify").apply { isDaemon = true }
+    }
+    private var notifyTask: java.util.concurrent.ScheduledFuture<*>? = null
     private var totalUp = 0L
     private var totalDown = 0L
     private var activeCount = 0
@@ -80,7 +84,12 @@ object FlowLog {
         val e = FlowEntry(++seq, formatTime(), proto, dstIp, dstPort, bytesUp, bytesDown, state, domain, sni)
         synchronized(lock) {
             flows.add(0, e)
-            while (flows.size > MAX) flows.removeAt(flows.size - 1)
+            while (flows.size > MAX) {
+                // 被淘汰的活跃/拦截条目必须同步扣减，否则看板计数只增不减
+                val evicted = flows.removeAt(flows.size - 1)
+                if (evicted.state == "OPEN" || evicted.state == "UDP") activeCount--
+                if (evicted.state == "BLOCKED") blockedCount--
+            }
             if (bytesUp > 0) totalUp += bytesUp
             if (bytesDown > 0) totalDown += bytesDown
             if (state == "OPEN" || state == "UDP") activeCount++
@@ -143,10 +152,34 @@ object FlowLog {
     }
 
     private fun notifyOnce() {
-        val now = System.currentTimeMillis()
-        if (now - lastNotifyMs < NOTIFY_GAP_MS) return
-        lastNotifyMs = now
-        listeners.forEach { it.invoke() }
+        synchronized(lock) {
+            val now = System.currentTimeMillis()
+            val wait = NOTIFY_GAP_MS - (now - lastNotifyMs)
+            if (wait <= 0) {
+                lastNotifyMs = now
+                notifyTask?.cancel(false)
+                notifyTask = null
+                // 统一投递到单线程执行器：监听器（看板刷新 / 流量落盘）天然串行，
+                // 不会与补发那次并发执行
+                notifyExecutor.execute { dispatch() }
+            } else if (notifyTask == null) {
+                // 300ms 窗口内被吞掉的最后一次变更：排队补发，避免丢尾不刷新
+                notifyTask = notifyExecutor.schedule(
+                    {
+                        synchronized(lock) {
+                            lastNotifyMs = System.currentTimeMillis()
+                            notifyTask = null
+                        }
+                        dispatch()
+                    },
+                    wait, java.util.concurrent.TimeUnit.MILLISECONDS
+                )
+            }
+        }
+    }
+
+    private fun dispatch() {
+        for (l in listeners) runCatching { l.invoke() }
     }
 
     private fun formatTime(): String {

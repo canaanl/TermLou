@@ -40,6 +40,8 @@ object VpnFlowExporter {
 
     private fun flush() = flushNow()
 
+    /** 串行化：监听器回调线程与 clearNow 的 io 线程可能同时写同一 tmp 文件。 */
+    @Synchronized
     private fun flushNow() {
         if (!started) return
         if (!NetVpnService.isRunning) return

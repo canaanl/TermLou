@@ -61,6 +61,13 @@ class MainActivity : AppCompatActivity() {
     internal var currentTab = 0
     private var animating = false
 
+    /** 当前已显示（或动画目标）的 Tab 下标：切换动画的唯一真值，不再依赖 visibility 判断
+     *  （250ms 内连点时两个视图都 VISIBLE，按 visibility 判断会错位）。 */
+    private var displayedTab = 0
+    private var animShow: View? = null
+    private var animHide: View? = null
+    private var animGen = 0
+
     private val importLauncher = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris: List<Uri> ->
@@ -136,12 +143,9 @@ class MainActivity : AppCompatActivity() {
             getSystemService(NotificationManager::class.java).createNotificationChannel(ch)
         }
         if (!scope.prefs.getBoolean("fgServiceWarmed", false)) {
-            val warmIntent = Intent(this, TermKeepAliveService::class.java)
-            ContextCompat.startForegroundService(this, warmIntent)
-            scope.mainHandler.postDelayed({
-                stopService(warmIntent)
-                scope.prefs.edit().putBoolean("fgServiceWarmed", true).apply()
-            }, 300)
+            // 预热前台服务：停止与标记改由服务自身负责。原先 Activity 里的 300ms postDelayed
+            // 会被 onDestroy 的 removeCallbacksAndMessages(null) 清掉，导致服务 + wakelock 泄漏。
+            ContextCompat.startForegroundService(this, Intent(this, TermKeepAliveService::class.java))
         }
         OverlayBridge.acquire(this, TermlouDirs.base(this))
         ClipboardBridge.acquire(this, TermlouDirs.base(this))
@@ -321,6 +325,7 @@ class MainActivity : AppCompatActivity() {
         networkController.onDestroy()
         terminalController.onDestroy()
         statusController.onDestroy()
+        notesController.onDestroy()
         if (::tabIntroController.isInitialized) tabIntroController.onDestroy()
         OverlayBridge.release()
         ClipboardBridge.release()
@@ -351,15 +356,14 @@ class MainActivity : AppCompatActivity() {
         refreshStatusBar()
 
         val showView = views[tabIndex]
-        if (showView.visibility != View.VISIBLE) {
-            val visibleIndex = views.indexOfFirst { it.visibility == View.VISIBLE }
-            if (visibleIndex >= 0) {
-                val fromRight = tabIndex > visibleIndex
-                animateTo(showView, views[visibleIndex], fromRight)
-            } else {
-                for (i in views.indices) {
-                    views[i].visibility = if (i == tabIndex) View.VISIBLE else View.GONE
-                }
+        if (tabIndex != displayedTab) {
+            animateTo(showView, views[displayedTab], tabIndex > displayedTab)
+            displayedTab = tabIndex
+        } else if (!animating && showView.visibility != View.VISIBLE) {
+            // 兜底：无在途动画却与逻辑态不符（异常路径），直接对齐
+            for (i in views.indices) {
+                views[i].visibility = if (i == tabIndex) View.VISIBLE else View.GONE
+                views[i].translationX = 0f
             }
         }
 
@@ -394,14 +398,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun animateTo(show: View, hide: View, fromRight: Boolean) {
-        if (animating) return
+        // 新一次切换先终结在途的那一次：取消动画并复位其视图，避免残影/串位
+        finalizeTabAnim()
         val w = slideContainer.width
         if (w <= 0) {
+            show.translationX = 0f
+            hide.translationX = 0f
             show.visibility = View.VISIBLE
             hide.visibility = View.GONE
             return
         }
         animating = true
+        animShow = show
+        animHide = hide
+        val gen = ++animGen
 
         val dir = if (fromRight) 1f else -1f
         show.translationX = dir * w
@@ -414,12 +424,33 @@ class MainActivity : AppCompatActivity() {
         show.animate().translationX(0f).setDuration(250)
             .setInterpolator(DecelerateInterpolator())
             .withEndAction {
+                // 过期动画（被 cancel 时 endAction 仍可能触发）直接忽略，只让最新一次收尾
+                if (gen != animGen) return@withEndAction
                 hide.translationX = 0f
                 hide.visibility = View.GONE
                 show.translationX = 0f
                 animating = false
+                animShow = null
+                animHide = null
             }
             .start()
+    }
+
+    /** 终结在途切换：无论 endAction 是否随 cancel 触发，都由这里统一复位，保证逻辑态与视图一致。 */
+    private fun finalizeTabAnim() {
+        val s = animShow
+        val h = animHide
+        animGen++ // 让在途 endAction 全部失效
+        s?.animate()?.cancel()
+        h?.animate()?.cancel()
+        if (h != null) {
+            h.translationX = 0f
+            h.visibility = View.GONE
+        }
+        s?.translationX = 0f
+        animShow = null
+        animHide = null
+        animating = false
     }
 
     internal fun refreshStatusBar() {

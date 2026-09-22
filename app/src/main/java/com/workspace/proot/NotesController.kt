@@ -27,8 +27,10 @@ class NotesController(
 ) {
 
     private val theme: ThemeColors = scope.theme
-    private val store: NotesStore =
+    private val storeLazy = lazy {
         NotesStore(File(activity.filesDir, "workspace/Notes")).also { it.reload() }
+    }
+    private val store: NotesStore by storeLazy
 
     private var current: String? = null
 
@@ -136,6 +138,11 @@ class NotesController(
             return true
         }
         return false
+    }
+
+    /** 随主界面销毁关闭笔记库连接（此前从不 close，连接一直泄漏）。 */
+    fun onDestroy() {
+        if (storeLazy.isInitialized()) runCatching { store.close() }
     }
 
     private fun buildEditorBox(): LinearLayout {

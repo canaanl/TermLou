@@ -12,12 +12,13 @@ import android.util.Log
 
 /**
  * LAN 共享前台服务：起 WsServer（HTTP + WebSocket 同端口），关即停并释放端口。
- * 关闭时清空账号密码与端口偏好（状态重置为空）。
+ * 关闭时清空账号密码与端口偏好（状态重置为空）；启动失败不清，保留用户已填配置。
  */
 class LanShareService : Service() {
 
     private val lock = Any()
     private var active = false
+    private var starting = false
     private var wsServer: WsServer? = null
     private var state = "idle"
     private var stateArg = ""
@@ -80,16 +81,23 @@ class LanShareService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun doStart() {
-        synchronized(lock) { if (active) return }
+        // starting 闸门：startServer 成功前 active 仍是 false，仅判 active 挡不住快速双击，
+        // 两个线程同时进会互相覆盖 wsServer/端口，泄漏一个 socket。
+        synchronized(lock) {
+            if (active || starting) return
+            starting = true
+        }
         Thread {
             try {
                 startServer()
-                synchronized(lock) { active = true }
+                synchronized(lock) { active = true; starting = false }
             } catch (e: Exception) {
+                synchronized(lock) { starting = false }
                 Log.e(TAG, "start lan failed", e)
                 setStatus("failed_msg", e.message.toString())
                 isRunning = false
-                teardown()
+                // 启动失败不是用户主动关闭：保留已填的账号密码与端口
+                teardown(clearAuth = false)
                 stopSelf()
             }
         }.start()
@@ -122,20 +130,23 @@ class LanShareService : Service() {
         }
     }
 
-    private fun teardown() {
+    private fun teardown(clearAuth: Boolean = true) {
         var wasActive = false
         synchronized(lock) {
             wasActive = active
             active = false
+            starting = false
         }
         try { wsServer?.stopListening() } catch (_: Exception) {}
         wsServer = null
         isRunning = false
         clientCount = 0
-        // 关闭即重置为空：清账号密码与端口
-        runCatching {
-            val sm = SettingsManager(getSharedPreferences("term-lou-settings", Context.MODE_PRIVATE))
-            sm.clearLanAuth()
+        // 主动关闭才重置为空：清账号密码与端口（启动失败不走这里，凭据保留）
+        if (clearAuth) {
+            runCatching {
+                val sm = SettingsManager(getSharedPreferences("term-lou-settings", Context.MODE_PRIVATE))
+                sm.clearLanAuth()
+            }
         }
         boundPort = 0
         lanUrl = ""

@@ -232,12 +232,14 @@ class NotesTodoActivity : NotesPageActivity() {
         val distance = (srcInner.width - row.left).toFloat().coerceAtLeast(row.width.toFloat())
         if (fromDone) doneSeq++ else openSeq++
         val seq = if (fromDone) doneSeq else openSeq
+        // 数据先行：动画被取消/中断时 endAction 不执行，原实现会把这次点击整个丢掉。
+        // 先落库，动画就只剩视觉职责；即使视图没收敛，onResume 的 reload+render 也会对齐。
+        store.setTodoDone(item.id, !item.done)
         row.animate()
             .translationX(distance)
             .alpha(0f)
             .setDuration(TOGGLE_ANIM_MS)
             .withEndAction {
-                store.setTodoDone(item.id, !item.done)
                 srcInner.layoutTransition = srcTransition
                 srcInner.removeView(row)
                 srcInner.findViewWithTag<View>("div:" + item.id)?.let {
