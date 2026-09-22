@@ -74,7 +74,7 @@ class TabIntroController(
         }
         // 固定页眉：hero 槽位留空给直飞来的 hero，标题在旁。
         val slot = FrameLayout(activity).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(96), dp(96))
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
         }
         heroSlot = slot
         val headerBar = LinearLayout(activity).apply {
@@ -250,10 +250,10 @@ class TabIntroController(
             srcLoc[0] - rootLoc[0] + content.right,
             srcLoc[1] - rootLoc[1] + content.bottom
         )
-        // 终点：本体 FIT 进槽位盒，中心对准槽位中心；五个 tab 落点一样大。
+        // 终点：五个本体等高（= 标题行高），宽度各随比例；中心对准槽位中心。
         val slotRect = rectOf(slot)
-        val box = dp(96).toFloat()
-        val fit = minOf(box / content.width(), box / content.height())
+        val targetH = dp(28).toFloat()
+        val fit = targetH / content.height()
         val w = content.width() * fit
         val h = content.height() * fit
         val to = Rect(

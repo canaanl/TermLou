@@ -2,7 +2,7 @@
 
 > An Android terminal built for **people who don't code** — Debian GNU/Linux, file management, notes & todos, network inspection and script-driven floating UI, all inside one tap-and-go App.
 
-![Version](https://img.shields.io/badge/version-5.1.4-blue)
+![Version](https://img.shields.io/badge/version-5.1.5-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -286,6 +286,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history. Recent versions:
 
 | Version | versionCode | Summary |
 |---------|-------------|---------|
+| **5.1.5** | 5105 | Landing icons equal height; 40dp slot |
 | **5.1.4** | 5104 | Hero redrawn per frame (crisp at any size); 96dp slot |
 | **5.1.3** | 5103 | Landing fits the icon glyph; slimmer header; 24sp title aligned |
 | **5.1.2** | 5102 | Intro hero lands at a 120dp slot: flies out enlarged, all five equal |
