@@ -146,6 +146,50 @@ class NoteMatcherTest {
     }
 
     @Test
+    fun `tags count as title-tier hits`() {
+        assertEquals(
+            NoteMatcher.LAYER_NAME,
+            NoteMatcher.termScore("旅行", "清单", "", tags = "旅行计划")
+        )
+        // 标签里没有的词不能命中
+        assertEquals(
+            NoteMatcher.MISS,
+            NoteMatcher.termScore("潜水", "清单", "", tags = "旅行计划")
+        )
+    }
+
+    @Test
+    fun `todos count as body-tier hits`() {
+        assertEquals(
+            NoteMatcher.LAYER_BODY,
+            NoteMatcher.termScore("交水电", "清单", "", todos = "交水电费")
+        )
+    }
+
+    @Test
+    fun `note score spans all four fields with AND`() {
+        // 词1 在标题、词2 在标签 → 跨字段互补命中
+        assertTrue(
+            NoteMatcher.noteScore(
+                "购物", "", NoteMatcher.terms("购物 旅行"), tags = "旅行计划"
+            ) >= 0
+        )
+        // 待办文本也能把笔记捞回来
+        assertEquals(
+            NoteMatcher.LAYER_BODY,
+            NoteMatcher.noteScore("清单", "", NoteMatcher.terms("交水电"), todos = "交水电费")
+        )
+        // 任一词四字段都没有 → 整条否决
+        assertEquals(
+            NoteMatcher.MISS,
+            NoteMatcher.noteScore(
+                "购物", "正文", NoteMatcher.terms("购物 潜水"),
+                tags = "旅行计划", todos = "交水电费"
+            )
+        )
+    }
+
+    @Test
     fun `dict parsing roundtrip keeps multi readings`() {
         PinyinDict.uninstall()
         java.io.ByteArrayInputStream(

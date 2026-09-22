@@ -381,8 +381,17 @@ class NotesStandaloneActivity : NotesPageActivity() {
         var notes = store.listNotes()
         val terms = NoteMatcher.terms(query)
         if (terms.isNotEmpty()) {
+            // 全字段模糊过滤：标题+标签+正文+所属待办（todos 一次全量查出内存分组，防 N+1）
+            val todoTexts = store.todos().filter { it.note.isNotEmpty() }
+                .groupBy({ it.note }, { it.text })
             notes = notes
-                .map { it to NoteMatcher.noteScore(it.name, store.readNote(it.name), terms) }
+                .map { entry ->
+                    val tags = entry.tags.joinToString(" ")
+                    val todos = todoTexts[entry.name].orEmpty().joinToString(" ")
+                    entry to NoteMatcher.noteScore(
+                        entry.name, store.readNote(entry.name), terms, tags, todos
+                    )
+                }
                 .filter { it.second >= 0 }
                 .sortedBy { it.second }
                 .map { it.first }

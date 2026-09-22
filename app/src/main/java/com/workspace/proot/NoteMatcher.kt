@@ -115,44 +115,72 @@ object NoteMatcher {
             .distinct()
 
     /**
-     * 单词对「标题 + 正文」打分：返回最优层，不命中返回 [MISS]。
-     * tags 页复用本函数做 OR（body 传 ""）。
+     * 单词对笔记全字段打分：返回最优层，不命中返回 [MISS]。
+     * 字段分两档——**标题层（0）＝标题＋标签**，**正文层（1）＝正文＋所属待办文本**；
+     * 容错（2）/拼音（3）/首字母（4）对四个字段一律平等启用。
+     * 标签页复用本函数做 OR（tags/todos 不传即可）。
      */
-    fun termScore(term: String, name: String, body: String): Int {
+    fun termScore(
+        term: String,
+        name: String,
+        body: String,
+        tags: String = "",
+        todos: String = ""
+    ): Int {
         if (term.isEmpty()) return MISS
-        val n = name.lowercase(Locale.ROOT)
-        if (n.contains(term)) return LAYER_NAME
-        val b = if (body.isEmpty()) "" else body.lowercase(Locale.ROOT).take(MAX_BODY_CHARS)
-        if (b.isNotEmpty() && b.contains(term)) return LAYER_BODY
-        if (term.any { isHan(it) } && term.length in 2..MAX_FUZZY_TERM) {
-            if (fuzzyContains(n, term)) return LAYER_FUZZY
-            if (b.isNotEmpty() && fuzzyContains(b, term)) return LAYER_FUZZY
-        }
-        if (PinyinDict.loaded) {
-            if (pinyinMatches(term, n) || (b.isNotEmpty() && pinyinMatches(term, b))) {
-                return LAYER_PINYIN
-            }
-            if (term.length >= 2 && term.all { it in 'a'..'z' }) {
-                if (initialsOf(n).contains(term)) return LAYER_INITIALS
-                if (b.isNotEmpty() && initialsOf(b).contains(term)) return LAYER_INITIALS
-            }
-        }
-        return MISS
+        var best = MISS
+        best = minLayer(best, scoreField(term, name, LAYER_NAME))
+        best = minLayer(best, scoreField(term, tags, LAYER_NAME))
+        best = minLayer(best, scoreField(term, body, LAYER_BODY))
+        best = minLayer(best, scoreField(term, todos, LAYER_BODY))
+        return best
     }
 
     /**
-     * 笔记/待办打分：**所有词都要命中**（AND），取各词中最差的层；任一词不命中 → [MISS]。
+     * 笔记/待办打分：**所有词都要命中**（AND），跨字段互补——词1 出现在标题、
+     * 词2 出现在标签/待办也算命中；取各词中最差的层，任一词不命中 → [MISS]。
      * 空词表返回 0（视作全命中，调用方一般自行跳过过滤）。
      */
-    fun noteScore(name: String, body: String, terms: List<String>): Int {
+    fun noteScore(
+        name: String,
+        body: String,
+        terms: List<String>,
+        tags: String = "",
+        todos: String = ""
+    ): Int {
         if (terms.isEmpty()) return LAYER_NAME
         var worst = LAYER_NAME
         for (t in terms) {
-            val s = termScore(t, name, body)
+            val s = termScore(t, name, body, tags, todos)
             if (s < 0) return MISS
             if (s > worst) worst = s
         }
         return worst
+    }
+
+    /** 取两层中更优的（更小）；-1 表示不命中，忽略。 */
+    private fun minLayer(cur: Int, v: Int): Int = when {
+        v < 0 -> cur
+        cur < 0 -> v
+        v < cur -> v
+        else -> cur
+    }
+
+    /** 单字段打分：字面子串返回 base 档位，否则 容错2 / 拼音3 / 首字母4，不中 MISS。 */
+    private fun scoreField(term: String, field: String, base: Int): Int {
+        if (field.isEmpty()) return MISS
+        val text = field.lowercase(Locale.ROOT).take(MAX_BODY_CHARS)
+        if (text.contains(term)) return base
+        if (term.any { isHan(it) } && term.length in 2..MAX_FUZZY_TERM && fuzzyContains(text, term)) {
+            return LAYER_FUZZY
+        }
+        if (PinyinDict.loaded) {
+            if (pinyinMatches(term, text)) return LAYER_PINYIN
+            if (term.length >= 2 && term.all { it in 'a'..'z' } && initialsOf(text).contains(term)) {
+                return LAYER_INITIALS
+            }
+        }
+        return MISS
     }
 
     // ---------- 容错层 ----------
