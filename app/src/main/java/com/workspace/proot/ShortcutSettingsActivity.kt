@@ -177,15 +177,6 @@ class ShortcutSettingsActivity : ComponentActivity() {
 
         bottomBar.addView(btnRow2)
 
-        val hintTv = TextView(this).apply {
-            text = getString(R.string.sc_disband_msg)
-            setTextColor(theme.onSurfaceVariant)
-            textSize = UiTokens.TEXT_META
-            gravity = Gravity.CENTER
-            setPadding(0, (8 * d).toInt(), 0, 0)
-        }
-        bottomBar.addView(hintTv)
-
         root.addView(bottomBar)
 
         setContentView(root)

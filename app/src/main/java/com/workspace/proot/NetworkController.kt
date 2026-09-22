@@ -547,13 +547,6 @@ class NetworkController(
             })
             return
         }
-        val density = activity.resources.displayMetrics.density
-        netFlowList.addView(TextView(activity).apply {
-            text = activity.getString(R.string.net_tag_note)
-            setTextColor(scope.cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_META
-            setPadding(0, 0, 0, (4 * density).toInt())
-        })
         val limit = minOf(filtered.size, 80)
         for (i in 0 until limit) {
             val f = filtered[i]

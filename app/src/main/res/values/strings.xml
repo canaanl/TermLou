@@ -36,28 +36,22 @@
     <string name="font_changed_fmt">终端字号已切换: %1$s</string>
     <string name="settings_commands_title">初始命令</string>
     <string name="settings_shell_title">启动命令</string>
-    <string name="settings_shell_desc">终端启动时自动执行</string>
     <string name="hint_shell_cmd">输入启动命令</string>
     <string name="shell_saved">Shell 命令已保存</string>
     <string name="shell_inited_idle">已初始化（不启动）</string>
     <string name="settings_tile_title">磁贴命令</string>
-    <string name="settings_tile_desc">点击磁贴时自动触发</string>
     <string name="hint_tile_cmd">输入磁贴一键命令</string>
     <string name="tile_cmd_saved">磁贴命令已保存</string>
     <string name="settings_quick_title">快捷启动</string>
-    <string name="settings_quick_desc">点击磁贴时快速打开</string>
     <string name="pick_app">选择应用</string>
     <string name="settings_workshop_title">工坊</string>
     <string name="settings_dialog_ws_title">弹窗</string>
-    <string name="settings_dialog_ws_desc">termlou-ui图形化脚本设计</string>
     <string name="open_workshop">打开工坊</string>
     <string name="settings_splash_title">启动页</string>
-    <string name="settings_splash_desc">自由绘制开屏图像，支持图片导入</string>
     <string name="settings_advanced">高级</string>
 
     <!-- 设置：上游代理 -->
     <string name="upstream_title">上游代理</string>
-    <string name="upstream_desc">留空=内置直连，支持socks5</string>
     <string name="upstream_saved">上游已保存，重启抓包后生效</string>
     <string name="upstream_cleared">已恢复内置直连</string>
 
@@ -96,7 +90,6 @@
     <string name="sysinfo_unknown">未知</string>
     <string name="lang_title">语言</string>
     <string name="settings_night_title">主题配色</string>
-    <string name="settings_restart_hint">自动重启后生效</string>
 
     <!-- 终端/文件 -->
     <string name="ctrl_reset">Ctrl 超时复位</string>
@@ -130,7 +123,6 @@
     <string name="net_clear">清空记录</string>
     <string name="net_cleared">已清空连接记录</string>
     <string name="net_empty">暂无记录</string>
-    <string name="net_tag_note">标签按流量大小、方向与时长判定，非内容解析</string>
     <string name="net_no_apps">Network | 未选择应用，请先在「选择应用」中勾选</string>
     <string name="flow_blocked">已屏蔽</string>
     <string name="flow_state_open">进行中</string>
@@ -263,7 +255,6 @@
     <string name="sc_join_msg_fmt">将「%1$s」加入命令组「%2$s」？</string>
     <string name="sc_join">加入</string>
     <string name="sc_disband_title">解散命令组</string>
-    <string name="sc_disband_msg">长按拖动排序 · 左滑删除/解散 · 点击进入/编辑</string>
     <string name="sc_cleared_all">已清空全部快捷启动</string>
     <string name="sc_init_confirm">再点一次「初始化」确认清空全部</string>
 
@@ -339,7 +330,6 @@
     <string name="sc_move_out">移出命令组</string>
     <string name="sc_delete_cmd">删除命令</string>
     <string name="sc_exit_group">退出命令组</string>
-    <string name="sc_hint_group">长按拖动排序 · 左滑命令</string>
     <string name="sc_disband_msg_fmt">解散「%1$s」？组内 %2$d 个命令将保留到列表。</string>
 
     <!-- 启动工坊标题 -->

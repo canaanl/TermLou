@@ -83,16 +83,6 @@ class ShortcutGroupActivity : Activity() {
         }
         root.addView(recyclerView)
 
-        val hintTv = TextView(this).apply {
-            text = getString(R.string.sc_hint_group)
-            setTextColor(theme.onSurfaceVariant)
-            textSize = UiTokens.TEXT_META
-            gravity = Gravity.CENTER
-            setPadding(0, (8 * d).toInt(), 0, (8 * d).toInt())
-            setBackgroundColor(theme.surfaceVariant)
-        }
-        root.addView(hintTv)
-
         val exitBtn = Button(this).apply {
             text = getString(R.string.sc_exit_group)
             setTextColor(theme.primary)

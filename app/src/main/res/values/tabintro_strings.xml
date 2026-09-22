@@ -7,7 +7,7 @@
     <string name="intro_terminal_wheel_title">命令拨轮</string>
     <string name="intro_terminal_wheel_body">在快捷栏上下滑动，可在快捷键行与命令拨轮之间切换。\n拨轮横向滚动，中央卡片自动高亮，点按执行；命令组居中时会自动展开上层成员。\n点灰色区域收起拨轮；长按灰色区域进入命令库管理。\n推荐会按使用频次、顺序与近因，把命令滚到中央。</string>
     <string name="intro_terminal_library_title">命令库管理</string>
-    <string name="intro_terminal_library_body">命令可以排序、合并成组、加入或解散组；每个组至少保留两个成员。\n支持备份与恢复，恢复的数据重新参与排序推荐。\n命令支持 `\\n \\r \\t \\e \\cX`，用 `@{}` 标记执行后光标落点。</string>
+    <string name="intro_terminal_library_body">命令可以排序、合并成组、加入或解散组；每个组至少保留两个成员。\n管理页长按拖动排序，左滑删除或解散命令组，点按进入编辑；组内成员可左滑移出或删除。\n支持备份与恢复，恢复的数据重新参与排序推荐。\n命令支持 `\\n \\r \\t \\e \\cX`，用 `@{}` 标记执行后光标落点。</string>
     <string name="intro_terminal_startup_title">启动命令与磁贴命令</string>
     <string name="intro_terminal_startup_body">设置里的启动命令会在终端启动时自动执行。\n从磁贴启动时，执行的是磁贴命令。\n磁贴命令适合一键执行预设动作。</string>
     <string name="intro_terminal_ui_title">termlou-ui 脚本浮窗</string>
@@ -46,7 +46,7 @@
     <string name="intro_network_capture_title">按 App 抓包</string>
     <string name="intro_network_capture_body">通过 VPN 精选要抓的 App。\nDNS 按系统下发，取不到才回退公共 DNS。</string>
     <string name="intro_network_log_title">流量日志</string>
-    <string name="intro_network_log_body">实时列表显示域名或 IP、协议、端口、上下行字节与状态。\n支持按 IP 或域名阻断。</string>
+    <string name="intro_network_log_body">实时列表显示域名或 IP、协议、端口、上下行字节与状态。\n行内标签按流量大小、方向与时长判定，非内容解析。\n支持按 IP 或域名阻断。</string>
     <string name="intro_network_rank_title">排行与 DNS</string>
     <string name="intro_network_rank_body">流量排行按域名或端口统计。\nDNS 历史可查查询与响应映射。</string>
     <string name="intro_network_proxy_title">代理与阻断</string>
@@ -59,7 +59,7 @@
     <string name="intro_settings_commands_title">命令</string>
     <string name="intro_settings_commands_body">启动命令在终端启动时自动执行。\n磁贴命令供快捷磁贴一键执行。\n快捷启动选择常用 App。</string>
     <string name="intro_settings_workshop_title">工坊</string>
-    <string name="intro_settings_workshop_body">弹窗工坊设计脚本浮窗并导出命令。\n启动页工坊自定义开屏画面。</string>
+    <string name="intro_settings_workshop_body">弹窗工坊设计脚本浮窗并导出命令。\n启动页工坊自由绘制或导入图片，自定义开屏画面。</string>
     <string name="intro_settings_net_title">网络与保活</string>
-    <string name="intro_settings_net_body">上游代理留空走内置直连。\nLAN 分享文件与终端。\n后台持久化用低优先级前台服务保活。</string>
+    <string name="intro_settings_net_body">上游代理留空走内置直连，支持 socks5。\nLAN 分享文件与终端。\n后台持久化用低优先级前台服务保活。</string>
 </resources>

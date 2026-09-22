@@ -7,7 +7,7 @@
     <string name="intro_terminal_wheel_title">Command wheel</string>
     <string name="intro_terminal_wheel_body">Swipe vertically on the shortcut bar to switch between shortcut rows and the command wheel.\nScroll horizontally, the centered card is highlighted, tap to run; a centered group expands its members above.\nTap gray area to hide the wheel; long press gray area to manage commands.\nRecommendations move likely commands to the center by frequency, order, and recency.</string>
     <string name="intro_terminal_library_title">Command library</string>
-    <string name="intro_terminal_library_body">Commands can be sorted, merged into groups, joined, or dissolved; each group keeps at least two members.\nBackup and restore are supported; restored data rejoins ranking.\nCommands support `\\n \\r \\t \\e \\cX`, with `@{}` marking the cursor landing spot.</string>
+    <string name="intro_terminal_library_body">Commands can be sorted, merged into groups, joined, or dissolved; each group keeps at least two members.\nIn the manager, long-press to drag-sort, swipe left to delete or dissolve a group, and tap to open or edit; group members can be swiped out or deleted.\nBackup and restore are supported; restored data rejoins ranking.\nCommands support `\\n \\r \\t \\e \\cX`, with `@{}` marking the cursor landing spot.</string>
     <string name="intro_terminal_startup_title">Startup and tile commands</string>
     <string name="intro_terminal_startup_body">The startup command runs automatically when the terminal starts.\nTile startup runs the tile command.\nTile commands fit one-tap preset actions.</string>
     <string name="intro_terminal_ui_title">termlou-ui script dialogs</string>
@@ -46,7 +46,7 @@
     <string name="intro_network_capture_title">Per-app capture</string>
     <string name="intro_network_capture_body">Select target apps through VPN.\nDNS follows the system; public DNS is only a fallback.</string>
     <string name="intro_network_log_title">Flow log</string>
-    <string name="intro_network_log_body">The live list shows domain or IP, protocol, port, up and down bytes, and status.\nBlocking by IP or domain is supported.</string>
+    <string name="intro_network_log_body">The live list shows domain or IP, protocol, port, up and down bytes, and status.\nRow tags are judged by traffic size, direction, and duration, not content parsing.\nBlocking by IP or domain is supported.</string>
     <string name="intro_network_rank_title">Rankings and DNS</string>
     <string name="intro_network_rank_body">Traffic rankings are grouped by domain or port.\nDNS history maps queries to responses.</string>
     <string name="intro_network_proxy_title">Proxy and blocking</string>
@@ -59,7 +59,7 @@
     <string name="intro_settings_commands_title">Commands</string>
     <string name="intro_settings_commands_body">The startup command runs when the terminal starts.\nThe tile command is for one-tap tile actions.\nQuick launch chooses frequently used apps.</string>
     <string name="intro_settings_workshop_title">Workshops</string>
-    <string name="intro_settings_workshop_body">The dialog workshop designs script dialogs and exports commands.\nThe splash workshop customizes the boot screen.</string>
+    <string name="intro_settings_workshop_body">The dialog workshop designs script dialogs and exports commands.\nThe splash workshop draws freely or imports images to customize the boot screen.</string>
     <string name="intro_settings_net_title">Network and keep-alive</string>
-    <string name="intro_settings_net_body">Empty upstream proxy means built-in direct mode.\nLAN shares files and the terminal.\nKeep-alive uses a low-priority foreground service.</string>
+    <string name="intro_settings_net_body">Empty upstream proxy means built-in direct mode, with socks5 supported.\nLAN shares files and the terminal.\nKeep-alive uses a low-priority foreground service.</string>
 </resources>

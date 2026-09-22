@@ -64,13 +64,11 @@ class SettingsUiController(
         sectionTitle(settingsInner, activity.getString(R.string.settings_workshop_title))
         buildWorkshopRow(
             settingsInner,
-            activity.getString(R.string.settings_dialog_ws_title),
-            activity.getString(R.string.settings_dialog_ws_desc)
+            activity.getString(R.string.settings_dialog_ws_title)
         ) { overlay.openDialogMaker() }
         buildWorkshopRow(
             settingsInner,
-            activity.getString(R.string.settings_splash_title),
-            activity.getString(R.string.settings_splash_desc)
+            activity.getString(R.string.settings_splash_title)
         ) { overlay.openSplashMaker() }
         settingsInner.addView(divider())
         buildUpstreamSection(settingsInner, density)
@@ -129,15 +127,6 @@ private fun divider(): View = View(activity).apply {
         })
     }
 
-    private fun sectionDesc(parent: LinearLayout, text: String, bottom: Int = 12) {
-        parent.addView(TextView(activity).apply {
-            this.text = text
-            setTextColor(scope.cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_META
-            setPadding(0, 0, 0, bottom)
-        })
-    }
-
     private fun buildDisplaySection(parent: LinearLayout, density: Float) {
         sectionTitle(parent, activity.getString(R.string.settings_ui_title))
         buildFontSection(parent, density)
@@ -164,7 +153,6 @@ private fun divider(): View = View(activity).apply {
 
     private fun buildShellSection(parent: LinearLayout) {
         sectionTitle(parent, activity.getString(R.string.settings_shell_title), body = true)
-        sectionDesc(parent, activity.getString(R.string.settings_shell_desc))
         val shellEdit = EditText(activity).apply {
             setText(scope.settingsManager.shellCmd)
             setPadding(12, 8, 12, 8)
@@ -224,7 +212,6 @@ private fun divider(): View = View(activity).apply {
 
     private fun buildTileSection(parent: LinearLayout) {
         sectionTitle(parent, activity.getString(R.string.settings_tile_title), body = true)
-        sectionDesc(parent, activity.getString(R.string.settings_tile_desc))
         val tileEdit = EditText(activity).apply {
             setText(scope.settingsManager.tileCommand)
             setPadding(12, 8, 12, 8)
@@ -282,7 +269,6 @@ private fun divider(): View = View(activity).apply {
 
     private fun buildQuickSection(parent: LinearLayout) {
         sectionTitle(parent, activity.getString(R.string.settings_quick_title))
-        sectionDesc(parent, activity.getString(R.string.settings_quick_desc))
         parent.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 0, 0, 0)
@@ -320,9 +306,8 @@ private fun divider(): View = View(activity).apply {
         })
     }
 
-    private fun buildWorkshopRow(parent: LinearLayout, title: String, desc: String, onOpen: () -> Unit) {
+    private fun buildWorkshopRow(parent: LinearLayout, title: String, onOpen: () -> Unit) {
         sectionTitle(parent, title, body = true)
-        sectionDesc(parent, desc)
         parent.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(Button(activity).apply {
@@ -340,7 +325,6 @@ private fun divider(): View = View(activity).apply {
     private fun buildUpstreamSection(parent: LinearLayout, density: Float) {
         sectionTitle(parent, activity.getString(R.string.settings_advanced))
         sectionTitle(parent, activity.getString(R.string.upstream_title), body = true)
-        sectionDesc(parent, activity.getString(R.string.upstream_desc))
         val upEdit = EditText(activity).apply {
             setText(scope.settingsManager.netUpstream())
             setHint("socks5://127.0.0.1:1080")
@@ -489,12 +473,6 @@ private fun buildLanguageRow(parent: LinearLayout) {
                 }
             })
         })
-        parent.addView(TextView(activity).apply {
-            text = activity.getString(R.string.settings_restart_hint)
-            setTextColor(scope.cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_META
-            setPadding(0, 0, 0, 0)
-        })
     }
 
     private fun buildNightRow(parent: LinearLayout) {
@@ -520,12 +498,6 @@ private fun buildLanguageRow(parent: LinearLayout) {
                     restartApp()
                 }
             })
-        })
-        parent.addView(TextView(activity).apply {
-            text = activity.getString(R.string.settings_restart_hint)
-            setTextColor(scope.cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_META
-            setPadding(0, 0, 0, 0)
         })
     }
 
