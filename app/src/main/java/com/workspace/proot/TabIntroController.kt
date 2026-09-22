@@ -2,7 +2,7 @@ package com.workspace.proot
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.ColorFilter
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.GradientDrawable
@@ -191,12 +191,31 @@ class TabIntroController(
             v.animate().alpha(0f).setDuration(120).setInterpolator(DecelerateInterpolator()).start()
         }
         head.alpha = 0f
-        // 分身实拍页眉（方形 tint 图标），等比缩回 tab 中心；叠加层同步淡出露出原 tab。
-        val fly = makeFly(head, snapshot(head), p.iconRes, head.colorFilter)
+        // 回飞目标用 tab 图标本体的实时包围盒；分身起点即页眉本身（同 drawable 同 tint），零跳变起飞。
+        val target = captureGlyph(src)
+        if (target == null) {
+            ov.animate().cancel()
+            ov.animate().alpha(0f).setDuration(150).setInterpolator(DecelerateInterpolator())
+                .withEndAction { teardown() }.start()
+            return true
+        }
+        val headRect = rectOf(head)
+        val fly = ImageView(activity).apply {
+            setImageResource(p.iconRes)
+            colorFilter = head.colorFilter
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            layoutParams = FrameLayout.LayoutParams(headRect.width(), headRect.height()).apply {
+                leftMargin = headRect.left
+                topMargin = headRect.top
+            }
+            pivotX = headRect.width() / 2f
+            pivotY = headRect.height() / 2f
+        }
         root.addView(fly)
         flyView = fly
-        val (dx, dy) = centerDelta(head, src)
-        val s = src.height.toFloat() / head.height.toFloat()
+        val s = target.bmp.height.toFloat() / headRect.height().toFloat()
+        val dx = (target.left + target.bmp.width / 2f) - headRect.exactCenterX()
+        val dy = (target.top + target.bmp.height / 2f) - headRect.exactCenterY()
         ov.animate().cancel()
         ov.animate().alpha(0f).setDuration(200).setInterpolator(DecelerateInterpolator()).start()
         fly.animate()
@@ -223,26 +242,26 @@ class TabIntroController(
     private fun startEnter(source: ImageView) {
         val ov = overlay ?: return
         val head = headerIcon ?: return
-        val p = page ?: return
         // 页眉继承来源 tab 的 tint：深色模式选中态是白色，不同步就会黑白不一致。
         head.colorFilter = source.colorFilter
-        if (!source.isAttachedToWindow || !head.isAttachedToWindow ||
-            source.width <= 0 || head.width <= 0
-        ) {
+        // 分身只飞图标本体：裁掉 tab 的透明 padding，落点与页眉像素级重合，终点无闪。
+        val glyph = captureGlyph(source)
+        if (glyph == null || !head.isAttachedToWindow || head.width <= 0) {
             ov.animate().alpha(1f).setDuration(200).start()
             head.alpha = 1f
             playEnterStagger(0L)
             return
         }
-        // 分身用来源 view 的实拍快照：tint/padding/原比例一次性烘焙，起飞零跳变。
-        val fly = makeFly(source, snapshot(source), p.iconRes, source.colorFilter)
+        val fly = glyphFly(glyph)
         root.addView(fly)
         flyView = fly
         ov.animate().alpha(1f).setDuration(200).setInterpolator(DecelerateInterpolator()).start()
         playEnterStagger(140L)
-        // 等比缩放 + 中心对中心位移：全程不变形；页眉在落点前交叉淡入，接棒无断层。
-        val (dx, dy) = centerDelta(source, head)
-        val s = head.height.toFloat() / source.height.toFloat()
+        // 页眉无 padding 方形图标：落点矩形即页眉 bounds，等比缩放到同高、中心对齐。
+        val headRect = rectOf(head)
+        val s = headRect.height().toFloat() / glyph.bmp.height.toFloat()
+        val dx = headRect.exactCenterX() - (glyph.left + glyph.bmp.width / 2f)
+        val dy = headRect.exactCenterY() - (glyph.top + glyph.bmp.height / 2f)
         head.animate().alpha(1f).setStartDelay(190).setDuration(130).start()
         fly.animate()
             .translationX(dx).translationY(dy).scaleX(s).scaleY(s)
@@ -250,21 +269,21 @@ class TabIntroController(
             .withEndAction { dropFly(fly) }.start()
     }
 
-    /** hero 分身：优先用实拍快照（所见即所得），快照失败才回退 drawable + 手工 tint。 */
-    private fun makeFly(anchor: View, bmp: Bitmap?, iconRes: Int, tint: ColorFilter?): ImageView {
-        return ImageView(activity).apply {
-            if (bmp != null) {
-                setImageBitmap(bmp)
-            } else {
-                setImageResource(iconRes)
-                colorFilter = tint
-            }
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            layoutParams = FrameLayout.LayoutParams(anchor.width, anchor.height)
-            pivotX = anchor.width / 2f
-            pivotY = anchor.height / 2f
-        }.also { positionAt(it, anchor) }
+    /** 实拍 view 并裁出图标本体的不透明包围盒，坐标换算到 root 系。 */
+    private fun captureGlyph(v: View): PlacedGlyph? {
+        if (!v.isAttachedToWindow || v.width <= 0 || v.height <= 0) return null
+        val bmp = snapshot(v) ?: return null
+        val r = opaqueBounds(bmp) ?: return null
+        if (r.isEmpty) return null
+        val rootLoc = IntArray(2)
+        val vLoc = IntArray(2)
+        root.getLocationOnScreen(rootLoc)
+        v.getLocationOnScreen(vLoc)
+        val glyph = Bitmap.createBitmap(bmp, r.left, r.top, r.width(), r.height())
+        return PlacedGlyph(glyph, vLoc[0] - rootLoc[0] + r.left, vLoc[1] - rootLoc[1] + r.top)
     }
+
+    private data class PlacedGlyph(val bmp: Bitmap, val left: Int, val top: Int)
 
     private fun snapshot(v: View): Bitmap? {
         if (v.width <= 0 || v.height <= 0 || !v.isAttachedToWindow) return null
@@ -275,30 +294,52 @@ class TabIntroController(
         }.getOrNull()
     }
 
-    private fun positionAt(v: View, anchor: View) {
-        val rootLoc = IntArray(2)
-        val anchorLoc = IntArray(2)
-        root.getLocationOnScreen(rootLoc)
-        anchor.getLocationOnScreen(anchorLoc)
-        (v.layoutParams as FrameLayout.LayoutParams).apply {
-            leftMargin = anchorLoc[0] - rootLoc[0]
-            topMargin = anchorLoc[1] - rootLoc[1]
+    /** 逐像素扫描不透明区：图标位图小（百级像素），直接全扫。 */
+    private fun opaqueBounds(bmp: Bitmap): Rect? {
+        val w = bmp.width
+        val h = bmp.height
+        val px = IntArray(w * h)
+        bmp.getPixels(px, 0, w, 0, 0, w, h)
+        var l = w
+        var t = h
+        var r = -1
+        var b = -1
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                if ((px[y * w + x] ushr 24) != 0) {
+                    if (x < l) l = x
+                    if (x > r) r = x
+                    if (y < t) t = y
+                    if (y > b) b = y
+                }
+            }
+        }
+        if (r < l || b < t) return null
+        return Rect(l, t, r + 1, b + 1)
+    }
+
+    private fun glyphFly(g: PlacedGlyph): ImageView {
+        return ImageView(activity).apply {
+            setImageBitmap(g.bmp)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            layoutParams = FrameLayout.LayoutParams(g.bmp.width, g.bmp.height).apply {
+                leftMargin = g.left
+                topMargin = g.top
+            }
+            pivotX = g.bmp.width / 2f
+            pivotY = g.bmp.height / 2f
         }
     }
 
-    /** 目标中心减起点中心（相对 root 坐标）：配合中心 pivot，位移即中心对齐。 */
-    private fun centerDelta(from: View, to: View): Pair<Float, Float> {
+    /** view 在 root 系中的矩形。 */
+    private fun rectOf(v: View): Rect {
         val rootLoc = IntArray(2)
-        val fromLoc = IntArray(2)
-        val toLoc = IntArray(2)
+        val vLoc = IntArray(2)
         root.getLocationOnScreen(rootLoc)
-        from.getLocationOnScreen(fromLoc)
-        to.getLocationOnScreen(toLoc)
-        val fx = fromLoc[0] - rootLoc[0] + from.width / 2f
-        val fy = fromLoc[1] - rootLoc[1] + from.height / 2f
-        val tx = toLoc[0] - rootLoc[0] + to.width / 2f
-        val ty = toLoc[1] - rootLoc[1] + to.height / 2f
-        return (tx - fx) to (ty - fy)
+        v.getLocationOnScreen(vLoc)
+        val l = vLoc[0] - rootLoc[0]
+        val t = vLoc[1] - rootLoc[1]
+        return Rect(l, t, l + v.width, t + v.height)
     }
 
     private fun playEnterStagger(baseDelay: Long) {

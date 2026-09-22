@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Tab intro: terminal -->
-    <string name="intro_terminal_lead">The terminal tab is the main workspace: Linux terminal plus shortcut rows on top, command wheel below. This page only explains usage and never switches tabs; Back returns to the previous screen.</string>
+    <string name="intro_terminal_lead">The terminal tab is the main workspace: Linux terminal, shortcut rows, and the command wheel.</string>
     <string name="intro_terminal_shortcut_title">Shortcut rows and Ctrl mode</string>
     <string name="intro_terminal_shortcut_body">The top row has `/`, `Tab`, `Esc`, and `Ctrl`; the bottom row has arrow keys.\nTap `Ctrl` to arm it and the button turns red; the next key is sent with Ctrl, and arming resets after 3 seconds without input.\nArrows move the cursor; with Ctrl armed, arrows send word-jump sequences.\nThe Back key acts as Esc here.</string>
     <string name="intro_terminal_wheel_title">Command wheel</string>
     <string name="intro_terminal_wheel_body">Swipe vertically on the shortcut bar to switch between shortcut rows and the command wheel.\nScroll horizontally, the centered card is highlighted, tap to run; a centered group expands its members above.\nTap gray area to hide the wheel; long press gray area to manage commands.\nRecommendations move likely commands to the center by frequency, order, and recency.</string>
     <string name="intro_terminal_library_title">Command library</string>
-    <string name="intro_terminal_library_body">Commands can be sorted, merged into groups, joined, or dissolved; each group keeps at least two members.\nBackup and restore are supported, and restore starts a new replay epoch.\nCommands support `\\n \\r \\t \\e \\cX`, with `@{}` marking the cursor landing spot.</string>
+    <string name="intro_terminal_library_body">Commands can be sorted, merged into groups, joined, or dissolved; each group keeps at least two members.\nBackup and restore are supported; restored data rejoins ranking.\nCommands support `\\n \\r \\t \\e \\cX`, with `@{}` marking the cursor landing spot.</string>
     <string name="intro_terminal_startup_title">Startup and tile commands</string>
-    <string name="intro_terminal_startup_body">The startup command runs automatically when the terminal starts.\nTile startup uses the tile command instead.\nTile commands fit one-tap preset actions.</string>
+    <string name="intro_terminal_startup_body">The startup command runs automatically when the terminal starts.\nTile startup runs the tile command.\nTile commands fit one-tap preset actions.</string>
     <string name="intro_terminal_ui_title">termlou-ui script dialogs</string>
     <string name="intro_terminal_ui_body">One shell line can open a native dialog with input, single choice, multiple choice, toggle, and colored text output.\nTheme, accent, corners, position, animation, and auto-close timeout can be adjusted.\n`termlou-clipboard` writes to the system clipboard.</string>
     <string name="intro_terminal_workshop_title">Dialog and splash workshops</string>
     <string name="intro_terminal_workshop_body">The dialog workshop designs dialogs visually and exports termlou-ui commands.\nThe splash workshop draws pixel art, converts photos to pixels, and adds particle boot animation.</string>
 
     <!-- Tab intro: notes -->
-    <string name="intro_notes_lead">Notes are fully local: lists manage notes, the editor holds text, tags, and todos. This page only explains usage and never switches tabs.</string>
+    <string name="intro_notes_lead">Notes are fully local: lists manage notes, and the editor holds text, tags, and todos.</string>
     <string name="intro_notes_list_title">List and editor</string>
     <string name="intro_notes_list_body">The list shows titles, update time, and tag capsules.\nOpen a note to edit; title, body, tags, and todos stay in separate zones.</string>
     <string name="intro_notes_tags_title">Tags</string>
@@ -29,7 +29,7 @@
     <string name="intro_notes_tile_body">The tile can open the standalone notes page directly.\nIt never wakes the terminal or Linux session.\nExit returns to the launcher with no background residue.</string>
 
     <!-- Tab intro: files -->
-    <string name="intro_files_lead">The files tab manages `/workspace`: navigation, import, sharing, and deletion in one place. This page only explains usage and never switches tabs.</string>
+    <string name="intro_files_lead">The files tab manages `/workspace`: navigation, import, sharing, and deletion.</string>
     <string name="intro_files_nav_title">Navigation and info</string>
     <string name="intro_files_nav_body">Enter folders, go up, see folder marks and file sizes.\nThe list has a fade-in animation.</string>
     <string name="intro_files_import_title">Import</string>
@@ -42,7 +42,7 @@
     <string name="intro_files_types_body">Common types are recognized by extension.\nText, images, archives, code, and documents are separated automatically.</string>
 
     <!-- Tab intro: network -->
-    <string name="intro_network_lead">The network tab captures per-app traffic and analyzes flows: choose apps first, then read logs, rankings, and blocks. This page only explains usage and never switches tabs.</string>
+    <string name="intro_network_lead">The network tab captures per-app traffic and analyzes flows: choose apps first, then read logs, rankings, and blocks.</string>
     <string name="intro_network_capture_title">Per-app capture</string>
     <string name="intro_network_capture_body">Select target apps through VPN.\nDNS follows the system; public DNS is only a fallback.</string>
     <string name="intro_network_log_title">Flow log</string>
@@ -53,7 +53,7 @@
     <string name="intro_network_proxy_body">Built-in SOCKS5 with optional upstream proxy; block rules take effect immediately.\nOnly plaintext is parsed, with no TLS interception.</string>
 
     <!-- Tab intro: settings -->
-    <string name="intro_settings_lead">Settings holds all switches and commands; language and theme changes need a restart. System info now lives in the terminal intro.</string>
+    <string name="intro_settings_lead">Settings holds all switches and commands; language and theme changes need a restart.</string>
     <string name="intro_settings_ui_title">Display</string>
     <string name="intro_settings_ui_body">Five terminal font sizes sync immediately.\nLanguage and theme switch between Chinese and English or dark and light, then need a restart.</string>
     <string name="intro_settings_commands_title">Commands</string>
@@ -62,6 +62,4 @@
     <string name="intro_settings_workshop_body">The dialog workshop designs script dialogs and exports commands.\nThe splash workshop customizes the boot screen.</string>
     <string name="intro_settings_net_title">Network and keep-alive</string>
     <string name="intro_settings_net_body">Empty upstream proxy means built-in direct mode.\nLAN shares files and the terminal.\nKeep-alive uses a low-priority foreground service.</string>
-    <string name="intro_settings_sysinfo_title">Where system info went</string>
-    <string name="intro_settings_sysinfo_body">System info moved to the top of the terminal intro.\nThe pie-chart entry animation is preserved.</string>
 </resources>

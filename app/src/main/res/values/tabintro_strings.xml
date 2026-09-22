@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Tab 介绍页：终端 -->
-    <string name="intro_terminal_lead">终端页是 TermLou 的主战场：上面是 Linux 终端与快捷键行，下面可以滑出命令拨轮。这里只介绍用法，不会切换页面，返回键回到原页面。</string>
+    <string name="intro_terminal_lead">终端页是 TermLou 的主战场：Linux 终端、快捷键行与命令拨轮。</string>
     <string name="intro_terminal_shortcut_title">快捷键行与 Ctrl 模式</string>
     <string name="intro_terminal_shortcut_body">上行常驻 `/`、`Tab`、`Esc`、`Ctrl`，下行是方向键。\n点 `Ctrl` 进入武装状态，按钮变红，下一个按键自动带 Ctrl 发送，3 秒无操作自动解除。\n方向键单按移动光标；Ctrl 武装下再按方向键，会发送跳单词序列。\n终端页的返回键映射为 Esc。</string>
     <string name="intro_terminal_wheel_title">命令拨轮</string>
     <string name="intro_terminal_wheel_body">在快捷栏上下滑动，可在快捷键行与命令拨轮之间切换。\n拨轮横向滚动，中央卡片自动高亮，点按执行；命令组居中时会自动展开上层成员。\n点灰色区域收起拨轮；长按灰色区域进入命令库管理。\n推荐会按使用频次、顺序与近因，把命令滚到中央。</string>
     <string name="intro_terminal_library_title">命令库管理</string>
-    <string name="intro_terminal_library_body">命令可以排序、合并成组、加入或解散组；每个组至少保留两个成员。\n支持备份与恢复，恢复后会开启新的回放纪元。\n命令支持 `\\n \\r \\t \\e \\cX`，用 `@{}` 标记执行后光标落点。</string>
+    <string name="intro_terminal_library_body">命令可以排序、合并成组、加入或解散组；每个组至少保留两个成员。\n支持备份与恢复，恢复的数据重新参与排序推荐。\n命令支持 `\\n \\r \\t \\e \\cX`，用 `@{}` 标记执行后光标落点。</string>
     <string name="intro_terminal_startup_title">启动命令与磁贴命令</string>
-    <string name="intro_terminal_startup_body">设置里的启动命令会在终端启动时自动执行。\n从磁贴启动时走磁贴命令，不再执行启动命令。\n磁贴命令适合一键执行预设动作。</string>
+    <string name="intro_terminal_startup_body">设置里的启动命令会在终端启动时自动执行。\n从磁贴启动时，执行的是磁贴命令。\n磁贴命令适合一键执行预设动作。</string>
     <string name="intro_terminal_ui_title">termlou-ui 脚本浮窗</string>
     <string name="intro_terminal_ui_body">Shell 里一行命令就能弹出原生浮窗，支持输入框、单选、多选、开关与彩色文本输出。\n可以调整主题、强调色、圆角、位置、动画与超时关闭。\n剪贴板可用 `termlou-clipboard` 直写系统剪贴板。</string>
     <string name="intro_terminal_workshop_title">弹窗工坊与启动页工坊</string>
     <string name="intro_terminal_workshop_body">弹窗工坊可以图形化设计对话框，实时预览并导出 termlou-ui 命令。\n启动页工坊可以手绘点阵、把照片转成像素画，并配粒子开屏动画。</string>
 
     <!-- Tab 介绍页：笔记 -->
-    <string name="intro_notes_lead">笔记页是纯本机功能：列表管理笔记，编辑页写正文、挂标签、记待办。这里只介绍用法，不会切换页面。</string>
+    <string name="intro_notes_lead">笔记页是纯本机功能：列表管理笔记，编辑页写正文、挂标签、记待办。</string>
     <string name="intro_notes_list_title">列表与编辑</string>
     <string name="intro_notes_list_body">列表显示标题、更新时间与标签胶囊。\n点笔记进入编辑，标题、正文、标签、待办分区排布。</string>
     <string name="intro_notes_tags_title">标签</string>
@@ -29,7 +29,7 @@
     <string name="intro_notes_tile_body">磁贴可以直接打开独立笔记页。\n全程不唤醒终端与 Linux 会话。\n退出即回桌面，后台无残留。</string>
 
     <!-- Tab 介绍页：文件 -->
-    <string name="intro_files_lead">文件页管理 `/workspace`：导航、导入、分享、删除一次讲完。这里只介绍用法，不会切换页面。</string>
+    <string name="intro_files_lead">文件页管理 `/workspace`：导航、导入、分享、删除。</string>
     <string name="intro_files_nav_title">导航与信息</string>
     <string name="intro_files_nav_body">进入目录、返回上级、文件夹标记、文件大小显示。\n列表有渐入动画。</string>
     <string name="intro_files_import_title">导入</string>
@@ -42,7 +42,7 @@
     <string name="intro_files_types_body">按扩展名识别常见类型。\n文本、图片、压缩包、代码与文档自动区分。</string>
 
     <!-- Tab 介绍页：网络 -->
-    <string name="intro_network_lead">网络页做按 App 抓包与流量分析：先选 App，再看日志、排行与阻断。这里只介绍用法，不会切换页面。</string>
+    <string name="intro_network_lead">网络页做按 App 抓包与流量分析：先选 App，再看日志、排行与阻断。</string>
     <string name="intro_network_capture_title">按 App 抓包</string>
     <string name="intro_network_capture_body">通过 VPN 精选要抓的 App。\nDNS 按系统下发，取不到才回退公共 DNS。</string>
     <string name="intro_network_log_title">流量日志</string>
@@ -53,7 +53,7 @@
     <string name="intro_network_proxy_body">内置 SOCKS5，可选上游代理；阻断规则实时生效。\n只解析明文，不做 TLS 中间人。</string>
 
     <!-- Tab 介绍页：设置 -->
-    <string name="intro_settings_lead">设置页是全部开关与命令的入口；改语言与主题后需要重开生效。系统信息已经搬到终端介绍页。</string>
+    <string name="intro_settings_lead">设置页是全部开关与命令的入口；改语言与主题后需要重开生效。</string>
     <string name="intro_settings_ui_title">界面</string>
     <string name="intro_settings_ui_body">终端字号五档即时同步。\n语言中英切换，主题深浅切换，后两者重开生效。</string>
     <string name="intro_settings_commands_title">命令</string>
@@ -62,6 +62,4 @@
     <string name="intro_settings_workshop_body">弹窗工坊设计脚本浮窗并导出命令。\n启动页工坊自定义开屏画面。</string>
     <string name="intro_settings_net_title">网络与保活</string>
     <string name="intro_settings_net_body">上游代理留空走内置直连。\nLAN 分享文件与终端。\n后台持久化用低优先级前台服务保活。</string>
-    <string name="intro_settings_sysinfo_title">系统信息去向</string>
-    <string name="intro_settings_sysinfo_body">原来设置里的系统信息已移到终端介绍页顶部。\n饼图进入动画保留。</string>
 </resources>
