@@ -1,10 +1,7 @@
 package com.workspace.proot
 
-import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.Rect
 import android.graphics.Typeface
-import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
@@ -37,7 +34,6 @@ class TabIntroController(
     private var overlay: FrameLayout? = null
     private var heroSlot: FrameLayout? = null
     private var heroView: ImageView? = null
-    private var heroGlyph: PlacedGlyph? = null
     private var sourceView: ImageView? = null
     private var sysCard: SystemInfoCardView? = null
     private var sysLoadJob: Job? = null
@@ -181,8 +177,7 @@ class TabIntroController(
         cancelFlight()
         val src = sourceView
         val hero = heroView
-        val glyph = heroGlyph
-        if (src == null || hero == null || glyph == null || !src.isAttachedToWindow) {
+        if (src == null || hero == null || !src.isAttachedToWindow) {
             fadeOut(ov)
             return true
         }
@@ -190,19 +185,12 @@ class TabIntroController(
             v.animate().cancel()
             v.animate().alpha(0f).setDuration(120).setInterpolator(DecelerateInterpolator()).start()
         }
-        // 同一个 hero 原路飞回 tab 图标本体。
-        val target = captureGlyph(src)
-        if (target == null) {
-            fadeOut(ov)
-            return true
-        }
-        val s = target.bmp.height.toFloat() / glyph.bmp.height.toFloat()
-        val dx = (target.left + target.bmp.width / 2f) - (glyph.left + glyph.bmp.width / 2f)
-        val dy = (target.top + target.bmp.height / 2f) - (glyph.top + glyph.bmp.height / 2f)
+        // 同一个 hero 原路飞回：落点就是它的布局矩形（= 来源矩形），同输入同输出；
+        // 叠加层淡出露出真 tab 时再淡掉分身。
         ov.animate().cancel()
         ov.animate().alpha(0f).setDuration(200).setInterpolator(DecelerateInterpolator()).start()
         hero.animate()
-            .translationX(dx).translationY(dy).scaleX(s).scaleY(s)
+            .translationX(0f).translationY(0f).scaleX(1f).scaleY(1f)
             .setDuration(240).setInterpolator(DecelerateInterpolator())
             .withEndAction { teardown() }.start()
         hero.animate().alpha(0f).setStartDelay(140).setDuration(100).start()
@@ -225,89 +213,52 @@ class TabIntroController(
     private fun startEnter(source: ImageView) {
         val ov = overlay ?: return
         val slot = heroSlot ?: return
-        // 只飞图标本体：裁掉 tab 的透明 padding。
-        val glyph = captureGlyph(source)
-        if (glyph == null || !slot.isAttachedToWindow || slot.width <= 0) {
+        if (!source.isAttachedToWindow || !slot.isAttachedToWindow || slot.width <= 0) {
             ov.animate().alpha(1f).setDuration(200).start()
             playEnterStagger(0L)
             return
         }
-        heroGlyph = glyph
-        val hero = glyphFly(glyph)
+        // 矢量克隆：同 drawable、同 tint、同 padding、同 scaleType、同矩形，
+        // 起飞第一帧与 tab 渲染完全一致；全程矢量，放大不糊。
+        val hero = cloneTabIcon(source)
         heroView = hero
         ov.addView(hero)
         ov.animate().alpha(1f).setDuration(200).setInterpolator(DecelerateInterpolator()).start()
         playEnterStagger(140L)
-        // 槽位即落点：等比缩放到同高、中心对齐；落定后 hero 原地成为页眉，无交棒。
+        // 落点按槽位外接盒 FIT：五个 tab 落点一样大；等比，中心对齐。
+        // 落定后 hero 原地成为页眉，无交棒。
         val slotRect = rectOf(slot)
-        val s = slotRect.height().toFloat() / glyph.bmp.height.toFloat()
-        val dx = slotRect.exactCenterX() - (glyph.left + glyph.bmp.width / 2f)
-        val dy = slotRect.exactCenterY() - (glyph.top + glyph.bmp.height / 2f)
+        val srcRect = rectOf(source)
+        val s = minOf(
+            slotRect.width().toFloat() / srcRect.width().toFloat(),
+            slotRect.height().toFloat() / srcRect.height().toFloat()
+        )
+        val dx = slotRect.exactCenterX() - srcRect.exactCenterX()
+        val dy = slotRect.exactCenterY() - srcRect.exactCenterY()
         hero.animate()
             .translationX(dx).translationY(dy).scaleX(s).scaleY(s)
             .setDuration(300).setInterpolator(DecelerateInterpolator())
             .start()
     }
 
-    /** 实拍 view 并裁出图标本体的不透明包围盒，坐标换算到 root 系。 */
-    private fun captureGlyph(v: View): PlacedGlyph? {
-        if (!v.isAttachedToWindow || v.width <= 0 || v.height <= 0) return null
-        val bmp = snapshot(v) ?: return null
-        val r = opaqueBounds(bmp) ?: return null
-        if (r.isEmpty) return null
-        val rootLoc = IntArray(2)
-        val vLoc = IntArray(2)
-        root.getLocationOnScreen(rootLoc)
-        v.getLocationOnScreen(vLoc)
-        val glyph = Bitmap.createBitmap(bmp, r.left, r.top, r.width(), r.height())
-        return PlacedGlyph(glyph, vLoc[0] - rootLoc[0] + r.left, vLoc[1] - rootLoc[1] + r.top)
-    }
-
-    private data class PlacedGlyph(val bmp: Bitmap, val left: Int, val top: Int)
-
-    private fun snapshot(v: View): Bitmap? {
-        if (v.width <= 0 || v.height <= 0 || !v.isAttachedToWindow) return null
-        return runCatching {
-            Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888).also { bmp ->
-                v.draw(Canvas(bmp))
-            }
-        }.getOrNull()
-    }
-
-    /** 逐像素扫描不透明区：图标位图小（百级像素），直接全扫。 */
-    private fun opaqueBounds(bmp: Bitmap): Rect? {
-        val w = bmp.width
-        val h = bmp.height
-        val px = IntArray(w * h)
-        bmp.getPixels(px, 0, w, 0, 0, w, h)
-        var l = w
-        var t = h
-        var r = -1
-        var b = -1
-        for (y in 0 until h) {
-            for (x in 0 until w) {
-                if ((px[y * w + x] ushr 24) != 0) {
-                    if (x < l) l = x
-                    if (x > r) r = x
-                    if (y < t) t = y
-                    if (y > b) b = y
-                }
-            }
-        }
-        if (r < l || b < t) return null
-        return Rect(l, t, r + 1, b + 1)
-    }
-
-    private fun glyphFly(g: PlacedGlyph): ImageView {
+    /** 矢量克隆：渲染输入与来源完全一致，输出必然一致。 */
+    private fun cloneTabIcon(source: ImageView): ImageView {
         return ImageView(activity).apply {
-            setImageBitmap(g.bmp)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            layoutParams = FrameLayout.LayoutParams(g.bmp.width, g.bmp.height).apply {
-                leftMargin = g.left
-                topMargin = g.top
-            }
-            pivotX = g.bmp.width / 2f
-            pivotY = g.bmp.height / 2f
+            setImageDrawable(source.drawable)
+            colorFilter = source.colorFilter
+            scaleType = source.scaleType
+            setPadding(source.paddingLeft, source.paddingTop, source.paddingRight, source.paddingBottom)
+            layoutParams = FrameLayout.LayoutParams(source.width, source.height)
+            pivotX = source.width / 2f
+            pivotY = source.height / 2f
+        }.also { positionAt(it, source) }
+    }
+
+    private fun positionAt(v: View, anchor: View) {
+        val r = rectOf(anchor)
+        (v.layoutParams as FrameLayout.LayoutParams).apply {
+            leftMargin = r.left
+            topMargin = r.top
         }
     }
 
@@ -338,7 +289,6 @@ class TabIntroController(
 
     private fun dropHero(hero: ImageView) {
         runCatching { (hero.parent as? FrameLayout)?.removeView(hero) }
-        runCatching { (hero.drawable as? BitmapDrawable)?.bitmap?.recycle() }
         if (heroView === hero) heroView = null
     }
 
@@ -355,7 +305,6 @@ class TabIntroController(
         sysCard = null
         heroView?.let { dropHero(it) }
         heroView = null
-        heroGlyph = null
         overlay?.let { runCatching { root.removeView(it) } }
         overlay = null
         heroSlot = null

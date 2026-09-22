@@ -2,7 +2,7 @@
 
 > An Android terminal built for **people who don't code** — Debian GNU/Linux, file management, notes & todos, network inspection and script-driven floating UI, all inside one tap-and-go App.
 
-![Version](https://img.shields.io/badge/version-5.1.0-blue)
+![Version](https://img.shields.io/badge/version-5.1.1-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -286,6 +286,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history. Recent versions:
 
 | Version | versionCode | Summary |
 |---------|-------------|---------|
+| **5.1.1** | 5101 | Intro hero cloned as vector (crisp at any size); landing boxes unified |
 | **5.1.0** | 5100 | Tab intro hero flies as a single icon (no handoff flash); intro copy rewritten as product guides |
 | **5.0.58** | 558 | Tab intro pages (tap a top icon for feature guides, tabs never switch); terminal intro carries system info + storage pie chart; system info entry removed from Settings |
 | **5.0.57** | 557 | Note .txt files now embed metadata headers (tags/todos/timestamps, full restore after db loss; broken headers read as body); connection self-heal (no crash after external db/dir deletion); migration fallback removed |
