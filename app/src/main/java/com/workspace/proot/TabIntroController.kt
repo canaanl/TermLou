@@ -1,14 +1,6 @@
 package com.workspace.proot
 
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
-import android.animation.ValueAnimator
-import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Rect
 import android.graphics.Typeface
-import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
@@ -27,8 +19,7 @@ import java.io.File
  * 只挂在 MainActivity 顶栏五个 Tab 图标上；子 Activity 与磁贴独立笔记页没有这套 UI，
  * 天然不可触发。打开时拦截全部触摸，返回键逆向关闭。
  *
- * 布局是固定页眉（hero 槽位 + 标题）+ 下面独立滚动的正文；hero 是同一个 icon
- * 从 tab 直飞页眉槽位，中途无交棒，落点零闪烁。关闭时同一 icon 原路飞回。
+ * 页眉只有标题（无 hero icon），正文独立滚动；打开=淡入+内容 stagger，关闭=逆向淡出。
  */
 class TabIntroController(
     private val activity: MainActivity,
@@ -39,9 +30,6 @@ class TabIntroController(
     private val density = activity.resources.displayMetrics.density
 
     private var overlay: FrameLayout? = null
-    private var heroSlot: FrameLayout? = null
-    private var heroView: HeroView? = null
-    private var sourceView: ImageView? = null
     private var sysCard: SystemInfoCardView? = null
     private var sysLoadJob: Job? = null
     private var enterViews = mutableListOf<View>()
@@ -49,18 +37,17 @@ class TabIntroController(
 
     fun isShowing(): Boolean = overlay != null
 
-    /** 仅主界面顶栏调用，下标与 TabIntroContent.page 一致。 */
+    /** 仅主界面顶栏调用，下标与 TabIntroContent.page 一致；点击只开介绍，不切 Tab。 */
     fun attach(tabs: List<ImageView>) {
-        tabs.forEachIndexed { i, iv ->
-            iv.setOnClickListener { open(i, iv) }
+        tabs.forEachIndexed { i, _ ->
+            tabs[i].setOnClickListener { open(i) }
         }
     }
 
-    fun open(index: Int, source: ImageView) {
+    fun open(index: Int) {
         if (overlay != null || closing) return
         activity.hideIme()
         val p = TabIntroContent.page(index)
-        sourceView = source
 
         val ov = FrameLayout(activity).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -72,16 +59,11 @@ class TabIntroController(
             isFocusable = true
             alpha = 0f
         }
-        // 固定页眉：hero 槽位留空给直飞来的 hero，标题在旁。
-        val slot = FrameLayout(activity).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
-        }
-        heroSlot = slot
+        // 固定页眉：只有标题。
         val headerBar = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(20), dp(16), dp(20), dp(8))
-            addView(slot)
             addView(TextView(activity).apply {
                 text = activity.getString(p.titleRes)
                 setTextColor(theme.onSurface)
@@ -89,7 +71,6 @@ class TabIntroController(
                 textSize = 24f
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
-                setPadding(dp(16), 0, 0, 0)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
         }
@@ -166,13 +147,12 @@ class TabIntroController(
         root.addView(ov)
         // 焦点抢到叠加层：否则焦点留在底下 TerminalView，返回键会被它当 ESC 吃掉，
         // 到不了 OnBackPressedDispatcher，介绍页就关不掉。
-        // ov 与 root 同为全屏原点，相对坐标可直接换算。
         ov.isFocusableInTouchMode = true
         ov.requestFocus()
 
         // 系统信息每次打开都是新卡片实例，数据到达后 sweep 自然重播。
         sysCard?.let { sysLoadJob = it.load(activity.lifecycleScope) }
-        ov.post { startEnter(source) }
+        ov.post { enter() }
     }
 
     /** 返回键入口：正在展示则逆向关闭并消费事件，否则返回 false。 */
@@ -184,29 +164,13 @@ class TabIntroController(
         sysLoadJob = null
         sysCard?.cancel()
         cancelFlight()
-        val src = sourceView
-        val hero = heroView
-        if (src == null || hero == null || !src.isAttachedToWindow) {
-            fadeOut(ov)
-            return true
-        }
         for (v in enterViews) {
             v.animate().cancel()
             v.animate().alpha(0f).setDuration(120).setInterpolator(DecelerateInterpolator()).start()
         }
-        // 同一个 hero 原路飞回：progress 1→0；叠加层淡出露出真 tab 时再淡掉分身。
         ov.animate().cancel()
-        ov.animate().alpha(0f).setDuration(200).setInterpolator(DecelerateInterpolator()).start()
-        ValueAnimator.ofFloat(1f, 0f).apply {
-            duration = 240
-            interpolator = DecelerateInterpolator()
-            addUpdateListener { hero.progress = animatedValue as Float }
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) = teardown()
-            })
-            start()
-        }
-        hero.animate().alpha(0f).setStartDelay(140).setDuration(100).start()
+        ov.animate().alpha(0f).setDuration(200).setInterpolator(DecelerateInterpolator())
+            .withEndAction { teardown() }.start()
         return true
     }
 
@@ -216,151 +180,15 @@ class TabIntroController(
         sysCard?.cancel()
         sysCard = null
         cancelFlight()
-        heroView?.let { dropHero(it) }
-        heroView = null
         overlay?.let { runCatching { root.removeView(it) } }
         overlay = null
         closing = false
     }
 
-    private fun startEnter(source: ImageView) {
+    private fun enter() {
         val ov = overlay ?: return
-        val slot = heroSlot ?: return
-        if (!source.isAttachedToWindow || !slot.isAttachedToWindow || slot.width <= 0) {
-            ov.animate().alpha(1f).setDuration(200).start()
-            playEnterStagger(0L)
-            return
-        }
-        // hero 全屏透明 view，拿矢量 drawable 拷贝：起点矩形=图标本体实测框。
-        val content = measureContent(source)
-        val icon = source.drawable?.constantState?.newDrawable()?.mutate()
-        if (content == null || content.isEmpty || icon == null) {
-            ov.animate().alpha(1f).setDuration(200).start()
-            playEnterStagger(0L)
-            return
-        }
-        icon.colorFilter = source.colorFilter
-        val srcLoc = IntArray(2)
-        val rootLoc = IntArray(2)
-        source.getLocationOnScreen(srcLoc)
-        root.getLocationOnScreen(rootLoc)
-        val from = Rect(
-            srcLoc[0] - rootLoc[0] + content.left,
-            srcLoc[1] - rootLoc[1] + content.top,
-            srcLoc[0] - rootLoc[0] + content.right,
-            srcLoc[1] - rootLoc[1] + content.bottom
-        )
-        // 终点：五个本体等高（= 标题行高），宽度各随比例；中心对准槽位中心。
-        val slotRect = rectOf(slot)
-        val targetH = dp(28).toFloat()
-        val fit = targetH / content.height()
-        val w = content.width() * fit
-        val h = content.height() * fit
-        val to = Rect(
-            (slotRect.exactCenterX() - w / 2).toInt(),
-            (slotRect.exactCenterY() - h / 2).toInt(),
-            (slotRect.exactCenterX() + w / 2).toInt(),
-            (slotRect.exactCenterY() + h / 2).toInt()
-        )
-        val hero = HeroView(activity).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-            start(icon, from, to)
-        }
-        heroView = hero
-        ov.addView(hero)
         ov.animate().alpha(1f).setDuration(200).setInterpolator(DecelerateInterpolator()).start()
         playEnterStagger(140L)
-        // 逐帧改 bounds 并重绘：矢量每帧按新尺寸重栅格化，全程清晰；
-        // 只 invalidate 自己，不触发 measure/layout。
-        ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 300
-            interpolator = DecelerateInterpolator()
-            addUpdateListener { hero.progress = animatedValue as Float }
-            start()
-        }
-    }
-
-    /**
-     * 全屏 hero：逐帧改 drawable bounds 并重绘，矢量每帧按新尺寸重栅格化。
-     * 同一个 icon 从 tab 直飞槽位，中途无交棒，落点零闪烁。
-     */
-    private class HeroView(context: Context) : View(context) {
-        private var icon: Drawable? = null
-        private val fromRect = Rect()
-        private val toRect = Rect()
-        var progress: Float = 0f
-            set(value) {
-                field = value
-                updateBounds()
-                invalidate()
-            }
-
-        fun start(icon: Drawable, from: Rect, to: Rect) {
-            this.icon = icon
-            fromRect.set(from)
-            toRect.set(to)
-            progress = 0f
-        }
-
-        private fun updateBounds() {
-            val d = icon ?: return
-            val p = progress
-            d.bounds = Rect(
-                (fromRect.left + (toRect.left - fromRect.left) * p).toInt(),
-                (fromRect.top + (toRect.top - fromRect.top) * p).toInt(),
-                (fromRect.right + (toRect.right - fromRect.right) * p).toInt(),
-                (fromRect.bottom + (toRect.bottom - fromRect.bottom) * p).toInt()
-            )
-        }
-
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            icon?.draw(canvas)
-        }
-    }
-
-    /** view 在 root 系中的矩形（overlay 全屏同原点，可直接换算）。 */
-    private fun rectOf(v: View): Rect {
-        val rootLoc = IntArray(2)
-        val vLoc = IntArray(2)
-        root.getLocationOnScreen(rootLoc)
-        v.getLocationOnScreen(vLoc)
-        val l = vLoc[0] - rootLoc[0]
-        val t = vLoc[1] - rootLoc[1]
-        return Rect(l, t, l + v.width, t + v.height)
-    }
-
-    /** 实拍仅用于量图标本体的不透明包围盒；位图不显示、不参与渲染，放大全程矢量。 */
-    private fun measureContent(v: View): Rect? {
-        if (v.width <= 0 || v.height <= 0 || !v.isAttachedToWindow) return null
-        val bmp = runCatching {
-            Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888).also { b ->
-                v.draw(Canvas(b))
-            }
-        }.getOrNull() ?: return null
-        val w = bmp.width
-        val h = bmp.height
-        val px = IntArray(w * h)
-        bmp.getPixels(px, 0, w, 0, 0, w, h)
-        var l = w
-        var t = h
-        var r = -1
-        var b = -1
-        for (y in 0 until h) {
-            for (x in 0 until w) {
-                if ((px[y * w + x] ushr 24) != 0) {
-                    if (x < l) l = x
-                    if (x > r) r = x
-                    if (y < t) t = y
-                    if (y > b) b = y
-                }
-            }
-        }
-        if (r < l || b < t) return null
-        return Rect(l, t, r + 1, b + 1)
     }
 
     private fun playEnterStagger(baseDelay: Long) {
@@ -371,20 +199,8 @@ class TabIntroController(
         }
     }
 
-    private fun fadeOut(ov: FrameLayout) {
-        ov.animate().cancel()
-        ov.animate().alpha(0f).setDuration(150).setInterpolator(DecelerateInterpolator())
-            .withEndAction { teardown() }.start()
-    }
-
-    private fun dropHero(hero: HeroView) {
-        runCatching { (hero.parent as? FrameLayout)?.removeView(hero) }
-        if (heroView === hero) heroView = null
-    }
-
     private fun cancelFlight() {
         overlay?.animate()?.cancel()
-        heroView?.animate()?.cancel()
         for (v in enterViews) v.animate().cancel()
     }
 
@@ -393,12 +209,8 @@ class TabIntroController(
         sysLoadJob = null
         sysCard?.cancel()
         sysCard = null
-        heroView?.let { dropHero(it) }
-        heroView = null
         overlay?.let { runCatching { root.removeView(it) } }
         overlay = null
-        heroSlot = null
-        sourceView = null
         enterViews.clear()
         closing = false
         // 焦点还给终端（仅终端页）：打开前焦点就在它那，保持原有按键行为。
