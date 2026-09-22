@@ -2,7 +2,7 @@
 
 > 一个为**不写代码的人**打造的 Android 终端 —— 把 Debian GNU/Linux、文件管理、笔记待办、网络抓包和脚本浮窗，全部塞进一个"点一下就能用"的 App。
 
-![Version](https://img.shields.io/badge/version-5.1.7-blue)
+![Version](https://img.shields.io/badge/version-5.1.8-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -286,6 +286,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.1.8** | 5108 | 待办看板去掉归属笔记名；事项字号 14 |
 | **5.1.7** | 5107 | 常驻小字全部并入介绍页（命令管理/设置项/标签判定），UI 保持干净 |
 | **5.1.6** | 5106 | 介绍页去 hero icon，页眉只留标题 |
 | **5.1.5** | 5105 | 落点五个等高，槽位 40 |

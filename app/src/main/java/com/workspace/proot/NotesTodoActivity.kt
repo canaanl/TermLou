@@ -19,7 +19,7 @@ import android.widget.TextView
 /**
  * 待办看板：顶部搜索框实时过滤（一次过滤同时分到两列）；
  * 中间灰线左右分栏，左已完成、右未完成，各列独立滚动、标题冻结；
- * 正文折行（副行归属笔记保持单行省略），checkbox 相对整行居中；
+ * 正文折行，checkbox 相对整行居中；
  * 整行点按切换：本列右飞摘除，对列按排序位置重建飞入、
  * 自动滚到该行、dirRowBg 底色闪两次；长按删除；变更即落盘。
  * 新增待办只在笔记编辑器的 [＋待办] 里做。
@@ -206,22 +206,13 @@ class NotesTodoActivity : NotesPageActivity() {
             addView(LinearLayout(this@NotesTodoActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                // 正文折行不限行数；归属副行保持单行省略
                 addView(TextView(this@NotesTodoActivity).apply {
                     text = item.text
                     setTextColor(if (item.done) theme.onSurfaceVariant else theme.onSurface)
-                    textSize = UiTokens.TEXT_BODY
+                    // 看板事项字号：15→14，比全局正文略小
+                    textSize = 14f
                     if (item.done) paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
                 })
-                if (item.note.isNotEmpty()) {
-                    addView(TextView(this@NotesTodoActivity).apply {
-                        text = item.note
-                        setTextColor(theme.onSurfaceVariant)
-                        textSize = UiTokens.TEXT_META
-                        maxLines = 1
-                        ellipsize = android.text.TextUtils.TruncateAt.END
-                    })
-                }
             })
             setOnClickListener { toggleTodoAnimated(this, item) }
             setOnLongClickListener { confirmDeleteTodo(item); true }
