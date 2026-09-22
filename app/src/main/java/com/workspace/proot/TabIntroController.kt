@@ -1,9 +1,14 @@
 package com.workspace.proot
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
 import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
@@ -35,7 +40,7 @@ class TabIntroController(
 
     private var overlay: FrameLayout? = null
     private var heroSlot: FrameLayout? = null
-    private var heroView: ImageView? = null
+    private var heroView: HeroView? = null
     private var sourceView: ImageView? = null
     private var sysCard: SystemInfoCardView? = null
     private var sysLoadJob: Job? = null
@@ -69,7 +74,7 @@ class TabIntroController(
         }
         // 固定页眉：hero 槽位留空给直飞来的 hero，标题在旁。
         val slot = FrameLayout(activity).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(120), dp(120))
+            layoutParams = LinearLayout.LayoutParams(dp(96), dp(96))
         }
         heroSlot = slot
         val headerBar = LinearLayout(activity).apply {
@@ -189,14 +194,18 @@ class TabIntroController(
             v.animate().cancel()
             v.animate().alpha(0f).setDuration(120).setInterpolator(DecelerateInterpolator()).start()
         }
-        // 同一个 hero 原路飞回：落点就是它的布局矩形（= 来源矩形），同输入同输出；
-        // 叠加层淡出露出真 tab 时再淡掉分身。
+        // 同一个 hero 原路飞回：progress 1→0；叠加层淡出露出真 tab 时再淡掉分身。
         ov.animate().cancel()
         ov.animate().alpha(0f).setDuration(200).setInterpolator(DecelerateInterpolator()).start()
-        hero.animate()
-            .translationX(0f).translationY(0f).scaleX(1f).scaleY(1f)
-            .setDuration(240).setInterpolator(DecelerateInterpolator())
-            .withEndAction { teardown() }.start()
+        ValueAnimator.ofFloat(1f, 0f).apply {
+            duration = 240
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { hero.progress = animatedValue as Float }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) = teardown()
+            })
+            start()
+        }
         hero.animate().alpha(0f).setStartDelay(140).setDuration(100).start()
         return true
     }
@@ -222,54 +231,94 @@ class TabIntroController(
             playEnterStagger(0L)
             return
         }
-        // 矢量克隆：同 drawable、同 tint、同 padding、同 scaleType、同矩形，
-        // 起飞第一帧与 tab 渲染完全一致；全程矢量，放大不糊。
-        val hero = cloneTabIcon(source)
+        // hero 全屏透明 view，拿矢量 drawable 拷贝：起点矩形=图标本体实测框。
+        val content = measureContent(source)
+        val icon = source.drawable?.constantState?.newDrawable()?.mutate()
+        if (content == null || content.isEmpty || icon == null) {
+            ov.animate().alpha(1f).setDuration(200).start()
+            playEnterStagger(0L)
+            return
+        }
+        icon.colorFilter = source.colorFilter
+        val srcLoc = IntArray(2)
+        val rootLoc = IntArray(2)
+        source.getLocationOnScreen(srcLoc)
+        root.getLocationOnScreen(rootLoc)
+        val from = Rect(
+            srcLoc[0] - rootLoc[0] + content.left,
+            srcLoc[1] - rootLoc[1] + content.top,
+            srcLoc[0] - rootLoc[0] + content.right,
+            srcLoc[1] - rootLoc[1] + content.bottom
+        )
+        // 终点：本体 FIT 进槽位盒，中心对准槽位中心；五个 tab 落点一样大。
+        val slotRect = rectOf(slot)
+        val box = dp(96).toFloat()
+        val fit = minOf(box / content.width(), box / content.height())
+        val w = content.width() * fit
+        val h = content.height() * fit
+        val to = Rect(
+            (slotRect.exactCenterX() - w / 2).toInt(),
+            (slotRect.exactCenterY() - h / 2).toInt(),
+            (slotRect.exactCenterX() + w / 2).toInt(),
+            (slotRect.exactCenterY() + h / 2).toInt()
+        )
+        val hero = HeroView(activity).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            start(icon, from, to)
+        }
         heroView = hero
         ov.addView(hero)
         ov.animate().alpha(1f).setDuration(200).setInterpolator(DecelerateInterpolator()).start()
         playEnterStagger(140L)
-        // 落点按图标本体外接盒 FIT 进槽位：实拍只用来量本体尺寸，不参与渲染；
-        // 五个 tab 本体都撑满同一个槽，落点一样大；等比，中心对齐。
-        // 落定后 hero 原地成为页眉，无交棒。
-        val content = measureContent(source)
-        val slotRect = rectOf(slot)
-        val srcRect = rectOf(source)
-        val box = dp(120).toFloat()
-        val s = if (content == null || content.isEmpty) {
-            minOf(
-                slotRect.width().toFloat() / srcRect.width().toFloat(),
-                slotRect.height().toFloat() / srcRect.height().toFloat()
-            )
-        } else {
-            minOf(box / content.width(), box / content.height())
+        // 逐帧改 bounds 并重绘：矢量每帧按新尺寸重栅格化，全程清晰；
+        // 只 invalidate 自己，不触发 measure/layout。
+        ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 300
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { hero.progress = animatedValue as Float }
+            start()
         }
-        val dx = slotRect.exactCenterX() - srcRect.exactCenterX()
-        val dy = slotRect.exactCenterY() - srcRect.exactCenterY()
-        hero.animate()
-            .translationX(dx).translationY(dy).scaleX(s).scaleY(s)
-            .setDuration(300).setInterpolator(DecelerateInterpolator())
-            .start()
     }
 
-    /** 矢量克隆：渲染输入与来源完全一致，输出必然一致。 */
-    private fun cloneTabIcon(source: ImageView): ImageView {
-        return ImageView(activity).apply {
-            setImageDrawable(source.drawable)
-            colorFilter = source.colorFilter
-            scaleType = source.scaleType
-            setPadding(source.paddingLeft, source.paddingTop, source.paddingRight, source.paddingBottom)
-            layoutParams = FrameLayout.LayoutParams(source.width, source.height)
-            pivotX = source.width / 2f
-            pivotY = source.height / 2f
-        }.also { positionAt(it, source) }
-    }
+    /**
+     * 全屏 hero：逐帧改 drawable bounds 并重绘，矢量每帧按新尺寸重栅格化。
+     * 同一个 icon 从 tab 直飞槽位，中途无交棒，落点零闪烁。
+     */
+    private class HeroView(context: Context) : View(context) {
+        private var icon: Drawable? = null
+        private val fromRect = Rect()
+        private val toRect = Rect()
+        var progress: Float = 0f
+            set(value) {
+                field = value
+                updateBounds()
+                invalidate()
+            }
 
-    private fun positionAt(v: View, anchor: View) {
-        val r = rectOf(anchor)
-        (v.layoutParams as FrameLayout.LayoutParams).apply {
-            leftMargin = r.left
-            topMargin = r.top
+        fun start(icon: Drawable, from: Rect, to: Rect) {
+            this.icon = icon
+            fromRect.set(from)
+            toRect.set(to)
+            progress = 0f
+        }
+
+        private fun updateBounds() {
+            val d = icon ?: return
+            val p = progress
+            d.bounds = Rect(
+                (fromRect.left + (toRect.left - fromRect.left) * p).toInt(),
+                (fromRect.top + (toRect.top - fromRect.top) * p).toInt(),
+                (fromRect.right + (toRect.right - fromRect.right) * p).toInt(),
+                (fromRect.bottom + (toRect.bottom - fromRect.bottom) * p).toInt()
+            )
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            icon?.draw(canvas)
         }
     }
 
@@ -328,7 +377,7 @@ class TabIntroController(
             .withEndAction { teardown() }.start()
     }
 
-    private fun dropHero(hero: ImageView) {
+    private fun dropHero(hero: HeroView) {
         runCatching { (hero.parent as? FrameLayout)?.removeView(hero) }
         if (heroView === hero) heroView = null
     }
