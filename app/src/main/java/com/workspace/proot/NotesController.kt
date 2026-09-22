@@ -44,10 +44,15 @@ class NotesController(
     private lateinit var tagRow: TagFlowLayout
     private lateinit var todoBox: LinearLayout
     private lateinit var body: EditText
+    private lateinit var searchInput: EditText
+    private var query = ""
+    private val searchDebounce = Runnable { renderList() }
 
     private fun density(): Float = activity.resources.displayMetrics.density
 
     fun buildInto(notesArea: LinearLayout) {
+        // 拼音表后台预热（主界面笔记 Tab 入口；子页由 NotesPageActivity 负责，幂等）。
+        PinyinDict.loadAsync { activity.assets.open(PinyinDict.ASSET) }
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(theme.surface)
@@ -58,6 +63,8 @@ class NotesController(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
             )
         }
+        searchInput = buildSearchRow()
+        content.addView(searchInput)
         val scrolled = scrollColumn()
         listScroll = scrolled.first
         listInner = scrolled.second
@@ -131,10 +138,14 @@ class NotesController(
         }
     }
 
-    /** 返回键：编辑态退回列表并消费，否则放行。 */
+    /** 返回键：编辑态退回列表 → 列表态清搜索词，都没得退再放行。 */
     fun handleBack(): Boolean {
         if (activity.currentTab == 1 && current != null) {
             showList()
+            return true
+        }
+        if (activity.currentTab == 1 && NoteMatcher.terms(query).isNotEmpty()) {
+            clearSearch()
             return true
         }
         return false
@@ -143,6 +154,37 @@ class NotesController(
     /** 随主界面销毁关闭笔记库连接（此前从不 close，连接一直泄漏）。 */
     fun onDestroy() {
         if (storeLazy.isInitialized()) runCatching { store.close() }
+    }
+
+    /** 搜索行：样式与标签/待办页一致（outlined + 同间距），200ms 防抖后重渲染列表。 */
+    private fun buildSearchRow(): EditText {
+        val d = density()
+        return EditText(activity).apply {
+            hint = activity.getString(R.string.notes_search_notes)
+            setSingleLine(true)
+            FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
+            setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (10 * d).toInt())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (4 * d).toInt()) }
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    query = text?.toString().orEmpty()
+                    removeCallbacks(searchDebounce)
+                    postDelayed(searchDebounce, NoteMatcher.SEARCH_DEBOUNCE_MS)
+                }
+            })
+        }
+    }
+
+    /** 返回键在列表态先清搜索词。 */
+    private fun clearSearch() {
+        searchInput.removeCallbacks(searchDebounce)
+        searchInput.setText("")
+        query = ""
+        renderList()
     }
 
     private fun buildEditorBox(): LinearLayout {
@@ -311,6 +353,7 @@ class NotesController(
         navRow.visibility = android.view.View.VISIBLE
         editRow.visibility = android.view.View.GONE
         editorBox.visibility = android.view.View.GONE
+        searchInput.visibility = android.view.View.VISIBLE
         listScroll.visibility = android.view.View.VISIBLE
         renderList()
     }
@@ -327,6 +370,7 @@ class NotesController(
         refreshTagRow()
         refreshTodoBox()
         listScroll.visibility = android.view.View.GONE
+        searchInput.visibility = android.view.View.GONE
         editorBox.visibility = android.view.View.VISIBLE
         fab.visibility = android.view.View.GONE
         navRow.visibility = android.view.View.GONE
@@ -362,10 +406,21 @@ class NotesController(
 
     private fun renderList() {
         listInner.removeAllViews()
-        val notes = store.listNotes()
+        var notes = store.listNotes()
+        val terms = NoteMatcher.terms(query)
+        if (terms.isNotEmpty()) {
+            // 模糊过滤：每条按标题/正文读一次盘打分，按相关度升序（稳定排序保更新时间次序）
+            notes = notes
+                .map { it to NoteMatcher.noteScore(it.name, store.readNote(it.name), terms) }
+                .filter { it.second >= 0 }
+                .sortedBy { it.second }
+                .map { it.first }
+        }
         if (notes.isEmpty()) {
             listInner.addView(TextView(activity).apply {
-                text = activity.getString(R.string.notes_empty_list)
+                text = activity.getString(
+                    if (terms.isEmpty()) R.string.notes_empty_list else R.string.notes_search_empty
+                )
                 setTextColor(theme.onSurfaceVariant)
                 textSize = UiTokens.TEXT_BODY
                 gravity = Gravity.CENTER

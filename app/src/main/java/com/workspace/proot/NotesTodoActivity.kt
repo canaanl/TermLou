@@ -154,11 +154,12 @@ class NotesTodoActivity : NotesPageActivity() {
         }
     }
 
-    /** 一次遍历同时算出两列的过滤结果。 */
+    /** 一次遍历同时算出两列的过滤结果（多词 AND + 容错 + 拼音，见 NoteMatcher）。 */
     private fun columnItems(toDone: Boolean): List<TodoItem> {
-        val q = query.trim().lowercase()
+        val terms = NoteMatcher.terms(query)
         return store.todos().filter {
-            it.done == toDone && (q.isEmpty() || it.text.lowercase().contains(q))
+            it.done == toDone &&
+                (terms.isEmpty() || NoteMatcher.noteScore(it.text, "", terms) >= 0)
         }
     }
 

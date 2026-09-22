@@ -2,7 +2,7 @@
 
 > 一个为**不写代码的人**打造的 Android 终端 —— 把 Debian GNU/Linux、文件管理、笔记待办、网络抓包和脚本浮窗，全部塞进一个"点一下就能用"的 App。
 
-![Version](https://img.shields.io/badge/version-5.1.9-blue)
+![Version](https://img.shields.io/badge/version-5.2.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -286,6 +286,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.2.0** | 5200 | 笔记/待办/标签三框统一模糊搜索：笔记列表新增搜索框；多词分词＋错别字同音容错＋拼音全拼/首字母/同音字搜索（内置 26711 字拼音表）；相关度排序；数据零影响、删库恢复照常 |
 | **5.1.9** | 5109 | 全量 bug 修复 16 项：崩溃浮窗等显示完再退、通知 ID 避让、切 Tab 连点错位、LAN 双启动与凭据误清、网盘上传分块扫描＋符号链接、会话关闭杀进程树、看板节流丢尾与计数、预热服务泄漏、待办数据先行、真彩色 SGR、笔记库关闭、越界与大小写保护 |
 | **5.1.7** | 5107 | 常驻小字全部并入介绍页（命令管理/设置项/标签判定），UI 保持干净 |
 | **5.1.6** | 5106 | 介绍页去 hero icon，页眉只留标题 |

@@ -381,5 +381,7 @@
     <string name="notes_back_tags">‹ 全部标签</string>
     <string name="notes_search_tag">搜索标签</string>
     <string name="notes_search_todo">搜索待办</string>
+    <string name="notes_search_notes">搜索笔记</string>
+    <string name="notes_search_empty">没有匹配的内容</string>
     <string name="notes_standalone_title">笔记</string>
 </resources>

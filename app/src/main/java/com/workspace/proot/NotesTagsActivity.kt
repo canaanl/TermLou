@@ -67,10 +67,17 @@ class NotesTagsActivity : NotesPageActivity() {
     }
 
     private fun renderTags() {
-        val q = query.trim().lowercase()
-        val tags = store.allTags().filter { q.isEmpty() || it.first.lowercase().contains(q) }
+        val terms = NoteMatcher.terms(query)
+        // 空格分词 OR 语义：任一词命中即列出该标签（含容错/拼音层）。
+        val tags = store.allTags().filter { entry ->
+            terms.isEmpty() || terms.any { NoteMatcher.termScore(it, entry.first, "") >= 0 }
+        }
         if (tags.isEmpty()) {
-            listInner.addView(emptyText(getString(R.string.notes_no_tags)))
+            listInner.addView(
+                emptyText(
+                    getString(if (terms.isEmpty()) R.string.notes_no_tags else R.string.notes_search_empty)
+                )
+            )
             return
         }
         for ((name, count) in tags) {

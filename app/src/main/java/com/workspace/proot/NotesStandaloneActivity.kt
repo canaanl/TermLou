@@ -38,6 +38,9 @@ class NotesStandaloneActivity : NotesPageActivity() {
     private lateinit var tagRow: TagFlowLayout
     private lateinit var todoBox: LinearLayout
     private lateinit var body: EditText
+    private lateinit var searchInput: EditText
+    private var query = ""
+    private val searchDebounce = Runnable { renderList() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,6 +55,8 @@ class NotesStandaloneActivity : NotesPageActivity() {
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
             )
         }
+        searchInput = buildSearchRow()
+        content.addView(searchInput)
         val scrolled = scrollColumn()
         listScroll = scrolled.first
         listInner = scrolled.second
@@ -83,6 +88,8 @@ class NotesStandaloneActivity : NotesPageActivity() {
             override fun handleOnBackPressed() {
                 if (current != null) {
                     showList()
+                } else if (NoteMatcher.terms(query).isNotEmpty()) {
+                    clearSearch()
                 } else {
                     isEnabled = false
                     onBackPressedDispatcher.onBackPressed()
@@ -142,6 +149,7 @@ class NotesStandaloneActivity : NotesPageActivity() {
         navRow.visibility = View.VISIBLE
         editRow.visibility = View.GONE
         editorBox.visibility = View.GONE
+        searchInput.visibility = View.VISIBLE
         listScroll.visibility = View.VISIBLE
         renderList()
     }
@@ -158,10 +166,39 @@ class NotesStandaloneActivity : NotesPageActivity() {
         refreshTagRow()
         refreshTodoBox()
         listScroll.visibility = View.GONE
+        searchInput.visibility = View.GONE
         editorBox.visibility = View.VISIBLE
         fab.visibility = View.GONE
         navRow.visibility = View.GONE
         editRow.visibility = View.VISIBLE
+    }
+
+    /** 搜索行：与标签/待办页同款，200ms 防抖后重渲染。 */
+    private fun buildSearchRow(): EditText {
+        val d = density()
+        val input = EditText(this).apply {
+            hint = getString(R.string.notes_search_notes)
+            setSingleLine(true)
+            FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
+            setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (10 * d).toInt())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (4 * d).toInt()) }
+        }
+        watchText(input) {
+            query = input.text?.toString().orEmpty()
+            input.removeCallbacks(searchDebounce)
+            input.postDelayed(searchDebounce, NoteMatcher.SEARCH_DEBOUNCE_MS)
+        }
+        return input
+    }
+
+    /** 返回键在列表态先清搜索词。 */
+    private fun clearSearch() {
+        searchInput.removeCallbacks(searchDebounce)
+        searchInput.setText("")
+        query = ""
+        renderList()
     }
 
     private fun buildEditorBox(): LinearLayout {
@@ -341,10 +378,20 @@ class NotesStandaloneActivity : NotesPageActivity() {
 
     private fun renderList() {
         listInner.removeAllViews()
-        val notes = store.listNotes()
+        var notes = store.listNotes()
+        val terms = NoteMatcher.terms(query)
+        if (terms.isNotEmpty()) {
+            notes = notes
+                .map { it to NoteMatcher.noteScore(it.name, store.readNote(it.name), terms) }
+                .filter { it.second >= 0 }
+                .sortedBy { it.second }
+                .map { it.first }
+        }
         if (notes.isEmpty()) {
             listInner.addView(TextView(this).apply {
-                text = getString(R.string.notes_empty_list)
+                text = getString(
+                    if (terms.isEmpty()) R.string.notes_empty_list else R.string.notes_search_empty
+                )
                 setTextColor(theme.onSurfaceVariant)
                 textSize = UiTokens.TEXT_BODY
                 gravity = Gravity.CENTER

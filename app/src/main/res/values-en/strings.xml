@@ -381,5 +381,7 @@
     <string name="notes_back_tags">‹ All tags</string>
     <string name="notes_search_tag">Search tags</string>
     <string name="notes_search_todo">Search todos</string>
+    <string name="notes_search_notes">Search notes</string>
+    <string name="notes_search_empty">No matches</string>
     <string name="notes_standalone_title">Notes</string>
 </resources>

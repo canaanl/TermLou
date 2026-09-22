@@ -2,7 +2,7 @@
 
 > An Android terminal built for **people who don't code** — Debian GNU/Linux, file management, notes & todos, network inspection and script-driven floating UI, all inside one tap-and-go App.
 
-![Version](https://img.shields.io/badge/version-5.1.9-blue)
+![Version](https://img.shields.io/badge/version-5.2.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -286,6 +286,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history. Recent versions:
 
 | Version | versionCode | Summary |
 |---------|-------------|---------|
+| **5.2.0** | 5200 | Unified fuzzy search across notes/todos/tags: new search box in the notes list; multi-word tokens + homophone typo tolerance + full-pinyin/initials/homophone search (built-in 26,711-char pinyin table); relevance ranking; zero data impact, db-rebuild from txt intact |
 | **5.1.9** | 5109 | Full bug-fix pass (16 issues): crash overlay really waits before kill + non-colliding notification ID; tab-switch race on rapid taps; LAN double-start & credential wipe on failure; chunked upload scan (no 64MB heap read) + symlink dirs; kill whole session process tree; flow dashboard trailing notify & eviction counts; warmup service/wakelock leak; todo data saved before animation; true-color SGR 38/48; notes DB closed with page; locale & bounds guards |
 | **5.1.7** | 5107 | All persistent hints merged into intro pages; UI stays clean |
 | **5.1.6** | 5106 | Intro hero removed; title-only header |

@@ -3,6 +3,7 @@ package com.workspace.proot
 import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
@@ -185,6 +186,12 @@ abstract class NotesPageActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         if (storeLazy.isInitialized()) runCatching { store.close() }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // 拼音表后台预热：首个搜索框击键前基本就绪，未就绪时拼音层自动跳过。
+        PinyinDict.loadAsync { assets.open(PinyinDict.ASSET) }
     }
 
     companion object {
