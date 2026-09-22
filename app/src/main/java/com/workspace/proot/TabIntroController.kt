@@ -1,5 +1,7 @@
 package com.workspace.proot
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -73,13 +75,15 @@ class TabIntroController(
         val headerBar = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20), dp(28), dp(20), dp(12))
+            setPadding(dp(20), dp(16), dp(20), dp(8))
             addView(slot)
             addView(TextView(activity).apply {
                 text = activity.getString(p.titleRes)
                 setTextColor(theme.onSurface)
                 typeface = Typeface.DEFAULT_BOLD
-                textSize = UiTokens.TEXT_TITLE
+                textSize = 24f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
                 setPadding(dp(16), 0, 0, 0)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
@@ -225,14 +229,21 @@ class TabIntroController(
         ov.addView(hero)
         ov.animate().alpha(1f).setDuration(200).setInterpolator(DecelerateInterpolator()).start()
         playEnterStagger(140L)
-        // 落点按槽位外接盒 FIT：五个 tab 落点一样大；等比，中心对齐。
+        // 落点按图标本体外接盒 FIT 进槽位：实拍只用来量本体尺寸，不参与渲染；
+        // 五个 tab 本体都撑满同一个槽，落点一样大；等比，中心对齐。
         // 落定后 hero 原地成为页眉，无交棒。
+        val content = measureContent(source)
         val slotRect = rectOf(slot)
         val srcRect = rectOf(source)
-        val s = minOf(
-            slotRect.width().toFloat() / srcRect.width().toFloat(),
-            slotRect.height().toFloat() / srcRect.height().toFloat()
-        )
+        val box = dp(120).toFloat()
+        val s = if (content == null || content.isEmpty) {
+            minOf(
+                slotRect.width().toFloat() / srcRect.width().toFloat(),
+                slotRect.height().toFloat() / srcRect.height().toFloat()
+            )
+        } else {
+            minOf(box / content.width(), box / content.height())
+        }
         val dx = slotRect.exactCenterX() - srcRect.exactCenterX()
         val dy = slotRect.exactCenterY() - srcRect.exactCenterY()
         hero.animate()
@@ -271,6 +282,36 @@ class TabIntroController(
         val l = vLoc[0] - rootLoc[0]
         val t = vLoc[1] - rootLoc[1]
         return Rect(l, t, l + v.width, t + v.height)
+    }
+
+    /** 实拍仅用于量图标本体的不透明包围盒；位图不显示、不参与渲染，放大全程矢量。 */
+    private fun measureContent(v: View): Rect? {
+        if (v.width <= 0 || v.height <= 0 || !v.isAttachedToWindow) return null
+        val bmp = runCatching {
+            Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888).also { b ->
+                v.draw(Canvas(b))
+            }
+        }.getOrNull() ?: return null
+        val w = bmp.width
+        val h = bmp.height
+        val px = IntArray(w * h)
+        bmp.getPixels(px, 0, w, 0, 0, w, h)
+        var l = w
+        var t = h
+        var r = -1
+        var b = -1
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                if ((px[y * w + x] ushr 24) != 0) {
+                    if (x < l) l = x
+                    if (x > r) r = x
+                    if (y < t) t = y
+                    if (y > b) b = y
+                }
+            }
+        }
+        if (r < l || b < t) return null
+        return Rect(l, t, r + 1, b + 1)
     }
 
     private fun playEnterStagger(baseDelay: Long) {
