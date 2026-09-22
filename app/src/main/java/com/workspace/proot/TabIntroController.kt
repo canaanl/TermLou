@@ -67,7 +67,7 @@ class TabIntroController(
         }
         // 固定页眉：hero 槽位留空给直飞来的 hero，标题在旁。
         val slot = FrameLayout(activity).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(72), dp(72))
+            layoutParams = LinearLayout.LayoutParams(dp(120), dp(120))
         }
         heroSlot = slot
         val headerBar = LinearLayout(activity).apply {
