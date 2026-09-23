@@ -21,6 +21,33 @@ static char *copy_java_string(JNIEnv *env, jstring value) {
     return copy;
 }
 
+extern char **environ;
+
+/** 只放行子进程可能需要的基础环境项。 */
+static bool env_allowed(const char *entry) {
+    static const char *const prefixes[] = {
+            "PATH=", "HOME=", "TMPDIR=", "LANG=", "LC_",
+            "ANDROID_ROOT=", "ANDROID_DATA=", "EXTERNAL_STORAGE="
+    };
+    for (const char *prefix: prefixes) {
+        if (strncmp(entry, prefix, strlen(prefix)) == 0) return true;
+    }
+    return false;
+}
+
+/**
+ * execve 用的最小环境：指针直接指向 environ 里的字符串（无拷贝），
+ * 必须在 fork 前的父进程上下文构建 —— 继承 ART 全量 environ 属于环境泄露。
+ */
+static std::vector<char *> build_minimal_env() {
+    std::vector<char *> result;
+    for (char **entry = environ; entry != nullptr && *entry != nullptr; entry++) {
+        if (env_allowed(*entry)) result.push_back(*entry);
+    }
+    result.push_back(nullptr);
+    return result;
+}
+
 extern "C" JNIEXPORT jint JNICALL
 Java_com_workspace_proot_TunSpawner_spawnTun2Socks(
         JNIEnv *env,
@@ -46,6 +73,9 @@ Java_com_workspace_proot_TunSpawner_spawnTun2Socks(
     }
     argv.push_back(nullptr);
 
+    // fork 前构建：子进程 execve 只带 allowlist 环境，不再继承 ART 全量 environ
+    std::vector<char *> child_env = build_minimal_env();
+
     const pid_t pid = fork();
     if (pid < 0) {
         __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "fork failed: %s", strerror(errno));
@@ -67,7 +97,7 @@ Java_com_workspace_proot_TunSpawner_spawnTun2Socks(
             dup2(tunFd, 3);
             if (tunFd > 3) close(tunFd);
         }
-        execv(exe, argv.data());
+        execve(exe, argv.data(), child_env.data());
         _exit(127);
     }
 
@@ -79,7 +109,11 @@ Java_com_workspace_proot_TunSpawner_spawnTun2Socks(
 extern "C" JNIEXPORT jint JNICALL
 Java_com_workspace_proot_TunSpawner_waitPid(JNIEnv *, jobject, jint pid) {
     int status = 0;
-    if (waitpid(pid, &status, 0) < 0) return -1;
+    pid_t result;
+    do {
+        result = waitpid(pid, &status, 0);
+    } while (result < 0 && errno == EINTR);
+    if (result < 0) return -1;
     if (WIFEXITED(status)) return WEXITSTATUS(status);
     if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
     return status;

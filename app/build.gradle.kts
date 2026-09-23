@@ -33,9 +33,10 @@ android {
         applicationId = "com.workspace.proot"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5400
-        versionName = "5.4.0"
+        versionCode = 5401
+        versionName = "5.4.1"
         ndk { abiFilters.add("arm64-v8a") }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -98,6 +99,8 @@ dependencies {
     testImplementation("io.mockk:mockk:1.13.10")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     testImplementation("org.xerial:sqlite-jdbc:3.45.3.0")
+    androidTestImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
 }

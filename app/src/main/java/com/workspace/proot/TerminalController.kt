@@ -828,8 +828,9 @@ class TerminalController(
         ctrlArmJob = null
         fontSliderAnimator?.cancel()
         fontSliderAnimator = null
-        scope.terminalManager.setSession(null)
+        // 先 destroy（此时 session 还在，杀树 + finishIfRunning 才有效），再摘引用
         scope.terminalManager.destroy()
+        scope.terminalManager.setSession(null)
     }
 
     // ---------- TerminalSessionClient ----------

@@ -255,7 +255,13 @@ class TerminalManager(
     }
 
     fun destroy() {
-        session?.finishIfRunning()
+        val s = session ?: return
+        // 与 LAN 会话统一走 SessionTerminator：还在跑就先杀整棵进程树，
+        // 再 finishIfRunning 收 pty fd（退出收割由 TerminalSession 的 waitFor 线程负责）。
+        if (s.isRunning) {
+            SessionTerminator.killTree(s.pid)
+        }
+        s.finishIfRunning()
     }
 
     companion object {

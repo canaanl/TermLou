@@ -42,6 +42,13 @@ static void free_string_vector(std::vector<char *> &values) {
     values.clear();
 }
 
+/** winsize 的 ws_xpixel/ws_ypixel 是 unsigned short，乘积先夹到合法域再存（对齐上游截断语义但不回绕）。 */
+static unsigned short clamp_to_ushort(int value) {
+    if (value <= 0) return 0;
+    if (value >= 0xFFFF) return 0xFFFF;
+    return static_cast<unsigned short>(value);
+}
+
 static int open_pty_master(char *slave_name, size_t slave_name_size) {
     const int master = posix_openpt(O_RDWR | O_CLOEXEC);
     if (master < 0) return -1;
@@ -62,7 +69,9 @@ Java_com_termux_terminal_JNI_createSubprocess(
         jobjectArray envVars,
         jintArray processId,
         jint rows,
-        jint columns) {
+        jint columns,
+        jint cellWidth,
+        jint cellHeight) {
     char slave_name[128] = {};
     const int master = open_pty_master(slave_name, sizeof(slave_name));
     if (master < 0) {
@@ -105,6 +114,8 @@ Java_com_termux_terminal_JNI_createSubprocess(
         winsize size = {};
         size.ws_row = static_cast<unsigned short>(rows);
         size.ws_col = static_cast<unsigned short>(columns);
+        size.ws_xpixel = clamp_to_ushort(static_cast<int>(columns) * cellWidth);
+        size.ws_ypixel = clamp_to_ushort(static_cast<int>(rows) * cellHeight);
         ioctl(slave, TIOCSWINSZ, &size);
 
         dup2(slave, STDIN_FILENO);
@@ -134,17 +145,25 @@ Java_com_termux_terminal_JNI_createSubprocess(
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_termux_terminal_JNI_setPtyWindowSize(JNIEnv *, jclass, jint fd, jint rows, jint columns) {
+Java_com_termux_terminal_JNI_setPtyWindowSize(JNIEnv *, jclass, jint fd, jint rows, jint columns,
+                                              jint cellWidth, jint cellHeight) {
     winsize size = {};
     size.ws_row = static_cast<unsigned short>(rows);
     size.ws_col = static_cast<unsigned short>(columns);
+    size.ws_xpixel = clamp_to_ushort(static_cast<int>(columns) * cellWidth);
+    size.ws_ypixel = clamp_to_ushort(static_cast<int>(rows) * cellHeight);
     ioctl(fd, TIOCSWINSZ, &size);
 }
 
 extern "C" JNIEXPORT jint JNICALL
 Java_com_termux_terminal_JNI_waitFor(JNIEnv *, jclass, jint pid) {
     int status = 0;
-    if (waitpid(pid, &status, 0) < 0) return -1;
+    pid_t result;
+    // waitpid 可被信号打断（EINTR），不重试会把 -1 当成退出状态误结束会话
+    do {
+        result = waitpid(pid, &status, 0);
+    } while (result < 0 && errno == EINTR);
+    if (result < 0) return -1;
     if (WIFEXITED(status)) return WEXITSTATUS(status);
     if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
     return status;
@@ -155,40 +174,5 @@ Java_com_termux_terminal_JNI_close(JNIEnv *, jclass, jint fd) {
     close(fd);
 }
 
-extern "C" JNIEXPORT jint JNICALL
-Java_com_termux_terminal_JNI_readPty(JNIEnv *env, jclass, jint fd, jbyteArray buffer, jint offset, jint length) {
-    jbyte *bytes = env->GetByteArrayElements(buffer, nullptr);
-    if (bytes == nullptr) return -1;
-    int result = read(fd, bytes + offset, static_cast<size_t>(length));
-    env->ReleaseByteArrayElements(buffer, bytes, 0);
-    return result;
-}
-
-extern "C" JNIEXPORT jint JNICALL
-Java_com_termux_terminal_JNI_writePty(JNIEnv *env, jclass, jint fd, jbyteArray buffer, jint offset, jint length) {
-    jbyte *bytes = env->GetByteArrayElements(buffer, nullptr);
-    if (bytes == nullptr) return -1;
-    int result = write(fd, bytes + offset, static_cast<size_t>(length));
-    env->ReleaseByteArrayElements(buffer, bytes, JNI_ABORT);
-    return result;
-}
-
-extern "C" JNIEXPORT jint JNICALL
-Java_com_termux_terminal_JNI_read(JNIEnv *env, jclass, jint fd, jbyteArray buffer) {
-    jbyte *bytes = env->GetByteArrayElements(buffer, nullptr);
-    if (bytes == nullptr) return -1;
-    jsize len = env->GetArrayLength(buffer);
-    ssize_t result = read(fd, bytes, static_cast<size_t>(len));
-    env->ReleaseByteArrayElements(buffer, bytes, 0);
-    return static_cast<jint>(result);
-}
-
-extern "C" JNIEXPORT jint JNICALL
-Java_com_termux_terminal_JNI_write(JNIEnv *env, jclass, jint fd, jbyteArray buffer) {
-    jbyte *bytes = env->GetByteArrayElements(buffer, nullptr);
-    if (bytes == nullptr) return -1;
-    jsize len = env->GetArrayLength(buffer);
-    ssize_t result = write(fd, bytes, static_cast<size_t>(len));
-    env->ReleaseByteArrayElements(buffer, bytes, JNI_ABORT);
-    return static_cast<jint>(result);
-}
+// readPty/writePty/read/write 已删除（5.4.1）：上游 JNI 类未声明这四个方法、全仓无任何调用方
+// （主终端/LAN 读写均走 Java File 流），无边界校验的死导出只增加维护与攻击面。
