@@ -110,7 +110,7 @@ class TabIntroController(
                 textSize = UiTokens.TEXT_BODY
             })
             card.addView(TextView(activity).apply {
-                text = activity.getString(s.bodyRes)
+                text = manualText(activity.getString(s.bodyRes))
                 setTextColor(theme.onSurface)
                 textSize = UiTokens.TEXT_BODY
                 setPadding(0, dp(6), 0, 0)
@@ -222,6 +222,27 @@ class TabIntroController(
     private fun cardBg(): GradientDrawable = GradientDrawable().apply {
         setColor(theme.surfaceVariant)
         cornerRadius = 20f * density
+    }
+
+    /**
+     * 说明书体条目悬挂缩进：行首是 ▸ ● ⚠ 的行（\n 分隔的独立段）给整段加左边距，
+     * 长条目折行时对齐文字起点而不是符号正下方；非条目行（用途句等）不受影响。
+     */
+    private fun manualText(raw: String): CharSequence {
+        val span = android.text.SpannableString(raw)
+        var start = 0
+        for (line in raw.split('\n')) {
+            val end = start + line.length
+            if (line.startsWith("▸") || line.startsWith("●") || line.startsWith("⚠")) {
+                span.setSpan(
+                    android.text.style.LeadingMarginSpan.Standard(dp(15)),
+                    start, end,
+                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+            start = end + 1
+        }
+        return span
     }
 
     private fun dp(v: Int): Int = (v * density).toInt()

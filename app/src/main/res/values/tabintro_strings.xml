@@ -1,65 +1,68 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Tab 说明页（说明书体）：每节 = 用途句 → ▸ 操作（手势 → 效果）→ ● 规则 → ⚠ 注意（有则写） -->
     <!-- Tab 介绍页：终端 -->
     <string name="intro_terminal_lead">终端页是 TermLou 的主战场：Linux 终端、快捷键行与命令拨轮。</string>
     <string name="intro_terminal_shortcut_title">快捷键行与 Ctrl 模式</string>
-    <string name="intro_terminal_shortcut_body">上行常驻 `/`、`Tab`、`Esc`、`Ctrl`，下行是方向键。\n点 `Ctrl` 进入武装状态，按钮变红，下一个按键自动带 Ctrl 发送，3 秒无操作自动解除。\n方向键单按移动光标；Ctrl 武装下再按方向键，会发送跳单词序列。\n终端页的返回键映射为 Esc。</string>
+    <string name="intro_terminal_shortcut_body">补齐屏幕键盘缺的常用控制键。\n▸ 上行 `/` `Tab` `Esc` `Ctrl` —— 点按即发送\n▸ 点按 `Ctrl` —— 进入武装（按钮变红），下一个键自动带 Ctrl 发送\n▸ 点按方向键 —— 移动光标；武装中按方向键 —— 按词跳转\n▸ 按返回键 —— 发送 Esc（仅终端页）\n⚠ 武装状态 3 秒无操作自动解除。</string>
     <string name="intro_terminal_wheel_title">命令拨轮</string>
-    <string name="intro_terminal_wheel_body">在快捷栏上下滑动，可在快捷键行与命令拨轮之间切换。\n拨轮横向滚动，中央卡片自动高亮，点按执行；命令组居中时会自动展开上层成员。\n点灰色区域收起拨轮；长按灰色区域进入命令库管理。\n推荐会按使用频次、顺序与近因，把命令滚到中央。</string>
+    <string name="intro_terminal_wheel_body">常用命令的图形化转盘：横滑挑选，点按执行。\n▸ 在快捷栏上下滑 —— 快捷键行 ↔ 命令拨轮 互切\n▸ 横向滚动 —— 中央卡片高亮，点按执行\n▸ 命令组居中 —— 自动展开组内成员\n▸ 点灰色区域 —— 收起拨轮；长按灰色区域 —— 进命令库管理\n● 推荐按使用频次、排序与近因，把可能要用的命令滚到中央。</string>
     <string name="intro_terminal_library_title">命令库管理</string>
-    <string name="intro_terminal_library_body">命令可以排序、合并成组、加入或解散组；每个组至少保留两个成员。\n管理页长按拖动排序，左滑删除或解散命令组，点按进入编辑；组内成员可左滑移出或删除。\n支持备份与恢复，恢复的数据重新参与排序推荐。\n命令支持 `\\n \\r \\t \\e \\cX`，用 `@{}` 标记执行后光标落点。</string>
+    <string name="intro_terminal_library_body">命令的排序、分组与备份页（拨轮长按灰色区域进入）。\n▸ 长按拖动 —— 调整顺序\n▸ 点按命令或组 —— 进入编辑\n▸ 左滑命令 —— 删除；左滑组 —— 解散；组内成员可左滑移出或删除\n● 每个组至少保留 2 个成员。\n● 支持备份与恢复，恢复的数据重新参与推荐排序。\n● 命令语法：支持 `\\n \\r \\t \\e \\cX`，`@{}` 标记执行后的光标落点。</string>
     <string name="intro_terminal_startup_title">启动命令与磁贴命令</string>
-    <string name="intro_terminal_startup_body">设置里的启动命令会在终端启动时自动执行。\n从磁贴启动时，执行的是磁贴命令。\n磁贴命令适合一键执行预设动作。</string>
+    <string name="intro_terminal_startup_body">两条预设命令的执行时机（内容在设置页填写）。\n● 启动命令 —— 终端启动时自动执行\n● 磁贴命令 —— 从磁贴启动时执行，适合一键预设动作</string>
     <string name="intro_terminal_ui_title">termlou-ui 脚本浮窗</string>
-    <string name="intro_terminal_ui_body">Shell 里一行命令就能弹出原生浮窗，支持输入框、单选、多选、开关与彩色文本输出。\n可以调整主题、强调色、圆角、位置、动画与超时关闭。\n剪贴板可用 `termlou-clipboard` 直写系统剪贴板。</string>
+    <string name="intro_terminal_ui_body">Shell 里一行命令弹出原生浮窗。\n● 支持形态：输入框｜单选｜多选｜开关｜彩色文本输出\n● 样式可调：主题、强调色、圆角、位置、动画、超时自动关闭\n● `termlou-clipboard` —— 把文本直写进系统剪贴板</string>
     <string name="intro_terminal_workshop_title">弹窗工坊与启动页工坊</string>
-    <string name="intro_terminal_workshop_body">弹窗工坊可以图形化设计对话框，实时预览并导出 termlou-ui 命令。\n启动页工坊可以手绘点阵、把照片转成像素画，并配粒子开屏动画。</string>
+    <string name="intro_terminal_workshop_body">两个图形化设计工具。\n● 弹窗工坊 —— 可视化设计对话框，实时预览，导出 termlou-ui 命令\n● 启动页工坊 —— 手绘点阵、照片转像素画、粒子开屏动画</string>
 
     <!-- Tab 介绍页：笔记 -->
     <string name="intro_notes_lead">笔记页是纯本机功能：列表管理笔记，编辑页写正文、挂标签、记待办。</string>
     <string name="intro_notes_list_title">列表与编辑</string>
-    <string name="intro_notes_list_body">列表显示标题、更新时间与标签胶囊。\n点笔记进入编辑，标题、正文、标签、待办分区排布。</string>
+    <string name="intro_notes_list_body">笔记的目录与编辑器。\n● 列表每行：标题｜更新时间｜标签胶囊\n▸ 右下角 ＋ —— 新建笔记\n▸ 点按笔记 —— 进入编辑（标题、正文、标签、待办分区）\n▸ 长按笔记 —— 重命名\n▸ 底部「待办」「标签」—— 打开对应子页</string>
+    <string name="intro_notes_search_title">搜索</string>
+    <string name="intro_notes_search_body">笔记 / 待办 / 标签三个页面顶部各有搜索框，同一套搜法。\n● 全字段 —— 标题、标签、正文、归属待办一起搜\n● 多词 —— 空格分隔，全部命中才保留，可跨字段互补\n● 错别字 —— 同音容错，「苹菓」也能搜到「苹果」\n● 拼音 —— 全拼 `pingguo`、首字母 `pg`、同音字都行\n▸ 返回键 —— 先清空搜索词，再退页面\n● 输入停顿 200 毫秒出结果；1 万条笔记也是毫秒级返回。</string>
     <string name="intro_notes_tags_title">标签</string>
-    <string name="intro_notes_tags_body">标签按内容哈希着色，同一标签天然同色。\n标签页可以搜索并筛选出同标签笔记。\n编辑页点胶囊可移除标签。</string>
+    <string name="intro_notes_tags_body">给笔记归类的彩色胶囊。\n● 着色按内容哈希 —— 同一标签永远同一颜色\n▸ 标签页点某标签 —— 筛出全部同标签笔记\n▸ 编辑页「＋标签」—— 添加；点已有胶囊 —— 移除</string>
     <string name="intro_notes_todo_title">待办看板</string>
-    <string name="intro_notes_todo_body">待办看板左右分栏，左已完成、右未完成，各自独立滚动、标题冻结。\n整行点按切换状态，长按删除；变更即落盘。</string>
+    <string name="intro_notes_todo_body">全局待办的双栏看板（列表底部「待办」进入）。\n● 左栏 = 已完成，右栏 = 未完成；各自独立滚动，标题冻结\n▸ 点按整行 —— 切换完成 / 未完成\n▸ 长按整行 —— 删除\n● 变更即时落盘。</string>
     <string name="intro_notes_autosave_title">自动保存</string>
-    <string name="intro_notes_autosave_body">正文退出编辑器时自动比对落盘。\n退列表、切笔记、切 Tab、进后台、跳子页都会触发。\n不用手动保存，也没有逐字写放大。</string>
+    <string name="intro_notes_autosave_body">退出编辑器即保存，无需手动操作。\n▸ 正文退出编辑器时 —— 有变化才比对落盘\n● 触发时机：退列表｜切笔记｜切 Tab｜进后台｜跳子页\n● 打字过程不写盘，没有逐字写放大。</string>
     <string name="intro_notes_tile_title">磁贴直达</string>
-    <string name="intro_notes_tile_body">磁贴可以直接打开独立笔记页。\n全程不唤醒终端与 Linux 会话。\n退出即回桌面，后台无残留。</string>
+    <string name="intro_notes_tile_body">桌面磁贴一步直达笔记。\n▸ 磁贴 —— 直接打开独立笔记页\n● 全程不唤醒终端与 Linux 会话\n● 退出即回桌面，后台无残留。</string>
 
     <!-- Tab 介绍页：文件 -->
     <string name="intro_files_lead">文件页管理 `/workspace`：导航、导入、分享、删除。</string>
     <string name="intro_files_nav_title">导航与信息</string>
-    <string name="intro_files_nav_body">进入目录、返回上级、文件夹标记、文件大小显示。\n列表有渐入动画。</string>
+    <string name="intro_files_nav_body">浏览 `/workspace` 目录树。\n▸ 点按文件夹 —— 进入（列表渐入动画）\n▸ 列表顶部「返回」—— 返回上级（根目录不显示）\n● 文件夹带底色标记，文件行附大小（B / KB / MB）\n● 进目录后状态栏短暂显示当前路径。</string>
     <string name="intro_files_import_title">导入</string>
-    <string name="intro_files_import_body">底部按钮导入任意格式文件。\n也支持递归导入整个文件夹。</string>
+    <string name="intro_files_import_body">把外部内容放进当前目录。\n▸ 底部「导入文件」—— 任意格式，可多选\n▸ 底部「导入文件夹」—— 整个文件夹递归导入\n● 导入位置 = 当前打开的目录。</string>
     <string name="intro_files_share_title">分享与导出</string>
-    <string name="intro_files_share_body">文件直接分享。\n文件夹自动打包 ZIP 后分享。</string>
+    <string name="intro_files_share_body">把文件送出去。\n▸ 点按文件 / 长按文件夹 —— 弹出「导出 · 删除」菜单\n▸ 选「导出」—— 文件走系统分享面板；文件夹先打包成 ZIP 再分享</string>
     <string name="intro_files_delete_title">删除</string>
-    <string name="intro_files_delete_body">文件直接删除。\n非空文件夹删除前弹窗确认。</string>
+    <string name="intro_files_delete_body">从当前目录移除内容。\n▸ 点按文件 / 长按文件夹 —— 菜单里选「删除」\n▸ 文件 —— 直接删除；非空文件夹 —— 先弹窗确认\n⚠ 删除即生效，没有回收站。</string>
     <string name="intro_files_types_title">类型识别</string>
-    <string name="intro_files_types_body">按扩展名识别常见类型。\n文本、图片、压缩包、代码与文档自动区分。</string>
+    <string name="intro_files_types_body">按扩展名识别常见类型。\n● 自动区分：文本｜图片｜压缩包｜代码｜文档</string>
 
     <!-- Tab 介绍页：网络 -->
     <string name="intro_network_lead">网络页做按 App 抓包与流量分析：先选 App，再看日志、排行与阻断。</string>
     <string name="intro_network_capture_title">按 App 抓包</string>
-    <string name="intro_network_capture_body">通过 VPN 精选要抓的 App。\nDNS 按系统下发，取不到才回退公共 DNS。</string>
+    <string name="intro_network_capture_body">通过 VPN 圈定要抓包的 App。\n▸ 挑选目标 App —— 在选择列表里点选（支持搜索）\n● DNS 按系统下发，取不到才回退公共 DNS。</string>
     <string name="intro_network_log_title">流量日志</string>
-    <string name="intro_network_log_body">实时列表显示域名或 IP、协议、端口、上下行字节与状态。\n行内标签按流量大小、方向与时长判定，非内容解析。\n支持按 IP 或域名阻断。</string>
+    <string name="intro_network_log_body">实时连接明细：点按展开，长按操作。\n● 每行显示：域名或 IP｜协议｜端口｜上行｜下行｜状态\n● 顶部搜索框 —— 按域名 / IP / 端口 / 协议过滤\n▸ 点按某行 —— 展开该连接详情\n▸ 长按某行 —— 弹出阻断菜单：阻断该 IP、阻断该域名（含全部子域）；已阻断的行可一键解除\n● 行内标签按流量大小、方向、时长自动判定，不解析内容。</string>
     <string name="intro_network_rank_title">排行与 DNS</string>
-    <string name="intro_network_rank_body">流量排行按域名或端口统计。\nDNS 历史可查查询与响应映射。</string>
+    <string name="intro_network_rank_body">从明细汇总出的全局视图。\n● 流量排行 —— 按域名或端口分组统计\n● DNS 历史 —— 查询与响应一一对应，可回查</string>
     <string name="intro_network_proxy_title">代理与阻断</string>
-    <string name="intro_network_proxy_body">内置 SOCKS5，可选上游代理；阻断规则实时生效。\n只解析明文，不做 TLS 中间人。</string>
+    <string name="intro_network_proxy_body">流量出口与拦截规则。\n● 内置 SOCKS5 —— 上游留空即直连，可填上游代理（支持 socks5）\n● 阻断规则 —— 添加即刻生效，无需重启\n⚠ 只解析明文流量，不做 TLS 中间人，HTTPS 内容不可见。</string>
 
     <!-- Tab 介绍页：设置 -->
     <string name="intro_settings_lead">设置页是全部开关与命令的入口；改语言与主题后需要重开生效。</string>
     <string name="intro_settings_ui_title">界面</string>
-    <string name="intro_settings_ui_body">终端字号五档即时同步。\n语言中英切换，主题深浅切换，后两者重开生效。</string>
+    <string name="intro_settings_ui_body">显示相关的开关都在这。\n● 终端字号 —— 五档可选，切换立即生效\n● 语言 —— 中文 / English；主题 —— 深色 / 浅色\n⚠ 语言与主题切换后需重开 App 生效；字号立即生效。</string>
     <string name="intro_settings_commands_title">命令</string>
-    <string name="intro_settings_commands_body">启动命令在终端启动时自动执行。\n磁贴命令供快捷磁贴一键执行。\n快捷启动选择常用 App。</string>
+    <string name="intro_settings_commands_body">预设命令的填写入口（说明见终端页）。\n● 启动命令 —— 终端启动时自动执行\n● 磁贴命令 —— 磁贴启动时执行\n● 快捷启动 —— 挑选常用 App 一键打开</string>
     <string name="intro_settings_workshop_title">工坊</string>
-    <string name="intro_settings_workshop_body">弹窗工坊设计脚本浮窗并导出命令。\n启动页工坊自由绘制或导入图片，自定义开屏画面。</string>
+    <string name="intro_settings_workshop_body">两个工坊的入口（说明见终端页）。\n● 弹窗工坊 —— 图形化设计脚本浮窗并导出命令\n● 启动页工坊 —— 手绘或导入图片，自定义开屏画面</string>
     <string name="intro_settings_net_title">网络与保活</string>
-    <string name="intro_settings_net_body">上游代理留空走内置直连，支持 socks5。\nLAN 分享文件与终端。\n后台持久化用低优先级前台服务保活。</string>
+    <string name="intro_settings_net_body">代理、分享与后台驻留。\n● 上游代理 —— 留空走内置直连，支持 socks5（详见网络页）\n● LAN 分享 —— 局域网共享文件与终端\n● 后台保活 —— 低优先级前台服务维持运行</string>
 </resources>

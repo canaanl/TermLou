@@ -1,65 +1,68 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Tab intro pages (manual style): each section = purpose line -> ▸ action (gesture -> result) -> ● rule -> ● caution (when needed) -->
     <!-- Tab intro: terminal -->
     <string name="intro_terminal_lead">The terminal tab is the main workspace: Linux terminal, shortcut rows, and the command wheel.</string>
     <string name="intro_terminal_shortcut_title">Shortcut rows and Ctrl mode</string>
-    <string name="intro_terminal_shortcut_body">The top row has `/`, `Tab`, `Esc`, and `Ctrl`; the bottom row has arrow keys.\nTap `Ctrl` to arm it and the button turns red; the next key is sent with Ctrl, and arming resets after 3 seconds without input.\nArrows move the cursor; with Ctrl armed, arrows send word-jump sequences.\nThe Back key acts as Esc here.</string>
+    <string name="intro_terminal_shortcut_body">Adds the control keys a screen keyboard lacks.\n▸ `/` `Tab` `Esc` `Ctrl` on the top row — tap to send\n▸ Tap `Ctrl` — arm it (the button turns red); the next key is sent with Ctrl\n▸ Tap an arrow — move the cursor; while armed, arrows jump word by word\n▸ The Back key — sends Esc (terminal tab only)\n⚠ Arming auto-resets after 3 seconds without input.</string>
     <string name="intro_terminal_wheel_title">Command wheel</string>
-    <string name="intro_terminal_wheel_body">Swipe vertically on the shortcut bar to switch between shortcut rows and the command wheel.\nScroll horizontally, the centered card is highlighted, tap to run; a centered group expands its members above.\nTap gray area to hide the wheel; long press gray area to manage commands.\nRecommendations move likely commands to the center by frequency, order, and recency.</string>
+    <string name="intro_terminal_wheel_body">A visual wheel for frequent commands: swipe to pick, tap to run.\n▸ Swipe up / down on the shortcut bar — switch between shortcut rows and the command wheel\n▸ Swipe horizontally — the centered card is highlighted; tap it to run\n▸ A centered group — expands its members automatically\n▸ Tap the gray area — collapse the wheel; long-press it — open the command library\n● Recommendations rank by frequency, order and recency, so likely commands land in the center.</string>
     <string name="intro_terminal_library_title">Command library</string>
-    <string name="intro_terminal_library_body">Commands can be sorted, merged into groups, joined, or dissolved; each group keeps at least two members.\nIn the manager, long-press to drag-sort, swipe left to delete or dissolve a group, and tap to open or edit; group members can be swiped out or deleted.\nBackup and restore are supported; restored data rejoins ranking.\nCommands support `\\n \\r \\t \\e \\cX`, with `@{}` marking the cursor landing spot.</string>
+    <string name="intro_terminal_library_body">Sort, group, back up and restore commands (long-press the gray area in the wheel to enter).\n▸ Long-press and drag — reorder\n▸ Tap a command or group — open it for editing\n▸ Swipe a command left — delete; swipe a group left — dissolve; members can be moved out or deleted by swiping\n● Each group keeps at least 2 members.\n● Backup and restore are supported; restored commands rejoin ranking.\n● Syntax: supports `\\n \\r \\t \\e \\cX`; `@{}` marks where the cursor lands after running.</string>
     <string name="intro_terminal_startup_title">Startup and tile commands</string>
-    <string name="intro_terminal_startup_body">The startup command runs automatically when the terminal starts.\nTile startup runs the tile command.\nTile commands fit one-tap preset actions.</string>
+    <string name="intro_terminal_startup_body">When the two preset commands run (fill them in on the Settings tab).\n● Startup command — runs automatically when the terminal starts\n● Tile command — runs when launched from the tile; fits one-tap preset actions</string>
     <string name="intro_terminal_ui_title">termlou-ui script dialogs</string>
-    <string name="intro_terminal_ui_body">One shell line can open a native dialog with input, single choice, multiple choice, toggle, and colored text output.\nTheme, accent, corners, position, animation, and auto-close timeout can be adjusted.\n`termlou-clipboard` writes to the system clipboard.</string>
+    <string name="intro_terminal_ui_body">One shell line opens a native dialog.\n● Forms: input | single choice | multiple choice | toggle | colored text output\n● Styles: theme, accent, corners, position, animation, auto-close timeout\n● `termlou-clipboard` — writes text straight to the system clipboard</string>
     <string name="intro_terminal_workshop_title">Dialog and splash workshops</string>
-    <string name="intro_terminal_workshop_body">The dialog workshop designs dialogs visually and exports termlou-ui commands.\nThe splash workshop draws pixel art, converts photos to pixels, and adds particle boot animation.</string>
+    <string name="intro_terminal_workshop_body">Two visual design tools.\n● Dialog workshop — design dialogs visually, live preview, export termlou-ui commands\n● Splash workshop — draw pixel art, convert photos to pixels, particle boot animation</string>
 
     <!-- Tab intro: notes -->
     <string name="intro_notes_lead">Notes are fully local: lists manage notes, and the editor holds text, tags, and todos.</string>
     <string name="intro_notes_list_title">List and editor</string>
-    <string name="intro_notes_list_body">The list shows titles, update time, and tag capsules.\nOpen a note to edit; title, body, tags, and todos stay in separate zones.</string>
+    <string name="intro_notes_list_body">The note directory and editor.\n● Each list row: title | updated time | tag capsules\n▸ The + button at the bottom right — create a note\n▸ Tap a note — open the editor (title, body, tags and todos in separate zones)\n▸ Long-press a note — rename\n▸ The Todo and Tags buttons at the bottom — open the matching subpages</string>
+    <string name="intro_notes_search_title">Search</string>
+    <string name="intro_notes_search_body">One search box sits on top of the Notes, Todos and Tags pages, all sharing the same rules.\n● All fields — title, tags, body and its todos are searched together\n● Multi-word — split by spaces; all terms must match; terms can span fields\n● Typos — homophone tolerance: a homophone typo still finds the word\n● Pinyin — full pinyin `pingguo`, initials `pg`, or homophones\n▸ The Back key — clears the search text first, then leaves the page\n● Results appear 200 ms after you stop typing; 10,000 notes still answer in milliseconds.</string>
     <string name="intro_notes_tags_title">Tags</string>
-    <string name="intro_notes_tags_body">Tags are colored by content hash, so the same tag always has the same color.\nThe tags page can search and filter notes by tag.\nTap a capsule in the editor to remove a tag.</string>
+    <string name="intro_notes_tags_body">Colored capsules that group your notes.\n● Color comes from a content hash — the same tag always has the same color\n▸ Tap a tag on the Tags page — filter down to all notes carrying it\n▸ In the editor, the + Tags button adds one; tapping a capsule removes it</string>
     <string name="intro_notes_todo_title">Todo board</string>
-    <string name="intro_notes_todo_body">The todo board has two columns: done on the left, open on the right, each scrolling separately with frozen titles.\nTap a whole row to toggle status, long press to delete; changes are saved immediately.</string>
+    <string name="intro_notes_todo_body">A two-column board for global todos (enter from Todo at the bottom of the list).\n● Left = done, right = open; each column scrolls on its own with a frozen title\n▸ Tap a row — toggle done / open\n▸ Long-press a row — delete\n● Changes are saved immediately.</string>
     <string name="intro_notes_autosave_title">Auto save</string>
-    <string name="intro_notes_autosave_body">Text is compared and saved when leaving the editor.\nLeaving the list, switching notes or tabs, backgrounding, and opening subpages all trigger it.\nNo manual save is needed, and there is no per-keystroke write amplification.</string>
+    <string name="intro_notes_autosave_body">Leaving the editor saves; there is nothing to press.\n▸ Leaving the editor — writes only when the body changed\n● Triggers: leave the list | switch note | switch tab | go to background | open a subpage\n● Typing never touches the disk, so there is no per-keystroke write amplification.</string>
     <string name="intro_notes_tile_title">Tile shortcut</string>
-    <string name="intro_notes_tile_body">The tile can open the standalone notes page directly.\nIt never wakes the terminal or Linux session.\nExit returns to the launcher with no background residue.</string>
+    <string name="intro_notes_tile_body">Jump straight to notes from the home-screen tile.\n▸ The tile — opens the standalone notes page directly\n● Never wakes the terminal or the Linux session\n● Exiting returns to the launcher; nothing stays in the background.</string>
 
     <!-- Tab intro: files -->
     <string name="intro_files_lead">The files tab manages `/workspace`: navigation, import, sharing, and deletion.</string>
     <string name="intro_files_nav_title">Navigation and info</string>
-    <string name="intro_files_nav_body">Enter folders, go up, see folder marks and file sizes.\nThe list has a fade-in animation.</string>
+    <string name="intro_files_nav_body">Browse the `/workspace` tree.\n▸ Tap a folder — enter it (the list fades in)\n▸ The Back row at the top of the list — go up one level (hidden at the root)\n● Folders are highlighted; file rows show their size (B / KB / MB)\n● After entering a folder, the status line briefly shows the current path.</string>
     <string name="intro_files_import_title">Import</string>
-    <string name="intro_files_import_body">Bottom buttons import files in any format.\nWhole folders can be imported recursively.</string>
+    <string name="intro_files_import_body">Bring outside content into the current folder.\n▸ The Import file button at the bottom — any format, multiple selection supported\n▸ The Import folder button at the bottom — imports a whole folder recursively\n● Import target = the folder you have open.</string>
     <string name="intro_files_share_title">Share and export</string>
-    <string name="intro_files_share_body">Files are shared directly.\nFolders are packed as ZIP before sharing.</string>
+    <string name="intro_files_share_body">Send files out.\n▸ Tap a file or long-press a folder — open the Export and Delete menu\n▸ Choose Export — files go to the system share sheet; folders are packed as ZIP first</string>
     <string name="intro_files_delete_title">Delete</string>
-    <string name="intro_files_delete_body">Files are deleted directly.\nNon-empty folders ask for confirmation first.</string>
+    <string name="intro_files_delete_body">Remove items from the current folder.\n▸ Tap a file or long-press a folder — pick Delete in the menu\n▸ Files — deleted directly; non-empty folders — confirm first\n⚠ Deletion is immediate; there is no recycle bin.</string>
     <string name="intro_files_types_title">Type recognition</string>
-    <string name="intro_files_types_body">Common types are recognized by extension.\nText, images, archives, code, and documents are separated automatically.</string>
+    <string name="intro_files_types_body">Recognized by file extension.\n● Automatically told apart: text | images | archives | code | documents</string>
 
     <!-- Tab intro: network -->
     <string name="intro_network_lead">The network tab captures per-app traffic and analyzes flows: choose apps first, then read logs, rankings, and blocks.</string>
     <string name="intro_network_capture_title">Per-app capture</string>
-    <string name="intro_network_capture_body">Select target apps through VPN.\nDNS follows the system; public DNS is only a fallback.</string>
+    <string name="intro_network_capture_body">Capture traffic only for the apps you pick, over a VPN.\n▸ Pick target apps — tap them in the picker (search supported)\n● DNS follows the system; public DNS is only a fallback.</string>
     <string name="intro_network_log_title">Flow log</string>
-    <string name="intro_network_log_body">The live list shows domain or IP, protocol, port, up and down bytes, and status.\nRow tags are judged by traffic size, direction, and duration, not content parsing.\nBlocking by IP or domain is supported.</string>
+    <string name="intro_network_log_body">Live connection details: tap to expand, long-press to act.\n● Each row shows: domain or IP | protocol | port | up | down | state\n● The search box at the top — filter by domain / IP / port / protocol\n▸ Tap a row — expand its details\n▸ Long-press a row — block menu: block this IP, block this domain (all subdomains); blocked rows can be unblocked in one tap\n● Row tags are judged by traffic size, direction and duration, not by content parsing.</string>
     <string name="intro_network_rank_title">Rankings and DNS</string>
-    <string name="intro_network_rank_body">Traffic rankings are grouped by domain or port.\nDNS history maps queries to responses.</string>
+    <string name="intro_network_rank_body">The big picture, aggregated from the log.\n● Traffic rankings — grouped by domain or port\n● DNS history — queries mapped to their responses, easy to look up</string>
     <string name="intro_network_proxy_title">Proxy and blocking</string>
-    <string name="intro_network_proxy_body">Built-in SOCKS5 with optional upstream proxy; block rules take effect immediately.\nOnly plaintext is parsed, with no TLS interception.</string>
+    <string name="intro_network_proxy_body">Where traffic exits and what gets blocked.\n● Built-in SOCKS5 — leave the upstream empty for direct mode, or fill in an upstream (socks5 supported)\n● Block rules — take effect immediately, no restart\n⚠ Only plaintext is parsed; no TLS man-in-the-middle, so HTTPS content stays invisible.</string>
 
     <!-- Tab intro: settings -->
     <string name="intro_settings_lead">Settings holds all switches and commands; language and theme changes need a restart.</string>
     <string name="intro_settings_ui_title">Display</string>
-    <string name="intro_settings_ui_body">Five terminal font sizes sync immediately.\nLanguage and theme switch between Chinese and English or dark and light, then need a restart.</string>
+    <string name="intro_settings_ui_body">Everything display-related lives here.\n● Terminal font size — five steps, applied instantly\n● Language — Chinese / English; theme — dark / light\n⚠ Language and theme need an app restart; font size applies immediately.</string>
     <string name="intro_settings_commands_title">Commands</string>
-    <string name="intro_settings_commands_body">The startup command runs when the terminal starts.\nThe tile command is for one-tap tile actions.\nQuick launch chooses frequently used apps.</string>
+    <string name="intro_settings_commands_body">Where the preset commands are filled in (see the terminal tab).\n● Startup command — runs when the terminal starts\n● Tile command — runs when launched from the tile\n● Quick launch — pick favorite apps for one-tap opening</string>
     <string name="intro_settings_workshop_title">Workshops</string>
-    <string name="intro_settings_workshop_body">The dialog workshop designs script dialogs and exports commands.\nThe splash workshop draws freely or imports images to customize the boot screen.</string>
+    <string name="intro_settings_workshop_body">Entries to the two workshops (see the terminal tab).\n● Dialog workshop — design script dialogs and export commands\n● Splash workshop — draw freely or import an image for the boot screen</string>
     <string name="intro_settings_net_title">Network and keep-alive</string>
-    <string name="intro_settings_net_body">Empty upstream proxy means built-in direct mode, with socks5 supported.\nLAN shares files and the terminal.\nKeep-alive uses a low-priority foreground service.</string>
+    <string name="intro_settings_net_body">Proxy, sharing and keep-alive.\n● Upstream proxy — empty means built-in direct mode; socks5 supported (see the network tab)\n● LAN share — share files and the terminal over the local network\n● Keep-alive — a low-priority foreground service keeps the app alive</string>
 </resources>

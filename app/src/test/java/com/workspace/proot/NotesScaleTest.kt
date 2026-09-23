@@ -102,6 +102,9 @@ class NotesScaleTest {
             // 最坏路径：前缀「条笔记」让 bigram 召回命中全库 1 万条，
             // 精排全量过一遍（一条全量否决 / 一条全量通过）——单独设档，证明无数量级悬崖
             val worstCase = listOf("笔记本电脑", "笔记")
+            // 计时前全局预热：热遍 JIT + 给落盘后的磁盘余波（安全软件扫描等）留出平息窗口，
+            // 预算不放松（50 / 500），只保证测的是稳定态而不是余波窗口
+            for (q in typical + worstCase) store.searchNotesFull(q)
             runBench(store, typical, budgetMs = 50, label = "典型")
             runBench(store, worstCase, budgetMs = 500, label = "最坏")
             store.close()
@@ -112,9 +115,9 @@ class NotesScaleTest {
 
     private fun runBench(store: NotesStore, queries: List<String>, budgetMs: Long, label: String) {
         for (q in queries) {
-            store.searchNotesFull(q) // 预热
+            repeat(2) { store.searchNotesFull(q) } // 逐查询预热
             var best = Long.MAX_VALUE
-            repeat(5) {
+            repeat(7) {
                 best = minOf(best, measureTimeMillis { store.searchNotesFull(q) })
             }
             println("[$label] search [$q]: best=${best}ms / budget=${budgetMs}ms")

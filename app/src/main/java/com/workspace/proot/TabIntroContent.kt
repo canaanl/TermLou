@@ -35,6 +35,7 @@ object TabIntroContent {
             showSystemInfo = false,
             sections = listOf(
                 TabIntroSection(R.string.intro_notes_list_title, R.string.intro_notes_list_body),
+                TabIntroSection(R.string.intro_notes_search_title, R.string.intro_notes_search_body),
                 TabIntroSection(R.string.intro_notes_tags_title, R.string.intro_notes_tags_body),
                 TabIntroSection(R.string.intro_notes_todo_title, R.string.intro_notes_todo_body),
                 TabIntroSection(R.string.intro_notes_autosave_title, R.string.intro_notes_autosave_body),

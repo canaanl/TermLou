@@ -2,7 +2,7 @@
 
 > An Android terminal built for **people who don't code** — Debian GNU/Linux, file management, notes & todos, network inspection and script-driven floating UI, all inside one tap-and-go App.
 
-![Version](https://img.shields.io/badge/version-5.3.0-blue)
+![Version](https://img.shields.io/badge/version-5.4.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -286,6 +286,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history. Recent versions:
 
 | Version | versionCode | Summary |
 |---------|-------------|---------|
+| **5.4.0** | 5400 | All five tab intro pages rewritten as a user manual: purpose / action (gesture → result) / rules / cautions, one action per line, one list item per line; new Notes search section; hanging indent for list items; gestures verified against code; zh/en kept in sync |
 | **5.3.0** | 5300 | Notes search rebuilt: index written on save, zero file reads at query time; recall intersections computed in-database; typical search on 10,000 notes locked under 50ms (1–33ms measured); identical results & ranking (guarded by old-vs-new parity tests); O(N²) ingest fixed (10k: 187s→2.7s); db-rebuild from txt intact |
 | **5.2.1** | 5201 | Notes list search now spans all fields: title + tags (title tier) + body + its todos (body tier); multi-term matches can span fields |
 | **5.2.0** | 5200 | Unified fuzzy search across notes/todos/tags: new search box in the notes list; multi-word tokens + homophone typo tolerance + full-pinyin/initials/homophone search (built-in 26,711-char pinyin table); relevance ranking; zero data impact, db-rebuild from txt intact |

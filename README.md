@@ -2,7 +2,7 @@
 
 > 一个为**不写代码的人**打造的 Android 终端 —— 把 Debian GNU/Linux、文件管理、笔记待办、网络抓包和脚本浮窗，全部塞进一个"点一下就能用"的 App。
 
-![Version](https://img.shields.io/badge/version-5.3.0-blue)
+![Version](https://img.shields.io/badge/version-5.4.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -286,6 +286,7 @@ echo "https://example.com" | termlou-clipboard
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.4.0** | 5400 | 五个 Tab 说明页改版为说明书体：用途/操作/规则/注意四段式，一行一动作（手势→效果）、清单一行一项；笔记页新增「搜索」说明；条目悬挂缩进；手势对照代码核实，中英同步 |
 | **5.3.0** | 5300 | 笔记搜索架构收口：写入即建索引、查询零文件读取；召回交集库内算完只回传结果；万条笔记典型查询锁定 50ms 内（实测 1~33ms）；排序语义与结果不变（新旧对拍测试锁定）；入库 O(N²) 修复（万条 187s→2.7s）；删库从 txt 恢复照旧 |
 | **5.2.1** | 5201 | 笔记列表搜索升级全字段：标题＋标签＋正文＋所属待办一起搜，多词跨字段互补命中 |
 | **5.2.0** | 5200 | 笔记/待办/标签三框统一模糊搜索：笔记列表新增搜索框；多词分词＋错别字同音容错＋拼音全拼/首字母/同音字搜索（内置 26711 字拼音表）；相关度排序；数据零影响、删库恢复照常 |
