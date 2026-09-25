@@ -28,7 +28,8 @@ object OverlayBridge {
     private var parser: java.util.concurrent.ExecutorService? = null
     private val pendingParses = mutableSetOf<String>()
     private val queue = ArrayDeque<Entry>()
-    private var current: Entry? = null
+    /** 当前屏归属 + 结算闸门：换屏同步指针，同一请求只结算一次（见 EntryOwnership） */
+    private val ownership = EntryOwnership<Entry>()
     private var running = false
     private var pollTask: Runnable? = null
     private var reqObserver: FileObserver? = null
@@ -101,22 +102,22 @@ object OverlayBridge {
         activeOverlay?.dismiss()
         activeOverlay = null
         // 收尾前给仍在等待的请求写明确结果，避免 bash 侧空等到自身超时
-        current?.let {
+        ownership.current?.let {
             resolve(it, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
         }
-        current = null
         while (queue.isNotEmpty()) {
             val entry = queue.removeFirst()
             resolve(entry, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
         }
         queue.clear()
+        ownership.reset()
     }
 
     private fun pollOnce() {
         val files = reqDir.listFiles()?.filter { it.isFile && it.name.endsWith(".json") }
             ?.sortedBy { it.lastModified() }
             ?: return
-        val currentName = current?.file?.name
+        val currentName = ownership.current?.file?.name
         for (f in files) {
             if (f.name == currentName) continue
             if (queue.any { it.file.name == f.name }) continue
@@ -142,7 +143,7 @@ object OverlayBridge {
                     }
                     return@post
                 }
-                if (file.name == current?.file?.name) return@post
+                if (file.name == ownership.current?.file?.name) return@post
                 if (queue.any { it.file.name == file.name }) return@post
                 queue.addLast(Entry(parsed, file, System.currentTimeMillis()))
                 showNext()
@@ -176,10 +177,10 @@ object OverlayBridge {
             // 显式关闭
             if (entry.request.op == "close") {
                 cancelTimeout()
-                val prev = current
+                val prev = ownership.current
                 activeOverlay?.dismiss()
                 activeOverlay = null
-                current = null
+                ownership.clearCurrent()
                 // 关闭者自身回 close，之前等待的 current 也回 dismiss
                 resolve(entry, ScriptDialogSpec.Result("close"))
                 if (prev != null) {
@@ -187,21 +188,28 @@ object OverlayBridge {
                 }
                 continue
             }
+            // 归属同步：停掉上一屏超时器，指针移到新请求，并结算被顶掉、仍在等待的上一屏
+            // （治本：上一屏等待方拿到明确 dismiss 而非挂到超时；本屏点击也不会再算到它头上）
+            cancelTimeout()
+            val superseded = ownership.takeOver(entry)
+            if (superseded != null) {
+                resolve(superseded, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
+            }
             // 单例原位更新：有窗则改内容，无窗则新建
             if (activeOverlay?.isAlive() == true) {
-                cancelTimeout()
-                current = entry
                 activeOverlay?.updateContent(entry.request) { result ->
+                    // 陈旧点击：上一屏（或更早）的回调晚到，忽略，不覆盖本屏归属
+                    if (ownership.isResolved(entry)) return@updateContent
                     cancelTimeout()
                     resolve(entry, result)
                     if (!ScriptDialogSpec.shouldDismiss(entry.request, result)) {
                         // 非关窗（按钮 close=false）：保持窗口等待下一次更新
-                        current = null
+                        ownership.finish(entry)
                         showNext()
                     } else {
                         activeOverlay?.dismiss()
                         activeOverlay = null
-                        current = null
+                        ownership.finish(entry)
                         showNext()
                     }
                 }
@@ -210,8 +218,8 @@ object OverlayBridge {
                     val values = activeOverlay?.captureValues() ?: emptyMap()
                     activeOverlay?.dismiss()
                     activeOverlay = null
-                    if (current === entry) {
-                        current = null
+                    if (ownership.current === entry) {
+                        ownership.finish(entry)
                         resolve(entry, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_TIMEOUT, values + ("__reqId" to entry.request.id)))
                         showNext()
                     }
@@ -221,18 +229,20 @@ object OverlayBridge {
                 return
             }
             // 无窗：新建（首建按 --anim）
-            current = entry
             val overlay = ScriptDialogOverlay(c, entry.request) { result ->
-                cancelTimeout()
-                resolve(entry, result)
-                if (!ScriptDialogSpec.shouldDismiss(entry.request, result)) {
-                    // 非关窗（按钮 close=false）：保持窗口等待下一次更新
-                    current = null
-                    showNext()
-                } else {
-                    activeOverlay = null
-                    current = null
-                    showNext()
+                // 陈旧点击：已结算的请求不再接收（也不惊动本屏归属）
+                if (!ownership.isResolved(entry)) {
+                    cancelTimeout()
+                    resolve(entry, result)
+                    if (!ScriptDialogSpec.shouldDismiss(entry.request, result)) {
+                        // 非关窗（按钮 close=false）：保持窗口等待下一次更新
+                        ownership.finish(entry)
+                        showNext()
+                    } else {
+                        activeOverlay = null
+                        ownership.finish(entry)
+                        showNext()
+                    }
                 }
             }
             activeOverlay = overlay
@@ -241,8 +251,8 @@ object OverlayBridge {
                 val values = activeOverlay?.captureValues() ?: emptyMap()
                 activeOverlay?.dismiss()
                 activeOverlay = null
-                if (current === entry) {
-                    current = null
+                if (ownership.current === entry) {
+                    ownership.finish(entry)
                     resolve(entry, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_TIMEOUT, values + ("__reqId" to entry.request.id)))
                     showNext()
                 }
@@ -260,17 +270,24 @@ object OverlayBridge {
     }
 
     private fun resolve(entry: Entry, result: ScriptDialogSpec.Result) {
-        runCatching {
+        // 归属闸门：同一请求只结算一次。陈旧回调（换屏前绑定的按钮/返回/外部点击）重复触发
+        // 时不再覆盖 res 文件，也不会把已收工的旧等待方再叫醒一次。
+        if (ownership.isResolved(entry)) return
+        val written = runCatching {
             resDir.mkdirs()
             val out = File(resDir, entry.file.name)
             val tmp = File(resDir, "${entry.file.name}.tmp")
             tmp.writeText(ScriptDialogSpec.resultToJsonString(result))
-            if (out.exists() && !out.delete()) return
+            if (out.exists() && !out.delete()) return@runCatching false
             if (!tmp.renameTo(out)) {
                 tmp.delete()
-                return
+                return@runCatching false
             }
-            entry.file.delete()
+            true
+        }.getOrElse { false }
+        if (written) {
+            ownership.markResolved(entry)
+            runCatching { entry.file.delete() }
         }
     }
 

@@ -92,6 +92,7 @@ class ScriptDialogRenderer(private val ctx: Context) {
         }
         val state = InteractiveState()
         _state = state
+        currentOnResult = onResult
         val adapter = InnerAdapter(ctx, d, palette, state)
         adapterRef = adapter
         recycler.adapter = adapter
@@ -106,14 +107,23 @@ class ScriptDialogRenderer(private val ctx: Context) {
         // 按钮栏
         val buttons = (request.ui.rows.firstOrNull { it is ScriptDialogSpec.Row.Buttons } as? ScriptDialogSpec.Row.Buttons)?.row?.buttons
         card.addView(buttonBar(buttons, palette) { id ->
-            onResult(ScriptDialogSpec.Result(id, collectValues(state)))
+            // 读字段而非捕获参数：换屏后同构按钮栏复用，回调归属必须跟着换
+            (currentOnResult ?: onResult)(ScriptDialogSpec.Result(id, collectValues(state)))
         })
         return card
     }
 
     private var lastPalette: Palette? = null
     private var lastButtons: List<ScriptDialogSpec.Button>? = null
+    /**
+     * 当前屏的结果回调：buildCard / updateCard 每次都同步。
+     * 按钮栏同构复用（不重建 view）时，其 click 监听仍闭包着首建时的 lambda ——
+     * lambda 内必须读这个字段而不是捕获参数，否则换屏后点击会算到上一屏的等待方头上。
+     */
+    private var currentOnResult: ((ScriptDialogSpec.Result) -> Unit)? = null
+
     fun updateCard(card: LinearLayout, newRequest: ScriptDialogSpec.Request, onResult: (ScriptDialogSpec.Result) -> Unit) {
+        currentOnResult = onResult
         val palette = paletteOf(newRequest.style)
         val bg = card.background as? GradientDrawable
         val last = lastPalette
@@ -188,14 +198,15 @@ class ScriptDialogRenderer(private val ctx: Context) {
                 }
             }
         }
-        // 按钮栏：同构（文本/类型/id 相同）不重建，仅更新 palette；异构才重建
+        // 按钮栏：同构（文本/类型/id 相同）不重建 view，但回调归属必须随换屏更新（读字段，见 currentOnResult）；
+        // 同构却换了主题/主色时仍重建以刷新配色
         if (card.childCount >= 3) {
             val buttons = (newRequest.ui.rows.firstOrNull { it is ScriptDialogSpec.Row.Buttons } as? ScriptDialogSpec.Row.Buttons)?.row?.buttons ?: emptyList()
             val same = lastButtons != null && lastButtons == buttons
-            if (!same) {
+            if (!same || paletteChanged) {
                 val newBar = buttonBar(buttons, palette) { id ->
                     val s = _state ?: InteractiveState().also { _state = it }
-                    onResult(ScriptDialogSpec.Result(id, collectValues(s)))
+                    (currentOnResult ?: onResult)(ScriptDialogSpec.Result(id, collectValues(s)))
                 }
                 card.removeViewAt(card.childCount - 1)
                 card.addView(newBar)

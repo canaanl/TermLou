@@ -31,17 +31,22 @@ class ScriptDialogOverlay(
     // 当前请求的可变引用，供 chain 原地更新时替换
     private var currentRequest: ScriptDialogSpec.Request = request
 
+    // 当前屏的结果归属：updateContent 换屏时同步替换。
+    // 按钮栏/返回键/点外部一律在触发时读取这两个字段，杜绝换屏后还把点击算到上一屏头上。
+    private var currentOnResult: (ScriptDialogSpec.Result) -> Unit = onResult
+
     fun show() {
         val renderer = ScriptDialogRenderer(ctx)
         _renderer = renderer
         currentRequest = request
+        currentOnResult = onResult
         val content = renderer.buildRoot(request) { result ->
             if (!dismissed) {
-                if (!ScriptDialogSpec.shouldDismiss(request, result)) {
-                    onResult(result)
+                if (!ScriptDialogSpec.shouldDismiss(currentRequest, result)) {
+                    currentOnResult(result)
                 } else {
                     dismissed = true
-                    onResult(result)
+                    currentOnResult(result)
                     dismiss()
                 }
             }
@@ -51,7 +56,7 @@ class ScriptDialogOverlay(
             if (event.action == KeyEvent.ACTION_UP && keyCode == KeyEvent.KEYCODE_BACK) {
                 if (!dismissed) {
                     dismissed = true
-                    onResult(ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
+                    currentOnResult(ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
                     dismiss()
                 }
                 true
@@ -95,7 +100,7 @@ class ScriptDialogOverlay(
         if (result.isFailure) {
             if (!dismissed) {
                 dismissed = true
-                onResult(ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS, error = "add_view_failed"))
+                currentOnResult(ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS, error = "add_view_failed"))
             }
             return
         }
@@ -116,6 +121,10 @@ class ScriptDialogOverlay(
 
     fun updateContent(newRequest: ScriptDialogSpec.Request, newOnResult: ((ScriptDialogSpec.Result) -> Unit)? = null) {
         if (dismissed) return
+        // 归属同步：先把当前屏的请求与结果回调换到最新。此后所有触发点（按钮栏、返回键、点外部）
+        // 都在触发时读取 currentRequest/currentOnResult，换屏后不会再把点击算到上一屏的等待方头上。
+        currentRequest = newRequest
+        if (newOnResult != null) currentOnResult = newOnResult
         val r = root as? android.widget.FrameLayout ?: return
         // 打断可能还在跑的进场动画，重置为可见态
         r.animate().cancel()
@@ -125,18 +134,16 @@ class ScriptDialogOverlay(
         r.scaleY = 1f
         outsideArmed = false
         mainHandler.removeCallbacks(disarmRunnable)
-        currentRequest = newRequest
-        val callback = newOnResult ?: onResult
         val renderer = _renderer ?: ScriptDialogRenderer(ctx).also { _renderer = it }
         val oldCard = r.getChildAt(0) as? android.widget.LinearLayout ?: return
         // 真原位 Diff：行级复用、值保留、Fade+ChangeBounds 120ms
         renderer.updateCard(oldCard, newRequest) { result ->
             if (!dismissed) {
-                if (!ScriptDialogSpec.shouldDismiss(newRequest, result)) {
-                    callback(result)
+                if (!ScriptDialogSpec.shouldDismiss(currentRequest, result)) {
+                    currentOnResult(result)
                 } else {
                     dismissed = true
-                    callback(result)
+                    currentOnResult(result)
                     dismiss()
                 }
             }
@@ -179,7 +186,7 @@ class ScriptDialogOverlay(
         if (outsideArmed) {
             if (!dismissed) {
                 dismissed = true
-                onResult(ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
+                currentOnResult(ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
                 dismiss()
             }
         } else {
