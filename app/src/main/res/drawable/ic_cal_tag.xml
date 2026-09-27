@@ -3,8 +3,14 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- 标签图标：井号 #（四条实心杠），线条颜色写死，不随主题 tint。 -->
-    <path
-        android:fillColor="#888888"
-        android:pathData="M9.4,4.5h1.8v15h-1.8zM13.2,4.5h1.8v15h-1.8zM4.5,9.4h15v1.8h-15zM4.5,13.2h15v1.8h-15z" />
+    <!-- 标签图标：尖头价签（左端尖头、右端方头）+ 尖头处小圆孔，整组顺时针倾斜 15°；颜色写死，不随主题 tint。 -->
+    <group
+        android:pivotX="12"
+        android:pivotY="12"
+        android:rotation="15">
+        <path
+            android:fillColor="#888888"
+            android:fillType="evenOdd"
+            android:pathData="M2.5,12 L8.5,6.5 L20.5,6.5 A1.5,1.5 0 0 1 22,8 L22,16 A1.5,1.5 0 0 1 20.5,17.5 L8.5,17.5 Z M8.6,12 A1.4,1.4 0 1 1 5.8,12 A1.4,1.4 0 1 1 8.6,12" />
+    </group>
 </vector>

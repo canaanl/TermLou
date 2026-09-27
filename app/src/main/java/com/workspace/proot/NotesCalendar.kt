@@ -66,14 +66,18 @@ object NotesCalendar {
     }
 
     /**
-     * 整月网格：6 行 × 7 列共 42 格、周一起头，含上/下月溢出日期。
-     * 溢出格由调用方按 isInMonth 判定后只显示淡化数字、不可点。
+     * 整月网格：周一起头，**只补齐到本周日**——月头补上月凑满首周、月尾补到周日为止，
+     * 行数 = ceil((偏移 + 当月天数) / 7)（5 或 6 行）、格数 = 行数×7，
+     * 不再为了撑高度多补一整行灰格。溢出格由调用方按 isInMonth 判定：
+     * 只显淡化数字、不画图标、不可点。
      */
     fun monthGrid(year: Int, month: Int): List<LocalDate> {
         val first = LocalDate.of(year, month, 1)
         val shift = (first.dayOfWeek.value + 6) % 7 // 周一=0 … 周日=6
         val start = first.minusDays(shift.toLong())
-        return (0 until CELL_COUNT).map { start.plusDays(it.toLong()) }
+        val used = shift + first.lengthOfMonth()
+        val rows = (used + COLS_PER_ROW - 1) / COLS_PER_ROW // 只补到本周日
+        return (0 until rows * COLS_PER_ROW).map { start.plusDays(it.toLong()) }
     }
 
     /** 该日期是否属于给定年月（用于区分本月格与溢出格）。 */
@@ -121,5 +125,5 @@ object NotesCalendar {
         }
     }
 
-    private const val CELL_COUNT = 42
+    private const val COLS_PER_ROW = 7
 }

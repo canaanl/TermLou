@@ -10,7 +10,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 日历视图纯逻辑锁定：按创建日归档、待办三态、周一起头的 42 格整月网格。
+ * 日历视图纯逻辑锁定：按创建日归档、待办三态、周一起头且只补到本周日的整月网格。
  * 时区显式传 UTC，测试结果与跑测机时区无关。
  */
 class NotesCalendarTest {
@@ -114,23 +114,44 @@ class NotesCalendarTest {
     }
 
     @Test
-    fun `整月网格 42 格且周一起头`() {
-        for (m in 1..12) {
-            val grid = NotesCalendar.monthGrid(2026, m)
-            assertEquals(42, grid.size)
-            assertEquals(java.time.DayOfWeek.MONDAY, grid.first().dayOfWeek)
-            // 42 格逐日连续
-            assertTrue(grid.zipWithNext().all { (a, b) -> a.plusDays(1) == b })
-            // 本月每一天都在格子里
-            val first = LocalDate.of(2026, m, 1)
-            val last = LocalDate.of(2026, m, first.lengthOfMonth())
-            assertTrue(grid.contains(first))
-            assertTrue(grid.contains(last))
-            // 溢出格只有上月尾/下月头
-            assertTrue(grid.filter { !NotesCalendar.isInMonth(it, 2026, m) }.all {
-                it < first || it > last
-            })
+    fun `整月网格只补到本周日 不多补整行`() {
+        for (year in listOf(2025, 2026, 2028)) { // 2028 闰年，2 月 29 天
+            for (m in 1..12) {
+                val first = LocalDate.of(year, m, 1)
+                val shift = (first.dayOfWeek.value + 6) % 7
+                val rows = (shift + first.lengthOfMonth() + 6) / 7
+                val grid = NotesCalendar.monthGrid(year, m)
+                // 行数 = ceil((周一起始偏移 + 当月天数) / 7)，格数 = 行数 × 7
+                assertEquals("$year-$m 行数不对", rows * 7, grid.size)
+                assertTrue(grid.size in 28..42) // 5 或 6 行，最多 42 格
+                assertEquals(java.time.DayOfWeek.MONDAY, grid.first().dayOfWeek)
+                // 只补齐到本周日：末格必是周日，不会多出一整行下月灰格
+                assertEquals("$year-$m 末格不是周日", java.time.DayOfWeek.SUNDAY, grid.last().dayOfWeek)
+                // 逐日连续
+                assertTrue(grid.zipWithNext().all { (a, b) -> a.plusDays(1) == b })
+                val last = LocalDate.of(year, m, first.lengthOfMonth())
+                assertTrue(grid.contains(first))
+                assertTrue(grid.contains(last))
+                // 溢出格只有上月尾/下月头
+                assertTrue(grid.filter { !NotesCalendar.isInMonth(it, year, m) }.all {
+                    it < first || it > last
+                })
+                // 当月最后一天正好是周日 → 一格灰格都不补
+                if (last.dayOfWeek == java.time.DayOfWeek.SUNDAY) {
+                    assertEquals("$year-$m 不该补位", shift + first.lengthOfMonth(), grid.size)
+                }
+            }
         }
+    }
+
+    @Test
+    fun `2026年9月 5行35格 首格8月31日周一 末格10月4日周日`() {
+        val grid = NotesCalendar.monthGrid(2026, 9)
+        // 9/1 是周二 → 偏移 1、30 天 = 31 格 → 5 行 35 格，末尾补到 10/4（周日），
+        // 不再像 42 格那样多出一整行 10/5~10/11 的灰格
+        assertEquals(35, grid.size)
+        assertEquals(LocalDate.of(2026, 8, 31), grid.first())
+        assertEquals(LocalDate.of(2026, 10, 4), grid.last())
     }
 
     @Test

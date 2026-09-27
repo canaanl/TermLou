@@ -20,7 +20,7 @@ import java.time.YearMonth
 /**
  * 日历视图：周一开头的 6×7 月历，每天一个圆角格子，三类状态——
  * 有笔记 = 格子背景填充固定色（无笔记透明，不画笔记图标）、
- * 待办三态小图标（红空 ○/黄半 ◐/绿满 ✔，无待办不画、不显数量）、标签 #（有/无不显名）。
+ * 待办三态小图标（红空 ○/黄半 ◐/绿满 ✔，无待办不画、不显数量）、标签价签（有/无不显名）。
  * 上下滑动翻月，到底（更早已无内容）或翻未来时拦住不翻并 Toast 提示；
  * 点日期弹当日详情（标签名 + Todo 总数/完成数 + 固定高度滚动笔记索引），
  * 点笔记直接进编辑页，无中间步骤；溢出月格子只显淡化数字、不可点。
@@ -48,14 +48,17 @@ class NotesCalendarActivity : NotesPageActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(theme.surface)
         }
-        root.addView(buildTitleBar(getString(R.string.notes_cal_tab)))
-
         // 纵滑翻月挂容器级 intercept（OnTouchListener 会被消费触摸的格子屏蔽）。
+        // 容器包住整页（标题栏 + 月头 + 表头 + 网格），配合 isClickable → 全区域可滑。
         val body = MonthSwipeLayout(
             this,
             onSwipeUp = { shiftMonth(1) },
             onSwipeDown = { shiftMonth(-1) }
         ).apply { orientation = LinearLayout.VERTICAL }
+        body.addView(
+            buildTitleBar(getString(R.string.notes_cal_tab)),
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        )
 
         monthTitle = TextView(this).apply {
             gravity = Gravity.CENTER
@@ -72,8 +75,14 @@ class NotesCalendarActivity : NotesPageActivity() {
         body.addView(monthTitle, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         body.addView(weekdayRow(), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
+        // 网格放进 weight=1 的中置容器：标题/表头贴顶，整块方格从页面高度居中。
         gridBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        body.addView(gridBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        val centerBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(gridBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        body.addView(centerBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         root.addView(body, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
 
         setContentView(root)
@@ -115,7 +124,7 @@ class NotesCalendarActivity : NotesPageActivity() {
         }
     }
 
-    /** 月历整体重建（数据量小，滑动翻月/回本月都直接重铺 42 格）。 */
+    /** 月历整体重建（数据量小，翻月/回本月直接重铺当月网格：5 或 6 行、只补到本周日）。 */
     private fun render() {
         monthTitle.text = getString(
             R.string.notes_cal_month_fmt, month.year, monthName(month.monthValue)
@@ -124,14 +133,27 @@ class NotesCalendarActivity : NotesPageActivity() {
         val y = month.year
         val m = month.monthValue
         val cells = NotesCalendar.monthGrid(y, m)
+        val rows = cells.size / COLS
+        val gap = (2 * density()).toInt()      // 格间留白：上下左右各 2dp
+        val pitch = columnPitch()             // 列距 = 方格边长（行高同宽 → 近似正方形）
+        val boxH = pitch - 2 * gap            // 格子内容盒：pitch-4dp，见方
         val today = LocalDate.now()
-        for (row in 0 until ROWS) {
+        for (row in 0 until rows) {
             val rowView = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             for (col in 0 until COLS) {
-                rowView.addView(cell(cells[row * COLS + col], y, m, today))
+                rowView.addView(cell(cells[row * COLS + col], y, m, today, boxH, gap))
             }
-            gridBox.addView(rowView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+            gridBox.addView(rowView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, pitch))
         }
+    }
+
+    /**
+     * 列距 = 理想方格边长 = 全宽 / 7（竖屏锁定，displayMetrics 宽度即网格可用宽）。
+     * 行高取同一值，内容盒 = 列距 - 4dp → 宽高相等的正方形，不再被 weight 拉成竖长条。
+     */
+    private fun columnPitch(): Int {
+        val w = resources.displayMetrics.widthPixels
+        return if (w > 0) w / COLS else (52 * density()).toInt()
     }
 
     /** 周一…周日表头（7 等分，每列加与格子相同的 2dp 边距，保证与格列严格对齐）。 */
@@ -157,9 +179,10 @@ class NotesCalendarActivity : NotesPageActivity() {
 
     /**
      * 单格：圆角容器（有笔记 = 固定填充色；无笔记透明）+ 日期数字 + 固定高度图标行。
-     * 格与格之间靠 2dp margin 留空，不再挤成一片；今天在容器上套主色描边。
+     * 格与格之间靠 2dp margin 留空，外框由 boxHeight×boxHeight 给成正方形；
+     * 今天在容器上套主色描边。
      */
-    private fun cell(date: LocalDate, y: Int, m: Int, today: LocalDate): View {
+    private fun cell(date: LocalDate, y: Int, m: Int, today: LocalDate, boxHeight: Int, gap: Int): View {
         val d = density()
         val inMonth = NotesCalendar.isInMonth(date, y, m)
         val isToday = inMonth && date == today
@@ -177,12 +200,12 @@ class NotesCalendarActivity : NotesPageActivity() {
                 if (isToday) setStroke((1.5 * d).toInt().coerceAtLeast(1), theme.primary)
             }
             layoutParams = LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
+                0, boxHeight, 1f
             ).apply {
-                marginStart = (2 * d).toInt()
-                marginEnd = (2 * d).toInt()
-                topMargin = (2 * d).toInt()
-                bottomMargin = (2 * d).toInt()
+                marginStart = gap
+                marginEnd = gap
+                topMargin = gap
+                bottomMargin = gap
             }
         }
         val num = TextView(this).apply {
@@ -208,7 +231,7 @@ class NotesCalendarActivity : NotesPageActivity() {
             setPadding(0, (2 * d).toInt(), 0, 0)
         }
         if (inMonth) {
-            // 有笔记不画图标（由格子填充表达），这里只剩待办三态与标签 #
+            // 有笔记不画图标（由格子填充表达），这里只剩待办三态与标签价签
             when (st?.todoState) {
                 NotesCalendar.TodoState.OPEN ->
                     icons.addView(statusIcon(R.drawable.ic_cal_todo_open))
@@ -368,7 +391,6 @@ class NotesCalendarActivity : NotesPageActivity() {
     }
 
     companion object {
-        private const val ROWS = 6
         private const val COLS = 7
         /** 弹窗笔记索引固定高度：超出滚动，保证标签/Todo 段不被挤出屏幕。 */
         private const val NOTES_LIST_H_DP = 220

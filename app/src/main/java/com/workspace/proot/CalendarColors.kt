@@ -2,7 +2,7 @@ package com.workspace.proot
 
 /**
  * 日历格子配色：「有笔记」的填充色分浅/夜两档写死，不随主题推导、不进 ThemeColors 槽位。
- * 待办三态与标签 # 的线条色同样写死（在 vector drawable 里，运行时不 tint），
+ * 待办三态与标签价签的线条色同样写死（在 vector drawable 里，运行时不 tint），
  * 这里同步一份常量供对比度单测锁定（CalendarColorsTest）。
  *
  * 对比度底线：日期数字 ≥7:1；12dp 图形 ≥2.5:1（图形靠「形状+颜色」双编码补偿）。
@@ -19,7 +19,7 @@ object CalendarColors {
     const val TODO_OPEN = 0xFFC0392B.toInt() // 全未完成 红 ○
     const val TODO_PARTIAL = 0xFFB58200.toInt() // 部分完成 黄 ◐
     const val TODO_DONE = 0xFF2D7D46.toInt() // 全部完成 绿 ✔
-    const val TAG_GRAY = 0xFF888888.toInt() // 标签 # 灰
+    const val TAG_GRAY = 0xFF888888.toInt() // 标签价签灰
 
     /** 当前主题下「有笔记」的填充色。 */
     fun noteFill(night: Boolean): Int = if (night) NOTE_FILL_NIGHT else NOTE_FILL_DAY

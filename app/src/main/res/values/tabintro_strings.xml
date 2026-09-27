@@ -17,15 +17,17 @@
     <string name="intro_terminal_workshop_body">两个图形化设计工具。\n● 弹窗工坊 —— 可视化设计对话框，实时预览，导出 termlou-ui 命令\n● 启动页工坊 —— 手绘点阵、照片转像素画、粒子开屏动画</string>
 
     <!-- Tab 介绍页：笔记 -->
-    <string name="intro_notes_lead">笔记页是纯本机功能：列表管理笔记，编辑页写正文、挂标签、记待办。</string>
+    <string name="intro_notes_lead">笔记页是纯本机功能：列表管理笔记，编辑页写正文、挂标签、记待办；底部三键进入待办视图、标签视图、日历视图。</string>
     <string name="intro_notes_list_title">列表与编辑</string>
-    <string name="intro_notes_list_body">笔记的目录与编辑器。\n● 列表每行：标题｜更新时间｜标签胶囊\n▸ 右下角 ＋ —— 新建笔记\n▸ 点按笔记 —— 进入编辑（标题、正文、标签、待办分区）\n▸ 长按笔记 —— 重命名\n▸ 底部「待办」「标签」—— 打开对应子页</string>
+    <string name="intro_notes_list_body">笔记的目录与编辑器。\n● 列表每行：标题｜更新时间｜标签胶囊\n▸ 右下角 ＋ —— 新建笔记\n▸ 点按笔记 —— 进入编辑（标题、正文、标签、待办分区）\n▸ 长按笔记 —— 重命名\n▸ 底部「待办」「标签」「日历」三键 —— 分别进入待办视图、标签视图、日历视图</string>
     <string name="intro_notes_search_title">搜索</string>
-    <string name="intro_notes_search_body">笔记 / 待办 / 标签三个页面顶部各有搜索框，同一套搜法。\n● 全字段 —— 标题、标签、正文、归属待办一起搜\n● 多词 —— 空格分隔，全部命中才保留，可跨字段互补\n● 错别字 —— 同音容错，「苹菓」也能搜到「苹果」\n● 拼音 —— 全拼 `pingguo`、首字母 `pg`、同音字都行\n▸ 返回键 —— 先清空搜索词，再退页面\n● 输入停顿 200 毫秒出结果；1 万条笔记也是毫秒级返回。</string>
-    <string name="intro_notes_tags_title">标签</string>
-    <string name="intro_notes_tags_body">给笔记归类的彩色胶囊。\n● 着色按内容哈希 —— 同一标签永远同一颜色\n▸ 标签页点某标签 —— 筛出全部同标签笔记\n▸ 编辑页「＋标签」—— 添加；点已有胶囊 —— 移除</string>
-    <string name="intro_notes_todo_title">待办看板</string>
-    <string name="intro_notes_todo_body">全局待办的双栏看板（列表底部「待办」进入）。\n● 左栏 = 已完成，右栏 = 未完成；各自独立滚动，标题冻结\n▸ 点按整行 —— 切换完成 / 未完成\n▸ 长按整行 —— 删除\n● 变更即时落盘。</string>
+    <string name="intro_notes_search_body">笔记列表、待办视图、标签视图顶部各有搜索框（日历视图没有），同一套搜法。\n● 全字段 —— 标题、标签、正文、归属待办一起搜\n● 多词 —— 空格分隔，全部命中才保留，可跨字段互补\n● 错别字 —— 同音容错，「苹菓」也能搜到「苹果」\n● 拼音 —— 全拼 `pingguo`、首字母 `pg`、同音字都行\n▸ 返回键 —— 先清空搜索词，再退页面\n● 输入停顿 200 毫秒出结果；1 万条笔记也是毫秒级返回。</string>
+    <string name="intro_notes_tags_title">标签视图</string>
+    <string name="intro_notes_tags_body">给笔记归类的彩色胶囊。\n● 着色按内容哈希 —— 同一标签永远同一颜色\n▸ 标签视图点某标签 —— 筛出全部同标签笔记\n▸ 编辑页「＋标签」—— 添加；点已有胶囊 —— 移除</string>
+    <string name="intro_notes_todo_title">待办视图</string>
+    <string name="intro_notes_todo_body">全局待办的双栏看板（列表底部「待办」键进入）。\n● 左栏 = 已完成，右栏 = 未完成；各自独立滚动，标题冻结\n▸ 点按整行 —— 切换完成 / 未完成\n▸ 长按整行 —— 删除\n● 变更即时落盘。</string>
+    <string name="intro_notes_cal_title">日历视图</string>
+    <string name="intro_notes_cal_body">按月看笔记与待办的月历（列表底部「日历」键进入）。\n● 周一起头，月尾只补到本周日，不再多补整行；整块方格从页面高度居中，格子近似正方形\n● 格子填色 = 当天有笔记；透明 = 没有（有笔记不再画图标）\n● 格内小图标：待办三态（红 = 全未完成 / 黄 = 部分完成 / 绿 = 全完成，没有待办就不画）+ 灰色价签 = 当天有标签\n▸ 上下滑动 —— 翻上 / 下个月，页面任意位置都能滑\n▸ 滑到最早有内容的月份 —— 拦住不翻，提示「没有更旧的笔记了」；滑到未来 —— 拦住不翻，提示「未来还没到呢」\n▸ 点月头「2026年9月」—— 回到本月\n▸ 点日期 —— 弹当日详情：全部标签、待办完成情况、当天笔记索引\n▸ 点索引里的笔记 —— 直接进编辑，不隔中间步骤\n⚠ 上 / 下月补出来的灰字日期不可点。</string>
     <string name="intro_notes_autosave_title">自动保存</string>
     <string name="intro_notes_autosave_body">退出编辑器即保存，无需手动操作。\n▸ 正文退出编辑器时 —— 有变化才比对落盘\n● 触发时机：退列表｜切笔记｜切 Tab｜进后台｜跳子页\n● 打字过程不写盘，没有逐字写放大。</string>
     <string name="intro_notes_tile_title">磁贴直达</string>

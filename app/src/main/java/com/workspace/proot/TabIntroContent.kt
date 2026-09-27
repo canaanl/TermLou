@@ -38,6 +38,7 @@ object TabIntroContent {
                 TabIntroSection(R.string.intro_notes_search_title, R.string.intro_notes_search_body),
                 TabIntroSection(R.string.intro_notes_tags_title, R.string.intro_notes_tags_body),
                 TabIntroSection(R.string.intro_notes_todo_title, R.string.intro_notes_todo_body),
+                TabIntroSection(R.string.intro_notes_cal_title, R.string.intro_notes_cal_body),
                 TabIntroSection(R.string.intro_notes_autosave_title, R.string.intro_notes_autosave_body),
                 TabIntroSection(R.string.intro_notes_tile_title, R.string.intro_notes_tile_body)
             )
