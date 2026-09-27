@@ -267,10 +267,17 @@ class NotesStandaloneActivity : NotesPageActivity() {
                         .putExtra(EXTRA_FROM_STANDALONE, true)
                 )
             })
+            addView(segButton(getString(R.string.notes_cal_tab)) {
+                flushPendingSave()
+                startActivity(
+                    Intent(this@NotesStandaloneActivity, NotesCalendarActivity::class.java)
+                        .putExtra(EXTRA_FROM_STANDALONE, true)
+                )
+            })
         }
         SegmentStyle.applyRow(
             row,
-            listOf(null, null),
+            listOf(null, null, null),
             theme.outline,
             theme.onSurface,
             SegmentStyle.Bar(0f, false)

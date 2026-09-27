@@ -368,6 +368,22 @@
     <string name="notes_insert_todo">+Todo</string>
     <string name="notes_todo_tab">Todos</string>
     <string name="notes_tags_tab">Tags</string>
+    <!-- Calendar view: month header / weekday header / day detail dialog -->
+    <string name="notes_cal_tab">Calendar</string>
+    <string name="notes_cal_month_fmt">%2$s %1$d</string>
+    <string name="notes_cal_day_fmt">%4$s, %2$s %3$d, %1$d</string>
+    <string name="notes_cal_month_names">Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec</string>
+    <string name="notes_cal_wd_mon">Mon</string>
+    <string name="notes_cal_wd_tue">Tue</string>
+    <string name="notes_cal_wd_wed">Wed</string>
+    <string name="notes_cal_wd_thu">Thu</string>
+    <string name="notes_cal_wd_fri">Fri</string>
+    <string name="notes_cal_wd_sat">Sat</string>
+    <string name="notes_cal_wd_sun">Sun</string>
+    <string name="notes_cal_todo_fmt">Todos %1$d · Done %2$d</string>
+    <string name="notes_cal_no_todos">No todos</string>
+    <string name="notes_cal_notes_sec">Notes</string>
+    <string name="notes_cal_back_now">Back to this month</string>
     <string name="notes_no_tags">No tags yet</string>
     <string name="notes_pieces_fmt">%1$d</string>
     <string name="notes_todo_empty_short">Empty</string>

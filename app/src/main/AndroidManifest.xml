@@ -75,6 +75,12 @@
             android:theme="@style/Theme.TermLou" />
 
         <activity
+            android:name="com.workspace.proot.NotesCalendarActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:theme="@style/Theme.TermLou" />
+
+        <activity
             android:name="com.workspace.proot.NotesStandaloneActivity"
             android:screenOrientation="portrait"
             android:exported="false"

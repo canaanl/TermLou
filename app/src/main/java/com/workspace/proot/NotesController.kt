@@ -254,10 +254,16 @@ class NotesController(
                     android.content.Intent(activity, NotesTagsActivity::class.java)
                 )
             })
+            addView(segButton(activity.getString(R.string.notes_cal_tab)) {
+                flushPendingSave()
+                activity.startActivity(
+                    android.content.Intent(activity, NotesCalendarActivity::class.java)
+                )
+            })
         }
         SegmentStyle.applyRow(
             row,
-            listOf(null, null),
+            listOf(null, null, null),
             theme.outline,
             theme.onSurface,
             SegmentStyle.Bar(0f, false)

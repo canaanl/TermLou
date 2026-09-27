@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 待办「全未完成」：空心圈（外圆挖内圆），红色写死，不随主题 tint。 -->
+    <path
+        android:fillColor="#C0392B"
+        android:fillType="evenOdd"
+        android:pathData="M12,2A10,10 0 1,1 12,22A10,10 0 1,1 12,2M12,6A6,6 0 1,1 12,18A6,6 0 1,1 12,6" />
+</vector>

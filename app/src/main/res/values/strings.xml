@@ -368,6 +368,22 @@
     <string name="notes_insert_todo">＋待办</string>
     <string name="notes_todo_tab">待办</string>
     <string name="notes_tags_tab">标签</string>
+    <!-- 日历视图：月头/周表头/当日详情弹窗 -->
+    <string name="notes_cal_tab">日历</string>
+    <string name="notes_cal_month_fmt">%1$d年%2$s</string>
+    <string name="notes_cal_day_fmt">%1$d年%2$s%3$d日 · %4$s</string>
+    <string name="notes_cal_month_names">1月,2月,3月,4月,5月,6月,7月,8月,9月,10月,11月,12月</string>
+    <string name="notes_cal_wd_mon">周一</string>
+    <string name="notes_cal_wd_tue">周二</string>
+    <string name="notes_cal_wd_wed">周三</string>
+    <string name="notes_cal_wd_thu">周四</string>
+    <string name="notes_cal_wd_fri">周五</string>
+    <string name="notes_cal_wd_sat">周六</string>
+    <string name="notes_cal_wd_sun">周日</string>
+    <string name="notes_cal_todo_fmt">待办 %1$d · 已完成 %2$d</string>
+    <string name="notes_cal_no_todos">暂无待办</string>
+    <string name="notes_cal_notes_sec">笔记</string>
+    <string name="notes_cal_back_now">回到本月</string>
     <string name="notes_no_tags">暂无标签</string>
     <string name="notes_pieces_fmt">%1$d篇</string>
     <string name="notes_todo_empty_short">暂无</string>
