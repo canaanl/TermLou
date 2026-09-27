@@ -40,8 +40,10 @@ object NotesCalendar {
         if (ts > 0) LocalDate.ofInstant(Instant.ofEpochMilli(ts), zone) else null
 
     /**
-     * 逐日状态：笔记看 createdAt、待办看 createdAt（编辑不搬家）；
-     * createdAt<=0 的历史数据不落任何日期格。
+     * 逐日状态：笔记看 createdAt（编辑不搬家）；待办分两类——
+     * **有归属笔记的算在那篇笔记的创建日**（在以往的笔记里新加待办不算今天，
+     * 否则会出现「今天没笔记却有待办」的格），无归属（note="" 全局待办/老数据）
+     * 才看待办自身 createdAt；createdAt<=0 的历史数据不落任何日期格。
      */
     fun dayStatus(
         notes: List<NoteEntry>,
@@ -54,8 +56,9 @@ object NotesCalendar {
             val cur = map[day] ?: DayStatus()
             map[day] = cur.copy(hasNote = true, hasTag = cur.hasTag || n.tags.isNotEmpty())
         }
+        val byName = notes.associateBy { it.name }
         for (t in todos) {
-            val day = dayOf(t.createdAt, zone) ?: continue
+            val day = dayOf(archiveTs(t, byName), zone) ?: continue
             val cur = map[day] ?: DayStatus()
             map[day] = cur.copy(
                 todoTotal = cur.todoTotal + 1,
@@ -64,6 +67,14 @@ object NotesCalendar {
         }
         return map
     }
+
+    /**
+     * 待办的归档时间戳：有归属笔记 → 笔记的 createdAt（与笔记同格、同口径）；
+     * 归属笔记已被删 → 退回待办自身 createdAt；归属笔记 createdAt<=0 → 返回 0，
+     * 与笔记一样不落格。无归属 → 待办自身 createdAt。
+     */
+    private fun archiveTs(t: TodoItem, byName: Map<String, NoteEntry>): Long =
+        if (t.note.isEmpty()) t.createdAt else byName[t.note]?.createdAt ?: t.createdAt
 
     /**
      * 整月网格：周一起头，**只补齐到本周日**——月头补上月凑满首周、月尾补到周日为止，
@@ -89,16 +100,17 @@ object NotesCalendar {
 
     /**
      * 最早有内容的月份——笔记和待办都算（待办也占格子，只看笔记会出现
-     * 「往前翻还有待办格却提示到底了」）；createdAt<=0 不算。
-     * 一条内容都没有返回 null，由调用方拿「当前正在看的月份」当底。
+     * 「往前翻还有待办格却提示到底了」）；待办按与 dayStatus 相同的归属规则换算，
+     * createdAt<=0 不算。一条内容都没有返回 null，由调用方拿「当前正在看的月份」当底。
      */
     fun earliestContentMonth(
         notes: List<NoteEntry>,
         todos: List<TodoItem>,
         zone: ZoneId = ZoneId.systemDefault()
     ): YearMonth? {
+        val byName = notes.associateBy { it.name }
         var earliest: YearMonth? = null
-        for (ts in notes.map { it.createdAt } + todos.map { it.createdAt }) {
+        for (ts in notes.map { it.createdAt } + todos.map { archiveTs(it, byName) }) {
             val d = dayOf(ts, zone) ?: continue
             val m = YearMonth.from(d)
             val cur = earliest

@@ -10,7 +10,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 日历视图纯逻辑锁定：按创建日归档、待办三态、周一起头且只补到本周日的整月网格。
+ * 日历视图纯逻辑锁定：按创建日归档（归属笔记的待办跟着笔记的创建日走）、待办三态、
+ * 周一起头且只补到本周日的整月网格。
  * 时区显式传 UTC，测试结果与跑测机时区无关。
  */
 class NotesCalendarTest {
@@ -90,6 +91,59 @@ class NotesCalendarTest {
         assertEquals(1, st.todoDone)
         assertEquals(NotesCalendar.TodoState.PARTIAL, st.todoState)
         assertEquals(NotesCalendar.TodoState.OPEN, status.getValue(LocalDate.of(2026, 9, 13)).todoState)
+    }
+
+    @Test
+    fun `归属笔记的待办算在笔记的创建日 不算今天`() {
+        val noteDay = LocalDate.of(2026, 1, 5)
+        val today = LocalDate.of(2026, 9, 27)
+        val n = note("旧笔记", noteDay)
+        // 在以往的笔记里新加的待办：createdAt 是现在，但归属那篇笔记
+        val t = TodoItem("t1", "在旧笔记里新加", false, at(today), n.name)
+        val status = NotesCalendar.dayStatus(listOf(n), listOf(t), zone)
+        // 落在笔记那天，和笔记同格
+        val st = status.getValue(noteDay)
+        assertTrue(st.hasNote)
+        assertEquals(1, st.todoTotal)
+        // 今天既没笔记也没待办 → 不再出现「有待办没笔记」的格
+        assertFalse(status.containsKey(today))
+    }
+
+    @Test
+    fun `无归属的全局待办仍按自身创建日`() {
+        val today = LocalDate.of(2026, 9, 27)
+        val t = TodoItem("t", "待办视图里新建的全局待办", false, at(today), "")
+        val status = NotesCalendar.dayStatus(emptyList(), listOf(t), zone)
+        val st = status.getValue(today)
+        assertEquals(1, st.todoTotal)
+        // 允许「只有待办没有笔记」的格（全局待办本来就不属于任何笔记）
+        assertFalse(st.hasNote)
+    }
+
+    @Test
+    fun `归属笔记已删 退回待办自身创建日`() {
+        val today = LocalDate.of(2026, 9, 27)
+        val t = TodoItem("t", "笔记已经没了", false, at(today), "已删除的笔记")
+        val status = NotesCalendar.dayStatus(emptyList(), listOf(t), zone)
+        assertEquals(1, status.getValue(today).todoTotal)
+    }
+
+    @Test
+    fun `归属笔记 createdAt为0 与笔记一样不落格`() {
+        val legacyNote = NoteEntry("老笔记", emptyList(), 0L, 0L)
+        val t = TodoItem("t", "老待办", false, at(LocalDate.of(2026, 9, 27)), "老笔记")
+        assertTrue(NotesCalendar.dayStatus(listOf(legacyNote), listOf(t), zone).isEmpty())
+    }
+
+    @Test
+    fun `最早内容月 归属待办按笔记的月份算`() {
+        val n = note("旧笔记", LocalDate.of(2026, 1, 5))
+        val t = TodoItem("t", "今天在旧笔记里加的", false, at(LocalDate.of(2026, 9, 27)), n.name)
+        // 归属待办不把自己的创建月（9 月）算进最早月，最晚也不会早过笔记本身
+        assertEquals(YearMonth.of(2026, 1), NotesCalendar.earliestContentMonth(listOf(n), listOf(t), zone))
+        // 只有全局待办时，最早月仍是全局待办自己的月份
+        val g = TodoItem("g", "全局", false, at(LocalDate.of(2026, 3, 3)), "")
+        assertEquals(YearMonth.of(2026, 3), NotesCalendar.earliestContentMonth(emptyList(), listOf(g), zone))
     }
 
     @Test
