@@ -1,6 +1,7 @@
 package com.workspace.proot
 
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -157,5 +158,89 @@ class NotesCalendarTest {
         assertNull(empty.todoState)
         val withNote = NotesCalendar.dayStatus(listOf(note("n", LocalDate.of(2026, 1, 1))), emptyList(), zone)
         assertFalse(withNote.getValue(LocalDate.of(2026, 1, 1)).isEmpty)
+    }
+
+    // ---------- 翻月边界 ----------
+
+    @Test
+    fun `最早有内容月份 笔记与待办都算 createdAt为0忽略`() {
+        val notes = listOf(note("笔记在3月", LocalDate.of(2026, 3, 5)))
+        val todos = listOf(
+            todo("t1", LocalDate.of(2026, 1, 20), done = false),
+            TodoItem("legacy", "老待办", false, 0L)
+        )
+        assertEquals(YearMonth.of(2026, 1), NotesCalendar.earliestContentMonth(notes, todos, zone))
+        // 只有带标签/未完成的记录也一样算
+        assertEquals(
+            YearMonth.of(2026, 3),
+            NotesCalendar.earliestContentMonth(notes, emptyList(), zone)
+        )
+        assertEquals(
+            YearMonth.of(2026, 1),
+            NotesCalendar.earliestContentMonth(emptyList(), todos, zone)
+        )
+    }
+
+    @Test
+    fun `一条内容都没有时最早月为 null 由调用方拿当前月当底`() {
+        assertNull(NotesCalendar.earliestContentMonth(emptyList(), emptyList(), zone))
+        assertNull(
+            NotesCalendar.earliestContentMonth(
+                listOf(NoteEntry("老", emptyList(), 0L, 0L)), emptyList(), zone
+            )
+        )
+    }
+
+    @Test
+    fun `翻月判定 范围内放行 出界拦截`() {
+        val today = YearMonth.of(2026, 9)
+        val earliest = YearMonth.of(2026, 6)
+        // 范围内（含空月）照常翻
+        assertEquals(
+            NotesCalendar.ShiftVerdict.OK,
+            NotesCalendar.shiftVerdict(YearMonth.of(2026, 9), -1, today, earliest)
+        )
+        assertEquals(
+            NotesCalendar.ShiftVerdict.OK,
+            NotesCalendar.shiftVerdict(YearMonth.of(2026, 7), -1, today, earliest)
+        )
+        // 正好停在最早内容月也允许，再往前一步就拦
+        assertEquals(
+            NotesCalendar.ShiftVerdict.OK,
+            NotesCalendar.shiftVerdict(YearMonth.of(2026, 6), 0, today, earliest)
+        )
+        assertEquals(
+            NotesCalendar.ShiftVerdict.BLOCK_NO_OLDER,
+            NotesCalendar.shiftVerdict(YearMonth.of(2026, 6), -1, today, earliest)
+        )
+        // 上滑：落点是本月则允许，越过本月才拦（未来）
+        assertEquals(
+            NotesCalendar.ShiftVerdict.OK,
+            NotesCalendar.shiftVerdict(YearMonth.of(2026, 8), 1, today, earliest)
+        )
+        // 已在本月再上滑才拦
+        assertEquals(
+            NotesCalendar.ShiftVerdict.BLOCK_FUTURE,
+            NotesCalendar.shiftVerdict(YearMonth.of(2026, 9), 1, today, earliest)
+        )
+    }
+
+    @Test
+    fun `全库无内容时 当前月就是底 两个方向都被拦`() {
+        val today = YearMonth.of(2026, 9)
+        val fallback = today // 调用方：contentEarliest ?: month
+        assertEquals(
+            NotesCalendar.ShiftVerdict.BLOCK_NO_OLDER,
+            NotesCalendar.shiftVerdict(today, -1, today, fallback)
+        )
+        assertEquals(
+            NotesCalendar.ShiftVerdict.BLOCK_FUTURE,
+            NotesCalendar.shiftVerdict(today, 1, today, fallback)
+        )
+        // 停在原地永远允许
+        assertEquals(
+            NotesCalendar.ShiftVerdict.OK,
+            NotesCalendar.shiftVerdict(today, 0, today, fallback)
+        )
     }
 }

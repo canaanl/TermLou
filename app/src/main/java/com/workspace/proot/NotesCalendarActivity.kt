@@ -13,13 +13,16 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import java.time.LocalDate
 import java.time.YearMonth
 
 /**
- * 日历视图：周一开头的 6×7 月历，格子极简只放三类状态——
- * 笔记（有/无）、待办三态（红空/黄半/绿满，无待办不画）、标签（有/无）。
- * 上下滑动翻月；点日期弹当日详情（标签名 + Todo 总数/完成数 + 固定高度滚动笔记索引），
+ * 日历视图：周一开头的 6×7 月历，每天一个圆角格子，三类状态——
+ * 有笔记 = 格子背景填充固定色（无笔记透明，不画笔记图标）、
+ * 待办三态小图标（红空 ○/黄半 ◐/绿满 ✔，无待办不画、不显数量）、标签 #（有/无不显名）。
+ * 上下滑动翻月，到底（更早已无内容）或翻未来时拦住不翻并 Toast 提示；
+ * 点日期弹当日详情（标签名 + Todo 总数/完成数 + 固定高度滚动笔记索引），
  * 点笔记直接进编辑页，无中间步骤；溢出月格子只显淡化数字、不可点。
  */
 class NotesCalendarActivity : NotesPageActivity() {
@@ -29,6 +32,8 @@ class NotesCalendarActivity : NotesPageActivity() {
     private lateinit var gridBox: LinearLayout
     private var status: Map<LocalDate, NotesCalendar.DayStatus> = emptyMap()
     private var detailDialog: AlertDialog? = null
+    /** 全库最早的有内容月份（笔记+待办），随 onResume 刷新；null = 一条内容都没有。 */
+    private var contentEarliest: YearMonth? = null
 
     private val weekdayRes = intArrayOf(
         R.string.notes_cal_wd_mon, R.string.notes_cal_wd_tue, R.string.notes_cal_wd_wed,
@@ -73,6 +78,7 @@ class NotesCalendarActivity : NotesPageActivity() {
 
         setContentView(root)
         status = NotesCalendar.dayStatus(store.listNotes(), store.todos())
+        contentEarliest = NotesCalendar.earliestContentMonth(store.listNotes(), store.todos())
         render()
     }
 
@@ -80,12 +86,33 @@ class NotesCalendarActivity : NotesPageActivity() {
         super.onResume()
         store.reload()
         status = NotesCalendar.dayStatus(store.listNotes(), store.todos())
+        contentEarliest = NotesCalendar.earliestContentMonth(store.listNotes(), store.todos())
         render()
     }
 
+    /** 翻月可到的最早月：有内容按最早内容月，一条内容都没有就以当前正在看的月为底；不越过本月。 */
+    private fun boundaryEarliest(): YearMonth {
+        val today = YearMonth.now()
+        val base = contentEarliest ?: month
+        return if (base > today) today else base
+    }
+
+    /**
+     * 翻月：范围内直接翻；出界拦住不翻页并 Toast 说明原因——
+     * 早于最早内容月 = 「没有更旧的笔记了」，晚于本月 = 「未来还没到呢」。
+     */
     private fun shiftMonth(delta: Long) {
-        month = month.plusMonths(delta)
-        render()
+        val verdict = NotesCalendar.shiftVerdict(month, delta, YearMonth.now(), boundaryEarliest())
+        when (verdict) {
+            NotesCalendar.ShiftVerdict.OK -> {
+                month = month.plusMonths(delta)
+                render()
+            }
+            NotesCalendar.ShiftVerdict.BLOCK_NO_OLDER ->
+                Toast.makeText(this, R.string.notes_cal_no_older, Toast.LENGTH_SHORT).show()
+            NotesCalendar.ShiftVerdict.BLOCK_FUTURE ->
+                Toast.makeText(this, R.string.notes_cal_future, Toast.LENGTH_SHORT).show()
+        }
     }
 
     /** 月历整体重建（数据量小，滑动翻月/回本月都直接重铺 42 格）。 */
@@ -107,12 +134,12 @@ class NotesCalendarActivity : NotesPageActivity() {
         }
     }
 
-    /** 周一…周日表头（7 等分，与格子列对齐）。 */
+    /** 周一…周日表头（7 等分，每列加与格子相同的 2dp 边距，保证与格列严格对齐）。 */
     private fun weekdayRow(): LinearLayout {
         val d = density()
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding((2 * d).toInt(), 0, (2 * d).toInt(), (4 * d).toInt())
+            setPadding(0, 0, 0, (4 * d).toInt())
             for (res in weekdayRes) {
                 addView(TextView(this@NotesCalendarActivity).apply {
                     text = getString(res)
@@ -120,20 +147,43 @@ class NotesCalendarActivity : NotesPageActivity() {
                     gravity = Gravity.CENTER
                     maxLines = 1
                     setTextColor(theme.onSurfaceVariant)
-                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = (2 * d).toInt()
+                    marginEnd = (2 * d).toInt()
+                })
             }
         }
     }
 
-    /** 单格：日期数字 + 固定高度图标行（保证 6 行数字齐平）。 */
+    /**
+     * 单格：圆角容器（有笔记 = 固定填充色；无笔记透明）+ 日期数字 + 固定高度图标行。
+     * 格与格之间靠 2dp margin 留空，不再挤成一片；今天在容器上套主色描边。
+     */
     private fun cell(date: LocalDate, y: Int, m: Int, today: LocalDate): View {
         val d = density()
         val inMonth = NotesCalendar.isInMonth(date, y, m)
         val isToday = inMonth && date == today
+        val st = if (inMonth) status[date] else null
         val cell = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding((1 * d).toInt(), (3 * d).toInt(), (1 * d).toInt(), (3 * d).toInt())
+            setPadding((4 * d).toInt(), (4 * d).toInt(), (4 * d).toInt(), (4 * d).toInt())
+            background = GradientDrawable().apply {
+                setColor(
+                    if (st?.hasNote == true) CalendarColors.noteFill(theme.night)
+                    else Color.TRANSPARENT
+                )
+                cornerRadius = 8 * d
+                if (isToday) setStroke((1.5 * d).toInt().coerceAtLeast(1), theme.primary)
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.MATCH_PARENT, 1f
+            ).apply {
+                marginStart = (2 * d).toInt()
+                marginEnd = (2 * d).toInt()
+                topMargin = (2 * d).toInt()
+                bottomMargin = (2 * d).toInt()
+            }
         }
         val num = TextView(this).apply {
             text = date.dayOfMonth.toString()
@@ -141,15 +191,10 @@ class NotesCalendarActivity : NotesPageActivity() {
             gravity = Gravity.CENTER
             maxLines = 1
             when {
+                // 今天：加粗 + 容器主色描边（数字本身仍用 onSurface，保证填充底上 ≥7:1）
                 isToday -> {
-                    setTextColor(theme.primary)
+                    setTextColor(theme.onSurface)
                     typeface = Typeface.DEFAULT_BOLD
-                    background = GradientDrawable().apply {
-                        setColor(Color.TRANSPARENT)
-                        setStroke((1 * d).toInt().coerceAtLeast(1), theme.primary)
-                        cornerRadius = 14 * d
-                    }
-                    setPadding((6 * d).toInt(), (1 * d).toInt(), (6 * d).toInt(), (1 * d).toInt())
                 }
                 inMonth -> setTextColor(theme.onSurface)
                 else -> setTextColor(faded(theme.onSurface))
@@ -163,8 +208,7 @@ class NotesCalendarActivity : NotesPageActivity() {
             setPadding(0, (2 * d).toInt(), 0, 0)
         }
         if (inMonth) {
-            val st = status[date]
-            if (st?.hasNote == true) icons.addView(statusIcon(R.drawable.ic_cal_note))
+            // 有笔记不画图标（由格子填充表达），这里只剩待办三态与标签 #
             when (st?.todoState) {
                 NotesCalendar.TodoState.OPEN ->
                     icons.addView(statusIcon(R.drawable.ic_cal_todo_open))
@@ -176,18 +220,18 @@ class NotesCalendarActivity : NotesPageActivity() {
             }
             if (st?.hasTag == true) icons.addView(statusIcon(R.drawable.ic_cal_tag))
         }
-        cell.addView(icons, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (17 * d).toInt()))
+        cell.addView(icons, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (15 * d).toInt()))
         if (inMonth) cell.setOnClickListener { openDetail(date) }
         return cell
     }
 
-    /** 状态图标：13dp 固定尺寸（vector 线条色已写死，不再 tint）。 */
+    /** 状态图标：12dp 固定尺寸（vector 线条色已写死，不再 tint）。 */
     private fun statusIcon(res: Int): ImageView = ImageView(this).apply {
         setImageResource(res)
         scaleType = ImageView.ScaleType.FIT_CENTER
         isClickable = false
         isFocusable = false
-        layoutParams = LinearLayout.LayoutParams((13 * density()).toInt(), (13 * density()).toInt())
+        layoutParams = LinearLayout.LayoutParams((12 * density()).toInt(), (12 * density()).toInt())
             .apply { marginEnd = (1 * density()).toInt() }
     }
 
