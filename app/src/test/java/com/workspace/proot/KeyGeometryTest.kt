@@ -43,10 +43,10 @@ class KeyGeometryTest {
     fun bandFitsHandDrawnOffset() {
         for (d in densities) {
             val bandPx = (RowKeyDrawable.BAND_DP * d).toInt()
-            val offsetPx = (RowKeyDrawable.OFFSET_DP * d).toInt()
+            val facePx = (RowKeyDrawable.KEY_FACE_DP * d).toInt()
             assertTrue(
-                "density=$d：影带 ${bandPx}px 装不下手绘影偏移 $offsetPx px（右下暗影会被切）",
-                bandPx >= offsetPx
+                "density=$d：键面 $facePx px 必须是行高的多数部分（影带 ${bandPx} px 只为投影）",
+                facePx > bandPx
             )
         }
     }

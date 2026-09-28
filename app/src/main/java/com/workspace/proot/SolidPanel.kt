@@ -108,8 +108,9 @@ internal class RowKeyDrawable(
 ) : Drawable() {
 
     private val radius = ButtonStyle.CORNER_RADIUS_DP * density
-    private val offset = OFFSET_DP * density
-    private val innerShadowTopH = 2.5f * density
+    private val innerHiH = 1.2f * density        // 上/左内亮线厚度
+    private val innerShSideW = 1.2f * density    // 右内暗线厚度
+    private val innerShadowTopH = 2.5f * density // 凹陷上棱内阴影厚度（更深）
     private val innerShadowSideW = 1.5f * density
     private val innerHiBottomH = 1.2f * density
     private val innerHiSideW = 1.5f * density
@@ -120,11 +121,11 @@ internal class RowKeyDrawable(
     private val keyPath = Path()
     private val tmp = RectF()
 
-    // 静止：右下暗影 / 左亮高光 / 键面 + 顶棱内亮线
-    private val darkPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val lightPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    // 静止：键面 + 上/左内亮线 + 右内暗线（全部在键面内、严格对称，不向键外溢出）
     private val facePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val hiTopPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val hiSidePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val shSidePaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     // 凹陷：压深的键面 + 上/左内阴影 + 下/右内高光
     private val pressedFacePaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -179,19 +180,39 @@ internal class RowKeyDrawable(
         tmp.set(left, top, right, top + keyH)
         keyPath.addRoundRect(tmp, radius, radius, Path.Direction.CW)
 
-        darkPaint.color = c.keyShadow
-        lightPaint.color = c.keyHi
         facePaint.color = c.key
         pressedFacePaint.color = c.keyPressed
-        // 顶棱内亮线（静止凸起，受光面）
+        // 上棱内亮线（静止凸起，受光面）
         hiTopPaint.shader = LinearGradient(
-            0f, top, 0f, top + innerHiBottomH,
+            0f, top, 0f, top + innerHiH,
             intArrayOf(
                 withAlpha(c.keyHi, 210),
                 withAlpha(c.keyHi, 105),
                 withAlpha(c.keyHi, 0)
             ),
             floatArrayOf(0f, 0.45f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        // 左棱内亮线（受光面，与上棱同款、上下左右对称）
+        hiSidePaint.shader = LinearGradient(
+            left, 0f, left + innerHiH, 0f,
+            intArrayOf(
+                withAlpha(c.keyHi, 210),
+                withAlpha(c.keyHi, 105),
+                withAlpha(c.keyHi, 0)
+            ),
+            floatArrayOf(0f, 0.45f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        // 右棱内暗线（背光面；下棱不画——俯视看不到键帽底面，"浮起"由框架投影承担）
+        shSidePaint.shader = LinearGradient(
+            right - innerShSideW, 0f, right, 0f,
+            intArrayOf(
+                withAlpha(c.keyShadow, 0),
+                withAlpha(c.keyShadow, 105),
+                withAlpha(c.keyShadow, 210)
+            ),
+            floatArrayOf(0f, 0.55f, 1f),
             Shader.TileMode.CLAMP
         )
         // 上棱内阴影（凹陷）
@@ -272,17 +293,16 @@ internal class RowKeyDrawable(
             canvas.drawRect(left, faceBottom - innerHiBottomH, right, faceBottom, pressedHiBottomPaint)
             canvas.restore()
         } else {
-            // 凸起：右下暗影 + 左亮高光（笔记页悬浮加号同款配方），再压键面。
-            // 亮高光层**只往左溢出**、不往上：往上溢会跑进上一行的空隙里、在左上角露白；
-            // 顶边受光改由键面内的亮线承担（见 hiTopPaint）。
-            tmp.set(left, top + offset, right, faceBottom + offset)
-            canvas.drawRoundRect(tmp, radius, radius, darkPaint)
-            tmp.set(left - offset, top, right - offset, faceBottom - offset)
-            canvas.drawRoundRect(tmp, radius, radius, lightPaint)
-            tmp.set(left, top, right, faceBottom)
-            canvas.drawRoundRect(tmp, radius, radius, facePaint)
-            // 顶棱内亮线（受光面，键面内，不溢出）
-            canvas.drawRect(left, top, right, top + innerHiBottomH, hiTopPaint)
+            // 凸起：键面 + 上/左内亮线 + 右内暗线，全部在键面内（绝不向键外溢出，
+            // 否则会在面板上留一条亮边、且同半径圆角只错一个方向时转角永远对不齐）。
+            // "浮起来"交给框架 elevation 真阴影（getOutline = 键面圆角矩形，贴边贴圆角）。
+            canvas.save()
+            canvas.clipPath(keyPath)
+            canvas.drawRect(left, top, right, faceBottom, facePaint)
+            canvas.drawRect(left, top, right, top + innerHiH, hiTopPaint)
+            canvas.drawRect(left, top, left + innerHiH, faceBottom, hiSidePaint)
+            canvas.drawRect(right - innerShSideW, top, right, faceBottom, shSidePaint)
+            canvas.restore()
         }
     }
 
@@ -308,9 +328,6 @@ internal class RowKeyDrawable(
 
         /** 键面下方的影带高度（dp），行高因此仍是 58dp（面板总高公式不变）。 */
         const val BAND_DP = 8
-
-        /** 手绘影偏移（dp）：右下暗影 / 左上亮高光（同悬浮加号，相对 50dp 键面同比例）。 */
-        const val OFFSET_DP = 3f
 
         /** 静止态 elevation（dp）≈ 框架阴影的模糊半径，铺在 8dp 影带里刚好不溢出。 */
         const val ELEVATION_DP = 5f
