@@ -70,6 +70,9 @@ class SplashMakerActivity : AppCompatActivity() {
         PaletteStore.theme(getSharedPreferences("term-lou-settings", MODE_PRIVATE))
     }
 
+    /** 画板像素渐变双色，与真正开屏（SplashView）走同一推导。 */
+    private val splashGradient: Pair<Int, Int> by lazy { SplashTokens.gradientPair(nightTheme) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         loadCustom()
@@ -765,7 +768,7 @@ class SplashMakerActivity : AppCompatActivity() {
             val radius = pixelSize * SplashTokens.PIXEL_RADIUS_FACTOR
             for ((pos, v) in drawData) {
                 val (r, c) = pos
-                solidPaint.color = SplashTokens.cellColor(c)
+                solidPaint.color = SplashTokens.cellColor(c, splashGradient.first, splashGradient.second)
                 solidPaint.alpha = SplashTokens.LEVEL_ALPHAS[v.coerceIn(0, SplashTokens.LEVEL_FULL)]
                 val l = offsetX + (c + 0.5f) * pixelSize - pixelSize * 0.5f
                 val t = offsetY + (r + 0.5f) * pixelSize - pixelSize * 0.5f

@@ -33,8 +33,8 @@ android {
         applicationId = "com.workspace.proot"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5500
-        versionName = "5.5.0"
+        versionCode = 5501
+        versionName = "5.5.1"
         ndk { abiFilters.add("arm64-v8a") }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

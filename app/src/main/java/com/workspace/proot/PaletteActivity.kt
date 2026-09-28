@@ -1,7 +1,6 @@
 package com.workspace.proot
 
 import android.content.Context
-import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Canvas
 import android.graphics.Color
@@ -24,9 +23,10 @@ import androidx.appcompat.app.AppCompatActivity
 
 /**
  * 调色盘工坊：手动可设仅「背景色 + 主题色」两项，SV 取色方块 + 色相条实时取色；
- * 高级模式 H/S/V 微调 + 色号直显 + 预览色块（不打字，全靠可见输入）；
+ * 微调（H/S/V）滑杆 + 色号直显 + 预览色块（不打字，全靠可见输入）；
  * 其余槽位由背景按对比度规则自动计算，只读展示；预览卡用候选色实时合成验证可读性。
- * 保存/恢复默认均 commit 后整进程重启（同夜间开关路径），终端三槽一并生效。
+ * 保存/恢复默认均 commit 后置 ThemeSwap 并 finish：回主界面即刻换色重建，
+ * 不播开屏、终端会话与滚动缓冲保留。
  */
 class PaletteActivity : AppCompatActivity() {
 
@@ -198,7 +198,7 @@ class PaletteActivity : AppCompatActivity() {
         ).apply { topMargin = dp(8) }
         form.addView(hueStrip, hueParams)
 
-        // 当前色行：色块 + 色号直显（高级模式的预览色框见下）
+        // 当前色行：色块 + 色号直显（微调面板的预览色框见下）
         val currentRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -221,7 +221,7 @@ class PaletteActivity : AppCompatActivity() {
         })
         form.addView(currentRow)
 
-        // ===== 高级模式：H/S/V 微调 + 色号直显 + 预览色框 =====
+        // ===== 微调：H/S/V 滑杆 + 色号直显 + 预览色框 =====
         val advRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -305,8 +305,9 @@ class PaletteActivity : AppCompatActivity() {
             ButtonStyle.outlined(this, base.primary)
             setOnClickListener {
                 PaletteStore.reset(prefs)
+                ThemeSwap.mark()
                 Toast.makeText(this@PaletteActivity, getString(R.string.palette_reset_done), Toast.LENGTH_SHORT).show()
-                restartApp()
+                finish()
             }
         }
         val saveBtn = Button(this).apply {
@@ -318,8 +319,9 @@ class PaletteActivity : AppCompatActivity() {
             ButtonStyle.apply(this, base.primary)
             setOnClickListener {
                 PaletteStore.save(prefs, bg, seed)
+                ThemeSwap.mark()
                 Toast.makeText(this@PaletteActivity, getString(R.string.palette_saved), Toast.LENGTH_SHORT).show()
-                restartApp()
+                finish()
             }
         }
         btnRow.addView(resetBtn)
@@ -490,17 +492,6 @@ class PaletteActivity : AppCompatActivity() {
         val open = advPanel.visibility != View.VISIBLE
         advPanel.visibility = if (open) View.VISIBLE else View.GONE
         advAction.text = getString(if (open) R.string.palette_advanced_close else R.string.palette_advanced_open)
-    }
-
-    /** 整进程重启：先递 launcher intent 再自杀（同夜间/语言开关路径，palette 已 commit 落盘）。 */
-    private fun restartApp() {
-        runCatching {
-            val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-            }
-            if (launch != null) startActivity(launch)
-        }
-        kotlin.system.exitProcess(0)
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()

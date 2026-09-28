@@ -103,6 +103,8 @@ class MainActivity : AppCompatActivity() {
         loadThemeColors()
         statusController = StatusController(this, scope)
         loadSettings()
+        // 换色重建（ThemeSwap）：取走暂存的存活会话与 Tab；null = 冷启动路径。
+        val swapRestore = ThemeSwap.takeRestore()
 
         terminalController = TerminalController(this, scope, statusController, lifecycleScope) {
             overlayCommands.openShortcutSettings()
@@ -256,14 +258,29 @@ class MainActivity : AppCompatActivity() {
         tabIntroController = TabIntroController(this, rootLayout, scope.theme, scope.wsFiles)
         tabIntroController.attach(listOf(terminalTab, notesTab, filesTab, networkTab, settingsTab))
 
-        overlayCommands.handleNewIntent(intent, null, {}, {})
-        terminalController.boot(rootLayout, intent.getStringExtra("tile_command"))
+        if (swapRestore == null) {
+            overlayCommands.handleNewIntent(intent, null, {}, {})
+            terminalController.boot(rootLayout, intent.getStringExtra("tile_command"))
+        } else {
+            // 换色重建：回挂存活会话（不播开屏、不重启 shell）；失败兜底整进程重启，
+            // ThemeSwap 已消费清空，重启后走全新冷启动，保证不残废。
+            runCatching { terminalController.restoreSession(swapRestore.session) }
+                .onFailure { e ->
+                    Log.e("MainActivity", "swap restore failed", e)
+                    restartApp()
+                }
+        }
 
         if (scope.settingsManager.keepAlive && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
             startForegroundService(Intent(this, TermKeepAliveService::class.java))
         }
-        workspaceController.handleShareIntent(intent)
-        handleOpenNoteExtra(intent)
+        if (swapRestore == null) {
+            workspaceController.handleShareIntent(intent)
+            handleOpenNoteExtra(intent)
+        } else {
+            // 回到用户离开前所在的 Tab（冷启动由开屏结束的 showTerminalView 归位）。
+            showTab(swapRestore.tab)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -287,6 +304,20 @@ class MainActivity : AppCompatActivity() {
         notesController.openNote(name)
     }
 
+    /**
+     * 换色重建回挂失败的兜底：先递 launcher intent 再自杀，系统会拉起新进程
+     * （同语言/夜间开关的历史重启路径；ThemeSwap 已消费清空，重启即全新冷启动）。
+     */
+    private fun restartApp() {
+        runCatching {
+            val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            }
+            if (launch != null) startActivity(launch)
+        }
+        kotlin.system.exitProcess(0)
+    }
+
     override fun onResume() {
         super.onResume()
         if (overlayCommands.consumeRefreshFlag()) terminalController.refreshAllRows()
@@ -296,6 +327,9 @@ class MainActivity : AppCompatActivity() {
         notesController.refresh()
         refreshStatusBar()
         NoteNotify.takeIfFresh()?.let { statusController.showTempStatus(it) }
+        // 调色盘保存/恢复默认：落盘后回本界面即刻换色——重建视图换新主题，
+        // 会话与滚动缓冲保留（旧实例 onDestroy 见 ThemeSwap.hasRestore() 不杀 shell）。
+        if (ThemeSwap.takeMarked(scope.terminalManager.session, currentTab)) recreate()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -474,9 +508,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadThemeColors() {
-        // 根因记录：此处不能用 SettingsManager(prefs).nightMode——新实例未调 load()，
-        // 字段恒为默认值 true，夜间开关永远不生效。主题加载早于 loadSettings，
-        // PaletteStore.theme 内部同样只直读落盘值（夜间档 + 调色盘覆盖）。
+        // 主题只认落盘值：PaletteStore.theme 直读 prefs（夜档 + 调色盘覆盖）。
+        // 历史根因：经未 load() 的 SettingsManager 转手会读到默认值（夜间开关曾因此失效）。
         scope.theme = PaletteStore.theme(scope.prefs)
         val t = scope.theme
         scope.cSurface = t.surface

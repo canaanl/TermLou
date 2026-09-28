@@ -131,7 +131,6 @@ private fun divider(): View = View(activity).apply {
         sectionTitle(parent, activity.getString(R.string.settings_ui_title))
         buildFontSection(parent, density)
         buildLanguageRow(parent)
-        buildNightRow(parent)
         buildWorkshopRow(parent, activity.getString(R.string.settings_palette_title), R.string.palette_open) {
             overlay.openPaletteMaker()
         }
@@ -477,32 +476,6 @@ private fun buildLanguageRow(parent: LinearLayout) {
                     // 是唯一无竞态的生效方式；热重建依赖的多方重建在分身副用户下会错位（见 4.4.1）。
                     scope.settingsManager.setLangExplicit(if (isChecked) AppLang.LANG_ZH else AppLang.LANG_EN)
                     AppLang.apply(activity)
-                    restartApp()
-                }
-            })
-        })
-    }
-
-    private fun buildNightRow(parent: LinearLayout) {
-        parent.addView(LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, 4)
-            addView(TextView(activity).apply {
-                text = activity.getString(R.string.settings_night_title) + " " + if (scope.settingsManager.nightMode) "🌙" else "☀️"
-                setTextColor(scope.cOnSurface)
-                typeface = Typeface.DEFAULT_BOLD
-                textSize = UiTokens.TEXT_BODY
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            addView(MaterialSwitch(ContextThemeWrapper(activity, R.style.Theme_TermLou_Switch)).apply {
-                showText = false
-                elevation = 8f
-                thumbTintList = controlTint()
-                trackTintList = switchTrackTint()
-                isChecked = scope.settingsManager.nightMode
-                setOnCheckedChangeListener { _, isChecked ->
-                    scope.settingsManager.setNightMode(isChecked)
                     restartApp()
                 }
             })

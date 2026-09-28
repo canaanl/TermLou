@@ -1,5 +1,6 @@
 package com.workspace.proot
 
+import com.google.android.material.color.utilities.Hct
 import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
@@ -61,6 +62,13 @@ object ColorMath {
             return (av + (bv - av) * u).toInt()
         }
         return (0xFF shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+    }
+
+    /** HCT 色相旋转（度，负值/超 360 均可）：彩度与明度不变——调色盘点阵渐变第二色的推导规则。 */
+    fun hueRotate(color: Int, degrees: Double): Int {
+        val h = Hct.fromInt(color)
+        val hue = ((h.hue + degrees) % 360.0 + 360.0) % 360.0
+        return Hct.from(hue, h.chroma, h.tone).toInt()
     }
 
     /**

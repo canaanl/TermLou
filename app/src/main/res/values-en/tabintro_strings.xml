@@ -58,9 +58,9 @@
     <string name="intro_network_proxy_body">Where traffic exits and what gets blocked.\n● Built-in SOCKS5 — leave the upstream empty for direct mode, or fill in an upstream (socks5 supported)\n● Block rules — take effect immediately, no restart\n⚠ Only plaintext is parsed; no TLS man-in-the-middle, so HTTPS content stays invisible.</string>
 
     <!-- Tab intro: settings -->
-    <string name="intro_settings_lead">Settings holds all switches and commands; language, theme and palette changes need a restart.</string>
+    <string name="intro_settings_lead">Settings holds all switches and commands; language needs a restart, the palette applies instantly.</string>
     <string name="intro_settings_ui_title">Display</string>
-    <string name="intro_settings_ui_body">Everything display-related lives here.\n● Terminal font size — five steps, applied instantly\n● Language — Chinese / English; theme — dark / light\n● Color palette — custom background + theme green, other colors derived from the background, one tap to restore defaults\n⚠ Language, theme and palette need an app restart; font size applies immediately.</string>
+    <string name="intro_settings_ui_body">Everything display-related lives here.\n● Terminal font size — five steps, applied instantly\n● Language — Chinese / English\n● Color palette — custom background + theme green, other colors derived from the background; saved instantly, one tap to restore defaults\n⚠ Language needs an app restart; font size and palette apply immediately.</string>
     <string name="intro_settings_commands_title">Commands</string>
     <string name="intro_settings_commands_body">Where the preset commands are filled in (see the terminal tab).\n● Startup command — runs when the terminal starts\n● Tile command — runs when launched from the tile\n● Quick launch — pick favorite apps for one-tap opening</string>
     <string name="intro_settings_workshop_title">Workshops</string>

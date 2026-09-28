@@ -58,9 +58,9 @@
     <string name="intro_network_proxy_body">流量出口与拦截规则。\n● 内置 SOCKS5 —— 上游留空即直连，可填上游代理（支持 socks5）\n● 阻断规则 —— 添加即刻生效，无需重启\n⚠ 只解析明文流量，不做 TLS 中间人，HTTPS 内容不可见。</string>
 
     <!-- Tab 介绍页：设置 -->
-    <string name="intro_settings_lead">设置页是全部开关与命令的入口；改语言、主题与调色盘后需要重开生效。</string>
+    <string name="intro_settings_lead">设置页是全部开关与命令的入口；改语言需重开生效，调色盘保存后即时换色。</string>
     <string name="intro_settings_ui_title">界面</string>
-    <string name="intro_settings_ui_body">显示相关的开关都在这。\n● 终端字号 —— 五档可选，切换立即生效\n● 语言 —— 中文 / English；主题 —— 深色 / 浅色\n● 调色盘 —— 自定义背景色 + 主题绿，其余颜色按背景自动计算，可一键恢复默认\n⚠ 语言、主题与调色盘切换后需重开 App 生效；字号立即生效。</string>
+    <string name="intro_settings_ui_body">显示相关的开关都在这。\n● 终端字号 —— 五档可选，切换立即生效\n● 语言 —— 中文 / English\n● 调色盘 —— 自定义背景色 + 主题绿，其余颜色按背景自动计算，保存即时换色、可一键恢复默认\n⚠ 语言切换需重开 App 生效；字号与调色盘立即生效。</string>
     <string name="intro_settings_commands_title">命令</string>
     <string name="intro_settings_commands_body">预设命令的填写入口（说明见终端页）。\n● 启动命令 —— 终端启动时自动执行\n● 磁贴命令 —— 磁贴启动时执行\n● 快捷启动 —— 挑选常用 App 一键打开</string>
     <string name="intro_settings_workshop_title">工坊</string>

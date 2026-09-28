@@ -56,7 +56,7 @@
     <string name="palette_preview">Live preview</string>
     <string name="palette_pick">Pick a color</string>
     <string name="palette_current">Current color</string>
-    <string name="palette_advanced">Advanced (fine-tune + hex)</string>
+    <string name="palette_advanced">Fine-tune (H/S/V + hex)</string>
     <string name="palette_advanced_open">SHOW ▾</string>
     <string name="palette_advanced_close">HIDE ▸</string>
     <string name="palette_hue">Hue</string>
@@ -118,7 +118,6 @@
     <string name="sysinfo_arch">ARCHITECTURE</string>
     <string name="sysinfo_unknown">UNKNOWN</string>
     <string name="lang_title">LANGUAGE</string>
-    <string name="settings_night_title">THEME</string>
 
     <!-- Terminal/files -->
     <string name="ctrl_reset">Ctrl reset</string>

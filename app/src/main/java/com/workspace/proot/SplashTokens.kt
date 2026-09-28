@@ -42,6 +42,9 @@ object SplashTokens {
     val GREEN = UiTokens.primaryGreen
     val CYAN = UiTokens.tertiaryBlue
 
+    /** 点阵渐变尾色相对主题绿的 HCT 色相偏移（M3 tertiary 同源推导：+60°）。 */
+    private const val GRADIENT_HUE_SHIFT = 60.0
+
     fun pixelSize(screenW: Float): Float = (screenW * GRID_WIDTH_PCT) / COLS
 
     fun lerpColor(a: Int, b: Int, f: Float): Int {
@@ -60,8 +63,17 @@ object SplashTokens {
     fun lerpAlpha(color: Int, alpha: Int): Int =
         (color and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)
 
-    /** 像素渐变色：按列从左到右 brand 渐变。 */
-    fun cellColor(col: Int): Int = lerpColor(GREEN, CYAN, col / (COLS - 1f))
+    /**
+     * 点阵/进度条渐变双色：调色盘 off = 品牌常量（零漂移）；
+     * on = 主题绿 → HCT 色相 +60°（同彩度同明度）推导第二色。
+     */
+    fun gradientPair(theme: ThemeColors): Pair<Int, Int> =
+        if (theme.palette) theme.primary to ColorMath.hueRotate(theme.primary, GRADIENT_HUE_SHIFT)
+        else GREEN to CYAN
+
+    /** 像素渐变色：按列从左到右 first→second 线性渐变。 */
+    fun cellColor(col: Int, first: Int, second: Int): Int =
+        lerpColor(first, second, col / (COLS - 1f))
 
     /** 分带映射：灰度下方的阈值越少档位越高（暗→强，亮→灭），返回 0..档数-1。 */
     fun quantizeBands(gray: Int, thresholds: IntArray): Int {

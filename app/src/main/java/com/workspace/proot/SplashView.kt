@@ -33,9 +33,15 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
         private const val DAY_TRACK = 0x1F000000.toInt()
     }
 
-    private val night: Boolean =
-        context.getSharedPreferences("term-lou-settings", Context.MODE_PRIVATE).getBoolean("nightMode", true)
-    private val bgColor: Int = if (night) Color.BLACK else DAY_BG
+    /** 主题跟调色盘走（与开屏消费同源）：palette 档背景=调色盘背景，off 档维持昼夜默认。 */
+    private val theme: ThemeColors =
+        PaletteStore.theme(context.getSharedPreferences("term-lou-settings", Context.MODE_PRIVATE))
+    private val night: Boolean = theme.night
+    private val bgColor: Int = when {
+        theme.palette -> theme.surface
+        night -> Color.BLACK
+        else -> DAY_BG
+    }
 
     private val rows = SplashTokens.ROWS
     private val cols = SplashTokens.COLS
@@ -50,8 +56,10 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
     private val offsetX = (screenW - totalW) / 2f
     private val offsetY = (screenH - totalH) / 2f
 
-    private val green = SplashTokens.GREEN
-    private val cyan = SplashTokens.CYAN
+    /** 点阵渐变双色：off=品牌常量（零漂移），on=主题绿+60° 推导（见 SplashTokens.gradientPair）。 */
+    private val gradient = SplashTokens.gradientPair(theme)
+    private val green: Int get() = gradient.first
+    private val cyan: Int get() = gradient.second
 
     private val cells = ArrayList<Cell>()
     private val particles = ArrayList<Particle>()
@@ -137,7 +145,7 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
                     col,
                     offsetX + (col + 0.5f) * pixelSize,
                     offsetY + (r + 0.5f) * pixelSize,
-                    SplashTokens.cellColor(col),
+                    SplashTokens.cellColor(col, green, cyan),
                     v.coerceIn(SplashTokens.LEVEL_OFF, SplashTokens.LEVEL_FULL)
                 )
             )
@@ -184,8 +192,17 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
         particlePaint.style = Paint.Style.FILL
         solidPaint.style = Paint.Style.FILL
         bgPaint.style = Paint.Style.FILL
-        trackPaint.color = if (night) UiTokens.whiteFaint else DAY_TRACK
-        textPaint.color = if (night) UiTokens.splashText else DAY_TEXT
+        // 进度条底轨/状态文字：palette 档由背景×墨色推（比例对齐 off 档的白 20%/黑 12%）。
+        trackPaint.color = when {
+            theme.palette -> ColorMath.mix(bgColor, theme.onSurface, if (night) 0.20f else 0.12f)
+            night -> UiTokens.whiteFaint
+            else -> DAY_TRACK
+        }
+        textPaint.color = when {
+            theme.palette -> theme.onSurfaceVariant
+            night -> UiTokens.splashText
+            else -> DAY_TEXT
+        }
         textPaint.textSize = 12 * density
         textPaint.typeface = Typeface.MONOSPACE
         textPaint.textAlign = Paint.Align.CENTER
@@ -283,9 +300,15 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
 
     private fun drawBackdrop(canvas: Canvas) {
         if (backdropShader == null) {
+            // 中心辉光：palette 档 = 主题绿 @10%（同 backdropGlow 的透明度档）；off 档 = 品牌常量零漂移。
+            val glow = if (theme.palette) {
+                (theme.primary and 0x00FFFFFF) or (0x1A shl 24)
+            } else {
+                UiTokens.backdropGlow
+            }
             backdropShader = RadialGradient(
                 offsetX + totalW / 2f, offsetY + totalH / 2f, totalW * 1.1f,
-                intArrayOf(UiTokens.backdropGlow, 0x00000000), null, Shader.TileMode.CLAMP
+                intArrayOf(glow, 0x00000000), null, Shader.TileMode.CLAMP
             )
         }
         bgPaint.shader = backdropShader

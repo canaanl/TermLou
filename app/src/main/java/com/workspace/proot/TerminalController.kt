@@ -496,6 +496,28 @@ class TerminalController(
     }
 
     /**
+     * 换色重建回挂（见 ThemeSwap）：不播开屏、不重启 shell，把存活会话接到
+     * 新 TerminalView 并把 session/emulator 的 client 换绑到本实例，
+     * 三槽/ANSI 对齐新主题；滚动缓冲与输入状态由会话自带（resize 同尺寸无损）。
+     */
+    fun restoreSession(session: TerminalSession) {
+        setupArea.visibility = View.GONE
+        scope.terminalManager.setSession(session)
+        session.updateTerminalSessionClient(this)
+        terminalView.attachSession(session)
+        ensureThemeScheme(session)
+    }
+
+    /** 换色重建后的主题对齐：浅底/调色盘走现规则，回默认夜档复位为色板默认（与冷启动同源）。 */
+    private fun ensureThemeScheme(session: TerminalSession) {
+        if (scope.theme.palette || !scope.theme.night) {
+            ensureDayScheme(session)
+        } else {
+            ensureSchemeWhenReady(session, ::tryApplyNightScheme)
+        }
+    }
+
+    /**
      * 浅底（昼档或浅色自定义背景）先铺可读的 ANSI 变体；调色盘档再把
      * 默认前景/背景/光标三槽覆盖为 theme.onSurface/surface（ANSI 16 色保持固定）。
      * 夜间无调色盘时完全不动（历史零漂移）。
@@ -518,17 +540,34 @@ class TerminalController(
         return ready
     }
 
+    /** 浅底/调色盘三槽对齐（tryApplyDayScheme）的就绪包装，见 ensureSchemeWhenReady。 */
+    private fun ensureDayScheme(session: TerminalSession) =
+        ensureSchemeWhenReady(session, ::tryApplyDayScheme)
+
     /**
-     * 日间配色必须等 emulator 就绪（库在首次 layout 的 onSizeChanged 里才
+     * 回默认夜档：把日档方案改过的槽位（三槽 + 8 个浅底 ANSI 变体）
+     * 复位为色板默认——与冷启动的内建默认逐位同源（换色重建从日档/调色盘档回退时用）。
+     */
+    private fun tryApplyNightScheme(session: TerminalSession): Boolean {
+        val emulator = session.emulator
+        val ready = emulator != null && emulator.mColors.mCurrentColors.size >= MIN_COLOR_SLOTS
+        if (ready) {
+            for ((index, _) in DAY_SCHEME) emulator.mColors.reset(index)
+        }
+        return ready
+    }
+
+    /**
+     * 日间/换色配色必须等 emulator 就绪（库在首次 layout 的 onSizeChanged 里才
      * initializeEmulator，构造/attach 时必为 null，直接读 mColors 即崩）。
      * 就绪即刷；未就绪挂一次性全局布局监听，layout 后重试，成功摘除，全程空安全。
      */
-    private fun ensureDayScheme(session: TerminalSession) {
-        if (tryApplyDayScheme(session)) return
+    private fun ensureSchemeWhenReady(session: TerminalSession, attempt: (TerminalSession) -> Boolean) {
+        if (attempt(session)) return
         terminalView.viewTreeObserver.addOnGlobalLayoutListener(
             object : ViewTreeObserver.OnGlobalLayoutListener {
                 override fun onGlobalLayout() {
-                    if (tryApplyDayScheme(session)) {
+                    if (attempt(session)) {
                         terminalView.viewTreeObserver.removeOnGlobalLayoutListener(this)
                     }
                 }
@@ -842,9 +881,12 @@ class TerminalController(
         ctrlArmJob = null
         fontSliderAnimator?.cancel()
         fontSliderAnimator = null
-        // 先 destroy（此时 session 还在，杀树 + finishIfRunning 才有效），再摘引用
-        scope.terminalManager.destroy()
-        scope.terminalManager.setSession(null)
+        // 换色重建（ThemeSwap 已暂存活会话，见 MainActivity.recreate）只换视图不杀 shell；
+        // 其余销毁路径维持原行为：先 destroy（此时 session 还在，杀树 + finishIfRunning 才有效），再摘引用。
+        if (!ThemeSwap.hasRestore()) {
+            scope.terminalManager.destroy()
+            scope.terminalManager.setSession(null)
+        }
     }
 
     // ---------- TerminalSessionClient ----------

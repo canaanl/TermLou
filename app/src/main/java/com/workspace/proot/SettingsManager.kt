@@ -21,8 +21,6 @@ class SettingsManager(private val prefs: SharedPreferences) {
         private set
     var keepAlive: Boolean = false
         private set
-    var nightMode: Boolean = true
-        private set
 
     val fontSizes = listOf(18, 22, 28, 34, 40)
 
@@ -35,7 +33,7 @@ class SettingsManager(private val prefs: SharedPreferences) {
         shellCmd = prefs.getString("shellCmd", "") ?: ""
         tileCommand = prefs.getString("tileCommand", "") ?: ""
         keepAlive = prefs.getBoolean("keepAlive", false)
-        nightMode = prefs.getBoolean("nightMode", true)
+        // nightMode（昼夜档）已删 UI 通路：pref 保留，由 PaletteStore.theme 直读（存量零回退）。
     }
 
     fun setFontSizeIndex(index: Int) {
@@ -57,12 +55,6 @@ class SettingsManager(private val prefs: SharedPreferences) {
     fun setKeepAlive(enabled: Boolean) {
         keepAlive = enabled
         prefs.edit().putBoolean("keepAlive", enabled).apply()
-    }
-
-    fun setNightMode(enabled: Boolean) {
-        nightMode = enabled
-        // 夜间切换后紧跟着杀进程，必须同步落盘，否则新进程读到旧值（同 setLangExplicit）。
-        prefs.edit().putBoolean("nightMode", enabled).commit()
     }
 
     fun newId(): String = java.util.UUID.randomUUID().toString()

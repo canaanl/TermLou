@@ -1,5 +1,6 @@
 package com.workspace.proot
 
+import com.google.android.material.color.utilities.Hct
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -70,5 +71,39 @@ class SplashTokensTest {
         assertEquals(0, a[0])
         assertEquals(255, a[19])
         for (i in 1 until a.size) assertTrue(a[i] >= a[i - 1])
+    }
+
+    @Test
+    fun `cellColor honours passed gradient endpoints`() {
+        val first = 0xFF112233.toInt()
+        val second = 0xFF445566.toInt()
+        assertEquals(first, SplashTokens.cellColor(0, first, second))
+        assertEquals(second, SplashTokens.cellColor(SplashTokens.COLS - 1, first, second))
+    }
+
+    @Test
+    fun `gradient pair off keeps brand constants`() {
+        val (a, b) = SplashTokens.gradientPair(ThemeColors.default(night = true))
+        assertEquals(UiTokens.primaryGreen, a)
+        assertEquals(UiTokens.tertiaryBlue, b)
+        val (c, d) = SplashTokens.gradientPair(ThemeColors.default(night = false))
+        assertEquals(UiTokens.primaryGreen, c)
+        assertEquals(UiTokens.tertiaryBlue, d)
+    }
+
+    @Test
+    fun `gradient pair on derives second color from theme green`() {
+        val seed = 0xFF3A7D44.toInt()
+        val t = ThemeColors.default(night = true, palette = PaletteSpec(0xFF101418.toInt(), seed))
+        val (a, b) = SplashTokens.gradientPair(t)
+        assertEquals(seed, a)
+        val ha = Hct.fromInt(a)
+        val hb = Hct.fromInt(b)
+        // 第二色 = 主题绿 HCT 色相 +60°（同彩度同明度请求）；sRGB 色域裁剪只许降彩度，
+        // 色相与明度必须保持（round-trip 允许 1~1.5 单位量化误差）。
+        assertEquals((ha.hue + 60.0) % 360.0, hb.hue, 1.0)
+        assertEquals(ha.tone, hb.tone, 1.5)
+        assertTrue("彩度只降不漂: ${ha.chroma} -> ${hb.chroma}", hb.chroma <= ha.chroma + 0.5)
+        assertTrue("彩度不塌灰: ${ha.chroma} -> ${hb.chroma}", hb.chroma > ha.chroma * 0.5)
     }
 }

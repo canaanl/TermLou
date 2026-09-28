@@ -4,8 +4,8 @@ import android.content.SharedPreferences
 
 /**
  * 调色盘持久化：paletteOn 总开关 + 背景/主题绿两色。
- * 保存与恢复默认都紧跟整进程重启（同夜间开关路径），必须 commit 同步落盘；
- * 未开启时 spec() 返回 null → 走昼夜两档默认主题，历史行为零漂移。
+ * 保存与恢复默认都 commit 后由 ThemeSwap 触发 MainActivity 换色重建（实时生效、
+ * 会话与滚动缓冲保留）；未开启时 spec() 返回 null → 走昼夜两档默认主题，历史行为零漂移。
  */
 object PaletteStore {
 
@@ -26,7 +26,7 @@ object PaletteStore {
     fun theme(prefs: SharedPreferences): ThemeColors =
         ThemeColors.default(prefs.getBoolean(KEY_NIGHT, true), spec(prefs))
 
-    /** 保存调色盘（开 + 两色）：commit，调用方随后整进程重启。 */
+    /** 保存调色盘（开 + 两色）：commit 同步落盘，调用方随后换色重建。 */
     fun save(prefs: SharedPreferences, background: Int, seed: Int) {
         prefs.edit()
             .putBoolean(KEY_ON, true)
@@ -35,8 +35,14 @@ object PaletteStore {
             .commit()
     }
 
-    /** 恢复默认配色：关回昼夜两档（色值保留，便于再次微调时起步）。 */
+    /**
+     * 恢复默认配色 = 原日间档（paletteOn=false 且 nightMode=false）：
+     * 两键同一 commit 落盘；色值保留，便于再次微调时起步。
+     */
     fun reset(prefs: SharedPreferences) {
-        prefs.edit().putBoolean(KEY_ON, false).commit()
+        prefs.edit()
+            .putBoolean(KEY_ON, false)
+            .putBoolean(KEY_NIGHT, false)
+            .commit()
     }
 }
