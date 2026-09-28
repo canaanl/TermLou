@@ -48,6 +48,35 @@
     <string name="settings_dialog_ws_title">弹窗</string>
     <string name="open_workshop">打开工坊</string>
     <string name="settings_splash_title">启动页</string>
+    <string name="settings_palette_title">调色盘</string>
+    <string name="palette_open">打开调色盘</string>
+    <string name="palette_title">调色盘</string>
+    <string name="palette_target_bg">背景色</string>
+    <string name="palette_target_seed">主题色</string>
+    <string name="palette_preview">效果预览</string>
+    <string name="palette_pick">取色</string>
+    <string name="palette_current">当前色</string>
+    <string name="palette_advanced">高级模式（微调 + 色号）</string>
+    <string name="palette_advanced_open">展开 ▾</string>
+    <string name="palette_advanced_close">收起 ▸</string>
+    <string name="palette_hue">色相</string>
+    <string name="palette_sat">饱和度</string>
+    <string name="palette_value">明度</string>
+    <string name="palette_hex">色号</string>
+    <string name="palette_derived">以下颜色由背景自动计算（不可设置）</string>
+    <string name="palette_chip_font">字体 · 图标</string>
+    <string name="palette_chip_card">卡片 · 输入框</string>
+    <string name="palette_chip_outline">描边 · 分隔线</string>
+    <string name="palette_chip_sec_text">次要文字</string>
+    <string name="palette_chip_secondary">次色</string>
+    <string name="palette_chip_tertiary">强调蓝</string>
+    <string name="palette_chip_error">错误红</string>
+    <string name="palette_chip_term_bg">终端背景</string>
+    <string name="palette_chip_term_fg">终端文字</string>
+    <string name="palette_save">保存并应用</string>
+    <string name="palette_reset">恢复默认配色</string>
+    <string name="palette_saved">已保存，正在应用新配色…</string>
+    <string name="palette_reset_done">已恢复默认配色</string>
     <string name="settings_advanced">高级</string>
 
     <!-- 设置：上游代理 -->

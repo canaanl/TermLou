@@ -22,9 +22,7 @@ import java.io.File
 abstract class NotesPageActivity : AppCompatActivity() {
 
     protected val theme: ThemeColors by lazy {
-        ThemeColors.default(
-            getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getBoolean(NIGHT_KEY, true)
-        )
+        PaletteStore.theme(getSharedPreferences(PREFS_NAME, MODE_PRIVATE))
     }
 
     private val storeLazy = lazy {

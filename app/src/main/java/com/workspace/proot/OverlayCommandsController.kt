@@ -103,4 +103,8 @@ class OverlayCommandsController(
     fun openSplashMaker() {
         activity.startActivity(Intent(activity, SplashMakerActivity::class.java))
     }
+
+    fun openPaletteMaker() {
+        activity.startActivity(Intent(activity, PaletteActivity::class.java))
+    }
 }

@@ -41,6 +41,7 @@ Beyond that core, TermLou also grew a complete **notes & todo system** (usable i
 | ⚙️ **Native PTY** | Custom JNI `libtermux.so` (`termux_pty.cpp`) as the PTY backend for the Termux `terminal-view` renderer |
 | 🛡️ **Hardening** | Path-escape guards, 128KB output truncation, command timeout kill, resource caps |
 | 🌍 **Bilingual + Dual Theme** | Chinese/English switch, light/dark theme, applied on restart |
+| 🌈 **Color Palette** | Set just background + theme green; fonts/icons/cards/terminal auto-derived with contrast guarantees (≥4.5:1), real color picker + advanced hex fine-tune, one tap to restore defaults |
 
 ---
 
@@ -213,6 +214,7 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 | Font size | Five levels; terminal and file list stay in sync |
 | Language | Chinese/English (applied on restart) |
 | Theme | Light/dark (applied on restart) |
+| Color palette | Custom background + theme green, other colors derived from the background (applied on restart, restorable) |
 | Startup command | Shell command run automatically at launch |
 | Tile command | Command run when the Quick Settings tile is tapped |
 | Quick launch | Pick favorite Apps for one-tap launch (tile drawer) |

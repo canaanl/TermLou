@@ -495,12 +495,25 @@ class TerminalController(
         return (0xFF shl 24) or (r.toInt() shl 16) or (g.toInt() shl 8) or b.toInt()
     }
 
-    /** 日间终端配色：白底黑字 + 浅底可读的 ANSI 变体；夜间沿用仿真器默认深色不动。 */
+    /**
+     * 浅底（昼档或浅色自定义背景）先铺可读的 ANSI 变体；调色盘档再把
+     * 默认前景/背景/光标三槽覆盖为 theme.onSurface/surface（ANSI 16 色保持固定）。
+     * 夜间无调色盘时完全不动（历史零漂移）。
+     */
     private fun tryApplyDayScheme(session: TerminalSession): Boolean {
         val emulator = session.emulator
         val ready = emulator != null && emulator.mColors.mCurrentColors.size >= MIN_COLOR_SLOTS
         if (ready) {
-            for ((index, hex) in DAY_SCHEME) emulator.mColors.tryParseColor(index, hex)
+            val t = scope.theme
+            if (!t.night) {
+                for ((index, hex) in DAY_SCHEME) emulator.mColors.tryParseColor(index, hex)
+            }
+            if (t.palette) {
+                val ink = ColorMath.hex(t.onSurface)
+                emulator.mColors.tryParseColor(TERM_FG, ink)
+                emulator.mColors.tryParseColor(TERM_BG, ColorMath.hex(t.surface))
+                emulator.mColors.tryParseColor(TERM_CURSOR, ink)
+            }
         }
         return ready
     }
@@ -752,7 +765,8 @@ class TerminalController(
                         this@TerminalController
                     )
                     tm.setSession(newSession)
-                    if (!scope.theme.night) ensureDayScheme(newSession)
+                    // 调色盘档无论明暗都要刷三槽（昼档/浅底由 !night 分支同一函数覆盖）。
+                    if (!scope.theme.night || scope.theme.palette) ensureDayScheme(newSession)
                     terminalView.attachSession(newSession)
                     activity.showTerminalView()
                     val remaining = maxOf(0L, 800L - (System.currentTimeMillis() - splashStartTime))

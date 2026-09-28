@@ -48,6 +48,35 @@
     <string name="settings_dialog_ws_title">DIALOG</string>
     <string name="open_workshop">OPEN WORKSHOP</string>
     <string name="settings_splash_title">SPLASH</string>
+    <string name="settings_palette_title">COLOR PALETTE</string>
+    <string name="palette_open">OPEN PALETTE</string>
+    <string name="palette_title">Color Palette</string>
+    <string name="palette_target_bg">Background</string>
+    <string name="palette_target_seed">Theme color</string>
+    <string name="palette_preview">Live preview</string>
+    <string name="palette_pick">Pick a color</string>
+    <string name="palette_current">Current color</string>
+    <string name="palette_advanced">Advanced (fine-tune + hex)</string>
+    <string name="palette_advanced_open">SHOW ▾</string>
+    <string name="palette_advanced_close">HIDE ▸</string>
+    <string name="palette_hue">Hue</string>
+    <string name="palette_sat">Saturation</string>
+    <string name="palette_value">Value</string>
+    <string name="palette_hex">Hex</string>
+    <string name="palette_derived">Derived from background (not settable)</string>
+    <string name="palette_chip_font">Font &amp; icons</string>
+    <string name="palette_chip_card">Cards &amp; fields</string>
+    <string name="palette_chip_outline">Outlines &amp; dividers</string>
+    <string name="palette_chip_sec_text">Secondary text</string>
+    <string name="palette_chip_secondary">Secondary</string>
+    <string name="palette_chip_tertiary">Accent blue</string>
+    <string name="palette_chip_error">Error red</string>
+    <string name="palette_chip_term_bg">Terminal background</string>
+    <string name="palette_chip_term_fg">Terminal text</string>
+    <string name="palette_save">Save &amp; apply</string>
+    <string name="palette_reset">Restore default colors</string>
+    <string name="palette_saved">Saved — applying new colors…</string>
+    <string name="palette_reset_done">Default colors restored</string>
     <string name="settings_advanced">ADVANCED</string>
 
     <!-- Settings: upstream -->

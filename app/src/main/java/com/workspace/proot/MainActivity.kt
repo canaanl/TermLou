@@ -475,9 +475,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadThemeColors() {
         // 根因记录：此处不能用 SettingsManager(prefs).nightMode——新实例未调 load()，
-        // 字段恒为默认值 true，夜间开关永远不生效。主题加载早于 loadSettings，只能直读落盘值。
-        val night = scope.prefs.getBoolean("nightMode", true)
-        scope.theme = ThemeColors.default(night)
+        // 字段恒为默认值 true，夜间开关永远不生效。主题加载早于 loadSettings，
+        // PaletteStore.theme 内部同样只直读落盘值（夜间档 + 调色盘覆盖）。
+        scope.theme = PaletteStore.theme(scope.prefs)
         val t = scope.theme
         scope.cSurface = t.surface
         scope.cSurfaceVariant = t.surfaceVariant

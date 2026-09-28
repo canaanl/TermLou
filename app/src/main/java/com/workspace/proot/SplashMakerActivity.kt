@@ -67,7 +67,7 @@ class SplashMakerActivity : AppCompatActivity() {
     private val splashFile: File
         get() = File(storeDir, "splash.json")
     private val nightTheme: ThemeColors by lazy {
-        ThemeColors.default(getSharedPreferences("term-lou-settings", MODE_PRIVATE).getBoolean("nightMode", true))
+        PaletteStore.theme(getSharedPreferences("term-lou-settings", MODE_PRIVATE))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

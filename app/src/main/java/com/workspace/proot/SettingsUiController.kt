@@ -132,6 +132,9 @@ private fun divider(): View = View(activity).apply {
         buildFontSection(parent, density)
         buildLanguageRow(parent)
         buildNightRow(parent)
+        buildWorkshopRow(parent, activity.getString(R.string.settings_palette_title), R.string.palette_open) {
+            overlay.openPaletteMaker()
+        }
     }
 
     private fun buildFontSection(parent: LinearLayout, density: Float) {
@@ -306,12 +309,17 @@ private fun divider(): View = View(activity).apply {
         })
     }
 
-    private fun buildWorkshopRow(parent: LinearLayout, title: String, onOpen: () -> Unit) {
+    private fun buildWorkshopRow(
+        parent: LinearLayout,
+        title: String,
+        labelRes: Int = R.string.open_workshop,
+        onOpen: () -> Unit
+    ) {
         sectionTitle(parent, title, body = true)
         parent.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(Button(activity).apply {
-                text = activity.getString(R.string.open_workshop)
+                text = activity.getString(labelRes)
                 setTextColor(scope.cPrimary)
                 textSize = UiTokens.TEXT_BODY
                 setPadding(16, 6, 16, 6)

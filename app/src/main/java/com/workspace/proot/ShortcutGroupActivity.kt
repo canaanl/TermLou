@@ -19,7 +19,7 @@ import com.google.android.material.snackbar.Snackbar
 class ShortcutGroupActivity : Activity() {
 
     private val theme: ThemeColors by lazy {
-        ThemeColors.default(getSharedPreferences("term-lou-settings", MODE_PRIVATE).getBoolean("nightMode", true))
+        PaletteStore.theme(getSharedPreferences("term-lou-settings", MODE_PRIVATE))
     }
     private lateinit var root: LinearLayout
     private lateinit var settingsManager: SettingsManager
