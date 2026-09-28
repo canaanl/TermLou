@@ -73,6 +73,8 @@ class LauncherTileService : TileService() {
             this, DRAWER_REQUEST_CODE, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        // 武装一次性展示令牌：只有首个真正跑起来的跳板会挂展示定时器（防补发双弹层）
+        TileDrawerCache.armShow()
         runCatching { startActivityAndCollapse(pi) }
         val coldStart = SystemClock.elapsedRealtime() - TermLouApp.appColdStartAt < COLD_START_WINDOW_MS
         if (coldStart) {

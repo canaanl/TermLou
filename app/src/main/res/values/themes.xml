@@ -2,11 +2,20 @@
 <resources>
     <style name="Theme.TermLou" parent="Theme.AppCompat.NoActionBar" />
 
+    <!-- 跳板窗口的"零可见"契约（启动器磁贴抽屉闪现根治，改出生不改寿命）：
+         windowDisablePreview = 系统从创建层面就不给跳板建起始/预览窗（命令跳板同主题共用）；
+         栏色透明 + 关闭对比度强制 = 焦点窗切换不再翻转状态/导航栏色。
+         跳板无论存活 1 帧还是 250ms，每一帧都是 0 像素，修复不依赖任何竞速。 -->
     <style name="Theme.TermLou.Transparent" parent="Theme.AppCompat.NoActionBar">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
     </style>
 
     <!-- 字号滑块：Material3 主题提供 M3 sliderStyle（竖条 handle 轨道/拇指），
