@@ -51,6 +51,5 @@ class UiTokensTest {
         assertEquals(0x22FFFFFF.toInt(), UiTokens.searchBg)
         assertEquals(0xFFE67E22.toInt(), UiTokens.mergeOrange)
         assertEquals(0xFFCCCCCC.toInt(), UiTokens.totalText)
-        assertEquals(0xFFB820262E.toInt(), UiTokens.tilePanelBg)
     }
 }

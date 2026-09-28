@@ -11,6 +11,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -74,17 +76,12 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
             setOnClickListener { dismiss() }
         }
 
-        panel = LinearLayout(ctx).apply {
+        panel = GlassPanelView(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.BOTTOM
-            background = GradientDrawable().apply {
-                setColor(UiTokens.tilePanelBg)
-                cornerRadii = floatArrayOf(
-                    (20 * density), (20 * density),
-                    (20 * density), (20 * density),
-                    0f, 0f, 0f, 0f
-                )
-            }
+            // 液态玻璃底（5.6.0）：渐变透底 + 折射高光描边 + 顶角聚光 + 流光 + 手指光斑，
+            // 形状与原 cornerRadii 一致（顶角 20dp、底角 0 贴边）
+            background = GlassPanelDrawable(density).also { glass = it }
         }.also { p ->
             val topGlow = View(ctx).apply {
                 background = GradientDrawable().apply {
@@ -140,8 +137,17 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
             override fun onPreDraw(): Boolean {
                 val p = panel ?: return true
                 p.translationY = p.height.toFloat()
+                p.alpha = 0.72f
                 frame.viewTreeObserver.removeOnPreDrawListener(this)
-                p.animate().translationY(0f).setDuration(240).start()
+                // 弹出：上滑 + 材质化淡入（快进缓出、无回弹——贴边不会被顶起）
+                p.animate().translationY(0f).alpha(1f)
+                    .setDuration(300)
+                    .setInterpolator(DecelerateInterpolator(1.4f))
+                    .start()
+                // 入场流光：布局稳定后扫一次（若已被移除则 isAttached 兜底跳过）
+                p.postDelayed({
+                    if (p.isAttachedToWindow) (p.background as? GlassPanelDrawable)?.startSheen()
+                }, 420)
                 return true
             }
         })
@@ -188,6 +194,8 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
             MotionEvent.ACTION_DOWN -> {
                 downY = ev.rawY
                 startTrans = p.translationY
+                // 手柄按下即触发一次流光（与光斑观察互相独立，光斑由 GlassPanelView 拦截观察提供）
+                (p.background as? GlassPanelDrawable)?.startSheen()
             }
             MotionEvent.ACTION_MOVE -> {
                 val dy = ev.rawY - downY
@@ -196,7 +204,8 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
             MotionEvent.ACTION_UP -> {
                 val dy = ev.rawY - downY
                 if (dy > p.height * 0.22f) dismiss()
-                else p.animate().translationY(0f).setDuration(180).start()
+                else p.animate().translationY(0f).setDuration(300)
+                    .setInterpolator(OvershootInterpolator(1.3f)).start()
             }
         }
         return true
@@ -206,6 +215,7 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
         if (!shown) return
         shown = false
         active = null
+        (panel?.background as? GlassPanelDrawable)?.cancelAnimations()
         val f = root
         if (f != null) {
             animateDismiss(f)

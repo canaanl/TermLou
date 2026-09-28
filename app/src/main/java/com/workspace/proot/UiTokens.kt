@@ -49,6 +49,4 @@ object UiTokens {
     val mergeOrange = 0xFFE67E22.toInt()
     // StorageDialog 总计文字
     val totalText = 0xFFCCCCCC.toInt()
-    // TileDrawer 面板底色
-    val tilePanelBg = 0xFFB820262E.toInt()
 }
