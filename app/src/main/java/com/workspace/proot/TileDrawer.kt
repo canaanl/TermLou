@@ -45,26 +45,6 @@ object TileDrawerCache {
         }
         apps = list
     }
-
-    @Volatile
-    private var showArmed = false
-
-    /**
-     * 武装一次性展示令牌（磁贴点击、startActivityAndCollapse 之前）：
-     * 首个真正跑起来的跳板消费成功才挂 250ms 展示定时器——冷启动 150ms 补发拉起的第二个
-     * 跳板消费不到，不会重复挂定时器（否则用户在补发窗口内快速关闭抽屉会被重新弹开）；
-     * 首个启动被系统冷启动竞态吞掉时令牌仍在，恰好由补发跳板消费，展示时序相对真实的
-     * 面板收起时刻反而更准。
-     */
-    fun armShow() {
-        showArmed = true
-    }
-
-    fun consumeShowArmed(): Boolean {
-        if (!showArmed) return false
-        showArmed = false
-        return true
-    }
 }
 
 class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) {

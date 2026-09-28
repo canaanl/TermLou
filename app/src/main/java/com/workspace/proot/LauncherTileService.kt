@@ -40,7 +40,7 @@ class LauncherTileService : TileService() {
             }
             else -> {
                 if (Settings.canDrawOverlays(this)) {
-                    showDrawer()
+                    showDrawer(apps)
                 } else {
                     runCatching {
                         val intent = Intent(
@@ -60,22 +60,31 @@ class LauncherTileService : TileService() {
     }
 
     /**
-     * 多收藏抽屉：先 startActivityAndCollapse 收起快速设置面板（TileService 无 collapsePanels，
-     * 这是唯一公开的收面板 API），透明跳板等面板收完动画（250ms）再弹抽屉——
-     * 点磁贴时序 = 面板收回 → 抽屉弹出。
-     * 进程冷启动窗口内 Activity 启动可能被系统静默丢弃：150ms 后补发一次（命令磁贴同款）；
-     * 抽屉侧有进程级单例闸，重复触发不会弹两层。
+     * 多收藏抽屉（5.5.5 时序与闪现根治）：
+     * ① startActivityAndCollapse 拉起跳板收面板（TileService 无 collapsePanels，唯一公开 API），
+     *    跳板 onCreate 同步立即结束——任务"启动即结束"使系统取消其打开/关闭转场动画，
+     *    这是"闪现/缩回"的可见面来源（命令磁贴不闪即此机制，真机已对照验证）；
+     * ② 250ms 展示定时器挂在服务侧主循环（不寄生在跳板任务里）：等面板收完动画再弹抽屉，
+     *    Handler 在 main looper，服务随后 onStopListening/onDestroy 不影响执行，
+     *    抽屉用 applicationContext 添加浮窗——时序仍为「面板收回 → 抽屉弹出」；
+     * ③ 发送失败（startActivityAndCollapse 抛异常）则不挂展示定时器：收面板与弹窗都不发生；
+     * ④ 进程冷启动窗口内 Activity 启动可能被系统静默丢弃：150ms 后补发一次触发器
+     *    （只重复跳板，展示定时器仅挂一次——补发天然不会双弹层，无需任何令牌）。
      */
-    private fun showDrawer() {
+    private fun showDrawer(apps: List<FavoriteApp>) {
         val intent = Intent(this, TileDrawerTrampolineActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
         val pi = PendingIntent.getActivity(
             this, DRAWER_REQUEST_CODE, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        // 武装一次性展示令牌：只有首个真正跑起来的跳板会挂展示定时器（防补发双弹层）
-        TileDrawerCache.armShow()
-        runCatching { startActivityAndCollapse(pi) }
+        val sent = runCatching { startActivityAndCollapse(pi); true }.getOrElse { false }
+        if (!sent) return
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (Settings.canDrawOverlays(applicationContext)) {
+                runCatching { TileDrawer(applicationContext, apps).show() }
+            }
+        }, COLLAPSE_DELAY_MS)
         val coldStart = SystemClock.elapsedRealtime() - TermLouApp.appColdStartAt < COLD_START_WINDOW_MS
         if (coldStart) {
             Handler(Looper.getMainLooper()).postDelayed({
@@ -98,5 +107,8 @@ class LauncherTileService : TileService() {
         private const val SINGLE_REQUEST_CODE = 0
         private const val COLD_START_WINDOW_MS = 3000L
         private const val RETRY_DELAY_MS = 150L
+
+        /** 等快速设置面板收起动画走完再弹抽屉（面板收起约 250~300ms，真机不顺可微调）。 */
+        private const val COLLAPSE_DELAY_MS = 250L
     }
 }
