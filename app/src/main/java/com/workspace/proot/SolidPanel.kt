@@ -1,5 +1,7 @@
 package com.workspace.proot
 
+import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.ColorFilter
 import android.graphics.LinearGradient
@@ -91,6 +93,100 @@ internal object SolidPanel {
 }
 
 /**
+ * 键下方外投影的几何（纯逻辑）：等价于 CSS `box-shadow: 0 OFFSET_Y BLUR color`——
+ * **形状贴键的圆角矩形真模糊衰减**，不是叠矩形/叠圆角矩形去逼近（后者在角上必然缺影子）。
+ * [extentPx] 是相对键面底边的总下延，必须塞进投影带 [RowKeyDrawable.BAND_DP]。
+ */
+internal object RowShadow {
+
+    /** 模糊半径（dp）≈ CSS box-shadow 的 blur。 */
+    const val BLUR_DP = 3f
+
+    /** 垂直偏移（dp）：阴影落在键下方，而不是正贴在键底。 */
+    const val OFFSET_Y_DP = 1.5f
+
+    /** 整体透明度（0..1）：位图是实色模糊，这里统一压一档。 */
+    const val ALPHA = 0.72f
+
+    /** BlurMaskFilter 的模糊实际外扩约 1.5×半径（位图要留出这块）。 */
+    private const val SPREAD = 1.5f
+
+    fun blurPx(density: Float): Int = (BLUR_DP * density).toInt().coerceAtLeast(1)
+
+    fun offsetYPx(density: Float): Int = (OFFSET_Y_DP * density).toInt()
+
+    /** 位图每侧要留出的外扩（px）。 */
+    fun extentPx(density: Float): Int = offsetYPx(density) + (blurPx(density) * SPREAD).toInt()
+
+    fun alpha255(): Int = (ALPHA * 255f).toInt().coerceIn(1, 255)
+}
+
+/**
+ * 投影位图缓存：所有行同尺寸同色，只建一次（~0.7MB）。
+ * BlurMaskFilter 在硬件加速画布上不生效（API 31 前），而抽屉是硬件加速悬浮窗，
+ * 故用**软件 Canvas 预渲染成位图**再 blit——真模糊 + API 26+ 全兼容。
+ * 抽屉弹出前 prebuild（把一次模糊挡在 250ms 延迟里，不压首帧），关闭时 clear()。
+ */
+internal object RowShadowCache {
+
+    private var bmp: Bitmap? = null
+    private var fingerprint = 0L
+
+    fun prebuild(keyW: Int, keyH: Int, radiusPx: Float, shadowColor: Int, density: Float) {
+        get(keyW, keyH, radiusPx, shadowColor, density)
+    }
+
+    fun get(keyW: Int, keyH: Int, radiusPx: Float, shadowColor: Int, density: Float): Bitmap? {
+        if (keyW <= 0 || keyH <= 0) return null
+        val fp = fingerprintOf(keyW, keyH, radiusPx, shadowColor, density)
+        val cached = bmp
+        if (cached != null && fp == fingerprint && !cached.isRecycled) return cached
+        val built = build(keyW, keyH, radiusPx, shadowColor, density) ?: return null
+        cached?.recycle()
+        bmp = built
+        fingerprint = fp
+        return built
+    }
+
+    fun clear() {
+        bmp?.recycle()
+        bmp = null
+        fingerprint = 0L
+    }
+
+    private fun fingerprintOf(w: Int, h: Int, r: Float, color: Int, density: Float): Long =
+        ((((w.toLong() * 31 + h) * 31 + r.toInt()) * 31 + color) * 31 + (density * 100f).toInt())
+
+    private fun build(
+        keyW: Int,
+        keyH: Int,
+        radiusPx: Float,
+        shadowColor: Int,
+        density: Float
+    ): Bitmap? {
+        val ext = RowShadow.extentPx(density)
+        val blur = RowShadow.blurPx(density)
+        return try {
+            val b = Bitmap.createBitmap(keyW + ext * 2, keyH + ext * 2, Bitmap.Config.ARGB_8888)
+            val c = Canvas(b)
+            val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = shadowColor
+                maskFilter = BlurMaskFilter(blur.toFloat(), BlurMaskFilter.Blur.NORMAL)
+            }
+            c.drawRoundRect(
+                ext.toFloat(), ext.toFloat(),
+                (ext + keyW).toFloat(), (ext + keyH).toFloat(),
+                radiusPx, radiusPx, p
+            )
+            b
+        } catch (t: Throwable) {
+            // 位图分配失败/OOM → 退化为无投影，抽屉照常可用
+            null
+        }
+    }
+}
+
+/**
  * 行按键：静止凸起 / 按下凹陷的状态机。状态由 View 的 pressed 自动驱动
  * （isStateful + onStateChange），触摸与点击逻辑一行未动。
  * 圆角取 app 按钮同款（[ButtonStyle.CORNER_RADIUS_DP]），左右留白见 TileDrawer。
@@ -114,11 +210,15 @@ internal class RowKeyDrawable(
 
     // 静止（凸起）
     private val facePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val castPaint = Paint(Paint.ANTI_ALIAS_FLAG)   // 外投影带（键面之外）
     private val hiTopPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val hiSidePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val shSidePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val shBottomPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    // 真·CSS 投影：预渲染位图（形状贴圆角真模糊），绘制时 blit
+    private val shadowBlit = Paint(Paint.FILTER_BITMAP_FLAG)
+    private var shadowBmp: Bitmap? = null
+    private var shadowExt = 0
 
     // 按下（凹陷）
     private val pressedFacePaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -173,18 +273,11 @@ internal class RowKeyDrawable(
         facePaint.color = c.key
         pressedFacePaint.color = c.keyPressed
 
-        // ① 外投影：键面下方的投影带，4 段衰减（模拟 box-shadow 的 blur 衰减）
-        castPaint.shader = LinearGradient(
-            0f, keyH, 0f, h,
-            intArrayOf(
-                withAlpha(c.keyCast, 217),
-                withAlpha(c.keyCast, 128),
-                withAlpha(c.keyCast, 56),
-                withAlpha(c.keyCast, 0)
-            ),
-            floatArrayOf(0f, 0.30f, 0.62f, 1f),
-            Shader.TileMode.CLAMP
-        )
+        // ① 外投影：贴键圆角真模糊的位图（见 [RowShadow] / [RowShadowCache]）
+        shadowExt = RowShadow.extentPx(density)
+        shadowBlit.alpha = RowShadow.alpha255()
+        shadowBmp = RowShadowCache.get(w.toInt(), keyH.toInt(), radius, c.keyCast, density)
+
         // ② 上棱内高光（受光面）
         hiTopPaint.shader = LinearGradient(
             0f, 0f, 0f, hiH,
@@ -291,8 +384,15 @@ internal class RowKeyDrawable(
             canvas.drawRect(left, faceBottom - bottomH, right, faceBottom, pressedHiBottomPaint)
             canvas.restore()
         } else {
-            // 外投影画在键面之外（落在面板上）——凸起态的"影子"在这里，不在键面里
-            canvas.drawRect(left, faceBottom, right, b.bottom.toFloat(), castPaint)
+            // 外投影（贴键圆角真模糊，落在面板上）——凸起态的"影子"在这里，不在键面里
+            shadowBmp?.let {
+                canvas.drawBitmap(
+                    it,
+                    left - shadowExt,
+                    top + RowShadow.offsetYPx(density) - shadowExt,
+                    shadowBlit
+                )
+            }
             canvas.save()
             canvas.clipPath(path)
             canvas.drawRect(left, top, right, faceBottom, facePaint)

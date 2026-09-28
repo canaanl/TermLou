@@ -68,9 +68,17 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
         val density = ctx.resources.displayMetrics.density
         val itemH = (58 * density).toInt()
 
-        // 拟物实心（5.8.0）：底色/字色/握把全部取自 app 当前主题，与 app 内部同源
+        // 拟物实心（5.8.x）：底色/字色/握把全部取自 app 当前主题，与 app 内部同源
         val colors = SolidPanel.of(
             PaletteStore.theme(ctx.getSharedPreferences("term-lou-settings", Context.MODE_PRIVATE))
+        )
+        // 预渲染键的投影位图（贴圆角真模糊，~0.7MB）：挡在 250ms 弹出延迟里完成，不压首帧
+        RowShadowCache.prebuild(
+            ctx.resources.displayMetrics.widthPixels - dp(ROW_SIDE_GAP_DP) * 2,
+            itemH - dp(RowKeyDrawable.BAND_DP),
+            ButtonStyle.CORNER_RADIUS_DP * density,
+            colors.keyCast,
+            density
         )
 
         val maxRows = 4
@@ -239,6 +247,8 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
         if (!shown) return
         shown = false
         active = null
+        // 归还预渲染的投影位图（~0.7MB），下次 show 会重新 prebuild
+        RowShadowCache.clear()
         val f = root
         if (f != null) {
             animateDismiss(f)
