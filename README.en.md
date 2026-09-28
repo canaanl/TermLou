@@ -36,12 +36,12 @@ Beyond that core, TermLou also grew a complete **notes & todo system** (usable i
 | 📌 **Notes Tile** | One tap from Quick Settings to the standalone notes page; bypasses the main UI, does not boot Linux, leaves nothing in the background |
 | 💬 **Script-driven Dialogs** | One line of shell (`termlou-ui --title "Confirm" --button "OK"`) pops a native overlay: input/single-choice/multi-choice/toggle/ANSI-colored output |
 | 🌐 **VPN Capture & Filtering** | Built-in `VpnService` + SOCKS5 proxy + DNS interception + domain/IP blocking + live flow log, per-App capture |
-| 🎨 **Splash Pixel Workshop** | Hand-drawn 96×80 dot matrix + photo-to-pixels (Sobel/Otsu/Gaussian/morphology) + particle fly-in animation |
+| 🎨 **Splash Pixel Workshop** | Hand-drawn 96×80 dot matrix + photo-to-pixels (grayscale quantization, auto orientation + resident invert) + particle fly-in animation |
 | 🧱 **Zero-XML Layout** | Entire UI constructed programmatically in Kotlin, five-tab architecture |
 | ⚙️ **Native PTY** | Custom JNI `libtermux.so` (`termux_pty.cpp`) as the PTY backend for the Termux `terminal-view` renderer |
 | 🛡️ **Hardening** | Path-escape guards, 128KB output truncation, command timeout kill, resource caps |
 | 🌍 **Bilingual** | Chinese/English switch, applied on restart |
-| 🌈 **Color Palette** | Set just background + theme green; fonts/icons/cards/terminal auto-derived with contrast guarantees (≥4.5:1), real color picker + H/S/V hex fine-tune, colors swap instantly on save, one tap to restore defaults |
+| 🌈 **Color Palette** | Set just background + theme green; fonts/icons/cards/terminal auto-derived with contrast guarantees (≥4.5:1), real color picker + H/S/V hex fine-tune, colors swap instantly on save, one tap to restore defaults; brand elements too close to the background auto-derive stroke/text/icon/particle colors via a continuous coefficient |
 
 ---
 
@@ -86,7 +86,7 @@ TermLou
 │   ├── ScriptDialogSpec/Renderer/Overlay  Script dialog protocol + rendering + overlay
 │   ├── DialogMakerActivity   Dialog workshop (design termlou-ui dialogs graphically)
 │   ├── OverlayBridge / ClipboardBridge  File IPC bridge (req/res + FileObserver + polling fallback)
-│   ├── SplashView/Letters/Tokens/Maker  Splash rendering + pixel workshop (drawing + CV pipeline)
+│   ├── SplashView/Letters/Tokens/Maker  Splash rendering + pixel workshop (drawing + grayscale quantization)
 │   ├── NetVpnService / MiniSocks5Server / DnsParser / DnsMap / BlockRules  VPN capture stack
 │   ├── CommandTileService / LauncherTileService / NotesTileService  Quick Settings tiles
 │   ├── TermlouCommandRunner  Headless tile-command execution service
@@ -198,8 +198,8 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 ### 7. Splash Workshop
 
 - **Hand-drawn matrix**: 96×80 grid, draw pixels with your finger
-- **Photo to pixels**: grayscale → Sobel edge detection → non-max suppression → dual threshold → morphological closing → quantization, multiple styles and inversion, pinch to zoom/crop
-- **Particle animation**: dots fly in from random edges, brand-green→cyan gradient
+- **Photo to pixels**: grayscale quantized into 2–20 levels by percentile (clarity slider remaps live), auto light/dark orientation against background vs brand colors to eliminate negatives, resident invert switch to flip again, pinch to zoom/crop
+- **Particle animation**: dots fly in from random edges, brand-green→cyan gradient (palette mode derives from the visibility color)
 
 ### 8. Quick Settings Tiles
 

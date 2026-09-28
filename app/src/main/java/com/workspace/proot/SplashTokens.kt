@@ -65,11 +65,30 @@ object SplashTokens {
 
     /**
      * 点阵/进度条渐变双色：调色盘 off = 品牌常量（零漂移）；
-     * on = 主题绿 → HCT 色相 +60°（同彩度同明度）推导第二色。
+     * on = 品牌可见变体（与背景相近时自动拉开，见 ColorMath.visibleVariant）
+     * → HCT 色相 +60°（同彩度同明度）推导第二色。
      */
     fun gradientPair(theme: ThemeColors): Pair<Int, Int> =
-        if (theme.palette) theme.primary to ColorMath.hueRotate(theme.primary, GRADIENT_HUE_SHIFT)
+        if (theme.palette) theme.primaryVisible to ColorMath.hueRotate(theme.primaryVisible, GRADIENT_HUE_SHIFT)
         else GREEN to CYAN
+
+    /**
+     * 开屏与启动工坊共用底色：palette→自定义背景；off 夜→纯黑；off 昼→#F5F5F5。
+     * 工坊画板/预览与真正开屏从此同源，杜绝「开屏跟了调色盘、工坊还是旧暗色」的漂移。
+     */
+    fun splashBackground(theme: ThemeColors): Int = when {
+        theme.palette -> theme.surface
+        theme.night -> 0xFF000000.toInt()
+        else -> 0xFFF5F5F5.toInt()
+    }
+
+    /**
+     * 开屏与启动工坊共用中心辉光：palette→品牌可见变体 @10%（同 backdropGlow 的透明度档）；
+     * off→品牌常量零漂移。
+     */
+    fun splashGlow(theme: ThemeColors): Int =
+        if (theme.palette) (theme.primaryVisible and 0x00FFFFFF) or (0x1A shl 24)
+        else UiTokens.backdropGlow
 
     /** 像素渐变色：按列从左到右 first→second 线性渐变。 */
     fun cellColor(col: Int, first: Int, second: Int): Int =
@@ -92,6 +111,13 @@ object SplashTokens {
 
     /** 反选：档位取反（灭↔强）。 */
     fun invertLevel(v: Int): Int = (LEVEL_FULL - v).coerceIn(LEVEL_OFF, LEVEL_FULL)
+
+    /**
+     * 照片灰阶自动判向：背景比墨色暗 → 反转档位，保证「白→两色中浅者、黑→深者」，
+     * 任意品牌/背景组合都不出负片（手动反选在此之上 XOR，想要负片时用）。
+     */
+    fun autoInvert(bg: Int, ink: Int): Boolean =
+        ColorMath.relativeLuminance(bg) < ColorMath.relativeLuminance(ink)
 
     /**
      * 分位阈值：按像素量把直方图切成 (bands) 等份，返回 bands-1 个阈值。

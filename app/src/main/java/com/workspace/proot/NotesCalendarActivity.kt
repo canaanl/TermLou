@@ -375,7 +375,7 @@ class NotesCalendarActivity : NotesPageActivity() {
                     else Color.TRANSPARENT
                 )
                 cornerRadius = 8 * d
-                if (isToday) setStroke((1.5 * d).toInt().coerceAtLeast(1), theme.primary)
+                if (isToday) setStroke((1.5 * d).toInt().coerceAtLeast(1), theme.primaryVisible)
             }
             layoutParams = LinearLayout.LayoutParams(
                 0, boxHeight, 1f
@@ -522,7 +522,7 @@ class NotesCalendarActivity : NotesPageActivity() {
     /** 弹窗里的分区小标题（主题强调色）。 */
     private fun sectionLabel(text: String): TextView = TextView(this).apply {
         this.text = text
-        setTextColor(theme.primary)
+        setTextColor(theme.primaryVisible)
         typeface = Typeface.DEFAULT_BOLD
         textSize = UiTokens.TEXT_COMPACT
         setPadding(0, (12 * density()).toInt(), 0, (4 * density()).toInt())

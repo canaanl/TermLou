@@ -143,11 +143,11 @@ private fun divider(): View = View(activity).apply {
             valueTo = 4f
             stepSize = 0f
             value = terminal.fontSizeIndex.toFloat()
-            thumbTintList = ColorStateList.valueOf(scope.cPrimary)
-            trackActiveTintList = ColorStateList.valueOf(scope.cPrimary)
+            thumbTintList = ColorStateList.valueOf(scope.cPrimaryVisible)
+            trackActiveTintList = ColorStateList.valueOf(scope.cPrimaryVisible)
             trackInactiveTintList = ColorStateList.valueOf(scope.cOutline)
-            haloTintList = ColorStateList.valueOf((scope.cPrimary and 0x00FFFFFF) or (0x33 shl 24))
-            setTickColors(scope.cPrimary, (scope.cOutline and 0x00FFFFFF) or (0x66 shl 24))
+            haloTintList = ColorStateList.valueOf((scope.cPrimaryVisible and 0x00FFFFFF) or (0x33 shl 24))
+            setTickColors(scope.cPrimaryVisible, (scope.cOutline and 0x00FFFFFF) or (0x66 shl 24))
         }
         parent.addView(slider)
         terminal.bindFontSlider(slider)
@@ -176,7 +176,7 @@ private fun divider(): View = View(activity).apply {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     marginEnd = 4
                 }
-                ButtonStyle.apply(this, scope.cPrimary)
+                ButtonStyle.apply(this, scope.cPrimary, scope.cPrimaryVisible)
                 setOnClickListener {
                     val cmd = shellEdit.text.toString().trim()
                     scope.settingsManager.setShellCmd(cmd)
@@ -233,7 +233,7 @@ private fun divider(): View = View(activity).apply {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     marginEnd = 4
                 }
-                ButtonStyle.apply(this, scope.cPrimary)
+                ButtonStyle.apply(this, scope.cPrimary, scope.cPrimaryVisible)
                 setOnClickListener {
                     val cmd = tileEdit.text.toString().trim()
                     scope.settingsManager.setTileCommand(cmd)
@@ -282,7 +282,7 @@ private fun divider(): View = View(activity).apply {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     marginEnd = 4
                 }
-                ButtonStyle.apply(this, scope.cPrimary)
+                ButtonStyle.apply(this, scope.cPrimary, scope.cPrimaryVisible)
                 setOnClickListener { this@SettingsUiController.overlay.showAppPicker() }
             })
             addView(Button(activity).apply {
@@ -319,11 +319,11 @@ private fun divider(): View = View(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(Button(activity).apply {
                 text = activity.getString(labelRes)
-                setTextColor(scope.cPrimary)
+                setTextColor(scope.cPrimaryVisible)
                 textSize = UiTokens.TEXT_BODY
                 setPadding(16, 6, 16, 6)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                ButtonStyle.outlined(this, scope.cPrimary)
+                ButtonStyle.outlined(this, scope.cPrimaryVisible)
                 setOnClickListener { onOpen() }
             })
         })
@@ -357,7 +357,7 @@ private fun divider(): View = View(activity).apply {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     marginEnd = 4
                 }
-                ButtonStyle.apply(this, scope.cPrimary)
+                ButtonStyle.apply(this, scope.cPrimary, scope.cPrimaryVisible)
                 setOnClickListener {
                     scope.settingsManager.setNetUpstream(upEdit.text.toString().trim())
                     status.showTempStatus(activity.getString(R.string.upstream_saved))
@@ -501,11 +501,11 @@ private fun buildLanguageRow(parent: LinearLayout) {
             intArrayOf(android.R.attr.state_checked),
             intArrayOf(-android.R.attr.state_checked)
         ),
-        intArrayOf(scope.cPrimary, scope.cOutline)
+        intArrayOf(scope.cPrimaryVisible, scope.cOutline)
     )
 
     private fun switchTrackTint(): ColorStateList {
-        val checked = (scope.cPrimary and 0x00FFFFFF) or (0x66 shl 24)
+        val checked = (scope.cPrimaryVisible and 0x00FFFFFF) or (0x66 shl 24)
         val unchecked = (scope.cOutline and 0x00FFFFFF) or (0x66 shl 24)
         return ColorStateList(
             arrayOf(

@@ -56,7 +56,7 @@ class OverlayCommandsController(
 
     fun showAppPicker() {
         AppPickerDialog(
-            activity, scope.cPrimary, scope.cOnSurfaceVariant,
+            activity, scope.cPrimaryVisible, scope.cOnSurfaceVariant,
             loadAppCache(), scope.settingsManager, scope.theme
         ).show()
     }

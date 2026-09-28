@@ -249,7 +249,10 @@ class MainActivity : AppCompatActivity() {
         setContentView(rootLayout)
         statusController.showPreviousCrash(rootLayout)
 
+        // 初始五视图全 GONE：与 displayedTab=0 语义一致，任何 showTab（含换色重建后
+        // 直接 showTab(非0) 的 animateTo 路径）都不会漏隐藏 notesArea 造成叠加残留。
         terminalArea.visibility = View.GONE
+        notesArea.visibility = View.GONE
         filesArea.visibility = View.GONE
         networkArea.visibility = View.GONE
         settingsWrapper.visibility = View.GONE
@@ -519,6 +522,7 @@ class MainActivity : AppCompatActivity() {
         scope.cOnSurface = t.onSurface
         scope.cOnSurfaceVariant = t.onSurfaceVariant
         scope.cPrimary = t.primary
+        scope.cPrimaryVisible = t.primaryVisible
         scope.cError = t.error
         scope.cTertiary = t.tertiary
         scope.cSecondaryContainer = t.secondaryContainer

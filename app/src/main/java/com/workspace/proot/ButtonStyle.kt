@@ -11,13 +11,18 @@ object ButtonStyle {
     internal const val CORNER_RADIUS_DP = 20f
     private val rippleColor = ColorStateList.valueOf(0x1FFFFFFF.toInt())
 
-    fun apply(button: Button, bgColor: Int) {
+    /**
+     * 纯色按钮：填充=传入色（品牌色原样），描边=可见变体色——两色相距远时描边与填充
+     * 同色（视觉零变化），趋于同色时描边自动拉开与背景的距离，按钮轮廓永远可辨。
+     */
+    fun apply(button: Button, bgColor: Int, strokeColor: Int = bgColor) {
         val d = button.resources.displayMetrics.density
         val radius = CORNER_RADIUS_DP * d
 
         val content = GradientDrawable().apply {
             setColor(bgColor)
             cornerRadius = radius
+            setStroke(d.toInt().coerceAtLeast(1), strokeColor)
         }
         val mask = GradientDrawable().apply {
             setColor(Color.WHITE)

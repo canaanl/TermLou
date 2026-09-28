@@ -351,7 +351,7 @@ class NetworkController(
             netToggleBtn,
             barButton(activity.getString(R.string.net_pick_apps)) {
                 NetAppPickerDialog(
-                    activity, scope.cPrimary, scope.cOnSurfaceVariant,
+                    activity, scope.cPrimaryVisible, scope.cOnSurfaceVariant,
                     activity.overlayCommands.loadAppCache(), scope.settingsManager,
                     { count ->
                         refreshNetTab()
@@ -450,13 +450,13 @@ class NetworkController(
         }
         fun modeButton(text: String, onClick: () -> Unit): Button = Button(activity).apply {
             this.text = text
-            setTextColor(scope.theme.primary)
+            setTextColor(scope.theme.primaryVisible)
             textSize = UiTokens.TEXT_BODY
             isAllCaps = true
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            ButtonStyle.outlined(this, scope.theme.primary)
+            ButtonStyle.outlined(this, scope.theme.primaryVisible)
             setOnClickListener { onClick() }
         }
         val modeRow = LinearLayout(activity).apply {

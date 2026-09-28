@@ -36,12 +36,12 @@
 | 📌 **笔记磁贴** | 通知栏一键直达独立笔记页，绕开主界面、不唤醒 Linux 会话，用完即走、后台无残留 |
 | 💬 **脚本驱动浮窗** | Shell 一句 `termlou-ui --title "确认" --button "OK"` 即弹出原生浮窗，支持输入/单选/多选/开关/ANSI 彩色输出 |
 | 🌐 **VPN 抓包与过滤** | 内置 `VpnService` + SOCKS5 代理 + DNS 拦截 + 域名/IP 阻断 + 实时流量日志，按 App 抓包 |
-| 🎨 **启动像素工坊** | 手绘 96×80 点阵 + 照片转像素（Sobel/Otsu/高斯/形态学）+ 粒子飞入动画，自定义启动画面 |
+| 🎨 **启动像素工坊** | 手绘 96×80 点阵 + 照片转像素（灰阶分位量化，自动判向＋常驻反选）+ 粒子飞入动画，自定义启动画面 |
 | 🧱 **零 XML 布局** | 全部 UI 由 Kotlin 程序化构建，五 Tab 架构 |
 | ⚙️ **原生 PTY 组件** | 自写 JNI `libtermux.so`（`termux_pty.cpp`），作为 Termux `terminal-view` 渲染器的 PTY 后端 |
 | 🛡️ **安全加固** | 路径逃逸防护、输出流 128KB 截断、命令超时强杀、资源上限 |
 | 🌍 **双语** | 中英双语一键切换，重开即生效 |
-| 🌈 **调色盘** | 自定义背景色 + 主题绿两项，字体/图标/卡片/终端等全部按对比度自动派生（≥4.5:1），真实取色盘 + H/S/V 色号微调，保存即时换色，一键恢复默认 |
+| 🌈 **调色盘** | 自定义背景色 + 主题绿两项，字体/图标/卡片/终端等全部按对比度自动派生（≥4.5:1），真实取色盘 + H/S/V 色号微调，保存即时换色，一键恢复默认；品牌色与背景过近时描边/文字/图标/粒子按连续系数自动推导保可视 |
 
 ---
 
@@ -86,7 +86,7 @@ TermLou
 │   ├── ScriptDialogSpec/Renderer/Overlay  脚本浮窗协议 + 渲染 + 覆盖层
 │   ├── DialogMakerActivity   弹窗工坊（图形化设计 termlou-ui 对话框）
 │   ├── OverlayBridge / ClipboardBridge  文件 IPC 桥（req/res + FileObserver + 轮询兜底）
-│   ├── SplashView/Letters/Tokens/Maker  启动画面渲染 + 像素工坊（手绘 + CV 管线）
+│   ├── SplashView/Letters/Tokens/Maker  启动画面渲染 + 像素工坊（手绘 + 灰阶量化）
 │   ├── NetVpnService / MiniSocks5Server / DnsParser / DnsMap / BlockRules  VPN 抓包栈
 │   ├── CommandTileService / LauncherTileService / NotesTileService  快捷设置磁贴
 │   ├── TermlouCommandRunner  磁贴命令无头执行服务
@@ -198,8 +198,8 @@ MainActivity.onCreate
 ### 7. 启动工坊 Splash Workshop
 
 - **手绘点阵**：96×80 孔板，手指绘制像素
-- **照片转像素**：灰度 → Sobel 边缘检测 → 非极大值抑制 → 双阈值 → 形态学闭运算 → 阈值量化，支持多风格与反色，捏合缩放取景
-- **粒子动画**：亮点从随机边缘飞入，品牌绿→青渐变
+- **照片转像素**：灰阶按分位量化成 2~20 档（清晰度滑块实时重映射），背景 vs 主题色**自动判向**杜绝负片，常驻反选开关可再翻转，捏合缩放取景
+- **粒子动画**：亮点从随机边缘飞入，品牌绿→青渐变（调色盘档按可见性推导色生成）
 
 ### 8. 快速设置磁贴 Quick Settings Tiles
 

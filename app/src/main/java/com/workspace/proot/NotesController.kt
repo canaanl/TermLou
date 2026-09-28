@@ -314,7 +314,7 @@ class NotesController(
         return TextView(activity).apply {
             text = "＋"
             gravity = Gravity.CENTER
-            setTextColor(theme.primary)
+            setTextColor(theme.primaryVisible)
             textSize = FAB_PLUS_SP
             background = android.graphics.drawable.LayerDrawable(
                 arrayOf(darkShadow, lightShadow, face)
@@ -590,7 +590,7 @@ class NotesController(
             setPadding((16 * d).toInt(), (6 * d).toInt(), (16 * d).toInt(), (6 * d).toInt())
             addView(TextView(activity).apply {
                 text = if (item.done) "☑" else "☐"
-                setTextColor(if (item.done) theme.primary else theme.onSurface)
+                setTextColor(if (item.done) theme.primaryVisible else theme.onSurface)
                 textSize = UiTokens.TEXT_TITLE
                 setPadding(0, 0, (10 * d).toInt(), 0)
                 setOnClickListener { toggleTodo(item) }

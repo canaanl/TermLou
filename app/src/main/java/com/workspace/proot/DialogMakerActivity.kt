@@ -307,7 +307,7 @@ val testRow = LinearLayout(this).apply {
                             intArrayOf(android.R.attr.state_checked),
                             intArrayOf(-android.R.attr.state_checked)
                         ),
-                        intArrayOf(theme.primary, theme.onSurfaceVariant)
+                        intArrayOf(theme.primaryVisible, theme.onSurfaceVariant)
                     )
                 )
                 isChecked = options[i] == default
@@ -378,11 +378,11 @@ val testRow = LinearLayout(this).apply {
         for ((text, action) in labels) {
 val b = Button(this).apply {
                 this.text = "+$text"
-                setTextColor(theme.primary)
+                setTextColor(theme.primaryVisible)
                 isAllCaps = true
                 textSize = UiTokens.TEXT_COMPACT
                 setPadding((10 * dd).toInt(), (4 * dd).toInt(), (10 * dd).toInt(), (4 * dd).toInt())
-                ButtonStyle.outlined(this, theme.primary)
+                ButtonStyle.outlined(this, theme.primaryVisible)
                 setOnClickListener { action() }
             }
             inner.addView(b, LinearLayout.LayoutParams(

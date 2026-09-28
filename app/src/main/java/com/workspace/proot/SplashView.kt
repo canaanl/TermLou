@@ -28,20 +28,16 @@ import kotlin.math.min
 class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? = null, private val showProgress: Boolean = true) : View(context) {
 
     companion object {
-        private const val DAY_BG = 0xFFF5F5F5.toInt()
         private const val DAY_TEXT = 0xFF616161.toInt()
         private const val DAY_TRACK = 0x1F000000.toInt()
     }
 
-    /** 主题跟调色盘走（与开屏消费同源）：palette 档背景=调色盘背景，off 档维持昼夜默认。 */
+    /** 主题跟调色盘走（与开屏消费同源）：palette 档背景=调色盘背景，off 档维持昼夜默认。
+     *  底色与中心辉光统一由 SplashTokens 出口供给，启动工坊画板同源取用。 */
     private val theme: ThemeColors =
         PaletteStore.theme(context.getSharedPreferences("term-lou-settings", Context.MODE_PRIVATE))
     private val night: Boolean = theme.night
-    private val bgColor: Int = when {
-        theme.palette -> theme.surface
-        night -> Color.BLACK
-        else -> DAY_BG
-    }
+    private val bgColor: Int = SplashTokens.splashBackground(theme)
 
     private val rows = SplashTokens.ROWS
     private val cols = SplashTokens.COLS
@@ -300,12 +296,8 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
 
     private fun drawBackdrop(canvas: Canvas) {
         if (backdropShader == null) {
-            // 中心辉光：palette 档 = 主题绿 @10%（同 backdropGlow 的透明度档）；off 档 = 品牌常量零漂移。
-            val glow = if (theme.palette) {
-                (theme.primary and 0x00FFFFFF) or (0x1A shl 24)
-            } else {
-                UiTokens.backdropGlow
-            }
+            // 中心辉光：palette 档 = 品牌可见变体 @10%；off 档 = 品牌常量零漂移（SplashTokens 同源）。
+            val glow = SplashTokens.splashGlow(theme)
             backdropShader = RadialGradient(
                 offsetX + totalW / 2f, offsetY + totalH / 2f, totalW * 1.1f,
                 intArrayOf(glow, 0x00000000), null, Shader.TileMode.CLAMP

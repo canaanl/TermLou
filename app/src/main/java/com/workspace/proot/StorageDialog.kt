@@ -35,7 +35,7 @@ class SystemInfoCardView(
     private val workspaceDir: File,
 ) {
     private val excludeDirs = setOf("linux", "tmp")
-    private val colorFile = theme.primary
+    private val colorFile = theme.primaryVisible
     private val colorSys = UiTokens.amber
 
     private lateinit var chart: PieChartView

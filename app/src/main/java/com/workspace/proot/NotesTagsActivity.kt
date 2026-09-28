@@ -114,7 +114,7 @@ class NotesTagsActivity : NotesPageActivity() {
         val d = density()
         listInner.addView(TextView(this).apply {
             text = getString(R.string.notes_back_tags)
-            setTextColor(theme.primary)
+            setTextColor(theme.primaryVisible)
             textSize = UiTokens.TEXT_BODY
             setPadding((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (4 * d).toInt())
             setOnClickListener {

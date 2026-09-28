@@ -304,7 +304,7 @@ class ShortcutSettingsAdapter(
                             val d = child.resources.displayMetrics.density
                             val rect = RectF(child.left + 2f, child.top + 2f, child.right - 2f, child.bottom - 2f)
                             val p = Paint().apply {
-                                color = if (mergeArmed) UiTokens.mergeOrange else adapter.theme.primary
+                                color = if (mergeArmed) UiTokens.mergeOrange else adapter.theme.primaryVisible
                                 style = Paint.Style.STROKE
                                 strokeWidth = if (mergeArmed) 4f * d else 3f * d
                                 isAntiAlias = true

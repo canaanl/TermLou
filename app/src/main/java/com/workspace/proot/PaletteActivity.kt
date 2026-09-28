@@ -236,7 +236,7 @@ class PaletteActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
         advAction = TextView(this).apply {
-            setTextColor(base.primary)
+            setTextColor(base.primaryVisible)
             textSize = UiTokens.TEXT_COMPACT
         }
         advRow.addView(advAction)
@@ -296,13 +296,13 @@ class PaletteActivity : AppCompatActivity() {
         }
         val resetBtn = Button(this).apply {
             text = getString(R.string.palette_reset)
-            setTextColor(base.primary)
+            setTextColor(base.primaryVisible)
             textSize = UiTokens.TEXT_BODY
             setPadding(dp(12), dp(6), dp(12), dp(6))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginEnd = dp(5)
             }
-            ButtonStyle.outlined(this, base.primary)
+            ButtonStyle.outlined(this, base.primaryVisible)
             setOnClickListener {
                 PaletteStore.reset(prefs)
                 ThemeSwap.mark()
@@ -316,7 +316,7 @@ class PaletteActivity : AppCompatActivity() {
             textSize = UiTokens.TEXT_BODY
             setPadding(dp(12), dp(6), dp(12), dp(6))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            ButtonStyle.apply(this, base.primary)
+            ButtonStyle.apply(this, base.primary, base.primaryVisible)
             setOnClickListener {
                 PaletteStore.save(prefs, bg, seed)
                 ThemeSwap.mark()
@@ -434,14 +434,14 @@ class PaletteActivity : AppCompatActivity() {
                 cornerRadius = dpF(16)
                 if (selected) {
                     setColor(base.primaryContainer)
-                    setStroke(dp(1).coerceAtLeast(1), base.primary)
+                    setStroke(dp(1).coerceAtLeast(1), base.primaryVisible)
                 } else {
                     setColor(Color.TRANSPARENT)
                     setStroke(dp(1).coerceAtLeast(1), base.outline)
                 }
             }
             chip.background = d
-            chip.setTextColor(if (selected) base.primary else base.onSurfaceVariant)
+            chip.setTextColor(if (selected) base.primaryVisible else base.onSurfaceVariant)
         }
         style(targetBgChip, !editingSeed)
         style(targetSeedChip, editingSeed)
@@ -480,6 +480,8 @@ class PaletteActivity : AppCompatActivity() {
         previewStripBg.setColor(derived.surfaceVariant)
         previewStripText.setTextColor(derived.onSurface)
         previewBtnBg.setColor(derived.primary)
+        // 预览按钮与真按钮同构：填充=品牌原色，描边=可见变体（此处演示的就是最终生效规则）
+        previewBtnBg.setStroke(dp(1).coerceAtLeast(1), derived.primaryVisible)
         previewBtnText.setTextColor(derived.onPrimary)
         for (chip in chips) {
             val c = chip.pick(derived)
@@ -555,6 +557,10 @@ class PaletteActivity : AppCompatActivity() {
             if (width <= 0 || height <= 0) return super.onTouchEvent(event)
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                    if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                        // 手势起点即锁住父级拦截：框内拖动专注取色，不让 ScrollView 抢去做页面滚动
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                    }
                     sat = (event.x / width).coerceIn(0f, 1f)
                     value = (1f - event.y / height).coerceIn(0f, 1f)
                     onPick(sat, value)
@@ -609,6 +615,10 @@ class PaletteActivity : AppCompatActivity() {
             if (width <= 0) return super.onTouchEvent(event)
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                    if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                        // 同取色框：手势起点锁住父级拦截，色相条内拖动不触发页面滚动
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                    }
                     onPick(((event.x / width) * 360f).coerceIn(0f, 360f))
                     return true
                 }

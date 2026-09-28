@@ -2,6 +2,7 @@ package com.workspace.proot
 
 import com.google.android.material.color.utilities.Hct
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -105,5 +106,59 @@ class SplashTokensTest {
         assertEquals(ha.tone, hb.tone, 1.5)
         assertTrue("彩度只降不漂: ${ha.chroma} -> ${hb.chroma}", hb.chroma <= ha.chroma + 0.5)
         assertTrue("彩度不塌灰: ${ha.chroma} -> ${hb.chroma}", hb.chroma > ha.chroma * 0.5)
+    }
+
+    @Test
+    fun `gradient pair derives from visible brand when palette colors collide`() {
+        // seed 与 bg 对比 ≈2.0（<2.6 触发推导，但不至完全同色）→ 第一色 = 可见变体（≠seed），
+        // 仍保留彩度 → 第二色 hue+60 同明度成立
+        val bg = 0xFF464646.toInt()
+        val seed = 0xFF2D7D46.toInt()
+        val t = ThemeColors.default(night = true, palette = PaletteSpec(bg, seed))
+        val (a, b) = SplashTokens.gradientPair(t)
+        assertEquals(ColorMath.visibleVariant(seed, bg), a)
+        assertTrue("同色档应推导出非原色", a != seed)
+        val ha = Hct.fromInt(a)
+        val hb = Hct.fromInt(b)
+        assertEquals((ha.hue + 60.0) % 360.0, hb.hue, 1.0)
+        assertEquals(ha.tone, hb.tone, 1.5)
+        // 粒子色对背景的可见性被拉开
+        assertTrue(
+            "contrast ${ColorMath.contrast(a, bg)} > ${ColorMath.contrast(seed, bg)}",
+            ColorMath.contrast(a, bg) > ColorMath.contrast(seed, bg)
+        )
+    }
+
+    @Test
+    fun `autoInvert maps light to light and dark to dark`() {
+        // 背景比墨色暗 → 反转档位（白→背景、黑→墨色）
+        assertTrue(SplashTokens.autoInvert(0xFF000000.toInt(), UiTokens.primaryGreen))
+        assertTrue(SplashTokens.autoInvert(0xFF101418.toInt(), UiTokens.primaryGreen))
+        // 背景比墨色亮 → 不反转（白→墨色、黑→背景）
+        assertFalse(SplashTokens.autoInvert(0xFFFFFFFF.toInt(), UiTokens.primaryGreen))
+        assertFalse(SplashTokens.autoInvert(0xFFF5F5F5.toInt(), UiTokens.primaryGreen))
+        // 同亮度（bg==ink）不反转
+        assertFalse(SplashTokens.autoInvert(UiTokens.primaryGreen, UiTokens.primaryGreen))
+        // 对调即互斥
+        assertEquals(
+            !SplashTokens.autoInvert(0xFF000000.toInt(), 0xFFFFFFFF.toInt()),
+            SplashTokens.autoInvert(0xFFFFFFFF.toInt(), 0xFF000000.toInt())
+        )
+    }
+
+    @Test
+    fun `splash background and glow share one source across modes`() {
+        val offNight = ThemeColors.default(true)
+        val offDay = ThemeColors.default(false)
+        assertEquals(0xFF000000.toInt(), SplashTokens.splashBackground(offNight))
+        assertEquals(0xFFF5F5F5.toInt(), SplashTokens.splashBackground(offDay))
+        assertEquals(UiTokens.backdropGlow, SplashTokens.splashGlow(offNight))
+        assertEquals(UiTokens.backdropGlow, SplashTokens.splashGlow(offDay))
+        // palette 档：底=自定义背景，辉光=品牌可见变体 @10%（0x1A）
+        val on = ThemeColors.default(true, PaletteSpec(0xFF334455.toInt(), ThemeColors.SEED))
+        assertEquals(0xFF334455.toInt(), SplashTokens.splashBackground(on))
+        val glow = SplashTokens.splashGlow(on)
+        assertEquals(0x1A, (glow ushr 24) and 0xFF)
+        assertEquals(on.primaryVisible and 0x00FFFFFF, glow and 0x00FFFFFF)
     }
 }

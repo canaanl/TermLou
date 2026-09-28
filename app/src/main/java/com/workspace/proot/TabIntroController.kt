@@ -105,7 +105,7 @@ class TabIntroController(
             }
             card.addView(TextView(activity).apply {
                 text = activity.getString(s.titleRes)
-                setTextColor(theme.primary)
+                setTextColor(theme.primaryVisible)
                 typeface = Typeface.DEFAULT_BOLD
                 textSize = UiTokens.TEXT_BODY
             })

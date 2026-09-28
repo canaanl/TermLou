@@ -19,6 +19,12 @@ object ColorMath {
     private const val READABLE_START = 0.45f
     private const val READABLE_STEP = 0.05f
 
+    /**
+     * 可见性推导的「舒适区」对比度：≥ 此值推导色与品牌色逐位一致（零漂移），
+     * 低于后按连续平方曲线向反色偏移——是平滑过渡的尺度参数，不是开关式阈值。
+     */
+    private const val VISIBLE_SHIFT_START = 2.6
+
     private fun linearize(channel: Int): Double {
         val s = channel / 255.0
         return if (s <= 0.03928) s / 12.92 else Math.pow((s + 0.055) / 1.055, 2.4)
@@ -83,6 +89,25 @@ object ColorMath {
             t += READABLE_STEP
         }
         return ink
+    }
+
+    /**
+     * 品牌色在背景上的可见变体（纯系数推导，无阈值开关）：
+     * `推导色 = 品牌色 + k × (反色(背景) − 品牌色)`，k 随两色对比度连续变化——
+     * 相差远 → k=0 与品牌色逐位一致；越接近 → k↑ 越向背景的反色（纯黑/纯白）偏移，
+     * 同色时 k=1 直接落到反色上，保证任何配色下元素都可辨识。
+     * 只用于描边/文字/图标/粒子等「需要在背景上可见」的场合；品牌填充仍用原色。
+     */
+    fun visibleVariant(brand: Int, bg: Int): Int {
+        val k = visibilityShift(contrast(brand, bg))
+        return if (k <= 0f) brand else mix(brand, inkOf(bg), k)
+    }
+
+    /** 连续系数：c≥VISIBLE_SHIFT_START 为 0；到 1.0（同色）平滑升到 1（平方曲线，接缝处斜率为 0）。 */
+    private fun visibilityShift(c: Double): Float {
+        if (c >= VISIBLE_SHIFT_START) return 0f
+        val t = ((VISIBLE_SHIFT_START - c) / (VISIBLE_SHIFT_START - 1.0)).coerceIn(0.0, 1.0)
+        return (t * t).toFloat()
     }
 
     /** "#RRGGBB"（大写、去 alpha）——终端配色槽与色号直显共用。 */

@@ -28,6 +28,8 @@ import java.io.File
 private const val TINT_MASK_RGB = 0x00FFFFFF
 private const val TINT_ALPHA = 0x66
 private const val ALPHA_SHIFT = 24
+/** 常驻反选开关状态（重开工坊保持；照片生成方向 = 自动判向 ⊕ 此开关）。 */
+private const val KEY_SPLASH_INVERT = "splash_invert"
 
 /**
  * 启动工坊：96×40 洞洞板绘制开屏点阵（1 像素拆 4，屏尺寸不变仅密度翻倍）。
@@ -66,8 +68,9 @@ class SplashMakerActivity : AppCompatActivity() {
         get() = TermlouDirs.base(this)
     private val splashFile: File
         get() = File(storeDir, "splash.json")
+    private val prefs by lazy { getSharedPreferences("term-lou-settings", MODE_PRIVATE) }
     private val nightTheme: ThemeColors by lazy {
-        PaletteStore.theme(getSharedPreferences("term-lou-settings", MODE_PRIVATE))
+        PaletteStore.theme(prefs)
     }
 
     /** 画板像素渐变双色，与真正开屏（SplashView）走同一推导。 */
@@ -76,14 +79,17 @@ class SplashMakerActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         loadCustom()
+        invertEnabled = prefs.getBoolean(KEY_SPLASH_INVERT, false)
         val theme = nightTheme
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(theme.surface)
         }
-        // 标题栏
+        // 标题栏（右侧常驻「反选」开关：手绘/保存后随时可对当前点阵整体反色，
+        // 取景态则决定照片生成方向——不再只在导入照片后才出现）
         root.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
             setBackgroundColor(theme.surfaceVariant)
             setPadding((16 * density()).toInt(), (12 * density()).toInt(), (16 * density()).toInt(), (12 * density()).toInt())
             addView(TextView(this@SplashMakerActivity).apply {
@@ -92,6 +98,38 @@ class SplashMakerActivity : AppCompatActivity() {
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
                 textSize = UiTokens.TEXT_TITLE
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(TextView(this@SplashMakerActivity).apply {
+                text = getString(R.string.sm_invert)
+                setTextColor(theme.onSurface)
+                textSize = UiTokens.TEXT_BODY
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = (8 * density()).toInt() }
+            })
+            addView(MaterialSwitch(ContextThemeWrapper(this@SplashMakerActivity, R.style.Theme_TermLou_Switch)).apply {
+                showText = false
+                isChecked = invertEnabled
+                thumbTintList = ColorStateList(
+                    arrayOf(
+                        intArrayOf(android.R.attr.state_checked),
+                        intArrayOf(-android.R.attr.state_checked)
+                    ),
+                    intArrayOf(theme.primaryVisible, theme.outline)
+                )
+                trackTintList = ColorStateList(
+                    arrayOf(
+                        intArrayOf(android.R.attr.state_checked),
+                        intArrayOf(-android.R.attr.state_checked)
+                    ),
+                    intArrayOf(
+                        (theme.primaryVisible and TINT_MASK_RGB) or (TINT_ALPHA shl ALPHA_SHIFT),
+                        (theme.outline and TINT_MASK_RGB) or (TINT_ALPHA shl ALPHA_SHIFT)
+                    )
+                )
+                // 先赋 isChecked 再挂监听：初值不触发反色，后续每次切换走 onInvertToggled
+                setOnCheckedChangeListener { _, c -> onInvertToggled(c) }
             })
         })
         // 洞洞板 + 照片取景框
@@ -108,74 +146,37 @@ class SplashMakerActivity : AppCompatActivity() {
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.MATCH_PARENT
         ).apply { weight = 1f })
-        // 取景态工具栏：名称排 + 控件排（清晰度滑块 70% + 右侧反色开关）
+        // 取景态工具栏：清晰度滑块（反选开关已常驻标题栏，此处不再重复）
         styleBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
             setPadding((12 * density()).toInt(), (8 * density()).toInt(), (12 * density()).toInt(), 0)
-            addView(LinearLayout(this@SplashMakerActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                addView(TextView(this@SplashMakerActivity).apply {
-                    text = getString(R.string.sm_clarity)
-                    setTextColor(theme.onSurface)
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.7f)
-                })
-                addView(TextView(this@SplashMakerActivity).apply {
-                    text = getString(R.string.sm_invert)
-                    setTextColor(theme.onSurface)
-                    gravity = android.view.Gravity.END
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.3f)
-                })
+            addView(TextView(this@SplashMakerActivity).apply {
+                text = getString(R.string.sm_clarity)
+                setTextColor(theme.onSurface)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
             })
-            addView(LinearLayout(this@SplashMakerActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                addView(TickSlider(ContextThemeWrapper(this@SplashMakerActivity, R.style.Theme_TermLou_Slider)).apply {
-                    valueFrom = 0f
-                    valueTo = 18f
-                    stepSize = 1f
-                    value = 4f
-                    thumbTintList = ColorStateList.valueOf(theme.primary)
-                    trackActiveTintList = ColorStateList.valueOf(theme.primary)
-                    trackInactiveTintList = ColorStateList.valueOf(theme.outline)
-                    haloTintList = ColorStateList.valueOf((theme.primary and 0x00FFFFFF) or (0x33 shl 24))
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.7f)
-                    addOnChangeListener { _, v, _ ->
-                        grayBands = v.toInt() + 2
-                        if (isPhotoSampling) generatePhotoCells()
-                    }
-                })
-                addView(LinearLayout(this@SplashMakerActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = android.view.Gravity.END or android.view.Gravity.CENTER_VERTICAL
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 0.3f)
-                    addView(MaterialSwitch(ContextThemeWrapper(this@SplashMakerActivity, R.style.Theme_TermLou_Switch)).apply {
-                showText = false
-                thumbTintList = ColorStateList(
-                    arrayOf(
-                        intArrayOf(android.R.attr.state_checked),
-                        intArrayOf(-android.R.attr.state_checked)
-                    ),
-                    intArrayOf(theme.primary, theme.outline)
+            addView(TickSlider(ContextThemeWrapper(this@SplashMakerActivity, R.style.Theme_TermLou_Slider)).apply {
+                valueFrom = 0f
+                valueTo = 18f
+                stepSize = 1f
+                value = 4f
+                thumbTintList = ColorStateList.valueOf(theme.primaryVisible)
+                trackActiveTintList = ColorStateList.valueOf(theme.primaryVisible)
+                trackInactiveTintList = ColorStateList.valueOf(theme.outline)
+                haloTintList = ColorStateList.valueOf((theme.primaryVisible and 0x00FFFFFF) or (0x33 shl 24))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
                 )
-                trackTintList = ColorStateList(
-                    arrayOf(
-                        intArrayOf(android.R.attr.state_checked),
-                        intArrayOf(-android.R.attr.state_checked)
-                    ),
-                    intArrayOf(
-                        (theme.primary and TINT_MASK_RGB) or (TINT_ALPHA shl ALPHA_SHIFT),
-                        (theme.outline and TINT_MASK_RGB) or (TINT_ALPHA shl ALPHA_SHIFT)
-                    )
-                )
-                setOnCheckedChangeListener { _, c ->
-                    invertEnabled = c
+                addOnChangeListener { _, v, _ ->
+                    grayBands = v.toInt() + 2
                     if (isPhotoSampling) generatePhotoCells()
                 }
-                })
             })
-        })
         }
         root.addView(styleBar)
         // 品字四键（底栏 surfaceVariant，与弹窗工坊一致）
@@ -241,7 +242,11 @@ class SplashMakerActivity : AppCompatActivity() {
                 marginStart = (4 * density()).toInt()
                 marginEnd = (4 * density()).toInt()
             }
-            ButtonStyle.apply(this, if (primary) nightTheme.primary else nightTheme.outline)
+            ButtonStyle.apply(
+                this,
+                if (primary) nightTheme.primary else nightTheme.outline,
+                if (primary) nightTheme.primaryVisible else nightTheme.outline
+            )
             setOnClickListener {
                 if (saving) return@setOnClickListener
                 onClick()
@@ -386,6 +391,11 @@ class SplashMakerActivity : AppCompatActivity() {
         val hist = IntArray(256)
         for (g in gray) hist[g.coerceIn(0, 255)]++
         val thresholds = SplashTokens.percentileThresholds(hist, gray.size, bands)
+        // 生成方向：自动判向（背景比墨色暗则反，保证白→浅者/黑→深者，任意配色不出负片）
+        // ⊕ 常驻手动反选（想要负片效果时再翻一次）。
+        val flip = SplashTokens.autoInvert(
+            SplashTokens.splashBackground(nightTheme), splashGradient.first
+        ) xor invertEnabled
         val newSet = mutableMapOf<Pair<Int, Int>, Int>()
         for (r in 0 until rows) for (c in 0 until cols) {
             val gx = offsetX + (c + 0.5f) * pixelSize
@@ -397,7 +407,7 @@ class SplashMakerActivity : AppCompatActivity() {
                 val by = ((gy - pT) / photoH * bRows).toInt().coerceIn(0, bRows - 1)
                 v = SplashTokens.bandToLevel(SplashTokens.quantizeBands(gray[by * bCols + bx], thresholds), bands)
             }
-            val out = if (invertEnabled) SplashTokens.invertLevel(v) else v
+            val out = if (flip) SplashTokens.invertLevel(v) else v
             if (out > SplashTokens.LEVEL_OFF) newSet[r to c] = out
         }
         overlayCells = newSet
@@ -487,6 +497,24 @@ class SplashMakerActivity : AppCompatActivity() {
         board.invalidate()
     }
 
+    /**
+     * 常驻反选切换：先落盘开关状态；取景态重算生成方向（自动判向 ⊕ 开关），
+     * 否则把当前手绘/已保存点阵整体反一次并立即保存。
+     */
+    private fun onInvertToggled(c: Boolean) {
+        invertEnabled = c
+        prefs.edit().putBoolean(KEY_SPLASH_INVERT, c).apply()
+        if (isPhotoSampling) generatePhotoCells() else invertAllCells()
+    }
+
+    /** 当前点阵整体反色并立即落盘（空板 = 默认 LOGO，无可反对象，仅开关状态生效）。 */
+    private fun invertAllCells() {
+        if (cells.isEmpty()) return
+        for (k in cells.keys.toList()) cells[k] = SplashTokens.invertLevel(cells[k] ?: continue)
+        persistCells()
+        board.invalidate()
+    }
+
     private fun clearAll() {
         // 有照片时：一并清除导入的照片及生成的轮廓，回到手绘板
         if (isPhotoSampling) cancelPhotoSampling()
@@ -502,7 +530,7 @@ class SplashMakerActivity : AppCompatActivity() {
         else cells.map { (p, v) -> SplashTokens.SplashCell(p.first, p.second, v) }
         // 全屏底仅动画（无进度条/文字），叠加在现有界面之上，结束即移除，不重建视图
         val overlay = FrameLayout(this).apply {
-            setBackgroundColor(if (nightTheme.night) Color.BLACK else 0xFFF5F5F5.toInt())
+            setBackgroundColor(SplashTokens.splashBackground(nightTheme))
         }
         val sv = SplashView(this, cellsData, showProgress = false)
         overlay.addView(sv, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
@@ -520,22 +548,27 @@ class SplashMakerActivity : AppCompatActivity() {
         saving = true
         try {
             if (isPhotoSampling) commitPhotoSampling()
-            storeDir.mkdirs()
-            val obj = MiniJson.Obj()
-            obj.put("rows", SplashTokens.ROWS).put("cols", SplashTokens.COLS)
-            val arr = MiniJson.Arr()
-            val sorted = cells.keys.sortedWith(compareBy({ it.first }, { it.second }))
-            for ((r, c) in sorted) {
-                arr.put(MiniJson.Obj().put("r", r).put("c", c).put("v", cells[r to c] ?: SplashTokens.LEVEL_FULL))
-            }
-            obj.put("cells", arr)
-            val tmp = File(splashFile.parentFile, "splash.json.tmp")
-            tmp.writeText(obj.toString())
-            tmp.renameTo(splashFile)
+            persistCells()
             finish()
         } catch (e: Exception) {
             saving = false
         }
+    }
+
+    /** 点阵落盘：tmp + rename 原子替换（save 与常驻反选共用）。 */
+    private fun persistCells() {
+        storeDir.mkdirs()
+        val obj = MiniJson.Obj()
+        obj.put("rows", SplashTokens.ROWS).put("cols", SplashTokens.COLS)
+        val arr = MiniJson.Arr()
+        val sorted = cells.keys.sortedWith(compareBy({ it.first }, { it.second }))
+        for ((r, c) in sorted) {
+            arr.put(MiniJson.Obj().put("r", r).put("c", c).put("v", cells[r to c] ?: SplashTokens.LEVEL_FULL))
+        }
+        obj.put("cells", arr)
+        val tmp = File(splashFile.parentFile, "splash.json.tmp")
+        tmp.writeText(obj.toString())
+        tmp.renameTo(splashFile)
     }
 
     /** 洞洞板：96×40 网格，未绘制均一暗色；有像素以品牌渐变显示，亮度跟灰阶档；越界白圈呼吸（采样态禁用）。 */
@@ -561,7 +594,7 @@ class SplashMakerActivity : AppCompatActivity() {
             offsetY = (h - totalH) / 2f
             backdropShader = RadialGradient(
                 offsetX + totalW / 2f, offsetY + totalH / 2f, totalW * 1.1f,
-                intArrayOf(UiTokens.backdropGlow, 0x00000000), null, Shader.TileMode.CLAMP
+                intArrayOf(SplashTokens.splashGlow(nightTheme), 0x00000000), null, Shader.TileMode.CLAMP
             )
         }
 
@@ -596,7 +629,8 @@ class SplashMakerActivity : AppCompatActivity() {
         }
 
         init {
-            setBackgroundColor(if (nightTheme.night) 0xFF141414.toInt() else 0xFFF5F5F5.toInt())
+            // 与真正开屏同源（SplashTokens.splashBackground）：调色盘档=自定义背景，off 档昼夜默认
+            setBackgroundColor(SplashTokens.splashBackground(nightTheme))
         }
 
         private var sampleDownX = 0f
@@ -758,7 +792,7 @@ class SplashMakerActivity : AppCompatActivity() {
                     canvas.drawRect(0f, 0f, canvas.width.toFloat(), canvas.height.toFloat(), bgPaint2)
                     bgPaint2.shader = null
                 } else {
-                    canvas.drawColor(0xFF141414.toInt())
+                    canvas.drawColor(SplashTokens.splashBackground(nightTheme))
                 }
             } else {
                 canvas.drawColor(Color.TRANSPARENT)

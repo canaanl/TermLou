@@ -25,6 +25,8 @@ class AppScope(
     var cOnSurface = 0
     var cOnSurfaceVariant = 0
     var cPrimary = 0
+    /** 品牌色的可见变体（ThemeColors.primaryVisible）：文字/图标/描边等需在背景上可辨的场合用它。 */
+    var cPrimaryVisible = 0
     var cError = 0
     var cTertiary = 0
     var cSecondaryContainer = 0

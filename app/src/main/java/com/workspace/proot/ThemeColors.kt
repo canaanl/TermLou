@@ -30,6 +30,9 @@ data class ThemeColors(
     val onSurface: Int = 0xFFFFFFFF.toInt(),
     val onSurfaceVariant: Int = 0xFF888888.toInt(),
     val primary: Int = 0xFF2D7D46.toInt(),
+    /** 品牌色的可见变体（ColorMath.visibleVariant）：远处=primary 零漂移，相近时自动向反色偏移。
+     *  描边/文字/图标/粒子等需在背景上可辨的场合用它；品牌填充仍用 primary。 */
+    val primaryVisible: Int = primary,
     val error: Int = 0xFFC0392B.toInt(),
     val tertiary: Int = 0xFF0E639C.toInt(),
     val onPrimary: Int = 0xFFFFFFFF.toInt(),
@@ -130,9 +133,12 @@ data class ThemeColors(
             val ink = ColorMath.inkOf(bg)
             // 对比度择优即明暗判定：交叉点亮度 ≤0.1791 → 深底白字。
             val dark = ink == WHITE
-            val primaryContainer = ColorMath.mix(bg, seed, 0.20f)
-            val secondary = ColorMath.mix(bg, seed, 0.50f)
-            val secondaryContainer = ColorMath.mix(bg, seed, 0.28f)
+            // 品牌色的可见变体：与背景拉开距离时=原色零漂移；趋于同色时连续推向反色
+            // （描边、文字、图标、粒子、容器混色都用它，杜绝品牌色≈背景时的不可见）。
+            val primaryVisible = ColorMath.visibleVariant(seed, bg)
+            val primaryContainer = ColorMath.mix(bg, primaryVisible, 0.20f)
+            val secondary = ColorMath.mix(bg, primaryVisible, 0.50f)
+            val secondaryContainer = ColorMath.mix(bg, primaryVisible, 0.28f)
             val surfaceVariant = ColorMath.mix(bg, ink, 0.07f)
             // 彩色语义槽：色相固定取品牌锚点（红/蓝可识别），明度档随背景亮度走。
             val error = retone(ANCHOR_LIGHT.error, if (dark) ERROR_TONE_DARK else ERROR_TONE_LIGHT)
@@ -165,6 +171,7 @@ data class ThemeColors(
                 onSurface = ink,
                 onSurfaceVariant = ColorMath.readableMix(bg, ink),
                 primary = seed,
+                primaryVisible = primaryVisible,
                 error = error,
                 tertiary = tertiary,
                 onPrimary = ColorMath.inkOf(seed),
@@ -180,7 +187,7 @@ data class ThemeColors(
                 errorContainer = errorContainer,
                 onErrorContainer = ColorMath.inkOf(errorContainer),
                 outlineVariant = ColorMath.mix(bg, ink, if (dark) 0.12f else 0.32f),
-                surfaceTint = seed
+                surfaceTint = primaryVisible
             )
         }
 

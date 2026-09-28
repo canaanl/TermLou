@@ -132,4 +132,53 @@ class PaletteThemeTest {
         assertEquals("#FFFFFF", ColorMath.hex(0xFFFFFFFF.toInt()))
         assertEquals("#000000", ColorMath.hex(0xFF000000.toInt()))
     }
+
+    // ===== 可见性连续系数（visibleVariant） =====
+
+    @Test
+    fun visibleVariantKeepsBrandWhenColorsAreClearlyApart() {
+        // 对比度 ≥2.6（常规配色）→ 推导色与品牌色逐位一致，零漂移
+        assertEquals(ThemeColors.SEED, ColorMath.visibleVariant(ThemeColors.SEED, 0xFF101418.toInt()))
+        assertEquals(ThemeColors.SEED, ColorMath.visibleVariant(ThemeColors.SEED, 0xFFFFFFFF.toInt()))
+        // 调色盘 off 档结构性零漂移
+        assertEquals(ThemeColors.default(true).primary, ThemeColors.default(true).primaryVisible)
+        assertEquals(ThemeColors.default(false).primary, ThemeColors.default(false).primaryVisible)
+        // off 档上 gradientPair 的第一色也保持品牌常量
+        assertEquals(UiTokens.primaryGreen, SplashTokens.gradientPair(ThemeColors.default(true)).first)
+    }
+
+    @Test
+    fun visibleVariantConvergesToInkOnIdenticalColor() {
+        // 同色（k=1）→ 直接落到背景反色上，任意背景 ≥4.5:1
+        for (bg in backgrounds) {
+            val v = ColorMath.visibleVariant(bg, bg)
+            assertEquals("bg ${ColorMath.hex(bg)}", ColorMath.inkOf(bg), v)
+            assertTrue("bg ${ColorMath.hex(bg)}", ColorMath.contrast(v, bg) >= 4.5)
+        }
+    }
+
+    @Test
+    fun visibleVariantShiftGrowsAsColorsApproach() {
+        // 沿品牌绿 → 背景逼近：偏离品牌色的幅度单调增大（连续系数，无阈值跳变）
+        val bg = 0xFF1E1E1E.toInt()
+        var prev = 1.0
+        for (t in listOf(0f, 0.4f, 0.7f, 0.9f, 1f)) {
+            val brand = ColorMath.mix(ThemeColors.SEED, bg, t)
+            val dev = ColorMath.contrast(ColorMath.visibleVariant(brand, bg), brand)
+            assertTrue("t=$t dev=$dev", dev >= prev - 1e-6)
+            prev = dev
+        }
+    }
+
+    @Test
+    fun paletteThemeDerivesVisibleBrandOnlyWhenClose() {
+        // 常规（绿 on 深底 / 绿 on 白）→ primaryVisible == seed；seed==bg → ink
+        val far = palette(0xFF101418.toInt(), ThemeColors.SEED)
+        assertEquals(ThemeColors.SEED, far.primaryVisible)
+        val same = palette(0xFFFFFFFF.toInt(), 0xFFFFFFFF.toInt())
+        assertEquals(0xFF000000.toInt(), same.primaryVisible)
+        assertEquals(0xFFFFFFFF.toInt(), same.primary)  // 品牌填充仍是原色
+        // 混出的容器/次色用推导色参与：同色档下 secondary 拉开
+        assertTrue(ColorMath.contrast(same.secondary, same.surface) > 2.0)
+    }
 }

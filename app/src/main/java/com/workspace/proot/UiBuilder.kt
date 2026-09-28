@@ -36,7 +36,7 @@ class UiBuilder(
         }
         val tabIndicator = View(activity).apply {
             background = GradientDrawable().apply {
-                setColor(theme.primary)
+                setColor(theme.primaryVisible)
                 cornerRadius = 0f
             }
             layoutParams = FrameLayout.LayoutParams(1, (3 * density).toInt()).apply {
@@ -84,10 +84,10 @@ class UiBuilder(
         })
         val setupBtn = Button(activity).apply {
             text = activity.getString(R.string.setup_extract)
-            setTextColor(theme.primary)
+            setTextColor(theme.primaryVisible)
             textSize = UiTokens.TEXT_BODY
             setOnClickListener { onInstallClick(this) }
-            ButtonStyle.outlined(this, theme.primary)
+            ButtonStyle.outlined(this, theme.primaryVisible)
         }
         val progressBar = android.widget.ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 48)

@@ -30,7 +30,7 @@ object DialogStyler {
             dialog.getButton(which)?.let {
                 it.setTextColor(
                     when (which) {
-                        AlertDialog.BUTTON_POSITIVE -> theme.primary
+                        AlertDialog.BUTTON_POSITIVE -> theme.primaryVisible
                         AlertDialog.BUTTON_NEUTRAL -> theme.error
                         else -> theme.onSurface
                     }

@@ -85,7 +85,7 @@ class ShortcutGroupActivity : Activity() {
 
         val exitBtn = Button(this).apply {
             text = getString(R.string.sc_exit_group)
-            setTextColor(theme.primary)
+            setTextColor(theme.primaryVisible)
             textSize = UiTokens.TEXT_BODY
             isAllCaps = true
             setPadding(0, (12 * d).toInt(), 0, (12 * d).toInt())
@@ -93,7 +93,7 @@ class ShortcutGroupActivity : Activity() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
-            ButtonStyle.outlined(this, theme.primary)
+            ButtonStyle.outlined(this, theme.primaryVisible)
             setOnClickListener { finish() }
         }
         root.addView(exitBtn)

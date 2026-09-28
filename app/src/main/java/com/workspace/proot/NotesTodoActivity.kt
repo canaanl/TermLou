@@ -200,7 +200,7 @@ class NotesTodoActivity : NotesPageActivity() {
             tag = "row:" + item.id
             addView(TextView(this@NotesTodoActivity).apply {
                 text = if (item.done) "☑" else "☐"
-                setTextColor(if (item.done) theme.primary else theme.onSurface)
+                setTextColor(if (item.done) theme.primaryVisible else theme.onSurface)
                 textSize = UiTokens.TEXT_TITLE
                 setPadding(0, 0, (10 * d).toInt(), 0)
             })
