@@ -103,6 +103,14 @@
             android:taskAffinity=".trampoline"
             android:theme="@style/Theme.TermLou.Transparent" />
 
+        <activity
+            android:name="com.workspace.proot.TileDrawerTrampolineActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=".trampoline"
+            android:theme="@style/Theme.TermLou.Transparent" />
+
         <service
             android:name=".TermlouCommandRunner"
             android:foregroundServiceType="specialUse"

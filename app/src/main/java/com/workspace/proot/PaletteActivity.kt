@@ -10,20 +10,26 @@ import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.Editable
+import android.text.InputType
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
+/** 色号输入合法字符（输入期间原样显示，失焦归一为大写）。 */
+private const val HEX_CHARS = "0123456789abcdefABCDEF"
+
 /**
- * 调色盘工坊：手动可设仅「背景色 + 主题色」两项，SV 取色方块 + 色相条实时取色；
- * 微调（H/S/V）滑杆 + 色号直显 + 预览色块（不打字，全靠可见输入）；
+ * 调色盘工坊：手动可设仅「背景色 + 主题色」两项，SV 取色方块 + 色相条实时取色，
+ * 当前色支持色号直接输入（满 6 位实时联动取色器，3 位简写失焦展开）；
  * 其余槽位由背景按对比度规则自动计算，只读展示；预览卡用候选色实时合成验证可读性。
  * 保存/恢复默认均 commit 后置 ThemeSwap 并 finish：回主界面即刻换色重建，
  * 不播开屏、终端会话与滚动缓冲保留。
@@ -45,9 +51,7 @@ class PaletteActivity : AppCompatActivity() {
     private lateinit var svSquare: SvSquareView
     private lateinit var hueStrip: HueStripView
     private lateinit var swatchBg: GradientDrawable
-    private lateinit var advSwatchBg: GradientDrawable
-    private lateinit var hexText: TextView
-    private lateinit var advHexText: TextView
+    private lateinit var hexText: EditText
     private lateinit var previewCard: LinearLayout
     private lateinit var previewTitle: TextView
     private lateinit var previewBody: TextView
@@ -55,14 +59,6 @@ class PaletteActivity : AppCompatActivity() {
     private lateinit var previewStripText: TextView
     private lateinit var previewBtnBg: GradientDrawable
     private lateinit var previewBtnText: TextView
-    private lateinit var advPanel: LinearLayout
-    private lateinit var advAction: TextView
-    private lateinit var seekH: SeekBar
-    private lateinit var seekS: SeekBar
-    private lateinit var seekV: SeekBar
-    private lateinit var hueVal: TextView
-    private lateinit var satVal: TextView
-    private lateinit var valVal: TextView
     private lateinit var derived: ThemeColors
 
     private class ChipViews(val swatch: View, val hex: TextView, val pick: (ThemeColors) -> Int)
@@ -198,7 +194,7 @@ class PaletteActivity : AppCompatActivity() {
         ).apply { topMargin = dp(8) }
         form.addView(hueStrip, hueParams)
 
-        // 当前色行：色块 + 色号直显（微调面板的预览色框见下）
+        // 当前色行：色块 + 色号直接输入（# 为固定前缀，满 6 位实时联动上方取色器）
         val currentRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -207,12 +203,40 @@ class PaletteActivity : AppCompatActivity() {
         val swatch = View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)) }
         swatchBg = GradientDrawable().apply { cornerRadius = dpF(10) }
         swatch.background = swatchBg
-        hexText = TextView(this).apply {
+        hexText = EditText(this).apply {
             textSize = 17f
             typeface = Typeface.MONOSPACE
-            setPadding(dp(12), 0, 0, 0)
+            setTextColor(base.onSurface)
+            background = null
+            isSingleLine = true
+            setPadding(0, 0, dp(6), 0)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+                InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+                override fun afterTextChanged(s: Editable?) {
+                    val raw = s?.toString() ?: return
+                    val cleaned = raw.filter { it in HEX_CHARS }.take(6)
+                    if (cleaned != raw) {
+                        val sel = selectionStart
+                        s.replace(0, s.length, cleaned)
+                        setSelection(sel.coerceAtMost(cleaned.length))
+                        return // 替换已同步递归进本 watcher，6 位时已应用
+                    }
+                    if (cleaned.length == 6) applyHex(cleaned)
+                }
+            })
+            setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) normalizeHex() }
         }
         currentRow.addView(swatch)
+        currentRow.addView(TextView(this).apply {
+            text = "#"
+            textSize = 17f
+            typeface = Typeface.MONOSPACE
+            setTextColor(base.onSurface)
+            setPadding(dp(12), 0, 0, 0)
+        })
         currentRow.addView(hexText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         currentRow.addView(TextView(this).apply {
             text = getString(R.string.palette_current)
@@ -220,60 +244,6 @@ class PaletteActivity : AppCompatActivity() {
             setTextColor(base.onSurfaceVariant)
         })
         form.addView(currentRow)
-
-        // ===== 微调：H/S/V 滑杆 + 色号直显 + 预览色框 =====
-        val advRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(16), 0, dp(4))
-            isClickable = true
-        }
-        advRow.addView(TextView(this).apply {
-            text = getString(R.string.palette_advanced)
-            setTextColor(base.onSurface)
-            textSize = UiTokens.TEXT_BODY
-            typeface = Typeface.DEFAULT_BOLD
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        })
-        advAction = TextView(this).apply {
-            setTextColor(base.primaryVisible)
-            textSize = UiTokens.TEXT_COMPACT
-        }
-        advRow.addView(advAction)
-        form.addView(advRow)
-
-        advPanel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-        }
-        seekH = sliderRow(getString(R.string.palette_hue), 360,
-            onUser = { p -> hsv[0] = p.toFloat(); commitHsv() },
-            register = { hueVal = it })
-        seekS = sliderRow(getString(R.string.palette_sat), 100,
-            onUser = { p -> hsv[1] = p / 100f; commitHsv() },
-            register = { satVal = it })
-        seekV = sliderRow(getString(R.string.palette_value), 100,
-            onUser = { p -> hsv[2] = p / 100f; commitHsv() },
-            register = { valVal = it })
-        // 预览色框：候选色大色块 + 色号（直观可见，不靠手打）
-        val advPreviewRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(10), 0, 0)
-        }
-        val advSwatch = View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(56), dp(56)) }
-        advSwatchBg = GradientDrawable().apply { cornerRadius = dpF(12) }
-        advSwatch.background = advSwatchBg
-        advHexText = TextView(this).apply {
-            textSize = 20f
-            typeface = Typeface.MONOSPACE
-            setPadding(dp(14), 0, 0, 0)
-        }
-        advPreviewRow.addView(advSwatch)
-        advPreviewRow.addView(advHexText)
-        advPanel.addView(advPreviewRow)
-        advRow.setOnClickListener { toggleAdvanced() }
-        form.addView(advPanel)
 
         // ===== 自动派生色（只读） =====
         form.addView(sectionLabel(getString(R.string.palette_derived)))
@@ -350,47 +320,6 @@ class PaletteActivity : AppCompatActivity() {
         setPadding(0, dp(12), 0, dp(6))
     }
 
-    private fun sliderRow(
-        label: String,
-        max: Int,
-        onUser: (Int) -> Unit,
-        register: (TextView) -> Unit
-    ): SeekBar {
-        val head = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        val labelText = TextView(this).apply {
-            text = label
-            setTextColor(base.onSurfaceVariant)
-            textSize = UiTokens.TEXT_COMPACT
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val valueText = TextView(this).apply {
-            setTextColor(base.onSurface)
-            textSize = UiTokens.TEXT_COMPACT
-            typeface = Typeface.MONOSPACE
-        }
-        register(valueText)
-        head.addView(labelText)
-        head.addView(valueText)
-        advPanel.addView(head)
-        val seek = SeekBar(this).apply {
-            this.max = max
-            setPadding(0, 0, 0, dp(6))
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(sb: SeekBar, progress: Int, fromUser: Boolean) {
-                    if (fromUser) onUser(progress)
-                }
-
-                override fun onStartTrackingTouch(sb: SeekBar) = Unit
-                override fun onStopTrackingTouch(sb: SeekBar) = Unit
-            })
-        }
-        advPanel.addView(seek)
-        return seek
-    }
-
     private fun addChip(parent: LinearLayout, labelRes: Int, pick: (ThemeColors) -> Int) {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -424,6 +353,12 @@ class PaletteActivity : AppCompatActivity() {
     private fun selectTarget(seedTarget: Boolean) {
         editingSeed = seedTarget
         Color.colorToHSV(if (editingSeed) seed else bg, hsv)
+        // 目标切换是显式动作：无视焦点强制刷新色号输入框
+        val digits = ColorMath.hex(if (editingSeed) seed else bg).removePrefix("#")
+        if (hexText.text.toString() != digits) {
+            hexText.setText(digits)
+            hexText.setSelection(digits.length)
+        }
         paintTargetChips()
         renderAll()
     }
@@ -447,27 +382,50 @@ class PaletteActivity : AppCompatActivity() {
         style(targetSeedChip, editingSeed)
     }
 
-    /** 取色器/滑杆写入 hsv 后统一提交：只写当前目标，不做 HSV 往返（保住灰阶下的色相）。 */
+    /** 取色器写入 hsv 后统一提交：只写当前目标，不做 HSV 往返（保住灰阶下的色相）。 */
     private fun commitHsv() {
         val c = Color.HSVToColor(hsv)
         if (editingSeed) seed = c else bg = c
         renderAll()
     }
 
+    /**
+     * 色号输入满 6 位：精确 RGB 直写当前目标（不经 HSV 往返，色号逐位准确），
+     * hsv 数组仅同步取色器标记位置——SV 方块白圈与色相条竖线随之跳到对应位置。
+     */
+    private fun applyHex(hex6: String) {
+        val c = Color.parseColor("#$hex6")
+        if (c == (if (editingSeed) seed else bg)) return // 程序化回写/重复触发
+        if (editingSeed) seed = c else bg = c
+        Color.colorToHSV(c, hsv)
+        renderAll()
+    }
+
+    /** 失焦归一化：3 位简写展开成 6 位并应用；6 位转大写；不满/非法回滚为当前色号。 */
+    private fun normalizeHex() {
+        val digits = hexText.text.toString().filter { it in HEX_CHARS }
+        val expanded = if (digits.length == 3) digits.map { it.toString().repeat(2) }.joinToString("") else null
+        if (expanded != null) applyHex(expanded)
+        val canonical = ColorMath.hex(if (editingSeed) seed else bg).removePrefix("#")
+        if (hexText.text.toString() != canonical) {
+            hexText.setText(canonical)
+            hexText.setSelection(canonical.length)
+        }
+    }
+
     private fun renderAll() {
         val cur = if (editingSeed) seed else bg
         swatchBg.setColor(cur)
-        hexText.text = ColorMath.hex(cur)
-        advSwatchBg.setColor(cur)
-        advHexText.text = ColorMath.hex(cur)
+        // 聚焦输入时不回写（用户正在打字），失焦后由 normalizeHex 归一
+        if (!hexText.hasFocus()) {
+            val digits = ColorMath.hex(cur).removePrefix("#")
+            if (hexText.text.toString() != digits) {
+                hexText.setText(digits)
+                hexText.setSelection(digits.length)
+            }
+        }
         svSquare.setHsv(hsv[0], hsv[1], hsv[2])
         hueStrip.setHue(hsv[0])
-        seekH.progress = hsv[0].toInt().coerceIn(0, seekH.max)
-        seekS.progress = (hsv[1] * 100f).toInt().coerceIn(0, seekS.max)
-        seekV.progress = (hsv[2] * 100f).toInt().coerceIn(0, seekV.max)
-        hueVal.text = "${hsv[0].toInt()}°"
-        satVal.text = "${(hsv[1] * 100f).toInt()}%"
-        valVal.text = "${(hsv[2] * 100f).toInt()}%"
         renderPreview()
     }
 
@@ -488,12 +446,6 @@ class PaletteActivity : AppCompatActivity() {
             (chip.swatch.background as GradientDrawable).setColor(c)
             chip.hex.text = ColorMath.hex(c)
         }
-    }
-
-    private fun toggleAdvanced() {
-        val open = advPanel.visibility != View.VISIBLE
-        advPanel.visibility = if (open) View.VISIBLE else View.GONE
-        advAction.text = getString(if (open) R.string.palette_advanced_close else R.string.palette_advanced_open)
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()

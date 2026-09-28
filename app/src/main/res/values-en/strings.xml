@@ -56,12 +56,6 @@
     <string name="palette_preview">Live preview</string>
     <string name="palette_pick">Pick a color</string>
     <string name="palette_current">Current color</string>
-    <string name="palette_advanced">Fine-tune (H/S/V + hex)</string>
-    <string name="palette_advanced_open">SHOW ▾</string>
-    <string name="palette_advanced_close">HIDE ▸</string>
-    <string name="palette_hue">Hue</string>
-    <string name="palette_sat">Saturation</string>
-    <string name="palette_value">Value</string>
     <string name="palette_hex">Hex</string>
     <string name="palette_derived">Derived from background (not settable)</string>
     <string name="palette_chip_font">Font &amp; icons</string>

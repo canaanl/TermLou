@@ -56,12 +56,6 @@
     <string name="palette_preview">效果预览</string>
     <string name="palette_pick">取色</string>
     <string name="palette_current">当前色</string>
-    <string name="palette_advanced">微调（H/S/V + 色号）</string>
-    <string name="palette_advanced_open">展开 ▾</string>
-    <string name="palette_advanced_close">收起 ▸</string>
-    <string name="palette_hue">色相</string>
-    <string name="palette_sat">饱和度</string>
-    <string name="palette_value">明度</string>
     <string name="palette_hex">色号</string>
     <string name="palette_derived">以下颜色由背景自动计算（不可设置）</string>
     <string name="palette_chip_font">字体 · 图标</string>

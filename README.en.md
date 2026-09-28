@@ -41,7 +41,7 @@ Beyond that core, TermLou also grew a complete **notes & todo system** (usable i
 | ⚙️ **Native PTY** | Custom JNI `libtermux.so` (`termux_pty.cpp`) as the PTY backend for the Termux `terminal-view` renderer |
 | 🛡️ **Hardening** | Path-escape guards, 128KB output truncation, command timeout kill, resource caps |
 | 🌍 **Bilingual** | Chinese/English switch, applied on restart |
-| 🌈 **Color Palette** | Set just background + theme green; fonts/icons/cards/terminal auto-derived with contrast guarantees (≥4.5:1), real color picker + H/S/V hex fine-tune, colors swap instantly on save, one tap to restore defaults; brand elements too close to the background auto-derive stroke/text/icon/particle colors via a continuous coefficient |
+| 🌈 **Color Palette** | Set just background + theme green; fonts/icons/cards/terminal auto-derived with contrast guarantees (≥4.5:1), real color picker + hex input that live-syncs the picker, colors swap instantly on save, one tap to restore defaults; brand elements too close to the background auto-derive stroke/text/icon/particle colors via a continuous coefficient |
 
 ---
 

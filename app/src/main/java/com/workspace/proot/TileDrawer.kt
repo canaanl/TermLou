@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.MotionEvent
@@ -15,6 +16,37 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
+/**
+ * 抽屉预取缓存：磁贴 onStartListening（下拉面板展开时）填充收藏列表与已解码图标，
+ * 点击后经跳板延迟弹出时零 binder/零解码——把重活从「弹出瞬间」挪到「面板展开时」，
+ * 消除抽屉弹出卡顿。进程级共享（磁贴服务填充 → 跳板 Activity 消费）。
+ */
+object TileDrawerCache {
+    @Volatile
+    var apps: List<FavoriteApp> = emptyList()
+        private set
+
+    @Volatile
+    var icons: Map<String, Drawable> = emptyMap()
+        private set
+
+    fun prefetch(ctx: Context) {
+        val list = SettingsManager(ctx.getSharedPreferences("term-lou-settings", Context.MODE_PRIVATE))
+            .loadFavoriteApps()
+        icons = if (list.size > 1) {
+            val pm = ctx.packageManager
+            buildMap {
+                for (a in list) {
+                    runCatching { pm.getApplicationIcon(a.pkg) }.getOrNull()?.let { put(a.pkg, it) }
+                }
+            }
+        } else {
+            emptyMap()
+        }
+        apps = list
+    }
+}
+
 class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) {
 
     private val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -25,12 +57,12 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
     private var shown = false
 
     fun show() {
-        if (shown || apps.isEmpty()) return
+        if (shown || apps.isEmpty() || active != null) return
         shown = true
+        active = this
 
         val density = ctx.resources.displayMetrics.density
         val itemH = (58 * density).toInt()
-        val hMargin = (8 * density).toInt()
 
         val maxRows = 4
         val rows = maxOf(1, minOf(apps.size, maxRows))
@@ -79,9 +111,10 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
             p.addView(body)
         }
 
+        //通栏全宽、底边直接贴屏幕底端（cornerRadii 本就底角 0，边距与贴底设计相悖，归零）
         frame.addView(panel, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM
-        ).apply { setMargins(hMargin, 0, hMargin, dp(14)) })
+        ).apply { setMargins(0, 0, 0, 0) })
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -98,6 +131,7 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
         val result = runCatching { wm.addView(frame, params) }
         if (result.isFailure) {
             shown = false
+            active = null
             return
         }
 
@@ -134,7 +168,8 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
                 dismiss()
             }
         }
-        val icon = runCatching { ctx.packageManager.getApplicationIcon(app.pkg) }.getOrNull()
+        val icon = TileDrawerCache.icons[app.pkg]
+            ?: runCatching { ctx.packageManager.getApplicationIcon(app.pkg) }.getOrNull()
         if (icon != null) {
             val s = dp(26)
             icon.setBounds(0, 0, s, s)
@@ -170,6 +205,7 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
     fun dismiss() {
         if (!shown) return
         shown = false
+        active = null
         val f = root
         if (f != null) {
             animateDismiss(f)
@@ -188,5 +224,11 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
                     wm.removeView(f)
                 }
             }.start()
+    }
+
+    companion object {
+        /** 进程级单例闸：跳板冷启动补发可能重复触发 show，只允许同时存在一层抽屉。 */
+        @Volatile
+        private var active: TileDrawer? = null
     }
 }
