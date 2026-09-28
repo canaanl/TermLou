@@ -1,5 +1,7 @@
 package com.workspace.proot
 
+import android.animation.ObjectAnimator
+import android.animation.StateListAnimator
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -66,6 +68,11 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
         val density = ctx.resources.displayMetrics.density
         val itemH = (58 * density).toInt()
 
+        // 拟物实心（5.8.0）：底色/字色/握把全部取自 app 当前主题，与 app 内部同源
+        val colors = SolidPanel.of(
+            PaletteStore.theme(ctx.getSharedPreferences("term-lou-settings", Context.MODE_PRIVATE))
+        )
+
         val maxRows = 4
         val rows = maxOf(1, minOf(apps.size, maxRows))
         val colHeight = rows * itemH + (18 * density).toInt()
@@ -76,16 +83,22 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
             setOnClickListener { dismiss() }
         }
 
-        panel = GlassPanelView(ctx).apply {
+        panel = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.BOTTOM
-            // 液态玻璃底（5.6.0）：渐变透底 + 折射高光描边 + 顶角聚光 + 流光 + 手指光斑，
-            // 形状与原 cornerRadii 一致（顶角 20dp、底角 0 贴边）
-            background = GlassPanelDrawable(density).also { glass = it }
+            // 拟物实心板（5.8.1）：纯 app 背景色，顶角 20dp / 底角 0；
+            // 立体感全部由每行的机械键盘式按键承担（顶边棱线与上方落影已按反馈删除）
+            background = GradientDrawable().apply {
+                setColor(colors.panel)
+                cornerRadii = floatArrayOf(
+                    20 * density, 20 * density, 20 * density, 20 * density,
+                    0f, 0f, 0f, 0f
+                )
+            }
         }.also { p ->
             val topGlow = View(ctx).apply {
                 background = GradientDrawable().apply {
-                    setColor(UiTokens.whiteFaint)
+                    setColor(colors.grip)
                     cornerRadius = 2 * density
                 }
             }
@@ -103,7 +116,7 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, colHeight)
             }
             val inner = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-            for (app in apps) inner.addView(appRow(app, itemH))
+            for (app in apps) inner.addView(appRow(app, itemH, colors, density))
             body.addView(inner, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             p.addView(body)
         }
@@ -144,10 +157,6 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
                     .setDuration(300)
                     .setInterpolator(DecelerateInterpolator(1.4f))
                     .start()
-                // 入场流光：布局稳定后扫一次（若已被移除则 isAttached 兜底跳过）
-                p.postDelayed({
-                    if (p.isAttachedToWindow) (p.background as? GlassPanelDrawable)?.startSheen()
-                }, 420)
                 return true
             }
         })
@@ -155,15 +164,29 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
 
     private fun dp(v: Int): Int = (v * ctx.resources.displayMetrics.density).toInt()
 
-    private fun appRow(app: FavoriteApp, itemH: Int): View {
+    private fun appRow(app: FavoriteApp, itemH: Int, colors: SolidColors, density: Float): View {
         val tv = TextView(ctx).apply {
             text = app.label
-            setTextColor(Color.WHITE)
+            setTextColor(colors.ink)
             textSize = UiTokens.TEXT_BODY
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(18), 0, 8, 0)
+            // 下内边距 = 键面下方的外投影带（[RowKeyDrawable.BAND_DP]），
+            // 文字因此仍精确居中在键面而非整个行
+            setPadding(dp(20), 0, dp(12), dp(RowKeyDrawable.BAND_DP))
             setSingleLine(true)
             elevation = 0f
+            // 机械键盘式按键（5.8.1）：静止凸起 / 按下凹陷（drawable 由 pressed 驱动），
+            // 键帽整体下沉 1.5dp——真键盘就是被压下去的；圆角取 app 按钮同款 20dp
+            background = RowKeyDrawable(colors, density)
+            val sink = ObjectAnimator.ofFloat(
+                this,
+                View.TRANSLATION_Y,
+                0f,
+                SolidPanel.sinkPx(density)
+            ).apply { duration = 60 }
+            stateListAnimator = StateListAnimator().apply {
+                addState(intArrayOf(android.R.attr.state_pressed), sink)
+            }
             setOnClickListener {
                 runCatching {
                     val intent = ctx.packageManager.getLaunchIntentForPackage(app.pkg)
@@ -184,7 +207,10 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
             if (icon != null) tv.setCompoundDrawables(icon, null, null, null)
             tv.setCompoundDrawablePadding(dp(12))
         }
+        // 键不贯穿通栏：左右各留 ROW_SIDE_GAP（= app 屏幕内容边距）留白，与 app 内按钮一致；
+        // 不加上下间距 → 面板总高公式 30dp + rows×58dp + 18dp 不变
         tv.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, itemH)
+            .apply { setMargins(dp(ROW_SIDE_GAP_DP), 0, dp(ROW_SIDE_GAP_DP), 0) }
         return tv
     }
 
@@ -194,8 +220,6 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
             MotionEvent.ACTION_DOWN -> {
                 downY = ev.rawY
                 startTrans = p.translationY
-                // 手柄按下即触发一次流光（与光斑观察互相独立，光斑由 GlassPanelView 拦截观察提供）
-                (p.background as? GlassPanelDrawable)?.startSheen()
             }
             MotionEvent.ACTION_MOVE -> {
                 val dy = ev.rawY - downY
@@ -215,7 +239,6 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
         if (!shown) return
         shown = false
         active = null
-        (panel?.background as? GlassPanelDrawable)?.cancelAnimations()
         val f = root
         if (f != null) {
             animateDismiss(f)
@@ -237,6 +260,9 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
     }
 
     companion object {
+        /** 行键左右留白（dp）= app 屏幕内容边距，键不贯穿通栏。 */
+        private const val ROW_SIDE_GAP_DP = 16
+
         /** 进程级单例闸：跳板冷启动补发可能重复触发 show，只允许同时存在一层抽屉。 */
         @Volatile
         private var active: TileDrawer? = null

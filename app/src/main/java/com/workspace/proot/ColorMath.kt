@@ -91,6 +91,38 @@ object ColorMath {
         return ink
     }
 
+    /** 浮雕类元素（高光/暗边/落影）的最小可见混入比：起步 2%、步进 2%。 */
+    private const val EMBOSS_START = 0.02f
+    private const val EMBOSS_STEP = 0.02f
+
+    /**
+     * 从 base 朝 target 混色，**直到**与 base 的对比度达到 [minContrast] 为止
+     * （起步 2%、步进 2%）。用于拟物浮雕类元素——高光/暗边/落影这类"只要看得见
+     * 就够"的色调；[readableMix] 起步 45% 是为文字可读性，浮雕用它会过重。
+     *
+     * 换任意背景色（纯黑/纯白/中灰/极端彩）都成立：深色底自动只混一点点、浅色底
+     * 自动混到看得见为止，而不是写死一个比例换种底色就失效。
+     *
+     * 退化情形：base 与 target 同为纯黑（或同为纯白）时该方向在物理上不存在，
+     * 此时返回 target（= base），调用方需保证另一方向的元素仍然可见
+     * （抽屉的凸/凹正是成对给出两个方向）。
+     */
+    fun mixUntil(
+        base: Int,
+        target: Int,
+        minContrast: Double,
+        start: Float = EMBOSS_START,
+        step: Float = EMBOSS_STEP
+    ): Int {
+        var t = start
+        while (t < 1f) {
+            val c = mix(base, target, t)
+            if (contrast(c, base) >= minContrast) return c
+            t += step
+        }
+        return target
+    }
+
     /**
      * 品牌色在背景上的可见变体（纯系数推导，无阈值开关）：
      * `推导色 = 品牌色 + k × (反色(背景) − 品牌色)`，k 随两色对比度连续变化——
