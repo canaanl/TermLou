@@ -1,5 +1,6 @@
 package com.workspace.proot
 
+import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.animation.StateListAnimator
 import android.content.Context
@@ -8,6 +9,7 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -71,14 +73,6 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
         // 拟物实心（5.8.x）：底色/字色/握把全部取自 app 当前主题，与 app 内部同源
         val colors = SolidPanel.of(
             PaletteStore.theme(ctx.getSharedPreferences("term-lou-settings", Context.MODE_PRIVATE))
-        )
-        // 预渲染键的投影位图（贴圆角真模糊，~0.7MB）：挡在 250ms 弹出延迟里完成，不压首帧
-        RowShadowCache.prebuild(
-            ctx.resources.displayMetrics.widthPixels - dp(ROW_SIDE_GAP_DP) * 2,
-            itemH - dp(RowKeyDrawable.BAND_DP),
-            ButtonStyle.CORNER_RADIUS_DP * density,
-            colors.keyCast,
-            density
         )
 
         val maxRows = 4
@@ -182,18 +176,32 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
             // 文字因此仍精确居中在键面而非整个行
             setPadding(dp(20), 0, dp(12), dp(RowKeyDrawable.BAND_DP))
             setSingleLine(true)
-            elevation = 0f
-            // 机械键盘式按键（5.8.1）：静止凸起 / 按下凹陷（drawable 由 pressed 驱动），
-            // 键帽整体下沉 1.5dp——真键盘就是被压下去的；圆角取 app 按钮同款 20dp
+            // 机械键盘式按键（5.8.4）：静止凸起 / 按下凹陷（drawable 由 pressed 驱动），
+            // 圆角取 app 按钮同款 20dp；静止 elevation 出框架真阴影（形状由 drawable 的
+            // getOutline 决定 = 键面圆角矩形，贴边真模糊，等价 CSS box-shadow）
             background = RowKeyDrawable(colors, density)
+            elevation = RowKeyDrawable.ELEVATION_DP * density
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                // 阴影染色与手绘影同源（低版本无框架阴影，仅剩手绘层，形态仍成立）
+                setOutlineAmbientShadowColor(colors.keyCast)
+                setOutlineSpotShadowColor(colors.keyCast)
+            }
+            // 按下：键帽下沉 1.5dp + 影子收掉（同一状态机驱动，回弹自动反向）
             val sink = ObjectAnimator.ofFloat(
                 this,
                 View.TRANSLATION_Y,
                 0f,
                 SolidPanel.sinkPx(density)
-            ).apply { duration = 60 }
+            )
+            val lower = ObjectAnimator.ofFloat(
+                this,
+                "elevation",
+                RowKeyDrawable.ELEVATION_DP * density,
+                RowKeyDrawable.PRESSED_ELEVATION_DP * density
+            )
             stateListAnimator = StateListAnimator().apply {
-                addState(intArrayOf(android.R.attr.state_pressed), sink)
+                addState(intArrayOf(android.R.attr.state_pressed),
+                    AnimatorSet().apply { duration = 60; playTogether(sink, lower) })
             }
             setOnClickListener {
                 runCatching {
@@ -247,8 +255,6 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
         if (!shown) return
         shown = false
         active = null
-        // 归还预渲染的投影位图（~0.7MB），下次 show 会重新 prebuild
-        RowShadowCache.clear()
         val f = root
         if (f != null) {
             animateDismiss(f)
