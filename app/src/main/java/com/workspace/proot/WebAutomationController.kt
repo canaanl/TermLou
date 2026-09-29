@@ -132,7 +132,7 @@ class WebAutomationController(
             appendLine("# TermLou 无头浏览器 · headless browser")
             appendLine("PORT=$port")
             appendLine("TOKEN=$token")
-            appendLine("source ~/web/web.env")
+            appendLine("source ${WebProtocol.WEB_DIR}/web.env")
             append("curl -s -H \"X-Token: $token\" -d '{\"op\":\"ping\"}' http://127.0.0.1:$port/op")
         }
         runCatching {

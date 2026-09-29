@@ -178,7 +178,10 @@ class WebProtocolTest {
         for (op in listOf("open", "wait", "eval", "html", "text", "click", "type", "select", "shot", "back", "reload", "cookies", "clear", "close", "ping")) {
             assertTrue("说明书缺少 $op", help.contains("\"$op\""))
         }
-        assertTrue(help.contains("~/web/web.env"))
+        // 5.9.5：此前这里断言的是 `~/web/web.env` —— 把错路径锁住了。Linux 里工作区挂在
+        // /workspace，`~` 是 rootfs 里的 /root，所以那条路径 agent 根本打不开。
+        assertTrue(help.contains("${WebProtocol.WEB_DIR}/web.env"))
+        assertFalse("产物路径不许再写成 ~/web（那是 rootfs 里的 /root）", help.contains("~/web"))
         assertTrue(help.contains("/help"))
     }
 

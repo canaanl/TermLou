@@ -539,13 +539,16 @@ class WebAutomationService : Service() {
         val ready = waitForPage(waitMs, cancelled)
         // ready 只说明页面事件完成；落地页可能是 WebView 自己的错误页（它照样触发
         // onPageFinished），所以再判一次"真的能用"，否则 ok:true 会把加载失败糊过去
-        unusableReason(wv)?.let { return WebProtocol.errJson("$it — you asked for $url") }
+        val u = probeUsability(wv)
+        if (u is WebUsability.Unusable) {
+            return WebProtocol.errJson("${u.reason} — you asked for $url")
+        }
         return WebProtocol.okJson(
             "msg" to "opened",
             "url" to url,
             "ready" to ready,
-            "usable" to ready,
-            "progress" to progress
+            "progress" to progress,
+            *WebUsability.fields(u, ready).toTypedArray()
         )
     }
 
@@ -619,14 +622,19 @@ class WebAutomationService : Service() {
 
     /** `wait`：单独等页面就绪。 */
     private fun opWait(request: WebProtocol.Request, cancelled: () -> Boolean): String {
-        if (webView == null) return WebProtocol.errJson("no page open")
+        val wv = webView ?: return WebProtocol.errJson("no page open")
         val waitMs = WebProtocol.bodyInt(request, "ms", 10_000).coerceIn(0, MAX_WAIT_MS)
         val ready = waitForPage(waitMs, cancelled)
+        // 5.9.5：wait 也回报 usable。open 不带 wait 时 usable 必然是 false（还没渲染完），
+        // 想判断能不能用只能再等一次 —— 现在等完就地告诉你，不必额外探针。
+        // wait 本身是成功的（等到了或如实报超时），所以落地不可用不改成 ok:false，
+        // 而是 ok:true + usable:false + warning，与 click 一致。
         return WebProtocol.okJson(
             "msg" to if (ready) "ready" else "timeout",
             "ready" to ready,
             "progress" to progress,
-            "url" to (onMain { webView?.url } ?: "")
+            "url" to (onMain { wv.url } ?: ""),
+            *WebUsability.fields(probeUsability(wv), ready).toTypedArray()
         )
     }
 
@@ -675,32 +683,51 @@ class WebAutomationService : Service() {
      *
      * 返回 null 表示可用；非 null 是给 agent 的错误说明。
      */
-    private fun unusableReason(wv: WebView): String? {
+    /**
+     * 落地页能不能真的用来干活。**三态**（5.9.5）。
+     *
+     * ⚠ 必须把"探不到"和"能用"分开：此前探测一失败（超时 / 投不进主线程 / 答案不完整）
+     * 就返回 null，而 null 的含义是"可用" —— 探测自己坏了却被报成页面能用，
+     * 正是 5.9.3–5.9.4 刚清掉的那类假成功，只是搬到了探测层。
+     */
+
+    /** 页面探针：一次 eval 拿回 标题 / 正文片段 / 协议 / 当前地址。 */
+    private val PROBE_JS = "(function(){var t='';try{t=document.title||''}catch(e){};" +
+        "var b='';try{b=(document.body?document.body.innerText:'').slice(0,400)}catch(e){};" +
+        "return t+'\n'+b+'\n'+(location.protocol||'')+'\n'+(location.href||'')})()"
+
+    /**
+     * 探一次落地页。
+     *
+     * 两层判：① [lastErrorCode]（`onReceivedError` 记的，最可靠）；
+     * ② 页面探针（协议是不是 `chrome-error:`、正文有没有已知 `ERR_*` 码）。
+     */
+    private fun probeUsability(wv: WebView): WebUsability.State {
         lastErrorCode?.let { code ->
-            return "landed on an error page: ${WebPageUsable.describeErrorCode(code)}"
+            return WebUsability.Unusable("landed on an error page: ${WebPageUsable.describeErrorCode(code)}")
         }
-        val outcome = evalInPage(
-            wv,
-            "(function(){var t='';try{t=document.title||''}catch(e){};" +
-                "var b='';try{b=(document.body?document.body.innerText:'').slice(0,400)}catch(e){};" +
-                "return t+'\n'+b+'\n'+(location.protocol||'')+'\n'+(location.href||'')})()",
-            { false }
-        )
-        val value = (outcome as? WebProtocol.EvalOutcome.Value)?.value ?: return null
+        val outcome = evalInPage(wv, PROBE_JS) { false }
+        // ⚠ 这三条以前都掉进"可用"那一支
+        outcomeError(outcome)?.let { return WebUsability.Unknown(it) }
+        val value = outcome.valueOrNull() ?: return WebUsability.Unknown("probe returned no value")
         val parts = value.split('\n')
-        if (parts.size < 4) return null
+        if (parts.size < 4) {
+            return WebUsability.Unknown("probe answer is incomplete (${parts.size} of 4 parts)")
+        }
         val title = parts[0]
         val text = parts[1]
         val protocol = parts[2]
         val href = parts[3]
         return when (val v = WebPageUsable.judge(protocol, href, title, text)) {
-            is WebPageUsable.Verdict.Usable -> null
+            is WebPageUsable.Verdict.Usable -> WebUsability.Usable
             is WebPageUsable.Verdict.ErrorPage ->
-                "landed on WebView's own error page (chrome-error://) instead of $href"
+                WebUsability.Unusable("landed on WebView's own error page (chrome-error://) instead of $href")
             is WebPageUsable.Verdict.ErrorContent ->
-                "landed on an error page: net::$v.code (${title.ifEmpty { "no title" }})"
+                WebUsability.Unusable("landed on an error page: net::$v.code (${title.ifEmpty { "no title" }})")
         }
     }
+
+    /** 页面还没加载完时的统一措辞。 */
 
     /**
      * `diag`：诊断探针（5.9.4）。
@@ -825,15 +852,13 @@ class WebAutomationService : Service() {
         )
         val landed = onMain { wv.url } ?: ""
         // 点击本身成功 ≠ 目的地可用：落地是错误页时如实说出来，但 ok 仍为 true
-        //（点击确实发生了，agent 需要知道"点了，但没到想去的地方"）
-        val broken = if (ready) unusableReason(wv) else null
+        // （点击确实发生了，agent 需要知道"点了，但没到想去的地方"）
         return WebProtocol.okJson(
             "msg" to "clicked",
             "label" to label,
             "ready" to ready,
-            "usable" to (ready && broken == null),
             "url" to landed,
-            "warning" to broken
+            *WebUsability.fields(probeUsability(wv), ready).toTypedArray()
         )
     }
 
@@ -967,12 +992,13 @@ class WebAutomationService : Service() {
         markNavigationStarted()
         onMain { wv.goBack() } ?: return WebProtocol.errJson("back failed")
         val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS), cancelled)
-        unusableReason(wv)?.let { return WebProtocol.errJson(it) }
+        val u = probeUsability(wv)
+        if (u is WebUsability.Unusable) return WebProtocol.errJson(u.reason)
         return WebProtocol.okJson(
             "msg" to "back",
             "ready" to ready,
-            "usable" to ready,
-            "url" to (onMain { wv.url } ?: "")
+            "url" to (onMain { wv.url } ?: ""),
+            *WebUsability.fields(u, ready).toTypedArray()
         )
     }
 
@@ -982,12 +1008,13 @@ class WebAutomationService : Service() {
         markNavigationStarted()
         onMain { wv.reload() } ?: return WebProtocol.errJson("reload timeout")
         val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS), cancelled)
-        unusableReason(wv)?.let { return WebProtocol.errJson(it) }
+        val u = probeUsability(wv)
+        if (u is WebUsability.Unusable) return WebProtocol.errJson(u.reason)
         return WebProtocol.okJson(
             "msg" to "reloaded",
             "ready" to ready,
-            "usable" to ready,
-            "url" to (onMain { wv.url } ?: "")
+            "url" to (onMain { wv.url } ?: ""),
+            *WebUsability.fields(u, ready).toTypedArray()
         )
     }
 

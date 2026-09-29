@@ -10,13 +10,13 @@ import java.io.File
  * 无头浏览器的产物目录（5.9.0）：落在 Linux 可见的工作区里，用户用 app 的文件页就能翻到。
  *
  * ```
- * ~/web/web.env        端口 + 令牌（**仅服务运行时存在**，供 agent 自发现）
- * ~/web/shots/         截图目录（shot-0001.png 这样递增，保留最近 [MAX_SHOTS] 张）
- * ~/web/cookies.txt    人可读 cookie 清单
- * ~/web/cookies.json   给 agent 的结构化版
+ * /workspace/web/web.env        端口 + 令牌（**仅服务运行时存在**，供 agent 自发现）
+ * /workspace/web/shots/         截图目录（shot-0001.png 这样递增，保留最近 [MAX_SHOTS] 张）
+ * /workspace/web/cookies.txt    人可读 cookie 清单
+ * /workspace/web/cookies.json   给 agent 的结构化版
  * ```
  *
- * 物理路径 = `filesDir/workspace/web`（Linux 侧 HOME 就是工作区根，故 Linux 看到的是 `~/web/...`）。
+ * 物理位置 = `filesDir/workspace/web`；Linux 侧是 `/workspace/web/...`（不是 `~`，见 WORKSPACE_MOUNT）。
  * 纯文件操作 + 序号逻辑，不碰安卓 UI，可单测。
  */
 object WebArtifacts {
@@ -33,7 +33,7 @@ object WebArtifacts {
     @Volatile private var lastShotSeq = 0
     @Volatile private var lastShotAt = 0L
 
-    /** `~/web` 的物理目录。 */
+    /** 产物目录的物理位置（Android 侧；Linux 侧见 [WebProtocol.WEB_DIR]）。 */
     fun webRoot(context: Context): File = File(context.filesDir, "workspace/web")
 
     fun shotsDir(context: Context): File = File(webRoot(context), "shots")
@@ -41,13 +41,15 @@ object WebArtifacts {
     fun envFile(context: Context): File = File(webRoot(context), "web.env")
 
     /**
-     * 把物理路径翻译成 Linux 侧看到的路径：Linux 的 `~` 就是工作区根，
-     * 所以 `filesDir/workspace/web/shots/a.png` 对 agent 来说是 `~/web/shots/a.png`。
+     * 把物理路径翻译成 Linux 侧**真正能打开**的路径。
+     * ⚠ 5.9.5 修：此前返回 `$WEB_DIR/shots/a.png`，但 Linux 的 `~` 是 rootfs 里的
+     * `/root`，**不是**工作区 —— agent 拿这个路径去 cat 必然失败。
+     * 工作区挂在 [WebProtocol.WORKSPACE_MOUNT]，所以正确答案是 `/workspace/web/shots/a.png`。
      */
     fun linuxPath(context: Context, file: File): String {
         val root = File(context.filesDir, "workspace").absolutePath
         val rel = file.absolutePath.removePrefix(root).trimStart('/', '\\')
-        return "~/$rel"
+        return WebProtocol.WORKSPACE_MOUNT + "/" + rel
     }
 
     /** 服务启动时写 env（agent 自发现用）；关闭时删掉（服务不在就别留陈端口）。 */
@@ -60,7 +62,7 @@ object WebArtifacts {
                     appendLine("PORT=$port")
                     appendLine("TOKEN=$token")
                     appendLine("# 用法 usage:")
-                    appendLine("#   source ~/web/web.env")
+                    appendLine("#   source ${WebProtocol.WEB_DIR}/web.env")
                     appendLine("#   curl -s -H \"X-Token: \$TOKEN\" -d '{\"op\":\"ping\"}' http://127.0.0.1:\$PORT/op")
                 },
                 Charsets.UTF_8

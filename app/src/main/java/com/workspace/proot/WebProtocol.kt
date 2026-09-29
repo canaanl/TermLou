@@ -15,6 +15,22 @@ object WebProtocol {
     /** 固定端口（写进 agent skill 的常量；被占用时服务启动失败并如实报错，不静默改端口）。 */
     const val DEFAULT_PORT = 39080
 
+    /**
+     * TermLou 的 Linux 里工作区挂载在**这个**路径下。
+     *
+     * ⚠ **不是 `~`**（5.9.5 修）：proot 用 `-b <workspace>:/workspace` 挂工作区，
+     * 而 `HOME=/root` 指向的是 rootfs 里的**另一个**目录。此前所有说明都写
+     * `$WEB_DIR/...`，agent 在终端里 `cat $WEB_DIR/web.env` 直接报
+     * `No such file or directory`，`shot` 返回的路径同样打不开 ——
+     * "产物 Linux 可见"这个需求一直是坏的，而且被一条测试断言锁住了。
+     *
+     * 与 [TerminalManager.buildProotArgs] 的挂载点必须一致。
+     */
+    const val WORKSPACE_MOUNT = "/workspace"
+
+    /** 产物目录在 Linux 侧的路径（端口、令牌、截图、cookie 都在底下）。 */
+    const val WEB_DIR = "$WORKSPACE_MOUNT/web"
+
     /** 视口尺寸（dp）：无头页面按手机竖屏渲染，截图与取文本都基于它。 */
     const val VIEWPORT_W_DP = 412
     const val VIEWPORT_H_DP = 892
@@ -148,7 +164,7 @@ object WebProtocol {
         appendLine("TermLou headless browser · TermLou 无头浏览器")
         appendLine()
         appendLine("Endpoint 端点: http://127.0.0.1:$port   (POST /op, header X-Token: $token)")
-        appendLine("Self-discovery 自发现: cat ~/web/web.env   ·   GET /help")
+        appendLine("Self-discovery 自发现: cat $WEB_DIR/web.env   ·   GET /help")
         appendLine()
         appendLine("Commands 指令（全部 POST /op）:")
         appendLine("  {\"op\":\"open\",\"url\":\"https://…\",\"wait\":8000}  打开网址（复用同一页面；wait=等加载完的毫秒数）")
@@ -159,9 +175,9 @@ object WebProtocol {
         appendLine("  {\"op\":\"click\",\"selector\":\"…\"}       真实点击（可带 wait 等新页）")
         appendLine("  {\"op\":\"type\",\"selector\":\"…\",\"text\":\"…\"}   填输入框（clear=false 追加）")
         appendLine("  {\"op\":\"select\",\"selector\":\"…\",\"value\":\"…\"}   选 <select> 的一项")
-        appendLine("  {\"op\":\"shot\"}                        截图并写入 ~/web/shots/，返回路径")
+        appendLine("  {\"op\":\"shot\"}                        截图并写入 $WEB_DIR/shots/，返回路径")
         appendLine("  {\"op\":\"back\"} / {\"op\":\"reload\"}      后退 / 重载")
-        appendLine("  {\"op\":\"cookies\"}                     导出 cookie 到 ~/web/cookies.txt|json")
+        appendLine("  {\"op\":\"cookies\"}                     导出 cookie 到 $WEB_DIR/cookies.txt|json")
         appendLine("  {\"op\":\"clear\"} / {\"op\":\"close\"}      清 cookie/缓存/localStorage 并结束会话")
         appendLine("  {\"op\":\"ping\"}                        探活")
         appendLine("  {\"op\":\"diag\"}                        诊断：窗口几何 / 页面可见性 / 最近错误码")
@@ -171,7 +187,7 @@ object WebProtocol {
         appendLine("  \"text=登录\"       按可见文字找元素（text==登录 为严格相等）")
         appendLine()
         appendLine("curl 示例 example:")
-        appendLine("  source ~/web/web.env")
+        appendLine("  source $WEB_DIR/web.env")
         appendLine("  curl -s -H \"X-Token: \$TOKEN\" -d '{\"op\":\"open\",\"url\":\"\$URL\",\"wait\":8000}' \\")
         appendLine("       http://127.0.0.1:\$PORT/op")
         appendLine("  curl -s -H \"X-Token: \$TOKEN\" -d '{\"op\":\"eval\",\"js\":\"document.title\"}' \\")
@@ -194,15 +210,26 @@ object WebProtocol {
         appendLine("    bad selector (...) = 选择器本身写错了（照抄报错里的原因）；")
         appendLine("    not a text field / not a <select> = 元素找对了但类型不对。")
         appendLine("    元素在 iframe 里的话这里查不到 —— 换个直接含它的页面。")
-        appendLine("  · ready = 页面事件完成；usable = 落地页真的能用来干活。")
-        appendLine("    加载失败时 WebView 会加载它自己的错误页，而那个错误页同样会触发页面事件，")
+        appendLine("  · 三个字段各管一件事，别混：")
+        appendLine("    ok:false = 这次操作本身失败（选择器错、没有历史、落地是错误页）。")
+        appendLine("    ready    = 页面事件走完。")
+        appendLine("    usable   = 落地页真的能用来干活。")
+        appendLine("  · 加载失败时 WebView 会加载它自己的错误页，而那个错误页同样会触发页面事件，")
         appendLine("    所以只看 ready 会把失败当成功。以 usable 为准。")
+        appendLine("  · open 不带 wait 时 usable 一定是 false（还没渲染完），那不代表打开失败 ——")
+        appendLine("    打开失败会是 ok:false。要判断就 open → wait，wait 会带回 usable。")
+        appendLine("  · usable:false 看 warning 分两种：真的不能用（说了是错误页），")
+        appendLine("    和没探到（warning 写 could not determine）。宁可漏判不误判。")
         appendLine("  · 碰页面的指令之间串行（同一时刻只有一条在操作页面），但 ping/diag 不会被堵住。")
         appendLine("  · 客户端中途断开（命令被超时杀掉）时，服务端立刻放弃等待，不会留下卡住的会话。")
         appendLine("  · 推荐节奏：open 不带 wait → wait 短等 → 取内容；单条 wait 上限 30 秒。")
         appendLine("  · 不带 wait 的 click 若已点出新导航，一律报 ready:false（不会拿上一页冒充）。")
         appendLine("  · 无历史/无痕：每次打开 app 与每次服务启动都会清 cookie 与缓存；不保存密码与表单。")
         appendLine("  · One page at a time; if open's wait runs out it does not error, it returns ready:false.")
+        appendLine("  · ok:false = the operation itself failed; ready = page events finished;")
+        appendLine("    usable = the landed page can actually be worked with.")
+        appendLine("  · An unwaited open always reports usable:false (nothing rendered yet) - that is")
+        appendLine("    not a failure; a failed open is ok:false. open then wait, and wait reports usable.")
         appendLine("  · Shots fail loudly instead of returning a blank image.")
         appendLine("  · Cookies cover the current page only; Android has no enumerate-all API.")
         appendLine("  · No history: cookies and cache are wiped on every app start and every service start;")

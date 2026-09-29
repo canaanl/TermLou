@@ -456,7 +456,7 @@
 
 <!-- 无头浏览器 5.9.4 · 设置项：不再放长段说明（细节在终端 Tab 说明页） -->
     <string name="web_intro_conn_body">给 Linux 里的 AI agent 用的浏览器。内核是安卓自带的，\n页面渲染在屏幕外，屏幕上什么也看不到，也不留任何历史。\n▸ 开启：设置 → 高级 → 无头浏览器\n▸ 连接：点那行「点击复制」，端口、令牌与首条命令一次带走\n● 端口固定 39080，令牌安装时生成一次\n● 只监听 127.0.0.1，同一网络下别的设备连不上\n● 每次开启都会清空 cookie 与缓存\n⚠ 需要悬浮窗权限，页面渲染在屏幕外要用它</string>
-    <string name="web_intro_ops_body">指令清单随时可取，agent 读一次就够。\n▸ GET /help —— 全部指令、选择器写法与排错\n▸ cat ~/web/web.env —— 端口与令牌，可直接 source\n▸ 写进 skill：固定端口 39080 + 令牌\n● 读完它就能自己开网页、点按钮、填表单、截图\n⚠ 服务没开时连接被拒，先在上面开启</string>
-    <string name="web_intro_notes_body">▸ 一次只开一个页面，反复 open 即复用\n▸ 截图与 cookie 落在 ~/web/，可翻到\n● 闲置满 10 分钟，状态栏会闪一句提醒\n⚠ 个别站点会拒绝内嵌浏览器，换站即可</string>
+    <string name="web_intro_ops_body">指令清单随时可取，agent 读一次就够。\n▸ GET /help —— 全部指令、选择器写法与排错\n▸ cat /workspace/web/web.env —— 端口与令牌，可直接 source\n▸ 写进 skill：固定端口 39080 + 令牌\n● 读完它就能自己开网页、点按钮、填表单、截图\n⚠ 服务没开时连接被拒，先在上面开启</string>
+    <string name="web_intro_notes_body">▸ 一次只开一个页面，反复 open 即复用\n▸ 截图与 cookie 落在 /workspace/web/，可翻到\n● 闲置满 10 分钟，状态栏会闪一句提醒\n⚠ 个别站点会拒绝内嵌浏览器，换站即可</string>
     <string name="web_intro_settings_body">给 Linux 里的 AI agent 用的无头浏览器：\n在下面开启服务，点那行「点击复制」带走端口、令牌与首条命令；\n端口与全部指令见终端 Tab 的说明。</string>
 </resources>
