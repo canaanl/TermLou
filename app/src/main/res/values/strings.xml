@@ -454,8 +454,10 @@
 <!-- 无头浏览器 5.9.2 · 设置项 -->
     <string name="web_settings_desc">给 Linux 里的 AI agent 用的无头浏览器。安卓自带内核、屏幕不可见、不留历史。指令清单见终端 Tab 说明或 GET /help。</string>
     <!-- 无头浏览器 5.9.2 · Tab 说明：只讲自发现，细节交给 /help -->
-    <string name="web_intro_conn_body">给 Linux 里的 AI agent 用的无头浏览器：安卓自带内核、屏幕不可见、不留历史。&#10;▸ 设置 → 高级 → 无头浏览器 → 开启服务（手动开关，不常驻）&#10;▸ 点「点此复制连接信息」把端口与令牌交给 agent&#10;● 端口固定 39080，令牌每次安装生成后不变，只监听 127.0.0.1。&#10;● 每次开启都会清 cookie 与缓存，没有历史。&#10;⚠ 需要悬浮窗权限，页面渲染在屏幕外的窗口里。</string>
-    <string name="web_intro_ops_body">这里不抄指令表 —— 完整清单由服务自己提供，agent 读一次就够。&#10;▸ GET /help —— 免令牌，中英双语说明书，含全部指令、选择器写法与排错&#10;▸ cat ~/web/web.env —— 服务运行时存在，内含 PORT 与 TOKEN，可直接 source&#10;▸ 建议写进 agent 的 skill：固定端口 39080 + 令牌，再让它先读 /help&#10;● 拿到文档后它就能自己开网页、点按钮、填表单、截图。&#10;⚠ 服务没开时连接被拒，先在上面开启。</string>
-    <string name="web_intro_notes_body">▸ 一次只开一个页面，反复 open 即复用。&#10;▸ 截图与 cookie 落在 ~/web/，可用文件页直接翻到。&#10;● 服务开着闲置满 10 分钟，状态栏会闪一句提醒该关了。&#10;⚠ 个别站点会拒绝内嵌浏览器（如 Google 账号登录），换站即可。</string>
-    <string name="web_intro_settings_body">给 Linux 里的 AI agent 用的无头浏览器。在下面开启服务并复制连接信息；端口与全部指令见终端 Tab 的说明。</string>
+
+<!-- 无头浏览器 5.9.3 · Tab 说明：条目一律独立成行（换行必须用 \n，&#10; 会被 aapt2 清掉） -->
+    <string name="web_intro_conn_body">给 Linux 里的 AI agent 用的无头浏览器。\n安卓自带内核、屏幕不可见、不留历史。\n▸ 开启：设置 → 高级 → 无头浏览器\n▸ 连接：点「复制连接信息」\n● 端口固定 39080，令牌安装时生成\n● 只监听 127.0.0.1，别的设备连不上\n● 每次开启都清 cookie 与缓存\n⚠ 需要悬浮窗权限（页面渲染在屏外）</string>
+    <string name="web_intro_ops_body">这里不抄指令表 —— 完整清单由服务自己提供，agent 读一次就够。\n▸ GET /help —— 免令牌的说明书\n　含全部指令、选择器写法与排错\n▸ cat ~/web/web.env —— 端口与令牌\n　服务运行时存在，可直接 source\n▸ 建议写进 skill：端口 39080 + 令牌\n● 读完它就能自己开网页、点按钮、填表单\n⚠ 服务没开时连接被拒，先在上面开启</string>
+    <string name="web_intro_notes_body">▸ 一次只开一个页面，反复 open 即复用\n▸ 截图与 cookie 落在 ~/web/，可翻到\n● 闲置满 10 分钟，状态栏会闪一句提醒\n⚠ 个别站点会拒绝内嵌浏览器，换站即可</string>
+    <string name="web_intro_settings_body">给 Linux 里的 AI agent 用的无头浏览器：\n安卓自带内核、屏幕不可见、不留历史。\n在下面开启服务并复制连接信息；\n端口与全部指令见终端 Tab 的说明。</string>
 </resources>

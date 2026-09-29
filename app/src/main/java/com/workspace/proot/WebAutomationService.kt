@@ -554,16 +554,21 @@ class WebAutomationService : Service() {
         (this as? WebProtocol.EvalOutcome.Value)?.value
 
         /**
-     * 把页面侧带回来的哨兵翻译成错误信息：
-     *  - [WebSelector.NOT_FOUND] —— 元素真的不在 → `not found: <selector>`
-     *  - `__TERMLOU_JS_ERROR__:…` —— 选择器语法错等 → `bad selector: <原因>`
+     * 把页面侧带回来的哨兵翻译成**互不混淆**的错误信息（5.9.3）：
      *
-     * 正常值返回 null。**这两个必须分开报**：5.9.0/5.9.1 因为用 null + 吞异常，
-     * "选择器语法写错"和"元素不在"全被报成 not found，排查时被彻底带偏。
+     *  - [WebSelector.NOT_FOUND] —— 元素真的不在 → `not found: <selector>`
+     *  - `__TERMLOU_JS_ERROR__:…` —— 选择器语法错 → `bad selector (<sel>): <JS 报错>`
+     *  - `WEBERR:…` —— 找到了但操作做不了（不是 text field / 不是 select / 点击抛错）
+     *
+     * 正常值返回 null。
+     *
+     * **为什么必须分开**：5.9.0–5.9.2 连续三个版本，"选择器写错"、"元素不在"、"我的脚本报错"
+     * 三件事全被塌成同一个 not found / returned null，把排查方向带偏了两次。
      */
-    private fun selectorSentinel(value: String, selector: String): String? = when {
+    private fun pageSideError(value: String, selector: String): String? = when {
         WebSelector.isNotFound(value) -> "not found: $selector"
         else -> WebSelector.jsErrorOf(value)?.let { "bad selector ($selector): $it" }
+            ?: WebOpScripts.webErrorOf(value)?.let { "$it [selector: $selector]" }
     }
 
 /**
@@ -589,17 +594,14 @@ class WebAutomationService : Service() {
     private fun opText(request: WebProtocol.Request, cancelled: () -> Boolean): String {
         val wv = webView ?: return WebProtocol.errJson("no page open")
         val raw = WebProtocol.bodyString(request, "selector")
-        val js = if (raw.isBlank()) {
-            "(document.body ? document.body.innerText : '')"
-        } else {
+        val pick = if (raw.isBlank()) null else {
             val kind = WebSelector.parse(raw) ?: return WebProtocol.errJson("bad selector: $raw")
-            PICK_TEMPLATE.replace("%PICK%", WebSelector.pickJs(kind)) +
-                ";return typeof e==='object'&&e!==null?(e.innerText?e.innerText:(e.value!=null?e.value:'')):String(e)"
+            WebSelector.pickJs(kind)
         }
-        val outcome = evalInPage(wv, js, cancelled)
+        val outcome = evalInPage(wv, WebOpScripts.text(pick), cancelled)
         outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
-        val value = outcome.valueOrNull() ?: return WebProtocol.errJson("text returned null")
-        selectorSentinel(value, raw)?.let { return WebProtocol.errJson(it) }
+        val value = outcome.valueOrNull() ?: return WebProtocol.errJson(SCRIPT_FAILED)
+        pageSideError(value, raw)?.let { return WebProtocol.errJson(it) }
         return WebProtocol.okJson("text" to value, "url" to (onMain { wv.url } ?: ""))
     }
 
@@ -608,15 +610,10 @@ class WebAutomationService : Service() {
         val wv = webView ?: return WebProtocol.errJson("no page open")
         val raw = WebProtocol.bodyString(request, "selector")
         val kind = WebSelector.parse(raw) ?: return WebProtocol.errJson("bad selector: $raw")
-        val js = PICK_TEMPLATE.replace("%PICK%", WebSelector.pickJs(kind)) +
-            ";if(typeof e!=='object'||e===null)return String(e);" +
-            "try{e.scrollIntoView({block:'center',inline:'center'})}catch(_){}" +
-            "try{e.click()}catch(err){return WEB_ERR+String(err&&err.message)}" +
-            "return e.innerText?e.innerText:(e.value!=null?e.value:'ok')"
-        val outcome = evalInPage(wv, js, cancelled)
+        val outcome = evalInPage(wv, WebOpScripts.click(WebSelector.pickJs(kind)), cancelled)
         outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
-        val label = outcome.valueOrNull() ?: return WebProtocol.errJson("click returned null")
-        selectorSentinel(label, raw)?.let { return WebProtocol.errJson(it) }
+        val label = outcome.valueOrNull() ?: return WebProtocol.errJson(SCRIPT_FAILED)
+        pageSideError(label, raw)?.let { return WebProtocol.errJson(it) }
         val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS), cancelled)
         return WebProtocol.okJson(
             "msg" to "clicked",
@@ -636,24 +633,17 @@ class WebAutomationService : Service() {
         val value = WebProtocol.bodyString(request, "text")
         if (value.isEmpty()) return WebProtocol.errJson("missing text")
         val clear = WebProtocol.bodyOptBoolean(request, "clear", true)
-        val literal = WebSelector.jsLiteral(value)          // ← 带引号，5.9.2 修的就是这里
         val raw = WebProtocol.bodyString(request, "selector")
         val pick = if (raw.isBlank()) {
-            "(document.activeElement)"
+            null                                       // 填到当前焦点元素上
         } else {
             val kind = WebSelector.parse(raw) ?: return WebProtocol.errJson("bad selector: $raw")
             WebSelector.pickJs(kind)
         }
-        val js = FILL_HELPER + PICK_TEMPLATE.replace("%PICK%", pick) +
-            ";if(typeof e!=='object'||e===null)return String(e);" +
-            "return WEB_FILL(e," + literal + "," + clear + ")"
-        val outcome = evalInPage(wv, js, cancelled)
+        val outcome = evalInPage(wv, WebOpScripts.type(pick, value, clear), cancelled)
         outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
-        val result = outcome.valueOrNull() ?: return WebProtocol.errJson("type returned null")
-        selectorSentinel(result, raw)?.let { return WebProtocol.errJson(it) }
-        if (result.startsWith(WEB_ERR_PREFIX)) {
-            return WebProtocol.errJson("cannot fill $raw: ${result.removePrefix(WEB_ERR_PREFIX)}")
-        }
+        val result = outcome.valueOrNull() ?: return WebProtocol.errJson(SCRIPT_FAILED)
+        pageSideError(result, raw)?.let { return WebProtocol.errJson(it) }
         return WebProtocol.okJson("msg" to "typed", "bytes" to value.length)
     }
 
@@ -665,24 +655,10 @@ class WebAutomationService : Service() {
         val raw = WebProtocol.bodyString(request, "selector")
         if (raw.isBlank()) return WebProtocol.errJson("missing selector")
         val kind = WebSelector.parse(raw) ?: return WebProtocol.errJson("bad selector: $raw")
-        val literal = WebSelector.jsLiteral(value)          // ← 带引号
-        val js = PICK_TEMPLATE.replace("%PICK%", WebSelector.pickJs(kind)) +
-            ";if(typeof e!=='object'||e===null)return String(e);" +
-            "if(String(e.tagName).toUpperCase()!=='SELECT')return WEB_ERR+'not a <select> (got <'+String(e.tagName).toLowerCase()+'>)';" +
-            "var want=" + literal + ";var i,o,hit='';" +
-            "for(i=0;i<e.options.length;i++){o=e.options[i];" +
-            "if(o.value===want||String(o.text).trim()===want){hit=o.value;break}}" +
-            "if(hit==='')return WEB_ERR+'no option matches '+want;" +
-            "e.value=hit;" +
-            "try{e.dispatchEvent(new Event('change',{bubbles:true}))}catch(_){}" +
-            "return hit"
-        val outcome = evalInPage(wv, js, cancelled)
+        val outcome = evalInPage(wv, WebOpScripts.select(WebSelector.pickJs(kind), value), cancelled)
         outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
-        val result = outcome.valueOrNull() ?: return WebProtocol.errJson("select returned null")
-        selectorSentinel(result, raw)?.let { return WebProtocol.errJson(it) }
-        if (result.startsWith(WEB_ERR_PREFIX)) {
-            return WebProtocol.errJson("cannot select $raw: ${result.removePrefix(WEB_ERR_PREFIX)}")
-        }
+        val result = outcome.valueOrNull() ?: return WebProtocol.errJson(SCRIPT_FAILED)
+        pageSideError(result, raw)?.let { return WebProtocol.errJson(it) }
         return WebProtocol.okJson("msg" to "selected", "value" to result)
     }
 
@@ -875,50 +851,16 @@ class WebAutomationService : Service() {
          * 页面侧"出错了"的哨兵前缀：JS 里无法直接抛异常（会被 evaluateJavascript
          * 吞成 null），所以把错误信息编码成字符串带回来。
          */
-        private const val WEB_ERR_PREFIX = "WEBERR:"
-        private val WEB_ERR_LITERAL = "\"" + WEB_ERR_PREFIX + "\""
-
         /**
-         * 取元素的 JS 模板：`<pickJs>` 求值可能是元素（object），也可能是哨兵字符串。
-         * 于是所有走选择器的指令都按同一套形状写，一眼能看出哪里可能拿到哨兵。
+         * `evaluateJavascript` 把 JS 的语法错误/运行时错误**一并吞成 null**，
+         * 所以"值是 null"只能说明脚本没跑完——具体原因拿不到。
+         * 这句话必须明说"是脚本的问题"，不能像 5.9.2 那样报 `click returned null`，
+         * 那会让人以为是"点击了但没结果"，方向完全错。
          */
-        private const val PICK_TEMPLATE =
-            "(function(){var e=%PICK%;"
+        private const val SCRIPT_FAILED =
+            "script failed to run in the page (this is a bug on the TermLou side, not a bad selector)"
+
         private val CONTENT_LENGTH = Regex("(?i)content-length:\\s*(\\d+)")
-
-        /**
-         * `type` 用的页面侧助手：先用原生 setter 改 value，再派发 input/change，
-         * 让框架能观察到这次改动。
-         */
-        /**
-         * `type` 用的页面侧助手。
-         *
-         * 5.9.2 修版：此前无条件取 `HTMLInputElement.prototype` 的 value descriptor，
-         * 元素不是输入框时会抛 Java 异常（被上层吞成"不可填"）。现在**先判元素类型**，
-         * 不是 text field 就返回 [WEB_ERR_PREFIX] 开头的说明，由上层如实转述。
-         *
-         * 用原生 setter（而不是直接 `e.value=`）是为了让 React/Vue 收到变更——
-         * 它们监听的是 input 事件上 setter 留下的痕迹。
-         */
-        private const val FILL_HELPER = "var WEB_ERR='WEBERR:';" +
-            "function WEB_FILL(e,v,clear){" +
-            "var tag=String(e.tagName).toUpperCase();" +
-            "if(tag==='INPUT'||tag==='TEXTAREA'){" +
-            "try{e.scrollIntoView({block:'center'})}catch(_){}" +
-            "try{e.focus()}catch(_){}" +
-            "var proto=tag==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;" +
-            "var d=Object.getOwnPropertyDescriptor(proto,'value');" +
-            "if(clear){if(d&&d.set){d.set.call(e,'')}else{e.value=''}}" +
-            "if(d&&d.set){d.set.call(e,v)}else{e.value=v}" +
-            "try{e.dispatchEvent(new Event('input',{bubbles:true}))}catch(_){}" +
-            "try{e.dispatchEvent(new Event('change',{bubbles:true}))}catch(_){}" +
-            "return true}" +
-            "if(e.isContentEditable){try{e.focus()}catch(_){}" +
-            "if(clear){try{e.textContent=''}catch(_){}}" +
-            "try{e.textContent=(e.textContent||'')+v}catch(_){}" +
-            "try{e.dispatchEvent(new Event('input',{bubbles:true}))}catch(_){}" +
-            "return true}" +
-            "return WEB_ERR+'not a text field (got <'+String(e.tagName).toLowerCase()+'>)'}"
 
         const val ACTION_START = "com.workspace.proot.WEB_START"
         const val ACTION_STOP = "com.workspace.proot.WEB_STOP"
