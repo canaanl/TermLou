@@ -1,5 +1,6 @@
 ﻿package com.workspace.proot
 
+import android.os.SystemClock
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -94,6 +95,80 @@ class StatusController(
         if (::statusView.isInitialized) statusView.text = text
     }
 
+    // ---------- 无头浏览器的闪烁提示 ----------
+
+    private var webTick: Runnable? = null
+    private var webPhase: Boolean? = null
+    private var webSince = 0L
+
+    /**
+     * 让 status 栏的现状与心跳对齐（切 Tab、开关服务、onResume 都会调）。
+     *
+     * 心跳只在**确实要闪**的时候才排：服务开着、还没被 agent 用过、且此刻在终端 Tab。
+     * 避让规则（临时提示 > 按键信息 > 闪烁）全交给 [WebNoticeArbiter] 判定，规则本身有单测锁着。
+     */
+    fun syncWebNotice() {
+        val want = activity.currentTab == 0 &&
+            WebAutomationService.isRunning &&
+            WebArtifacts.noticePending(activity)
+        val running = webTick
+        if (want && running == null) {
+            webSince = SystemClock.elapsedRealtime()
+            webPhase = null
+            val r = object : Runnable {
+                override fun run() {
+                    renderWebNotice()
+                    if (webTick === this) {
+                        scope.mainHandler.postDelayed(this, WebNoticeArbiter.TICK_MS)
+                    }
+                }
+            }
+            webTick = r
+            scope.mainHandler.post(r)
+        } else if (!want && running != null) {
+            scope.mainHandler.removeCallbacks(running)
+            webTick = null
+            webPhase = null
+            if (activity.currentTab == 0 && ::statusView.isInitialized) {
+                statusView.animate().cancel()
+                statusView.text = terminalBaseText()
+            }
+        } else if (want) {
+            renderWebNotice()
+        }
+    }
+
+    /** 只在相位变化时改文本，且临时提示期间一律不碰 status（否则会把 2 秒提示闪没）。 */
+    private fun renderWebNotice() {
+        if (!::statusView.isInitialized) return
+        val inputs = webNoticeInputs()
+        if (inputs.tempStatusActive) return
+        val on = WebNoticeArbiter.noticeVisible(
+            inputs,
+            SystemClock.elapsedRealtime() - webSince
+        )
+        if (on == webPhase) return
+        webPhase = on
+        statusView.animate().cancel()
+        statusView.text = if (on) {
+            "Terminal | " + activity.getString(R.string.web_notice_blink)
+        } else {
+            terminalBaseText()
+        }
+    }
+
+    private fun webNoticeInputs() = WebNoticeArbiter.Inputs(
+        serviceOn = WebAutomationService.isRunning,
+        noticePending = WebArtifacts.noticePending(activity),
+        tempStatusActive = terminalTempActive,
+        ctrlInfoVisible = lastClickedInfo.isNotEmpty()
+    )
+
+    /** 有按键信息或临时提示时，先让它们说话（顺带把闪烁收掉）。 */
+    fun yieldWebNotice() {
+        renderWebNotice()
+    }
+
     /** 终端 Tab 不打扰；其余 Tab 展示 2 秒临时提示。 */
     fun showTempStatus(msg: String) {
         if (activity.currentTab == 0) return
@@ -144,5 +219,7 @@ class StatusController(
         terminalTempJob = null
         settingsStatusJob?.let { scope.mainHandler.removeCallbacks(it) }
         settingsStatusJob = null
+        webTick?.let { scope.mainHandler.removeCallbacks(it) }
+        webTick = null
     }
 }

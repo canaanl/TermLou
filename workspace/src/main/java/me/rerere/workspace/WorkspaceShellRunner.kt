@@ -88,7 +88,15 @@ private class StreamWriter(
     fun join(millis: Long) = thread.join(millis)
 }
 
-private class StreamCollector(
+/**
+ * 流采集器：**起线程把流抽干到 EOF**——超出 [maxChars] 后继续读、只丢弃
+ * （否则管道写满会阻塞子进程，子进程永不退出，只能等超时被强杀）。
+ *
+ * 两条模块共用同一份实现（5.8.6）：workspace 侧用它收集输出，app 侧
+ * `TerminalManager.runInProot` 用 `maxChars = 0` 纯抽干丢弃（那边的调用方都不要输出）。
+ * 这样"抽干管道"这件事在仓库里只有一种写法，不会再出现第二遍"先等后读"的死锁版本。
+ */
+class StreamCollector(
     stream: InputStream,
     private val maxChars: Int = MAX_OUTPUT_CHARS,
 ) {

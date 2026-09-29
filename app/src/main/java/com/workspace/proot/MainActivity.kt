@@ -38,6 +38,7 @@ class MainActivity : AppCompatActivity() {
     internal lateinit var workspaceController: WorkspaceController
     internal lateinit var networkController: NetworkController
     private lateinit var lanController: LanController
+    private lateinit var webAutomationController: WebAutomationController
     internal lateinit var overlayCommands: OverlayCommandsController
     private lateinit var settingsUiController: SettingsUiController
 
@@ -120,9 +121,11 @@ class MainActivity : AppCompatActivity() {
             else networkController.onVpnPrepareResult(true)
         }
         lanController = LanController(this, scope, statusController)
+        webAutomationController = WebAutomationController(this, scope, statusController)
         overlayCommands = OverlayCommandsController(this, scope, statusController)
         settingsUiController = SettingsUiController(
-            this, scope, statusController, terminalController, lanController, overlayCommands
+            this, scope, statusController, terminalController, lanController,
+            webAutomationController, overlayCommands
         ) {
             permLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -502,6 +505,7 @@ class MainActivity : AppCompatActivity() {
             4 -> "Settings"
             else -> statusController.terminalBaseText()
         })
+        statusController.syncWebNotice()
     }
 
     internal fun hideIme() {

@@ -139,6 +139,7 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 - **Output truncation**: stdout/stderr capped at 128KB to prevent OOM
 - **Timeout kill**: commands are `destroyForcibly()`-ed on timeout; collector threads joined on cancellation
 - **Injection safety**: in-proot commands are passed as positional args (`cd -- "$1" && eval "$2"`), eliminating shell quoting/escaping issues
+- **Headless browser listens on loopback only**: the headless browser (5.9.0) binds `127.0.0.1` explicitly, so other devices on the same WiFi cannot reach it; the token is generated once per install, never changes, and lives only in TermLou's private directory. Page actions run through `evaluateJavascript`, and every user-supplied string is escaped by `WebSelector.jsString` before being embedded in a JS literal
 
 ---
 

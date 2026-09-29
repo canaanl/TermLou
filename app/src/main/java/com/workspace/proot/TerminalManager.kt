@@ -9,10 +9,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.rerere.workspace.RootfsPatcher
+import me.rerere.workspace.StreamCollector
 import java.io.File
 
-private const val RUN_OUTPUT_MAX_BYTES = 128 * 1024
-private const val RUN_OUTPUT_BUFFER_SIZE = 8192
+/** runInProot 抽干线程的回收等待（ms）：进程已结束/被杀后管道即到 EOF，正常毫秒级返回。 */
+private const val DRAIN_JOIN_MS = 1_000L
 
 class TerminalManager(
     private val context: Context,
@@ -156,7 +157,29 @@ class TerminalManager(
         )
     }
 
-    fun runInProot(command: String, timeoutSec: Long): String {
+    /**
+     * 在 proot 里跑一条命令，**只等它跑完，不收集输出**。
+     *
+     * 根因修复（5.8.6）：此前是"先 waitFor 再读 stdout"。子进程输出超过管道缓冲（约 64KB）
+     * 就会阻塞在写端永不退出 → 只能等到超时被 destroyForcibly → 再读只得到缓冲里那点残缺
+     * 输出，`apt list` / 大日志这类命令表现为"卡住整个超时才返回"。而两个调用点
+     * （首次装包 300s、磁贴命令 600s）**都丢弃返回值**——这份没人要的输出正是风险的来源，
+     * 128KB 缓冲与 String 转换也只是随之而来的开销。
+     *
+     * 现在启动后立刻用采集线程把管道抽干到 EOF（`maxChars = 0` 纯丢弃），再 waitFor：
+     * 任何输出量都不再阻塞子进程，大输出命令即时返回。**需要命令输出**请走 workspace 的
+     * `WorkspaceShellRunner.readResult`（同一套抽干原语）。
+     */
+    fun runInProot(command: String, timeoutSec: Long) {
+        val process = startProotProcess(command)
+        // 先抽干、再等：否则子进程写满管道即阻塞（这就是原来"卡到超时"的根因）
+        val drain = StreamCollector(process.inputStream, 0)
+        process.waitFor(timeoutSec, java.util.concurrent.TimeUnit.SECONDS)
+        if (process.isAlive) process.destroyForcibly()
+        drain.join(DRAIN_JOIN_MS)
+    }
+
+    private fun startProotProcess(command: String): java.lang.Process {
         TermlouDirs.base(context).mkdirs()
         val prootBin = File(context.applicationInfo.nativeLibraryDir, "libproot_exec.so")
         val loader = File(context.applicationInfo.nativeLibraryDir, "libproot_loader.so")
@@ -177,23 +200,7 @@ class TerminalManager(
             "LC_ALL" to "C.UTF-8"
         ))
         pb.redirectErrorStream(true)
-
-        val process = pb.start()
-        process.waitFor(timeoutSec, java.util.concurrent.TimeUnit.SECONDS)
-        if (process.isAlive) process.destroyForcibly()
-        val output = java.io.ByteArrayOutputStream()
-        val buffer = ByteArray(RUN_OUTPUT_BUFFER_SIZE)
-        var stored = 0
-        while (true) {
-            val read = process.inputStream.read(buffer)
-            if (read < 0) break
-            if (stored < RUN_OUTPUT_MAX_BYTES) {
-                val take = minOf(read, RUN_OUTPUT_MAX_BYTES - stored)
-                output.write(buffer, 0, take)
-                stored += take
-            }
-        }
-        return output.toString(Charsets.UTF_8.name()).trim()
+        return pb.start()
     }
 
     internal fun findShellInRootfs(): String? {

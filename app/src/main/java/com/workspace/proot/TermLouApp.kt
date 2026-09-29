@@ -42,6 +42,9 @@ class TermLouApp : Application() {
         appColdStartAt = SystemClock.elapsedRealtime()
         AppLang.apply(this)
         createCrashChannel()
+        // 无头浏览器无痕保证之一：进程一启动就清 cookie/缓存/localStorage
+        // （app 里没有第二个 WebView，故"清全部 WebView 数据"只影响无头浏览器）
+        WebAutomationService.wipeOnProcessStart(this)
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             val report = buildString {
                 append(getString(R.string.crash_title) + "\n\n")

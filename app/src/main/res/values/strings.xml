@@ -424,4 +424,34 @@
     <string name="notes_search_notes">搜索笔记</string>
     <string name="notes_search_empty">没有匹配的内容</string>
     <string name="notes_standalone_title">笔记</string>
+<!-- 无头浏览器 5.9.0 · 前台服务通知 -->
+    <string name="web_channel">无头浏览器</string>
+    <string name="web_starting">正在启动无头浏览器…</string>
+    <string name="web_running_fmt">无头浏览器运行中 · 端口 %1$d</string>
+    <string name="web_failed">无头浏览器启动失败</string>
+    <string name="web_port_busy_fmt">端口 %1$d 被占用，无法启动（请先关掉占用它的程序）</string>
+    <string name="web_notif_title">TermLou 无头浏览器</string>
+    <string name="web_notif_stop">关闭服务</string>
+
+    <!-- 无头浏览器 5.9.0 · 设置项 -->
+    <string name="web_settings_title">无头浏览器</string>
+    <string name="web_settings_desc">给 Linux 里的 AI agent 用的无头浏览器：安卓系统自带内核、屏幕不可见、不留历史；每次打开 app 与每次开启服务都会清 cookie 与缓存。只监听 127.0.0.1。开启后可在终端 Tab 的说明里看到端口与全部指令。</string>
+    <string name="web_btn_start">开启服务</string>
+    <string name="web_btn_stop">关闭服务</string>
+    <string name="web_btn_clear">清除缓存</string>
+    <string name="web_status_off">已关闭</string>
+    <string name="web_status_on_fmt">运行中 · 端口 %1$d</string>
+    <string name="web_copy_hint">点此复制连接信息（端口 + 令牌 + 首条命令）</string>
+    <string name="web_copied">已复制连接信息</string>
+    <string name="web_clear_confirm">清除无头浏览器的截图与 cookie 文件？（服务运行所需的端口与令牌会保留）</string>
+    <string name="web_cleared_fmt">已清除 %1$d 个文件</string>
+    <string name="web_cleared_none">没有可清除的文件</string>
+    <string name="web_notice_blink">无头浏览器开着但还没用过 · 用完可在设置里关闭</string>
+    <string name="web_starting_toast">正在启动无头浏览器…</string>
+    <string name="web_stopped_toast">无头浏览器已关闭</string>
+
+    <!-- 无头浏览器 5.9.0 · Tab 说明：终端 tab 写帮助形态（端口/令牌/指令表/例子/排错），设置 tab 一笔带过 -->
+    <string name="web_intro_terminal_title">无头浏览器（给 AI agent 用）</string>
+    <string name="web_intro_terminal_body">安卓自带内核、屏幕不可见、不留历史的浏览器。服务端在安卓侧，Linux 里的 agent 用 HTTP 指令驱动它。&#10;&#10;【先开启】设置 → 高级 → 无头浏览器 → 开启服务。**只监听 127.0.0.1**，同一 WiFi 下别的设备连不上。&#10;&#10;【连上它】&#10;source ~/web/web.env&#10;# 或把固定端口 39080 与一次性令牌直接写进你的 skill&#10;curl -s -H &quot;X-Token: $TOKEN&quot; http://127.0.0.1:$PORT/help&#10;&#10;【发指令】统一 POST /op，体是 {&quot;op&quot;:&quot;…&quot;}：&#10;{&quot;op&quot;:&quot;open&quot;,&quot;url&quot;:&quot;https://…&quot;,&quot;wait&quot;:8000}   打开网址（复用同一页面）&#10;{&quot;op&quot;:&quot;wait&quot;,&quot;ms&quot;:10000}               单独等当前页面加载完&#10;{&quot;op&quot;:&quot;eval&quot;,&quot;js&quot;:&quot;…&quot;}                在页面里执行 JS，返回其值&#10;{&quot;op&quot;:&quot;html&quot;}                        取回当前页面 HTML&#10;{&quot;op&quot;:&quot;text&quot;,&quot;selector&quot;:&quot;…&quot;}         取可见文字（不给 selector = 整页正文）&#10;{&quot;op&quot;:&quot;click&quot;,&quot;selector&quot;:&quot;…&quot;}       真实点击（可带 wait 等新页）&#10;{&quot;op&quot;:&quot;type&quot;,&quot;selector&quot;:&quot;…&quot;,&quot;text&quot;:&quot;…&quot;}  填输入框（clear=false 追加）&#10;{&quot;op&quot;:&quot;select&quot;,&quot;selector&quot;:&quot;…&quot;,&quot;value&quot;:&quot;…&quot;}  选下拉框的一项&#10;{&quot;op&quot;:&quot;shot&quot;}                        截图写入 ~/web/shots/ 并返回路径&#10;{&quot;op&quot;:&quot;back&quot;} / {&quot;op&quot;:&quot;reload&quot;}       后退 / 重载&#10;{&quot;op&quot;:&quot;cookies&quot;}                     导出 cookie 到 ~/web/cookies.txt|json&#10;{&quot;op&quot;:&quot;clear&quot;} / {&quot;op&quot;:&quot;close&quot;}      清 cookie/缓存/localStorage 并结束会话&#10;{&quot;op&quot;:&quot;ping&quot;}                        探活&#10;&#10;【选择器】&quot;input[name=q]&quot; 是 CSS；&quot;text=登录&quot; 按可见文字找（text==登录 为严格相等）。&#10;&#10;【完整例子】&#10;source ~/web/web.env&#10;curl -s -H &quot;X-Token: $TOKEN&quot; -d \'{&quot;op&quot;:&quot;open&quot;,&quot;url&quot;:&quot;https://example.com&quot;,&quot;wait&quot;:8000}\' http://127.0.0.1:$PORT/op&#10;curl -s -H &quot;X-Token: $TOKEN&quot; -d \'{&quot;op&quot;:&quot;text&quot;}\' http://127.0.0.1:$PORT/op&#10;curl -s -H &quot;X-Token: $TOKEN&quot; -d \'{&quot;op&quot;:&quot;click&quot;,&quot;selector&quot;:&quot;text=More information&quot;}\' http://127.0.0.1:$PORT/op&#10;&#10;【须知】一次只开一个页面；open 的 wait 到点没加载完**不报错**，只回 ready:false 与 progress，可再 wait；截图只在页面已渲染时成功，白图会如实报错；cookies 只导出**当前页面可见**的（安卓没有「枚举全部」的 API）；指令串行执行，页面操作不会互相踩。&#10;&#10;【无痕】每次打开 app、每次开启服务、每次结束会话都会清 cookie、缓存与 localStorage；不保存密码与表单；没有历史记录。&#10;&#10;【产物】截图与 cookie 都在 ~/web/ 下，可用文件页直接翻到；「清除缓存」只删这些产物，保留端口与令牌。&#10;&#10;【排错】连接被拒 = 服务没开；令牌不对 = 重新复制连接信息；端口被占 = 服务会明确报错；overlay 权限缺失 = 按提示去设置里授予悬浮窗权限。&#10;&#10;【边界】不做多标签页/代理/下载/PDF；个别站点会拒绝内嵌浏览器（如 Google 账号登录），换站即可。</string>
+    <string name="web_intro_settings_body">无头浏览器：给 Linux 里的 AI agent 用的无头浏览器（安卓系统自带内核、屏幕不可见、不留历史、每次开启都清 cookie 与缓存、只监听 127.0.0.1）。在「高级 → 无头浏览器」里开启服务并复制连接信息；端口与全部指令见终端 Tab 的说明。</string>
 </resources>

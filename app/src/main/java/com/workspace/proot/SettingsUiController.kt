@@ -30,6 +30,7 @@ class SettingsUiController(
     private val status: StatusController,
     private val terminal: TerminalController,
     private val lan: LanController,
+    private val web: WebAutomationController,
     private val overlay: OverlayCommandsController,
     private val requestNotifPerm: () -> Unit
 ) {
@@ -73,6 +74,7 @@ class SettingsUiController(
         settingsInner.addView(divider())
         buildUpstreamSection(settingsInner, density)
         lan.buildSettingsBlock(settingsInner)
+        web.buildSettingsBlock(settingsInner)
         buildKeepAliveRow(settingsInner)
 
         settingsWrapper.addView(settingsScroll, LinearLayout.LayoutParams(
@@ -535,6 +537,7 @@ private fun buildLanguageRow(parent: LinearLayout) {
     }
 
     fun onResume() {
+        web.refreshRow()
         if (!batteryOptPending) return
         batteryOptPending = false
         val pm = activity.getSystemService(PowerManager::class.java)

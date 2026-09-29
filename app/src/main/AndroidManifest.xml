@@ -151,6 +151,15 @@
                 android:value="Share proot terminal and workspace files over LAN via built-in HTTP and WebSocket" />
         </service>
 
+        <service
+            android:name=".WebAutomationService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_FOREGROUND_SERVICE_SPECIAL_USE"
+                android:value="Drive a hidden system WebView on behalf of Linux-side agents over a local token-authenticated HTTP command API" />
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

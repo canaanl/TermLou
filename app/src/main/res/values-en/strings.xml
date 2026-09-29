@@ -424,4 +424,34 @@
     <string name="notes_search_notes">Search notes</string>
     <string name="notes_search_empty">No matches</string>
     <string name="notes_standalone_title">Notes</string>
+<!-- Headless browser 5.9.0 · service notification -->
+    <string name="web_channel">Headless browser</string>
+    <string name="web_starting">Starting headless browser…</string>
+    <string name="web_running_fmt">Headless browser running · port %1$d</string>
+    <string name="web_failed">Headless browser failed to start</string>
+    <string name="web_port_busy_fmt">Port %1$d is in use, cannot start (close whatever holds it)</string>
+    <string name="web_notif_title">TermLou headless browser</string>
+    <string name="web_notif_stop">Stop service</string>
+
+    <!-- Headless browser 5.9.0 · settings row -->
+    <string name="web_settings_title">Headless browser</string>
+    <string name="web_settings_desc">A headless browser for AI agents inside Linux: the engine built into Android, nothing shown on screen, no history; cookies and cache are wiped on every app start and every service start. It listens on 127.0.0.1 only. Once started, the port and the full command list are in the Terminal tab help.</string>
+    <string name="web_btn_start">Start service</string>
+    <string name="web_btn_stop">Stop service</string>
+    <string name="web_btn_clear">Clear cache files</string>
+    <string name="web_status_off">Stopped</string>
+    <string name="web_status_on_fmt">Running · port %1$d</string>
+    <string name="web_copy_hint">Tap to copy connection info (port + token + first command)</string>
+    <string name="web_copied">Connection info copied</string>
+    <string name="web_clear_confirm">Delete the headless browser screenshots and cookie files? (Port and token stay.)</string>
+    <string name="web_cleared_fmt">Removed %1$d file(s)</string>
+    <string name="web_cleared_none">Nothing to clear</string>
+    <string name="web_notice_blink">Headless browser is on but unused · close it in settings when done</string>
+    <string name="web_starting_toast">Starting headless browser…</string>
+    <string name="web_stopped_toast">Headless browser stopped</string>
+
+    <!-- Headless browser 5.9.0 · tab help: terminal tab gets the manual form (port/token/command table/examples/troubleshooting), settings tab gets one line -->
+    <string name="web_intro_terminal_title">Headless browser (for AI agents)</string>
+    <string name="web_intro_terminal_body">A browser with the engine built into Android: nothing on screen, no history. The service runs on the Android side; agents inside Linux drive it with plain HTTP commands.&#10;&#10;[TURN IT ON FIRST] Settings → Advanced → Headless browser → Start service. It listens on 127.0.0.1 only, so other devices on the same WiFi cannot reach it.&#10;&#10;[CONNECT]&#10;source ~/web/web.env&#10;# or hardcode the fixed port 39080 and the one-time token in your skill&#10;curl -s -H &quot;X-Token: $TOKEN&quot; http://127.0.0.1:$PORT/help&#10;&#10;[COMMANDS] everything goes to POST /op with a {&quot;op&quot;:&quot;...&quot;} body:&#10;{&quot;op&quot;:&quot;open&quot;,&quot;url&quot;:&quot;https://...&quot;,&quot;wait&quot;:8000}   open a URL (reuses the same page)&#10;{&quot;op&quot;:&quot;wait&quot;,&quot;ms&quot;:10000}               just wait for the current page to finish loading&#10;{&quot;op&quot;:&quot;eval&quot;,&quot;js&quot;:&quot;...&quot;}                run JS in the page and get its value back&#10;{&quot;op&quot;:&quot;html&quot;}                        get the current page HTML&#10;{&quot;op&quot;:&quot;text&quot;,&quot;selector&quot;:&quot;...&quot;}         get visible text (no selector = whole page body)&#10;{&quot;op&quot;:&quot;click&quot;,&quot;selector&quot;:&quot;...&quot;}       real click (add wait to wait for the new page)&#10;{&quot;op&quot;:&quot;type&quot;,&quot;selector&quot;:&quot;...&quot;,&quot;text&quot;:&quot;...&quot;}  fill a field (clear=false appends)&#10;{&quot;op&quot;:&quot;select&quot;,&quot;selector&quot;:&quot;...&quot;,&quot;value&quot;:&quot;...&quot;}  pick a dropdown option&#10;{&quot;op&quot;:&quot;shot&quot;}                        screenshot into ~/web/shots/, returns the path&#10;{&quot;op&quot;:&quot;back&quot;} / {&quot;op&quot;:&quot;reload&quot;}       go back / reload&#10;{&quot;op&quot;:&quot;cookies&quot;}                     export cookies to ~/web/cookies.txt|json&#10;{&quot;op&quot;:&quot;clear&quot;} / {&quot;op&quot;:&quot;close&quot;}      wipe cookies/cache/localStorage and end the session&#10;{&quot;op&quot;:&quot;ping&quot;}                        health check&#10;&#10;[SELECTORS] &quot;input[name=q]&quot; is CSS; &quot;text=Sign in&quot; finds by visible text (text==Sign in is exact).&#10;&#10;[FULL EXAMPLE]&#10;source ~/web/web.env&#10;curl -s -H &quot;X-Token: $TOKEN&quot; -d \'{&quot;op&quot;:&quot;open&quot;,&quot;url&quot;:&quot;https://example.com&quot;,&quot;wait&quot;:8000}\' http://127.0.0.1:$PORT/op&#10;curl -s -H &quot;X-Token: $TOKEN&quot; -d \'{&quot;op&quot;:&quot;text&quot;}\' http://127.0.0.1:$PORT/op&#10;curl -s -H &quot;X-Token: $TOKEN&quot; -d \'{&quot;op&quot;:&quot;click&quot;,&quot;selector&quot;:&quot;text=More information&quot;}\' http://127.0.0.1:$PORT/op&#10;&#10;[NOTES] One page at a time; if open\'s wait runs out it does NOT error, it returns ready:false plus progress, so just wait again; shots only succeed once the page has rendered and fail loudly instead of returning a blank image; cookies cover the current page only (Android has no enumerate-all API); commands run serially so page operations never collide.&#10;&#10;[NO HISTORY] Every app start, every service start and every session end wipes cookies, cache and localStorage; passwords and form data are never saved; there is no history.&#10;&#10;[ARTIFACTS] Screenshots and cookies land in ~/web/ — browse them from the file tab. Clear cache files only deletes those, keeping port and token.&#10;&#10;[TROUBLESHOOTING] connection refused = service is off; wrong token = copy the connection info again; port in use = the service reports it plainly; missing overlay permission = grant it in settings.&#10;&#10;[LIMITS] no multi-tab, proxy, downloads or PDF; a few sites refuse embedded browsers (e.g. Google sign-in) — use a different site.</string>
+    <string name="web_intro_settings_body">Headless browser: a headless browser (the engine built into Android, nothing on screen, no history, cookies and cache wiped on every start, listens on 127.0.0.1 only) for AI agents inside Linux. Start the service and copy the connection info under Advanced → Headless browser; the port and the full command list are in the Terminal tab help.</string>
 </resources>

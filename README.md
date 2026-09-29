@@ -139,6 +139,7 @@ MainActivity.onCreate
 - **输出截断**：stdout/stderr 各限 128KB，防止 OOM 与上下文爆炸
 - **超时强杀**：命令超时 `destroyForcibly()`，协程取消时 join 收集线程防泄漏
 - **注入安全**：proot 内命令以位置参数传递（`cd -- "$1" && eval "$2"`），杜绝 shell 引号/转义问题
+- **无头浏览器只听回环**：无头浏览器（5.9.0）显式绑 `127.0.0.1`，同一 WiFi 下别的设备连不上；令牌每次安装随机生成后固定，且只存 TermLou 私有目录。页面操作全部经 `evaluateJavascript` 执行，用户输入先由 `WebSelector.jsString` 转义再拼进 JS 字面量
 
 ---
 

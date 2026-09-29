@@ -25,7 +25,8 @@ object TabIntroContent {
                 TabIntroSection(R.string.intro_terminal_library_title, R.string.intro_terminal_library_body),
                 TabIntroSection(R.string.intro_terminal_startup_title, R.string.intro_terminal_startup_body),
                 TabIntroSection(R.string.intro_terminal_ui_title, R.string.intro_terminal_ui_body),
-                TabIntroSection(R.string.intro_terminal_workshop_title, R.string.intro_terminal_workshop_body)
+                TabIntroSection(R.string.intro_terminal_workshop_title, R.string.intro_terminal_workshop_body),
+                TabIntroSection(R.string.web_intro_terminal_title, R.string.web_intro_terminal_body)
             )
         )
         1 -> TabIntroPage(
@@ -77,7 +78,8 @@ object TabIntroContent {
                 TabIntroSection(R.string.intro_settings_ui_title, R.string.intro_settings_ui_body),
                 TabIntroSection(R.string.intro_settings_commands_title, R.string.intro_settings_commands_body),
                 TabIntroSection(R.string.intro_settings_workshop_title, R.string.intro_settings_workshop_body),
-                TabIntroSection(R.string.intro_settings_net_title, R.string.intro_settings_net_body)
+                TabIntroSection(R.string.intro_settings_net_title, R.string.intro_settings_net_body),
+                TabIntroSection(R.string.web_settings_title, R.string.web_intro_settings_body)
             )
         )
     }
