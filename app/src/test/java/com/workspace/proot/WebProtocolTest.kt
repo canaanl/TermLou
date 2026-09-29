@@ -2,6 +2,7 @@ package com.workspace.proot
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -227,5 +228,26 @@ class WebProtocolTest {
     fun `503 有自己的状态短语`() {
         val resp = String(WebProtocol.httpResponse(503, "{}", "t"), Charsets.ISO_8859_1)
         assertTrue(resp.startsWith("HTTP/1.1 503 Service Unavailable"))
+    }
+    @Test
+    fun `说明书含 diag 指令`() {
+        val help = WebProtocol.help(39080, "t")
+        assertTrue("应含 diag", help.contains("\"diag\""))
+    }
+
+    @Test
+    fun `说明书区分 ready 与 usable`() {
+        val help = WebProtocol.help(39080, "t")
+        assertTrue("应解释 usable 的含义", help.contains("usable"))
+        assertTrue("应说明错误页也会触发页面事件", help.contains("error page") || help.contains("错误页"))
+    }
+
+    @Test
+    fun `示例不再依赖某个站点的具体文案`() {
+        // 5.9.4：旧示例写 text=More information，而 example.com 的链接文字其实是
+        // "Learn more"，示例本身就是错的。现在示例用 eval/text:h1 这种与站点无关的写法。
+        val help = WebProtocol.help(39080, "t")
+        assertFalse("不该再出现 More information", help.contains("More information"))
+        assertTrue(help.contains("document.title"))
     }
 }

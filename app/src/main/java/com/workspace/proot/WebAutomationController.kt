@@ -37,12 +37,8 @@ class WebAutomationController(
             textSize = UiTokens.TEXT_BODY
             setPadding(0, 0, 0, 4)
         })
-        parent.addView(TextView(activity).apply {
-            text = activity.getString(R.string.web_settings_desc)
-            setTextColor(scope.cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_META
-            setPadding(0, 0, 0, 4)
-        })
+        // 5.9.4：这里原本有一整段功能说明（"给 Linux 里的 AI agent 用的无头浏览器…"），
+        // 与终端 Tab 的说明页重复。设置区只留标题、状态、连接信息与按钮。
         statusText = TextView(activity).apply {
             text = activity.getString(R.string.web_status_off)
             setTextColor(scope.cOnSurfaceVariant)
@@ -77,9 +73,12 @@ class WebAutomationController(
                 setPadding(16, 6, 16, 6)
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginEnd = 4
-                }
+                // 5.9.4 修：这里原本给 marginEnd/marginStart = 4dp，靠 SegmentStyle.applyRow
+                // 里的 relayoutMargins() 在 applyRow 时清掉。但本行会**反复** applyRow
+                // （refreshRow 在开关服务后 1.2s / 3s 又调一次），于是"已布局 → 下一帧才清
+                // 间隙"之间存在一帧错位：填充色和分割线对不齐，露出底色小缝（用户实机偶发）。
+                // 直接建 0 间隙，从第一帧起就是紧贴的。
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 setOnClickListener { if (WebAutomationService.isRunning) stop() else start() }
             }
             clearBtn = Button(activity).apply {
@@ -89,9 +88,7 @@ class WebAutomationController(
                 setPadding(16, 6, 16, 6)
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = 4
-                }
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 setOnClickListener { confirmClear() }
             }
             addView(toggleBtn)

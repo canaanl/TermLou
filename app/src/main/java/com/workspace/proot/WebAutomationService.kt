@@ -99,15 +99,49 @@ class WebAutomationService : Service() {
     @Volatile private var progress = 0
     @Volatile private var pageReady = false
 
+    /** 最近一次主文档加载失败的错误码（如 ERROR_TIMEOUT），由 [WebViewClient] 记。 */
+    @Volatile private var lastErrorCode: String? = null
+
+    /** overlay 窗口最后一次拿到的实际几何（诊断用；null = 窗口还没加上）。 */
+    @Volatile private var hostBounds: String? = null
+
     private val pageClient = object : WebViewClient() {
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
             progress = 0
             pageReady = false
+            lastErrorCode = null
         }
 
         override fun onPageFinished(view: WebView?, url: String?) {
             progress = 100
             pageReady = true
+        }
+
+        /**
+         * 加载失败：记下错误码。
+         *
+         * 这一层比"抓正文找 ERR_"可靠——`onReceivedError` 拿得到系统给出的确切码
+         * （`ERROR_TIMEOUT` 等）。注意 WebView 加载自己的错误页时**照样会触发
+         * `onPageFinished`**，所以只靠 ready 会把"打开失败"误报成成功（5.9.4 修的就是这个）。
+         */
+        override fun onReceivedError(
+            view: WebView?,
+            request: android.webkit.WebResourceRequest?,
+            error: android.webkit.WebResourceError?
+        ) {
+            if (request?.isForMainFrame != true) return          // 子资源失败不关我们的事
+            lastErrorCode = error?.errorCode?.toString()
+        }
+
+        /** HTTP 层失败（4xx/5xx）：只有主文档才算。 */
+        override fun onReceivedHttpError(
+            view: WebView?,
+            request: android.webkit.WebResourceRequest?,
+            errorResponse: android.webkit.WebResourceResponse?
+        ) {
+            if (request?.isForMainFrame != true) return
+            val code = errorResponse?.statusCode ?: return
+            if (code >= 400) lastErrorCode = "HTTP_$code"
         }
 
         override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
@@ -293,6 +327,9 @@ class WebAutomationService : Service() {
     private fun handle(op: String, request: WebProtocol.Request, cancelled: () -> Boolean): String {
         // 探活不碰页面也不抢锁：一条卡住的 open 不该把 ping 堵在后面
         if (op == "ping") return WebProtocol.okJson("msg" to "pong", "port" to WebProtocol.DEFAULT_PORT)
+        // diag 只读状态（overlay 几何 / 页面可见性 / 错误码），故也不抢锁——
+        // 这样"卡住了"的时候还能用它看出卡在哪
+        if (op == "diag") return opDiag()
 
         pageLock.lock()
         try {
@@ -307,7 +344,7 @@ class WebAutomationService : Service() {
                 "type" -> opType(request, cancelled)
                 "select" -> opSelect(request, cancelled)
                 "shot" -> opShot()
-                "back" -> opBack()
+                "back" -> opBack(request, cancelled)
                 "reload" -> opReload(request, cancelled)
                 "cookies" -> opCookies()
                 "clear", "close" -> opClose()
@@ -415,6 +452,13 @@ class WebAutomationService : Service() {
             gravity = Gravity.TOP or Gravity.START
         }
         wm.addView(wv, params)
+        // 记下窗口**实际拿到的**几何：诊断看的是这个，而不是我们请求的值
+        // （5.9.4 之前无法回答"挂在屏外的窗口到底渲没渲染"）
+        hostBounds = runCatching {
+            val dm = resources.displayMetrics
+            "x=${params.x} y=${params.y} w=${wv.width} h=${wv.height} " +
+                "screen=${dm.widthPixels}x${dm.heightPixels}"
+        }.getOrDefault("unknown")
         webView = wv
         progress = 0
         pageReady = false
@@ -480,10 +524,14 @@ class WebAutomationService : Service() {
         val wv = onMain { ensureWebView() } ?: return WebProtocol.errJson("webview timeout")
         onMain { wv.loadUrl(url) } ?: return WebProtocol.errJson("load timeout")
         val ready = waitForPage(waitMs, cancelled)
+        // ready 只说明页面事件完成；落地页可能是 WebView 自己的错误页（它照样触发
+        // onPageFinished），所以再判一次"真的能用"，否则 ok:true 会把加载失败糊过去
+        unusableReason(wv)?.let { return WebProtocol.errJson("$it — you asked for $url") }
         return WebProtocol.okJson(
             "msg" to "opened",
             "url" to url,
             "ready" to ready,
+            "usable" to ready,
             "progress" to progress
         )
     }
@@ -553,7 +601,92 @@ class WebAutomationService : Service() {
     private fun WebProtocol.EvalOutcome.valueOrNull(): String? =
         (this as? WebProtocol.EvalOutcome.Value)?.value
 
-        /**
+    /**
+     * 落地页**是否真的可用**（5.9.4）。
+     *
+     * 两层判：
+     *  1. [WebViewClient] 记下的 `lastErrorCode`（`ERROR_TIMEOUT` 之类）——最可靠；
+     *  2. 页面探针：`location.protocol` 是不是 `chrome-error:`、正文里有没有 `ERR_…`。
+     *
+     * 返回 null 表示可用；非 null 是给 agent 的错误说明。
+     */
+    private fun unusableReason(wv: WebView): String? {
+        lastErrorCode?.let { code ->
+            return "landed on an error page: ${WebPageUsable.describeErrorCode(code)}"
+        }
+        val outcome = evalInPage(
+            wv,
+            "(function(){var t='';try{t=document.title||''}catch(e){};" +
+                "var b='';try{b=(document.body?document.body.innerText:'').slice(0,400)}catch(e){};" +
+                "return t+'\n'+b+'\n'+(location.protocol||'')+'\n'+(location.href||'')})()",
+            { false }
+        )
+        val value = (outcome as? WebProtocol.EvalOutcome.Value)?.value ?: return null
+        val parts = value.split('\n')
+        if (parts.size < 4) return null
+        val title = parts[0]
+        val text = parts[1]
+        val protocol = parts[2]
+        val href = parts[3]
+        return when (val v = WebPageUsable.judge(protocol, href, title, text)) {
+            is WebPageUsable.Verdict.Usable -> null
+            is WebPageUsable.Verdict.ErrorPage ->
+                "landed on WebView's own error page (chrome-error://) instead of $href"
+            is WebPageUsable.Verdict.ErrorContent ->
+                "landed on an error page: net::$v.code (${title.ifEmpty { "no title" }})"
+        }
+    }
+
+    /**
+     * `diag`：诊断探针（5.9.4）。
+     *
+     * 回答那些"代码上看不出来、只能真机看"的问题——尤其是**挂在屏幕外的 overlay 窗口
+     * 到底有没有在渲染**。只读状态，不改变任何行为。
+     */
+    private fun opDiag(): String {
+        val wv = webView
+        val overlay = hostBounds ?: "no overlay window yet (no page opened)"
+        val base = listOf<Pair<String, Any?>>(
+            "overlay" to overlay,
+            "viewport" to "${WebProtocol.VIEWPORT_W_DP}x${WebProtocol.VIEWPORT_H_DP} dp",
+            "last_error" to (lastErrorCode ?: "none")
+        )
+        if (wv == null) {
+            return WebProtocol.okJson(
+                "msg" to "no page open",
+                *base.toTypedArray(),
+                "note" to "open a page first, then call diag again to see the rendering state"
+            )
+        }
+        val outcome = evalInPage(
+            wv,
+            "(function(){var r={};" +
+                "try{r.protocol=location.protocol}catch(e){r.protocol='?'}" +
+                "try{r.href=location.href}catch(e){r.href='?'}" +
+                "try{r.title=document.title}catch(e){r.title='?'}" +
+                "try{r.readyState=document.readyState}catch(e){r.readyState='?'}" +
+                "try{r.docW=document.documentElement.scrollWidth}catch(e){r.docW=-1}" +
+                "try{r.docH=document.documentElement.scrollHeight}catch(e){r.docH=-1}" +
+                "try{r.bodyLen=(document.body?document.body.innerHTML.length:-1)}catch(e){r.bodyLen=-1}" +
+                "try{r.visState=document.visibilityState}catch(e){r.visState='?'}" +
+                "try{r.visCss=(document.body?getComputedStyle(document.body).visibility:'-')}catch(e){r.visCss='?'}" +
+                "try{r.imgs=document.images.length;r.doneImgs=0;" +
+                "for(var i=0;i<document.images.length;i++){if(document.images[i].complete)r.doneImgs++}}catch(e){}" +
+                "return JSON.stringify(r)})()",
+            { false }
+        )
+        val raw = (outcome as? WebProtocol.EvalOutcome.Value)?.value
+        return WebProtocol.okJson(
+            "msg" to "diag",
+            *base.toTypedArray(),
+            "view" to "w=${wv.width} h=${wv.height} attached=${wv.isAttachedToWindow} vis=${wv.visibility}",
+            "ready" to pageReady,
+            "progress" to progress,
+            "page" to (raw ?: "evaluate failed")
+        )
+    }
+
+    /**
      * 把页面侧带回来的哨兵翻译成**互不混淆**的错误信息（5.9.3）：
      *
      *  - [WebSelector.NOT_FOUND] —— 元素真的不在 → `not found: <selector>`
@@ -615,11 +748,17 @@ class WebAutomationService : Service() {
         val label = outcome.valueOrNull() ?: return WebProtocol.errJson(SCRIPT_FAILED)
         pageSideError(label, raw)?.let { return WebProtocol.errJson(it) }
         val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS), cancelled)
+        val landed = onMain { wv.url } ?: ""
+        // 点击本身成功 ≠ 目的地可用：落地是错误页时如实说出来，但 ok 仍为 true
+        //（点击确实发生了，agent 需要知道"点了，但没到想去的地方"）
+        val broken = if (ready) unusableReason(wv) else null
         return WebProtocol.okJson(
             "msg" to "clicked",
             "label" to label,
             "ready" to ready,
-            "url" to (onMain { wv.url } ?: "")
+            "usable" to (ready && broken == null),
+            "url" to landed,
+            "warning" to broken
         )
     }
 
@@ -731,13 +870,26 @@ class WebAutomationService : Service() {
         return !WebShotSampler.looksBlank(bmp.width, bmp.height) { x, y -> bmp.getPixel(x, y) }
     }
 
-    /** `back`：后退。没有历史就如实报错，不假装成功。 */
-    private fun opBack(): String {
+    /**
+     * `back`：后退（可带 `wait`）。
+     *
+     * 5.9.4 修：`goBack()` 是**异步**导航，此前紧接着读 `wv.url` 拿到的还是**跳转前**的
+     * 地址，害得调用方只能自己去 eval `location.href`。现在等新页就绪后再读 url，
+     * 语义与 `reload` 对齐。
+     */
+    private fun opBack(request: WebProtocol.Request, cancelled: () -> Boolean): String {
         val wv = webView ?: return WebProtocol.errJson("no page open")
         val canGoBack = onMain { wv.canGoBack() } ?: false
         if (!canGoBack) return WebProtocol.errJson("no history to go back")
-        onMain { wv.goBack() }
-        return WebProtocol.okJson("msg" to "back", "url" to (onMain { wv.url } ?: ""))
+        onMain { wv.goBack() } ?: return WebProtocol.errJson("back failed")
+        val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS), cancelled)
+        unusableReason(wv)?.let { return WebProtocol.errJson(it) }
+        return WebProtocol.okJson(
+            "msg" to "back",
+            "ready" to ready,
+            "usable" to ready,
+            "url" to (onMain { wv.url } ?: "")
+        )
     }
 
     /** `reload`：重载当前页（可带 `wait`）。 */
@@ -745,9 +897,11 @@ class WebAutomationService : Service() {
         val wv = webView ?: return WebProtocol.errJson("no page open")
         onMain { wv.reload() } ?: return WebProtocol.errJson("reload timeout")
         val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS), cancelled)
+        unusableReason(wv)?.let { return WebProtocol.errJson(it) }
         return WebProtocol.okJson(
             "msg" to "reloaded",
             "ready" to ready,
+            "usable" to ready,
             "url" to (onMain { wv.url } ?: "")
         )
     }
