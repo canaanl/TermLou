@@ -76,9 +76,15 @@ object WebSelector {
      * 调用方拿到的不是元素就是字符串，所以模板统一这么写：
      * ```
      * (function(){var e=<pickJs>;
-     *   if(typeof e!=='object'||e===null)return String(e);   // 哨兵，原样带回
+     *   if(e===null)return '__TERMLOU_NOT_FOUND__';   // 漏网之鱼：e 是 null → 哨兵
+     *   if(typeof e!=='object')return String(e);       // 真·字符串哨兵，原样带回
      *   …对 e 做事，返回一个字符串摘要…})()
      * ```
+     *
+     * ⚠ **绝不能写 `String(e)` 来处理 null**（5.9.4）：`String(null)` 得到字符串
+     * `"null"`，和真实内容无法区分，于是对不存在的元素也报 `ok:true`。
+     * 5.9.4 因此在两处堵：这里让 [pickJs] 自己兑现"找不到返回 [NOT_FOUND]"的契约，
+     * [WebOpScripts.wrap] 再兜一层 null。
      *
      * 失败时**不用 null 作哨兵**是刻意的：`evaluateJavascript` 会把 JS 抛出的异常吞掉、
      * 回调给 `null`，那样"选择器语法写错"和"元素真的不在"两件事长得完全一样，
@@ -86,7 +92,10 @@ object WebSelector {
      */
     fun pickJs(kind: Kind): String = when (kind) {
         is Kind.Css -> buildString {
-            append("(function(){try{return document.querySelector(").append(jsLiteral(kind.value)).append(")}")
+            // 查不到时必须回哨兵，不能回 JS 的 null：null 会被上层 `String(null)` 成
+            // 字符串 "null"，和真实内容分不开（5.9.4 假成功的根源，就在这里）。
+            append("(function(){try{var e=document.querySelector(").append(jsLiteral(kind.value)).append(");")
+            append("return e?e:").append(jsLiteral(NOT_FOUND)).append("}")
             // JS 里的 catch 参数名照旧叫 e，这里是 Kotlin 字符串，别让两边搞混
             append("catch(e){return ").append(jsErrExpr("e.name + ': ' + e.message")).append("}})()")
         }
@@ -119,6 +128,19 @@ object WebSelector {
 
     /** 判断一个 eval 结果是不是"元素没找到"的哨兵。 */
     fun isNotFound(value: String?): Boolean = value == NOT_FOUND
+
+    /**
+     * 页面侧回来的值是不是"没找到"——除了 [NOT_FOUND] 哨兵，**字面量 `"null"` 也算**。
+     *
+     * 5.9.4 加的第二道保险。此前 CSS 选择器查不到元素时 `querySelector` 返回 JS 的
+     * `null`，模板里一句 `String(e)` 把它变成字符串 `"null"`，和真实内容分不开，
+     * 于是 text/click/type/select 对不存在的元素全报 `ok:true`
+     * （真机实测 `#ghost` 返回 `label:"null"`）。
+     *
+     * 页面正文恰好等于这四个字母的情况极罕见，宁可误判成 not found，
+     * 也不能把"什么都没发生"报成成功。
+     */
+    fun isMissing(value: String?): Boolean = isNotFound(value) || value == "null"
 
     /** 取出 JS 侧报回来的错误信息；不是错误则返回 null。 */
     fun jsErrorOf(value: String?): String? =

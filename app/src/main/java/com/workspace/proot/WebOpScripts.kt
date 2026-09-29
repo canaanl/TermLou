@@ -36,7 +36,12 @@ internal object WebOpScripts {
      * (function(){var WEB_ERR='WEBERR:';
      *   try{
      *     var e = <pick>;                        // 元素，或哨兵字符串，或 null
-     *     if(typeof e!=='object'||e===null)return String(e);
+        // 5.9.4: a null pick maps to the not-found sentinel, never to String(e).
+        // A CSS selector that matches nothing makes querySelector return JS null,
+        // and String(null) is the *string* null - indistinguishable from real
+        // content, so every selector op reported ok:true for missing elements.
+        append("if(e===null)return ").append(jsNotFound()).append(";")
+        append("if(typeof e!=='object')return String(e);")
      *     <body>                                  // 调用方只写这一段
      *   }catch(err){return WEB_ERR+(err&&err.name||'Error')+': '+(err&&err.message||'')}
      * })()
@@ -48,13 +53,20 @@ internal object WebOpScripts {
     fun wrap(pick: String, body: String): String = buildString {
         append("(function(){var WEB_ERR='").append(WEB_ERR_PREFIX).append("';")
         append("try{var e=").append(pick).append(";")
-        append("if(typeof e!=='object'||e===null)return String(e);")
+        // 5.9.4: a null pick maps to the not-found sentinel, never to String(e).
+        // A CSS selector that matches nothing makes querySelector return JS null,
+        // and String(null) is the *string* null - indistinguishable from real
+        // content, so every selector op reported ok:true for missing elements.
+        append("if(e===null)return ").append(jsNotFound()).append(";")
+        append("if(typeof e!=='object')return String(e);")
         append(body)
         append("}catch(err){return WEB_ERR+(err&&err.name||'Error')+': '+(err&&err.message||'')}")
         append("})()")
     }
 
-    /** `type` 用的页面侧助手：先判元素类型，再用原生 setter 改值并派发事件。 */
+    /** Page-side literal for "not found". */
+    private fun jsNotFound(): String = "'" + WebSelector.NOT_FOUND + "'"
+
     private val FILL_HELPER = buildString {
         append("function WEB_FILL(e,v,clear){")
         append("var tag=String(e.tagName).toUpperCase();")

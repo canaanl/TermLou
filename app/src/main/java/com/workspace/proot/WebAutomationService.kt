@@ -102,11 +102,21 @@ class WebAutomationService : Service() {
     /** 最近一次主文档加载失败的错误码（如 ERROR_TIMEOUT），由 [WebViewClient] 记。 */
     @Volatile private var lastErrorCode: String? = null
 
+    /**
+     * 导航代数：WebView 每发起一次新导航就 +1（[pageClient] 的 `onPageStarted`）。
+     *
+     * 用途是区分"这次点击**真的**引起了导航"和"点了但页面没动"（`<a>` 被
+     * `preventDefault`、点了个纯展示的 div）。`onPageStarted` 在主线程上晚一步才到，
+     * 所以只能靠操作**前后**的代数差来判断，不能靠读页面状态。
+     */
+    @Volatile private var navSeq = 0L
+
     /** overlay 窗口最后一次拿到的实际几何（诊断用；null = 窗口还没加上）。 */
     @Volatile private var hostBounds: String? = null
 
     private val pageClient = object : WebViewClient() {
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+            navSeq++
             progress = 0
             pageReady = false
             lastErrorCode = null
@@ -145,7 +155,9 @@ class WebAutomationService : Service() {
         }
 
         override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
-            // 站内跳转（点了链接）也算一轮加载完
+            // 站内跳转（点了链接）也算一轮加载完。
+            // progress 必须一起置 100：否则 ready:true 会和 progress:10 并存，
+            // 两个字段自相矛盾（5.9.4 真机复查指出）。
             progress = 100
             pageReady = true
         }
@@ -522,6 +534,7 @@ class WebAutomationService : Service() {
         if (url.isBlank()) return WebProtocol.errJson("missing url")
         val waitMs = WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS)
         val wv = onMain { ensureWebView() } ?: return WebProtocol.errJson("webview timeout")
+        markNavigationStarted()          // 必须在 loadUrl 之前（见该函数注释）
         onMain { wv.loadUrl(url) } ?: return WebProtocol.errJson("load timeout")
         val ready = waitForPage(waitMs, cancelled)
         // ready 只说明页面事件完成；落地页可能是 WebView 自己的错误页（它照样触发
@@ -537,19 +550,71 @@ class WebAutomationService : Service() {
     }
 
     /**
+     * 发起导航前**同步**清掉上一页留下的状态。
+     *
+     * 5.9.4 修：`onPageStarted` 要在主线程上晚一步才到，所以此前 `loadUrl` 之后立刻
+     * `waitForPage(0)` 读到的 `pageReady/progress` **是上一页的**——于是
+     * `open https://不存在的域名` 报出 `ready:true, usable:true`（可用性探针也是
+     * 在旧页面上做的，两个字段一起描述了上一页）。
+     * 在投递 `loadUrl` 之前先清：新导航此刻还没开始，它的回调不会被我们擦掉。
+     */
+    private fun markNavigationStarted() {
+        progress = 0
+        pageReady = false
+        lastErrorCode = null
+    }
+
+    /**
      * 等页面加载完成。[waitMs]=0 时只做一次非阻塞检查。
      * 超时**不报错**，把进度如实回给 agent 由它决定是否重试；客户端断开则立刻收手。
      */
     private fun waitForPage(waitMs: Int, cancelled: () -> Boolean): Boolean {
-        if (pageReady && progress >= 100) return true
+        if (isReadyNow()) return true
         if (waitMs <= 0) return false
-        val deadline = SystemClock.elapsedRealtime() + waitMs
+        return waitUntilReady(SystemClock.elapsedRealtime() + waitMs, cancelled)
+    }
+
+    /** 页面此刻是否就绪（已收到完成事件且进度走满）。 */
+    private fun isReadyNow(): Boolean = pageReady && progress >= 100
+
+    /** 轮询到 [deadline] 为止等页面就绪。 */
+    private fun waitUntilReady(deadline: Long, cancelled: () -> Boolean): Boolean {
         while (SystemClock.elapsedRealtime() < deadline) {
-            if (pageReady && progress >= 100) return true
+            if (isReadyNow()) return true
             if (cancelled()) return false
             Thread.sleep(POLL_MS)
         }
-        return pageReady && progress >= 100
+        return isReadyNow()
+    }
+
+    /**
+     * 「可能引起导航」的操作（`click`）之后的就绪判定。
+     *
+     * 不能像 open 那样先无条件清状态：点击未必导航，那会让"没导航"永远报 ready:false。
+     * 也不能不管：点击引起导航时，立刻读到的 `pageReady/progress` **是上一页的**，
+     * 于是 `click` 会报 ready:true，紧接着的可用性探针也在旧页面上做（5.9.4 真机复现：
+     * 点完立刻报 usable:true）。所以先比导航代数：
+     *  - 代数变了 → 新导航已经开始 → 一律按"还没就绪"处理，绝不冒充上一页；
+     *  - 代数没变 → 页面确实没动，沿用 WebView 报的状态。
+     */
+    private fun waitAfterOptionalNav(
+        seqBefore: Long,
+        waitMs: Int,
+        cancelled: () -> Boolean
+    ): Boolean {
+        val navStarted = navSeq != seqBefore
+        if (waitMs <= 0) {
+            return WebReady.readyUnwaited(navStarted, pageReady, progress)
+        }
+        val deadline = SystemClock.elapsedRealtime() + waitMs
+        if (navStarted) return waitUntilReady(deadline, cancelled)
+        // 先等导航真的开始；到点还没开始就是这次点击没导航，别把时间全耗在空等上
+        while (navSeq == seqBefore && SystemClock.elapsedRealtime() < deadline) {
+            if (cancelled()) return false
+            Thread.sleep(POLL_MS)
+        }
+        if (cancelled()) return false
+        return if (navSeq != seqBefore) waitUntilReady(deadline, cancelled) else isReadyNow()
     }
 
     /** `wait`：单独等页面就绪。 */
@@ -699,7 +764,12 @@ class WebAutomationService : Service() {
      * 三件事全被塌成同一个 not found / returned null，把排查方向带偏了两次。
      */
     private fun pageSideError(value: String, selector: String): String? = when {
-        WebSelector.isNotFound(value) -> "not found: $selector"
+        // 5.9.4 第二道保险：字面量 "null" 也算没找到，绝不能当成内容（见 isMissing）
+        WebSelector.isMissing(value) -> "not found: $selector"
+        // 第二道保险：字面量 "null" 绝不能当成内容。5.9.4 之前 CSS 选择器查不到元素时
+        // 页面侧 `String(null)` 得到的就是字符串 "null"，于是 text/click/type/select
+        // 对不存在的元素全报 ok:true（真机实测 #ghost 返回 label:"null"）。
+        value == "null" -> "not found: $selector"
         else -> WebSelector.jsErrorOf(value)?.let { "bad selector ($selector): $it" }
             ?: WebOpScripts.webErrorOf(value)?.let { "$it [selector: $selector]" }
     }
@@ -743,11 +813,16 @@ class WebAutomationService : Service() {
         val wv = webView ?: return WebProtocol.errJson("no page open")
         val raw = WebProtocol.bodyString(request, "selector")
         val kind = WebSelector.parse(raw) ?: return WebProtocol.errJson("bad selector: $raw")
+        val navSeqBefore = navSeq
         val outcome = evalInPage(wv, WebOpScripts.click(WebSelector.pickJs(kind)), cancelled)
         outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
         val label = outcome.valueOrNull() ?: return WebProtocol.errJson(SCRIPT_FAILED)
         pageSideError(label, raw)?.let { return WebProtocol.errJson(it) }
-        val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS), cancelled)
+        val ready = waitAfterOptionalNav(
+            navSeqBefore,
+            WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS),
+            cancelled
+        )
         val landed = onMain { wv.url } ?: ""
         // 点击本身成功 ≠ 目的地可用：落地是错误页时如实说出来，但 ok 仍为 true
         //（点击确实发生了，agent 需要知道"点了，但没到想去的地方"）
@@ -880,7 +955,16 @@ class WebAutomationService : Service() {
     private fun opBack(request: WebProtocol.Request, cancelled: () -> Boolean): String {
         val wv = webView ?: return WebProtocol.errJson("no page open")
         val canGoBack = onMain { wv.canGoBack() } ?: false
-        if (!canGoBack) return WebProtocol.errJson("no history to go back")
+        if (!canGoBack) {
+            // 带上历史信息：此前"导航还在途中"和"真的没历史"报同一句话，无法分辨。
+            // 导航未提交时确实还没有条目，所以这句同时也是提示：先 wait 再 back。
+            val entries = onMain { wv.copyBackForwardList().size } ?: -1
+            return WebProtocol.errJson(
+                "no history to go back (history entries: $entries) - " +
+                    "if a navigation is still in flight, wait for it first: {\"op\":\"wait\"}"
+            )
+        }
+        markNavigationStarted()
         onMain { wv.goBack() } ?: return WebProtocol.errJson("back failed")
         val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS), cancelled)
         unusableReason(wv)?.let { return WebProtocol.errJson(it) }
@@ -895,6 +979,7 @@ class WebAutomationService : Service() {
     /** `reload`：重载当前页（可带 `wait`）。 */
     private fun opReload(request: WebProtocol.Request, cancelled: () -> Boolean): String {
         val wv = webView ?: return WebProtocol.errJson("no page open")
+        markNavigationStarted()
         onMain { wv.reload() } ?: return WebProtocol.errJson("reload timeout")
         val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS), cancelled)
         unusableReason(wv)?.let { return WebProtocol.errJson(it) }

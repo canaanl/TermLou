@@ -80,16 +80,16 @@
 
     <!-- 设置：LAN -->
     <string name="lan_title">LAN 服务</string>
-    <string name="lan_status_off">状态：未开启</string>
-    <string name="lan_status_off_auth_fmt">状态：未开启 · 已设认证：%1$s</string>
-    <string name="lan_status_open">状态：运行中 · 开放访问</string>
-    <string name="lan_status_auth_fmt">状态：运行中 · 认证：%1$s</string>
-    <string name="lan_url_preview">http://…:8080（未运行，仅预览）</string>
-    <string name="lan_url_copy_fmt">%1$s（点即复制）</string>
-    <string name="lan_url_preview_ip_fmt">http://%1$s:8080（未运行，仅预览，点即复制）</string>
+    <string name="lan_url_preview">点击复制：http://…:8080（服务未运行）</string>
+    <string name="lan_url_copy_fmt">点击复制：%1$s</string>
+    <string name="lan_url_preview_ip_fmt">点击复制：http://%1$s:8080（服务未运行）</string>
     <string name="lan_start">开启服务</string>
     <string name="lan_stop">停止服务</string>
-    <string name="lan_auth_btn">用户验证</string>
+    <string name="lan_auth_btn">用户认证</string>
+    <!-- 已存认证信息时，认证按钮上就写「需认证」：状态由按钮自己说，不再另起一行 -->
+    <string name="lan_auth_btn_set">需认证</string>
+    <!-- 按钮太窄（超大字体 / 小屏）时换的缩写 -->
+    <string name="lan_auth_btn_short">认证</string>
     <string name="lan_starting">正在启动 LAN 服务…</string>
     <string name="lan_stopped">已停止 LAN 服务，状态已重置</string>
     <string name="lan_stop_first">服务运行中，请先停止服务再修改认证</string>
@@ -435,9 +435,7 @@
     <string name="web_btn_start">开启服务</string>
     <string name="web_btn_stop">关闭服务</string>
     <string name="web_btn_clear">清除缓存</string>
-    <string name="web_status_off">已关闭</string>
-    <string name="web_status_on_fmt">运行中 · 端口 %1$d</string>
-    <string name="web_copy_hint">点此复制连接信息（端口 + 令牌 + 首条命令）</string>
+    <string name="web_copy_hint">点击复制：端口 %1$d · 令牌 + 首条命令</string>
     <string name="web_copied">已复制连接信息</string>
     <string name="web_clear_confirm">清除无头浏览器的截图与 cookie 文件？（服务运行所需的端口与令牌会保留）</string>
     <string name="web_cleared_fmt">已清除 %1$d 个文件</string>
@@ -457,8 +455,8 @@
 <!-- 无头浏览器 5.9.3 · Tab 说明：条目一律独立成行（换行必须用 \n，&#10; 会被 aapt2 清掉） -->
 
 <!-- 无头浏览器 5.9.4 · 设置项：不再放长段说明（细节在终端 Tab 说明页） -->
-    <string name="web_intro_conn_body">给 Linux 里的 AI agent 用的浏览器。内核是安卓自带的，\n页面渲染在屏幕外，屏幕上什么也看不到，也不留任何历史。\n▸ 开启：设置 → 高级 → 无头浏览器\n▸ 连接：点「复制连接信息」，端口与令牌一次带走\n● 端口固定 39080，令牌安装时生成一次\n● 只监听 127.0.0.1，同一网络下别的设备连不上\n● 每次开启都会清空 cookie 与缓存\n⚠ 需要悬浮窗权限，页面渲染在屏幕外要用它</string>
+    <string name="web_intro_conn_body">给 Linux 里的 AI agent 用的浏览器。内核是安卓自带的，\n页面渲染在屏幕外，屏幕上什么也看不到，也不留任何历史。\n▸ 开启：设置 → 高级 → 无头浏览器\n▸ 连接：点那行「点击复制」，端口、令牌与首条命令一次带走\n● 端口固定 39080，令牌安装时生成一次\n● 只监听 127.0.0.1，同一网络下别的设备连不上\n● 每次开启都会清空 cookie 与缓存\n⚠ 需要悬浮窗权限，页面渲染在屏幕外要用它</string>
     <string name="web_intro_ops_body">指令清单随时可取，agent 读一次就够。\n▸ GET /help —— 全部指令、选择器写法与排错\n▸ cat ~/web/web.env —— 端口与令牌，可直接 source\n▸ 写进 skill：固定端口 39080 + 令牌\n● 读完它就能自己开网页、点按钮、填表单、截图\n⚠ 服务没开时连接被拒，先在上面开启</string>
     <string name="web_intro_notes_body">▸ 一次只开一个页面，反复 open 即复用\n▸ 截图与 cookie 落在 ~/web/，可翻到\n● 闲置满 10 分钟，状态栏会闪一句提醒\n⚠ 个别站点会拒绝内嵌浏览器，换站即可</string>
-    <string name="web_intro_settings_body">给 Linux 里的 AI agent 用的无头浏览器：\n在下面开启服务并复制连接信息；\n端口与全部指令见终端 Tab 的说明。</string>
+    <string name="web_intro_settings_body">给 Linux 里的 AI agent 用的无头浏览器：\n在下面开启服务，点那行「点击复制」带走端口、令牌与首条命令；\n端口与全部指令见终端 Tab 的说明。</string>
 </resources>

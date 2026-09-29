@@ -80,16 +80,16 @@
 
     <!-- Settings: LAN -->
     <string name="lan_title">LAN SHARE</string>
-    <string name="lan_status_off">Status: off</string>
-    <string name="lan_status_off_auth_fmt">Status: off · auth set: %1$s</string>
-    <string name="lan_status_open">Status: on · open access</string>
-    <string name="lan_status_auth_fmt">Status: on · auth: %1$s</string>
-    <string name="lan_url_preview">http://…:8080 (idle preview)</string>
-    <string name="lan_url_copy_fmt">%1$s (tap to copy)</string>
-    <string name="lan_url_preview_ip_fmt">http://%1$s:8080 (idle preview, tap to copy)</string>
+    <string name="lan_url_preview">Tap to copy: http://…:8080 (service off)</string>
+    <string name="lan_url_copy_fmt">Tap to copy: %1$s</string>
+    <string name="lan_url_preview_ip_fmt">Tap to copy: http://%1$s:8080 (service off)</string>
     <string name="lan_start">START</string>
     <string name="lan_stop">STOP</string>
-    <string name="lan_auth_btn">AUTH</string>
+    <string name="lan_auth_btn">SET AUTH</string>
+    <!-- auth button label once credentials are saved: the button states the status itself -->
+    <string name="lan_auth_btn_set">AUTH SET</string>
+    <!-- fallback when the button is too narrow (large font / small screen) -->
+    <string name="lan_auth_btn_short">AUTH</string>
     <string name="lan_starting">Starting LAN service…</string>
     <string name="lan_stopped">LAN service stopped, state reset</string>
     <string name="lan_stop_first">Stop the service before changing auth</string>
@@ -435,9 +435,7 @@
     <string name="web_btn_start">Start service</string>
     <string name="web_btn_stop">Stop service</string>
     <string name="web_btn_clear">Clear cache files</string>
-    <string name="web_status_off">Stopped</string>
-    <string name="web_status_on_fmt">Running · port %1$d</string>
-    <string name="web_copy_hint">Tap to copy connection info (port + token + first command)</string>
+    <string name="web_copy_hint">Tap to copy: port %1$d · token + first command</string>
     <string name="web_copied">Connection info copied</string>
     <string name="web_clear_confirm">Delete the headless browser screenshots and cookie files? (Port and token stay.)</string>
     <string name="web_cleared_fmt">Removed %1$d file(s)</string>
@@ -457,8 +455,8 @@
 <!-- Headless browser 5.9.3 · tab help: one item per line (must use \n, aapt2 strips &#10;) -->
 
 <!-- Headless browser 5.9.4 · tab help: plain statements, no filler -->
-    <string name="web_intro_conn_body">A browser for AI agents inside Linux. The engine is the one built into\nAndroid; pages render off-screen, so nothing shows on screen and no history is kept.\n▸ On: Settings → Advanced → Headless browser\n▸ Connect: tap \quot;copy connection info&quot; for port and token\n● Fixed port 39080, token generated once at install\n● Listens on 127.0.0.1 only\n● Cookies and cache are wiped on every start\n⚠ Needs the overlay permission, off-screen rendering uses it</string>
+    <string name="web_intro_conn_body">A browser for AI agents inside Linux. The engine is the one built into\nAndroid; pages render off-screen, so nothing shows on screen and no history is kept.\n▸ On: Settings → Advanced → Headless browser\n▸ Connect: tap the &quot;Tap to copy&quot; line to take port, token and first command\n● Fixed port 39080, token generated once at install\n● Listens on 127.0.0.1 only\n● Cookies and cache are wiped on every start\n⚠ Needs the overlay permission, off-screen rendering uses it</string>
     <string name="web_intro_ops_body">The service serves the full list; one read is enough for the agent.\n▸ GET /help — all commands, selectors and troubleshooting\n▸ cat ~/web/web.env — port and token, source it\n▸ Put port 39080 + token in the skill\n● Then it can browse, click, fill forms and screenshot\n⚠ Connection refused means the service is off</string>
     <string name="web_intro_notes_body">▸ One page at a time, repeated opens reuse it\n▸ Shots and cookies land in ~/web/\n● Idle for 10 minutes: the status bar blinks\n⚠ A few sites refuse embedded browsers</string>
-    <string name="web_intro_settings_body">A headless browser for AI agents inside Linux:\nstart it and copy the connection info below;\nthe port and all commands are in the Terminal tab.</string>
+    <string name="web_intro_settings_body">A headless browser for AI agents inside Linux:\nstart the service below, then tap the &quot;Tap to copy&quot; line to take the port, token and first command;\nthe port and the full command list see the intro page in the terminal tab.</string>
 </resources>

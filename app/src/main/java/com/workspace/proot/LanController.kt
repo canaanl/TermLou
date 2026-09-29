@@ -26,10 +26,9 @@ class LanController(
     private lateinit var lanToggleBtn: Button
     private lateinit var lanAuthBtn: Button
     private var lanBtnRow: LinearLayout? = null
-    private lateinit var lanStatusText: TextView
     private lateinit var lanUrlText: TextView
 
-    /** LAN 小节（标题+状态+网址+双键），由 SettingsUiController 在上游代理之后插入。 */
+    /** LAN 小节（标题 + 复制行 + 双键），由 SettingsUiController 在上游代理之后插入。 */
     fun buildSettingsBlock(parent: LinearLayout) {
         parent.addView(TextView(activity).apply {
             text = activity.getString(R.string.lan_title)
@@ -38,13 +37,8 @@ class LanController(
             textSize = UiTokens.TEXT_BODY
             setPadding(0, 0, 0, 4)
         })
-        lanStatusText = TextView(activity).apply {
-            text = activity.getString(R.string.lan_status_off)
-            setTextColor(scope.cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_META
-            setPadding(0, 0, 0, 4)
-        }
-        parent.addView(lanStatusText)
+        // 5.9.4：删掉原来那行状态文本。开关状态由按钮的填充色表达；
+        // "需认证"改由认证按钮自己的文字承载（见 refreshLanRow）。
         lanUrlText = TextView(activity).apply {
             text = activity.getString(R.string.lan_url_preview)
             setTextColor(scope.cOnSurfaceVariant)
@@ -85,7 +79,10 @@ class LanController(
                 }
             }
             lanAuthBtn = Button(activity).apply {
-                text = activity.getString(R.string.lan_auth_btn)
+                applyFittingLabel(
+                    activity.getString(R.string.lan_auth_btn),
+                    activity.getString(R.string.lan_auth_btn_short)
+                )
                 setTextColor(Color.WHITE)
                 textSize = UiTokens.TEXT_BODY
                 setPadding(16, 6, 16, 6)
@@ -117,11 +114,6 @@ class LanController(
         if (!::lanToggleBtn.isInitialized) return
         val running = LanShareService.isRunning
         val user = scope.settingsManager.lanUser()
-        lanStatusText.text = if (running) {
-            if (user.isEmpty()) activity.getString(R.string.lan_status_open) else activity.getString(R.string.lan_status_auth_fmt, user)
-        } else {
-            if (user.isEmpty()) activity.getString(R.string.lan_status_off) else activity.getString(R.string.lan_status_off_auth_fmt, user)
-        }
         lanUrlText.text = if (running && LanShareService.lanUrl.isNotEmpty()) {
             activity.getString(R.string.lan_url_copy_fmt, LanShareService.lanUrl)
         } else {
@@ -129,6 +121,12 @@ class LanController(
             activity.getString(R.string.lan_url_preview_ip_fmt, ip)
         }
         lanToggleBtn.text = if (running) activity.getString(R.string.lan_stop) else activity.getString(R.string.lan_start)
+        // 认证状态长在认证按钮上：存了认证信息就写"需认证"，一眼能看出这台机子要口令。
+        // （此前只有那行状态文本说这事，删掉状态行后这里是唯一出处。）
+        lanAuthBtn.applyFittingLabel(
+            activity.getString(if (user.isEmpty()) R.string.lan_auth_btn else R.string.lan_auth_btn_set),
+            activity.getString(R.string.lan_auth_btn_short)
+        )
         lanAuthBtn.isEnabled = !running
         lanAuthBtn.alpha = if (running) 0.5f else 1f
         applyLanSegments()

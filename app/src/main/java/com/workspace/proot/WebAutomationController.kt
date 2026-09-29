@@ -24,7 +24,6 @@ class WebAutomationController(
     private lateinit var toggleBtn: Button
     private lateinit var clearBtn: Button
     private var btnRow: LinearLayout? = null
-    private lateinit var statusText: TextView
     private lateinit var copyText: TextView
 
     /** 由 SettingsUiController 插在 LAN 小节之后（同属"高级"区）。 */
@@ -38,16 +37,11 @@ class WebAutomationController(
             setPadding(0, 0, 0, 4)
         })
         // 5.9.4：这里原本有一整段功能说明（"给 Linux 里的 AI agent 用的无头浏览器…"），
-        // 与终端 Tab 的说明页重复。设置区只留标题、状态、连接信息与按钮。
-        statusText = TextView(activity).apply {
-            text = activity.getString(R.string.web_status_off)
-            setTextColor(scope.cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_META
-            setPadding(0, 0, 0, 4)
-        }
-        parent.addView(statusText)
+        // 与终端 Tab 的说明页重复。
+        // 5.9.4：又把状态行去掉了 —— 开关状态由按钮填充色表达，端口在下面这行里，
+        // 于是这一块和 LAN 行长得一样：标题 + 点击复制行 + 按钮。
         copyText = TextView(activity).apply {
-            text = activity.getString(R.string.web_copy_hint)
+            text = activity.getString(R.string.web_copy_hint, WebProtocol.DEFAULT_PORT)
             setTextColor(scope.cOnSurfaceVariant)
             textSize = UiTokens.TEXT_META
             setPadding(0, 0, 0, 12)
@@ -110,11 +104,6 @@ class WebAutomationController(
         if (activity.isFinishing || activity.isDestroyed) return
         if (!::toggleBtn.isInitialized) return
         val running = WebAutomationService.isRunning
-        statusText.text = if (running) {
-            activity.getString(R.string.web_status_on_fmt, WebProtocol.DEFAULT_PORT)
-        } else {
-            activity.getString(R.string.web_status_off)
-        }
         toggleBtn.text = activity.getString(
             if (running) R.string.web_btn_stop else R.string.web_btn_start
         )
