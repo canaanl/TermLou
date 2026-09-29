@@ -553,7 +553,20 @@ class WebAutomationService : Service() {
     private fun WebProtocol.EvalOutcome.valueOrNull(): String? =
         (this as? WebProtocol.EvalOutcome.Value)?.value
 
-    /**
+        /**
+     * 把页面侧带回来的哨兵翻译成错误信息：
+     *  - [WebSelector.NOT_FOUND] —— 元素真的不在 → `not found: <selector>`
+     *  - `__TERMLOU_JS_ERROR__:…` —— 选择器语法错等 → `bad selector: <原因>`
+     *
+     * 正常值返回 null。**这两个必须分开报**：5.9.0/5.9.1 因为用 null + 吞异常，
+     * "选择器语法写错"和"元素不在"全被报成 not found，排查时被彻底带偏。
+     */
+    private fun selectorSentinel(value: String, selector: String): String? = when {
+        WebSelector.isNotFound(value) -> "not found: $selector"
+        else -> WebSelector.jsErrorOf(value)?.let { "bad selector ($selector): $it" }
+    }
+
+/**
      * `eval`：在页面里跑任意 JS，返回值原样带回（字符串就是字符串，不是 JSON 字面量）。
      */
     private fun opEval(request: WebProtocol.Request, cancelled: () -> Boolean): String {
@@ -580,14 +593,14 @@ class WebAutomationService : Service() {
             "(document.body ? document.body.innerText : '')"
         } else {
             val kind = WebSelector.parse(raw) ?: return WebProtocol.errJson("bad selector: $raw")
-            "(function(){var e=" + WebSelector.pickJs(kind) + ";" +
-                "return e?(e.innerText?e.innerText:(e.value!=null?e.value:'')):null})()"
+            PICK_TEMPLATE.replace("%PICK%", WebSelector.pickJs(kind)) +
+                ";return typeof e==='object'&&e!==null?(e.innerText?e.innerText:(e.value!=null?e.value:'')):String(e)"
         }
         val outcome = evalInPage(wv, js, cancelled)
         outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
-        return outcome.valueOrNull()?.let { text ->
-            WebProtocol.okJson("text" to text, "url" to (onMain { wv.url } ?: ""))
-        } ?: WebProtocol.errJson("not found: $raw")
+        val value = outcome.valueOrNull() ?: return WebProtocol.errJson("text returned null")
+        selectorSentinel(value, raw)?.let { return WebProtocol.errJson(it) }
+        return WebProtocol.okJson("text" to value, "url" to (onMain { wv.url } ?: ""))
     }
 
     /** `click`：真实点击（不是改状态），元素会先滚进可视区。 */
@@ -595,21 +608,22 @@ class WebAutomationService : Service() {
         val wv = webView ?: return WebProtocol.errJson("no page open")
         val raw = WebProtocol.bodyString(request, "selector")
         val kind = WebSelector.parse(raw) ?: return WebProtocol.errJson("bad selector: $raw")
-        val js = "(function(){var e=" + WebSelector.pickJs(kind) + ";" +
-            "if(!e)return null;" +
+        val js = PICK_TEMPLATE.replace("%PICK%", WebSelector.pickJs(kind)) +
+            ";if(typeof e!=='object'||e===null)return String(e);" +
             "try{e.scrollIntoView({block:'center',inline:'center'})}catch(_){}" +
-            "e.click();return (e.innerText?e.innerText:(e.value!=null?e.value:'ok'))})()"
+            "try{e.click()}catch(err){return WEB_ERR+String(err&&err.message)}" +
+            "return e.innerText?e.innerText:(e.value!=null?e.value:'ok')"
         val outcome = evalInPage(wv, js, cancelled)
         outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
-        return outcome.valueOrNull()?.let { label ->
-            val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS), cancelled)
-            WebProtocol.okJson(
-                "msg" to "clicked",
-                "label" to label,
-                "ready" to ready,
-                "url" to (onMain { wv.url } ?: "")
-            )
-        } ?: WebProtocol.errJson("not found: $raw")
+        val label = outcome.valueOrNull() ?: return WebProtocol.errJson("click returned null")
+        selectorSentinel(label, raw)?.let { return WebProtocol.errJson(it) }
+        val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS), cancelled)
+        return WebProtocol.okJson(
+            "msg" to "clicked",
+            "label" to label,
+            "ready" to ready,
+            "url" to (onMain { wv.url } ?: "")
+        )
     }
 
     /**
@@ -622,21 +636,25 @@ class WebAutomationService : Service() {
         val value = WebProtocol.bodyString(request, "text")
         if (value.isEmpty()) return WebProtocol.errJson("missing text")
         val clear = WebProtocol.bodyOptBoolean(request, "clear", true)
+        val literal = WebSelector.jsLiteral(value)          // ← 带引号，5.9.2 修的就是这里
         val raw = WebProtocol.bodyString(request, "selector")
-        val fill = if (raw.isBlank()) {
-            // 不给选择器：填到当前焦点元素上
-            "(function(){var e=document.activeElement;if(!e)return null;" +
-                "return WEB_FILL(e," + WebSelector.jsString(value) + "," + clear + ")?1:null})()"
+        val pick = if (raw.isBlank()) {
+            "(document.activeElement)"
         } else {
             val kind = WebSelector.parse(raw) ?: return WebProtocol.errJson("bad selector: $raw")
-            "(function(){var e=" + WebSelector.pickJs(kind) + ";" +
-                "if(!e)return null;return WEB_FILL(e," + WebSelector.jsString(value) + "," + clear + ")?1:null})()"
+            WebSelector.pickJs(kind)
         }
-        val outcome = evalInPage(wv, FILL_HELPER + fill, cancelled)
+        val js = FILL_HELPER + PICK_TEMPLATE.replace("%PICK%", pick) +
+            ";if(typeof e!=='object'||e===null)return String(e);" +
+            "return WEB_FILL(e," + literal + "," + clear + ")"
+        val outcome = evalInPage(wv, js, cancelled)
         outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
-        return outcome.valueOrNull()?.let {
-            WebProtocol.okJson("msg" to "typed", "bytes" to value.length)
-        } ?: WebProtocol.errJson("not a fillable element: $raw")
+        val result = outcome.valueOrNull() ?: return WebProtocol.errJson("type returned null")
+        selectorSentinel(result, raw)?.let { return WebProtocol.errJson(it) }
+        if (result.startsWith(WEB_ERR_PREFIX)) {
+            return WebProtocol.errJson("cannot fill $raw: ${result.removePrefix(WEB_ERR_PREFIX)}")
+        }
+        return WebProtocol.okJson("msg" to "typed", "bytes" to value.length)
     }
 
     /** `select`：按 value 或可见文字选中 `<select>` 的一项，并派发 change。 */
@@ -647,21 +665,25 @@ class WebAutomationService : Service() {
         val raw = WebProtocol.bodyString(request, "selector")
         if (raw.isBlank()) return WebProtocol.errJson("missing selector")
         val kind = WebSelector.parse(raw) ?: return WebProtocol.errJson("bad selector: $raw")
-        val js = "(function(){var e=" + WebSelector.pickJs(kind) + ";" +
-            "if(!e)return null;if(String(e.tagName).toUpperCase()!=='SELECT')return '-1';" +
-            "var want=" + WebSelector.jsString(value) + ";var i,o,hit='';" +
+        val literal = WebSelector.jsLiteral(value)          // ← 带引号
+        val js = PICK_TEMPLATE.replace("%PICK%", WebSelector.pickJs(kind)) +
+            ";if(typeof e!=='object'||e===null)return String(e);" +
+            "if(String(e.tagName).toUpperCase()!=='SELECT')return WEB_ERR+'not a <select> (got <'+String(e.tagName).toLowerCase()+'>)';" +
+            "var want=" + literal + ";var i,o,hit='';" +
             "for(i=0;i<e.options.length;i++){o=e.options[i];" +
             "if(o.value===want||String(o.text).trim()===want){hit=o.value;break}}" +
-            "if(hit==='')return '-1';e.value=hit;" +
+            "if(hit==='')return WEB_ERR+'no option matches '+want;" +
+            "e.value=hit;" +
             "try{e.dispatchEvent(new Event('change',{bubbles:true}))}catch(_){}" +
-            "return hit})()"
+            "return hit"
         val outcome = evalInPage(wv, js, cancelled)
         outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
-        return when (outcome.valueOrNull()) {
-            null -> WebProtocol.errJson("not found: $raw")
-            "-1" -> WebProtocol.errJson("not a select, or no option matches: $value")
-            else -> WebProtocol.okJson("msg" to "selected", "value" to outcome.valueOrNull())
+        val result = outcome.valueOrNull() ?: return WebProtocol.errJson("select returned null")
+        selectorSentinel(result, raw)?.let { return WebProtocol.errJson(it) }
+        if (result.startsWith(WEB_ERR_PREFIX)) {
+            return WebProtocol.errJson("cannot select $raw: ${result.removePrefix(WEB_ERR_PREFIX)}")
         }
+        return WebProtocol.okJson("msg" to "selected", "value" to result)
     }
 
     /**
@@ -685,6 +707,15 @@ class WebAutomationService : Service() {
         else WebProtocol.okJson("file" to WebArtifacts.linuxPath(this, file), "bytes" to file.length())
     }
 
+    /**
+     * 截图取像素，两条路按可靠度依次尝试（`capturePicture` → `View.draw`）。
+     *
+     * **等比缩放**：此前是 `canvas.scale(w/picW, h/picH)` 两个方向独立缩放，而
+     * `capturePicture()` 给的是**整页** Picture（长页面高度远大于视口），于是长页面
+     * 被纵向压扁 —— 真机表现为"导出能看到图，但比例不对"。
+     * 现在取**单一 scale 因子**（`min`），再居中裁剪：比例永远正确，
+     * 长页面只截到视口那么高的一段（想要整页请改用 full 模式）。
+     */
     private fun capturePage(wv: WebView): Bitmap? {
         val density = resources.displayMetrics.density
         val w = (WebProtocol.VIEWPORT_W_DP * density).toInt().coerceAtLeast(1)
@@ -699,7 +730,13 @@ class WebAutomationService : Service() {
             Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bmp ->
                 val canvas = Canvas(bmp)
                 canvas.drawColor(Color.WHITE)
-                canvas.scale(width.toFloat() / pic.width, height.toFloat() / pic.height)
+                // 单一缩放因子：比例正确，多余部分裁掉
+                val scale = minOf(
+                    width.toFloat() / pic.width,
+                    height.toFloat() / pic.height
+                )
+                canvas.translate((width - pic.width * scale) / 2f, (height - pic.height * scale) / 2f)
+                canvas.scale(scale, scale)
                 pic.draw(canvas)
             }
         }.getOrNull()
@@ -833,24 +870,55 @@ class WebAutomationService : Service() {
         private const val TEARDOWN_JOIN_MS = 3_000L
         private const val POLL_MS = 100L
         private const val LOOPBACK = "127.0.0.1"
+
+        /**
+         * 页面侧"出错了"的哨兵前缀：JS 里无法直接抛异常（会被 evaluateJavascript
+         * 吞成 null），所以把错误信息编码成字符串带回来。
+         */
+        private const val WEB_ERR_PREFIX = "WEBERR:"
+        private val WEB_ERR_LITERAL = "\"" + WEB_ERR_PREFIX + "\""
+
+        /**
+         * 取元素的 JS 模板：`<pickJs>` 求值可能是元素（object），也可能是哨兵字符串。
+         * 于是所有走选择器的指令都按同一套形状写，一眼能看出哪里可能拿到哨兵。
+         */
+        private const val PICK_TEMPLATE =
+            "(function(){var e=%PICK%;"
         private val CONTENT_LENGTH = Regex("(?i)content-length:\\s*(\\d+)")
 
         /**
          * `type` 用的页面侧助手：先用原生 setter 改 value，再派发 input/change，
          * 让框架能观察到这次改动。
          */
-        private const val FILL_HELPER = "function WEB_FILL(e,v,clear){" +
-            "if(!e)return false;" +
+        /**
+         * `type` 用的页面侧助手。
+         *
+         * 5.9.2 修版：此前无条件取 `HTMLInputElement.prototype` 的 value descriptor，
+         * 元素不是输入框时会抛 Java 异常（被上层吞成"不可填"）。现在**先判元素类型**，
+         * 不是 text field 就返回 [WEB_ERR_PREFIX] 开头的说明，由上层如实转述。
+         *
+         * 用原生 setter（而不是直接 `e.value=`）是为了让 React/Vue 收到变更——
+         * 它们监听的是 input 事件上 setter 留下的痕迹。
+         */
+        private const val FILL_HELPER = "var WEB_ERR='WEBERR:';" +
+            "function WEB_FILL(e,v,clear){" +
+            "var tag=String(e.tagName).toUpperCase();" +
+            "if(tag==='INPUT'||tag==='TEXTAREA'){" +
             "try{e.scrollIntoView({block:'center'})}catch(_){}" +
             "try{e.focus()}catch(_){}" +
-            "var proto=e instanceof HTMLTextAreaElement?" +
-            "HTMLTextAreaElement.prototype:HTMLInputElement.prototype;" +
+            "var proto=tag==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;" +
             "var d=Object.getOwnPropertyDescriptor(proto,'value');" +
             "if(clear){if(d&&d.set){d.set.call(e,'')}else{e.value=''}}" +
             "if(d&&d.set){d.set.call(e,v)}else{e.value=v}" +
             "try{e.dispatchEvent(new Event('input',{bubbles:true}))}catch(_){}" +
             "try{e.dispatchEvent(new Event('change',{bubbles:true}))}catch(_){}" +
-            "return true}"
+            "return true}" +
+            "if(e.isContentEditable){try{e.focus()}catch(_){}" +
+            "if(clear){try{e.textContent=''}catch(_){}}" +
+            "try{e.textContent=(e.textContent||'')+v}catch(_){}" +
+            "try{e.dispatchEvent(new Event('input',{bubbles:true}))}catch(_){}" +
+            "return true}" +
+            "return WEB_ERR+'not a text field (got <'+String(e.tagName).toLowerCase()+'>)'}"
 
         const val ACTION_START = "com.workspace.proot.WEB_START"
         const val ACTION_STOP = "com.workspace.proot.WEB_STOP"

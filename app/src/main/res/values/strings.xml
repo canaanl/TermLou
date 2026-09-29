@@ -432,7 +432,6 @@
     <string name="web_notif_title">TermLou 无头浏览器</string>
     <string name="web_notif_stop">关闭服务</string>
     <string name="web_settings_title">无头浏览器</string>
-    <string name="web_settings_desc">给 Linux 里的 AI agent 用的无头浏览器：安卓系统自带内核、屏幕不可见、不留历史；每次打开 app 与每次开启服务都会清 cookie 与缓存。只监听 127.0.0.1。开启后可在终端 Tab 的说明里看到端口与全部指令。</string>
     <string name="web_btn_start">开启服务</string>
     <string name="web_btn_stop">关闭服务</string>
     <string name="web_btn_clear">清除缓存</string>
@@ -449,10 +448,14 @@
 
 <!-- 无头浏览器 5.9.1 · Tab 说明（三节卡片，终端 tab 写帮助形态） -->
     <string name="web_intro_conn_title">无头浏览器 · 开启与连接</string>
-    <string name="web_intro_conn_body">给 Linux 里的 AI agent 用的无头浏览器：安卓自带内核、屏幕不可见、不留历史、每次开启都清 cookie 与缓存。&#10;▸ 设置 → 高级 → 无头浏览器 → 开启服务 —— 点一下开、再点一下关，不常驻&#10;▸ 点「点此复制连接信息」—— 端口、令牌、能直接粘的第一条命令一次带走&#10;▸ 命令行里 source ~/web/web.env —— 令牌与端口直接进环境变量&#10;● 端口固定 39080；令牌每次安装随机生成后永不变。&#10;● 只监听 127.0.0.1 —— 同一 WiFi 下的别的设备连不上。&#10;● 服务开着但闲置满 10 分钟，状态栏会闪一句提醒该关了；中途发过指令就重新计时。&#10;⚠ 需要悬浮窗权限（页面渲染在屏幕外的窗口里），没给会在指令里明确报错。</string>
     <string name="web_intro_ops_title">无头浏览器 · 指令</string>
-    <string name="web_intro_ops_body">统一 POST /op，体是 {&quot;op&quot;:&quot;…&quot;}；返回 {&quot;ok&quot;:true,…} 或 {&quot;ok&quot;:false,&quot;error&quot;:&quot;…&quot;}。&#10;▸ {&quot;op&quot;:&quot;open&quot;,&quot;url&quot;:&quot;…&quot;,&quot;wait&quot;:8000} —— 打开网址，复用同一个页面&#10;▸ {&quot;op&quot;:&quot;wait&quot;,&quot;ms&quot;:10000} —— 单独等当前页面加载完&#10;▸ {&quot;op&quot;:&quot;eval&quot;,&quot;js&quot;:&quot;…&quot;} —— 在页面里执行 JS，返回其值&#10;▸ {&quot;op&quot;:&quot;html&quot;} —— 取回当前页面 HTML&#10;▸ {&quot;op&quot;:&quot;text&quot;,&quot;selector&quot;:&quot;…&quot;} —— 取可见文字（不给 selector 即整页正文）&#10;▸ {&quot;op&quot;:&quot;click&quot;,&quot;selector&quot;:&quot;…&quot;} —— 真实点击（可带 wait 等新页）&#10;▸ {&quot;op&quot;:&quot;type&quot;,&quot;selector&quot;:&quot;…&quot;,&quot;text&quot;:&quot;…&quot;} —— 填输入框（clear=false 追加）&#10;▸ {&quot;op&quot;:&quot;select&quot;,&quot;selector&quot;:&quot;…&quot;,&quot;value&quot;:&quot;…&quot;} —— 选下拉框的一项&#10;▸ {&quot;op&quot;:&quot;shot&quot;} —— 截图写入 ~/web/shots/ 并返回路径&#10;▸ {&quot;op&quot;:&quot;back&quot;} / {&quot;op&quot;:&quot;reload&quot;} —— 后退 / 重载&#10;▸ {&quot;op&quot;:&quot;cookies&quot;} —— 导出 cookie 到 ~/web/cookies.txt|json&#10;▸ {&quot;op&quot;:&quot;clear&quot;} / {&quot;op&quot;:&quot;close&quot;} —— 清 cookie/缓存/localStorage 并结束会话&#10;▸ {&quot;op&quot;:&quot;ping&quot;} —— 探活&#10;● 选择器两种写法：&quot;input[name=q]&quot; 是 CSS；&quot;text=登录&quot; 按可见文字找（text==登录 为严格相等）。&#10;● 碰页面的指令之间串行，一次只有一条在操作页面；ping 不会被它们堵住。&#10;⚠ 推荐节奏：open 不带 wait → wait 短等 → 再取内容。单条 wait 上限 30 秒。</string>
     <string name="web_intro_notes_title">无头浏览器 · 须知与排错</string>
-    <string name="web_intro_notes_body">▸ 截图只在页面已渲染时成功 —— 白图会如实报错，不会给你一张空图。&#10;▸ 客户端中途断开（命令被超时杀掉）时，服务端立刻放弃等待，不会留下卡住的会话。&#10;● open 的 wait 到点没加载完不报错，只回 ready:false 与 progress，可再发一条 wait。&#10;● cookies 只导出当前页面可见的 —— 安卓没有「枚举全部」的 API。&#10;● 无痕：每次打开 app、每次开启服务、每次结束会话都会清 cookie、缓存与 localStorage，不保存密码与表单。&#10;⚠ 连接被拒 = 服务没开；令牌不对 = 重新复制连接信息；端口被占 = 服务会明确报错。&#10;⚠ 一次只开一个页面；个别站点会拒绝内嵌浏览器（如 Google 账号登录），换站即可。</string>
-    <string name="web_intro_settings_body">给 Linux 里的 AI agent 用的无头浏览器：安卓自带内核、屏幕不可见、不留历史、每次开启都清 cookie 与缓存、只监听 127.0.0.1。在下面开启服务并复制连接信息；端口与全部指令见终端 Tab 的说明。</string>
+
+<!-- 无头浏览器 5.9.2 · 设置项 -->
+    <string name="web_settings_desc">给 Linux 里的 AI agent 用的无头浏览器。安卓自带内核、屏幕不可见、不留历史。指令清单见终端 Tab 说明或 GET /help。</string>
+    <!-- 无头浏览器 5.9.2 · Tab 说明：只讲自发现，细节交给 /help -->
+    <string name="web_intro_conn_body">给 Linux 里的 AI agent 用的无头浏览器：安卓自带内核、屏幕不可见、不留历史。&#10;▸ 设置 → 高级 → 无头浏览器 → 开启服务（手动开关，不常驻）&#10;▸ 点「点此复制连接信息」把端口与令牌交给 agent&#10;● 端口固定 39080，令牌每次安装生成后不变，只监听 127.0.0.1。&#10;● 每次开启都会清 cookie 与缓存，没有历史。&#10;⚠ 需要悬浮窗权限，页面渲染在屏幕外的窗口里。</string>
+    <string name="web_intro_ops_body">这里不抄指令表 —— 完整清单由服务自己提供，agent 读一次就够。&#10;▸ GET /help —— 免令牌，中英双语说明书，含全部指令、选择器写法与排错&#10;▸ cat ~/web/web.env —— 服务运行时存在，内含 PORT 与 TOKEN，可直接 source&#10;▸ 建议写进 agent 的 skill：固定端口 39080 + 令牌，再让它先读 /help&#10;● 拿到文档后它就能自己开网页、点按钮、填表单、截图。&#10;⚠ 服务没开时连接被拒，先在上面开启。</string>
+    <string name="web_intro_notes_body">▸ 一次只开一个页面，反复 open 即复用。&#10;▸ 截图与 cookie 落在 ~/web/，可用文件页直接翻到。&#10;● 服务开着闲置满 10 分钟，状态栏会闪一句提醒该关了。&#10;⚠ 个别站点会拒绝内嵌浏览器（如 Google 账号登录），换站即可。</string>
+    <string name="web_intro_settings_body">给 Linux 里的 AI agent 用的无头浏览器。在下面开启服务并复制连接信息；端口与全部指令见终端 Tab 的说明。</string>
 </resources>

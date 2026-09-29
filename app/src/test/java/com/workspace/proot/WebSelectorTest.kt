@@ -7,10 +7,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 选择器解析与 JS 生成的锁定测试（5.9.0）。
+ * 选择器与 JS 字面量的锁定测试（5.9.2 重点加固）。
  *
- * 这里拼出来的 JS 是直接塞进页面执行的：选择器或用户输入里带引号、反斜杠、换行，
- * 就得靠 [WebSelector.jsString] 转义挡住，否则轻则页面报错、重则注入出别的东西。
+ * ## 为什么要专门加固
+ *
+ * 5.9.0 / 5.9.1 里 `jsString()` 只做转义、**不含两侧引号**，而四处调用点都把它当完整
+ * 字面量拼进了 JS，生成的是 `document.querySelector(a)` 而不是 `querySelector("a")`：
+ * `a` 是未定义变量 → JS 抛 `ReferenceError` → 被 `catch` 吞掉 → 恒定返回"not found"。
+ * 真机表现是**所有走选择器的指令全挂**（`click`/`text`/`type`/`select`），而不走选择器的全活。
+ *
+ * 而且当时的测试只锁了"转义后不含裸换行"，**没锁"必须带引号"**，所以这个 bug
+ * 从写测试那天起就一直能溜过去。这里把那条缺失的锁补上。
  */
 class WebSelectorTest {
 
@@ -51,27 +58,42 @@ class WebSelectorTest {
         assertNull(WebSelector.parse("text=="))
     }
 
-    // ---------- JS 字符串转义 ----------
+    // ---------- 字面量：必须带引号（5.9.2 的核心锁） ----------
 
     @Test
-    fun `引号反斜杠换行都要转义`() {
-        assertEquals("a\\\"b", WebSelector.jsString("a\"b"))
-        assertEquals("a\\\\b", WebSelector.jsString("a\\b"))
-        assertEquals("a\\nb", WebSelector.jsString("a\nb"))
-        assertEquals("a\\tb", WebSelector.jsString("a\tb"))
-        assertEquals("a\\'b", WebSelector.jsString("a'b"))
+    fun `jsLiteral 带双引号`() {
+        assertEquals("\"a\"", WebSelector.jsLiteral("a"))
+        assertEquals("\"登录\"", WebSelector.jsLiteral("登录"))
+        assertEquals("\"\"", WebSelector.jsLiteral(""))
     }
 
     @Test
-    fun `控制字符转成 unicode 序列`() {
-        assertEquals("\\u0000", WebSelector.jsString("\u0000"))
-        assertEquals("\\u001f", WebSelector.jsString("\u001f"))
+    fun `jsLiteral 里的引号被转义`() {
+        assertEquals("\"a\\\"b\"", WebSelector.jsLiteral("a\"b"))
+        assertEquals("\"a\\\\b\"", WebSelector.jsLiteral("a\\b"))
+        assertEquals("\"a\\nb\"", WebSelector.jsLiteral("a\nb"))
     }
 
     @Test
-    fun `中文与 emoji 原样保留`() {
-        assertEquals("登录", WebSelector.jsString("登录"))
-        assertEquals("a\uD83D\uDE00b", WebSelector.jsString("a\uD83D\uDE00b"))
+    fun `escape 不加引号——它只是转义，别拿去直接拼 JS`() {
+        assertEquals("a", WebSelector.escape("a"))
+        assertEquals("a\\\"b", WebSelector.escape("a\"b"))
+    }
+
+    // ---------- pickJs 产出的 JS 必须是合法字面量 ----------
+
+    @Test
+    fun `CSS 分支产出带引号的 querySelector`() {
+        val js = WebSelector.pickJs(WebSelector.Kind.Css("a"))
+        // 这条就是 5.9.0/5.9.1 漏掉的那条锁
+        assertTrue("选择器必须带引号，实际: $js", js.contains("querySelector(\"a\")"))
+        assertFalse("不能出现裸变量 querySelector(a)", js.contains("querySelector(a)"))
+    }
+
+    @Test
+    fun `text 分支产出带引号的 want`() {
+        val js = WebSelector.pickJs(WebSelector.Kind.Text("登录", exact = false))
+        assertTrue("want 必须带引号，实际: $js", js.contains("var want=\"登录\""))
     }
 
     @Test
@@ -79,16 +101,12 @@ class WebSelectorTest {
         val js = WebSelector.pickJs(WebSelector.Kind.Css("input[value=\"a'b\"]"))
         assertTrue(js.contains("\\\""))
         assertTrue(js.contains("\\'"))
-        // 结构必须完整：括号配平、能看出是 querySelector 调用
-        assertEquals(
-            js.count { it == '(' },
-            js.count { it == ')' }
-        )
+        assertEquals(js.count { it == '(' }, js.count { it == ')' })
         assertTrue(js.contains("querySelector"))
     }
 
     @Test
-    fun `text 选择器生成的 JS 含文字与候选元素`() {
+    fun `text 选择器生成的 JS 含候选元素表`() {
         val js = WebSelector.pickJs(WebSelector.Kind.Text("登录", exact = false))
         assertTrue(js.contains("登录"))
         assertTrue(js.contains("button"))
@@ -97,22 +115,57 @@ class WebSelectorTest {
 
     @Test
     fun `严格相等模式下 JS 里是 true`() {
-        val js = WebSelector.pickJs(WebSelector.Kind.Text("登录", exact = true))
-        assertTrue(js.contains("var exact=true;"))
+        assertTrue(WebSelector.pickJs(WebSelector.Kind.Text("登录", exact = true)).contains("var exact=true;"))
     }
 
     @Test
     fun `生成的 JS 不含裸换行`() {
-        // 换行会把 JS 字面量截断——所有字面量都必须走转义
         val js = WebSelector.pickJs(WebSelector.Kind.Text("第一行\n第二行", exact = false))
         assertFalse(js.contains("\n"))
         assertTrue(js.contains("\\n"))
     }
 
     @Test
-    fun `CSS 选择器生成为 querySelector 且带异常保护`() {
+    fun `CSS 分支带异常保护并把错误带回来`() {
         val js = WebSelector.pickJs(WebSelector.Kind.Css("::::bad"))
-        assertTrue(js.contains("try{"))
-        assertTrue(js.contains("catch(e){return null}"))
+        assertTrue("必须有 try", js.contains("try{"))
+        assertTrue("错误要编码成哨兵带回来，不能只是 return null", js.contains(WebSelector.JS_ERROR_PREFIX))
+    }
+
+    @Test
+    fun `text 分支找不到时返回哨兵而不是 null`() {
+        val js = WebSelector.pickJs(WebSelector.Kind.Text("x", exact = false))
+        assertTrue(js.contains(WebSelector.NOT_FOUND))
+    }
+
+    // ---------- 哨兵解析 ----------
+
+    @Test
+    fun `识别没找到哨兵`() {
+        assertTrue(WebSelector.isNotFound(WebSelector.NOT_FOUND))
+        assertFalse(WebSelector.isNotFound(null))
+        assertFalse(WebSelector.isNotFound("ok"))
+        assertFalse(WebSelector.isNotFound(""))
+    }
+
+    @Test
+    fun `解析 JS 侧错误信息`() {
+        assertEquals("SyntaxError: bad", WebSelector.jsErrorOf("${WebSelector.JS_ERROR_PREFIX}SyntaxError: bad"))
+        assertNull(WebSelector.jsErrorOf("ok"))
+        assertNull(WebSelector.jsErrorOf(WebSelector.NOT_FOUND))
+        assertNull(WebSelector.jsErrorOf(null))
+    }
+
+    @Test
+    fun `错误信息为空时给个兜底说法`() {
+        assertEquals("syntax error", WebSelector.jsErrorOf(WebSelector.JS_ERROR_PREFIX))
+    }
+
+    @Test
+    fun `哨兵不会与正常值混淆`() {
+        // 页面文字恰好等于哨兵串时的兜底：正常值一律按"找到"处理之外的路径走不太现实，
+        // 但至少两个哨兵必须互不相同，解析才不会张冠李戴
+        assertTrue(WebSelector.NOT_FOUND != WebSelector.JS_ERROR_PREFIX)
+        assertFalse(WebSelector.isNotFound(WebSelector.jsErrorOf(WebSelector.NOT_FOUND)))
     }
 }
