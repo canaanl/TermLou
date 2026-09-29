@@ -24,57 +24,73 @@ import android.webkit.WebSettings
 import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import java.io.BufferedInputStream
+import java.io.PushbackInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.security.SecureRandom
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
 
 /**
- * 无头浏览器前台服务（5.9.0）：**手动开关式**（照 [LanShareService] 的模式），开着时
+ * 无头浏览器前台服务（5.9.0 / 5.9.1）：**手动开关式**（照 [LanShareService] 的模式），开着时
  * 在**回环地址**固定端口提供 HTTP/JSON 指令接口，供 Linux 侧 agent 用系统自带 WebView 驱动网页。
  *
  * 设计要点：
- *  - **只听 127.0.0.1**：绑 `InetAddress` 回环地址，同一 WiFi 下的别的设备连不上。
- *    令牌虽然固定，但 `GET /help` 是免令牌的，不绑回环等于把令牌公开给整个局域网；
+ *  - **只听 127.0.0.1**：绑回环地址，同一 WiFi 下别的设备连不上。令牌虽然固定，
+ *    但 `GET /help` 是免令牌的，不绑回环等于把令牌公开给整个局域网；
  *  - **无头**：WebView 挂在本服务自己的 overlay 窗口上、整体挪到屏幕左侧外（用户看不见），
  *    渲染照常进行，所以能取 HTML、能截图；
  *  - **懒加载**：服务常驻但 WebView 只在第一条 `open` 时创建，会话结束即 destroy——
  *    闲置时只有一个空壳进程；
  *  - **无痕**：进程启动、服务启动、会话结束/关闭，三处都会清 cookie / 缓存 / localStorage /
  *    表单数据，且不保存密码；app 里没有第二个 WebView，故"清全部 WebView 数据"只影响本功能；
- *  - **串行**：所有指令走**单线程队列**，两条指令不会互相踩同一个 WebView；
- *    连接数有上限，满了立刻回 503 而不是把线程耗光；
+ *  - **不占队头**：请求线程池多条线程并发；只有**碰 WebView 的指令**才抢 [pageLock] 串行，
+ *    `ping` 之类的轻量指令不会被一条卡住的 `open` 堵在后面；
+ *  - **断开即收手**：客户端被杀掉（超时/中断）时，等待循环每 100ms 探一次 socket，
+ *    一断就立刻放弃并跳过写响应，不留一个"卡在加载态"的幽灵指令占着页面锁；
+ *  - **绝不在主线程上等回调**：见 [UiEval] 的说明（5.9.0 的主线程死锁就是从这来的）；
  *  - **产物可见**：截图与 cookie 落在 Linux 可见的 `~/web/`（= filesDir/workspace/web），
  *    另有 `web.env` 写着端口与令牌（**仅服务运行时存在**），供 agent 自发现；
  *  - **令牌**：每次安装随机生成一次并固定下来（可复制进 agent skill），只存在 TermLou 私有
  *    目录，别的 app 读不到；端口固定，被占用时启动失败并如实报错。
  *
- * 端口/协议/选择器/产物路径的纯逻辑在 [WebProtocol]、[WebSelector]、[WebArtifacts]（均可单测）。
+ * 端口/协议/选择器/产物路径/主线程投递的纯逻辑在 [WebProtocol]、[WebSelector]、
+ * [WebArtifacts]、[UiEval]（均可单测）。
  */
 class WebAutomationService : Service() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val wm: WindowManager by lazy { getSystemService(WindowManager::class.java) }
 
-    /** 连接处理线程池：核心 1 条（页面操作严格串行），上限 [MAX_CLIENTS]，满了回 503。 */
+    /**
+     * 请求线程池：多条线程（不再是一条），连接数有上限，满了回 503。
+     * 页面操作的串行性由 [pageLock] 保证，不由线程数保证。
+     */
     private val workers: ThreadPoolExecutor by lazy {
         ThreadPoolExecutor(
-            1, MAX_CLIENTS, 30L, TimeUnit.SECONDS, ArrayBlockingQueue(MAX_CLIENTS),
+            2, MAX_CLIENTS, 30L, TimeUnit.SECONDS, ArrayBlockingQueue(MAX_CLIENTS),
             { r -> Thread(r, "term-lou-web-op").apply { isDaemon = true } },
             ThreadPoolExecutor.AbortPolicy()
         )
     }
 
+    /** 页面操作锁：只有碰 WebView 的指令才抢，探活之类不排队。 */
+    private val pageLock = ReentrantLock()
+
     private var serverSocket: ServerSocket? = null
     private var acceptThread: Thread? = null
+    /** 当前连接的带缓冲输入流（探测客户端存活要用它，不能直接用裸 Socket 流）。 */
+    private var probeInput: PushbackInputStream? = null
     @Volatile private var running = false
     @Volatile private var stopping = false
     private var webView: WebView? = null
@@ -100,6 +116,8 @@ class WebAutomationService : Service() {
             pageReady = true
         }
     }
+
+    private val mainUi = UiEval.Ui { task -> postToMain(task) }
 
     override fun onCreate() {
         super.onCreate()
@@ -162,10 +180,9 @@ class WebAutomationService : Service() {
         }
         running = true
         isRunning = true
+        markActivity()
         statusText = getString(R.string.web_running_fmt, port)
         WebArtifacts.writeEnv(this, port, currentToken(this))
-        // 开着就是"待使用"：status 栏开始闪烁提示，直到 agent 发出第一条真指令
-        WebArtifacts.setNoticePending(this, true)
         refreshNotification()
     }
 
@@ -204,27 +221,10 @@ class WebAutomationService : Service() {
         runCatching { workers.shutdownNow() }
         destroySession()
         WebArtifacts.clearEnv(this)
-        // 关掉就是"用完了"：不再闪烁提示
-        WebArtifacts.setNoticePending(this, false)
         runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
     }
 
     // ---------- HTTP 分发 ----------
-
-    private fun serve(client: Socket) {
-        runCatching {
-            client.soTimeout = SOCKET_TIMEOUT_MS
-            val badRequest = WebProtocol.httpResponse(
-                400, WebProtocol.errJson("bad request"), JSON_TYPE
-            )
-            val raw = readRequest(client.getInputStream())
-                ?: return@runCatching writeQuietly(client, badRequest)
-            val request = WebProtocol.parseRequest(raw)
-                ?: return@runCatching writeQuietly(client, badRequest)
-            writeQuietly(client, route(request))
-        }.onFailure { Log.w(TAG, "serve failed", it) }
-        runCatching { client.close() }
-    }
 
     private fun writeQuietly(client: Socket, response: ByteArray) {
         runCatching {
@@ -261,7 +261,7 @@ class WebAutomationService : Service() {
         return head + body
     }
 
-    private fun route(request: WebProtocol.Request): ByteArray {
+    private fun route(request: WebProtocol.Request, client: Socket): ByteArray {
         // /help 免令牌：纯说明书，供 agent 自发现
         if (request.method == "GET" && request.path == "/help") {
             return WebProtocol.httpResponse(
@@ -277,34 +277,96 @@ class WebAutomationService : Service() {
             return WebProtocol.httpResponse(404, WebProtocol.errJson("no such endpoint"), JSON_TYPE)
         }
         val op = WebProtocol.bodyOp(request) ?: return json(WebProtocol.errJson("missing op"))
-        // 任何一条真指令都算"用过了"：停止 status 闪烁提示（探活不算）
-        if (op != "ping") WebArtifacts.markUsed(this)
-        return try {
-            json(handle(op, request))
+        // 任何一条真指令都算"用过了"：重置闲置计时（探活不算），status 的空闲提示据此判断
+        if (op != "ping") markActivity()
+        val response = try {
+            json(handle(op, request) { isClientGone(client) })
         } catch (e: Exception) {
             Log.e(TAG, "op $op failed", e)
             json(WebProtocol.errJson(e.message ?: e.javaClass.simpleName))
         }
+        return response
     }
 
     private fun json(body: String) = WebProtocol.httpResponse(200, body, JSON_TYPE)
 
-    private fun handle(op: String, request: WebProtocol.Request): String = when (op) {
-        "ping" -> WebProtocol.okJson("msg" to "pong", "port" to WebProtocol.DEFAULT_PORT)
-        "open" -> opOpen(request)
-        "wait" -> opWait(request)
-        "eval" -> opEval(request)
-        "html" -> opHtml()
-        "text" -> opText(request)
-        "click" -> opClick(request)
-        "type" -> opType(request)
-        "select" -> opSelect(request)
-        "shot" -> opShot()
-        "back" -> opBack()
-        "reload" -> opReload(request)
-        "cookies" -> opCookies()
-        "clear", "close" -> opClose()
-        else -> WebProtocol.errJson("unknown op: $op")
+    private fun handle(op: String, request: WebProtocol.Request, cancelled: () -> Boolean): String {
+        // 探活不碰页面也不抢锁：一条卡住的 open 不该把 ping 堵在后面
+        if (op == "ping") return WebProtocol.okJson("msg" to "pong", "port" to WebProtocol.DEFAULT_PORT)
+
+        pageLock.lock()
+        try {
+            if (cancelled()) return WebProtocol.errJson("client disconnected")
+            return when (op) {
+                "open" -> opOpen(request, cancelled)
+                "wait" -> opWait(request, cancelled)
+                "eval" -> opEval(request, cancelled)
+                "html" -> opHtml(cancelled)
+                "text" -> opText(request, cancelled)
+                "click" -> opClick(request, cancelled)
+                "type" -> opType(request, cancelled)
+                "select" -> opSelect(request, cancelled)
+                "shot" -> opShot()
+                "back" -> opBack()
+                "reload" -> opReload(request, cancelled)
+                "cookies" -> opCookies()
+                "clear", "close" -> opClose()
+                else -> WebProtocol.errJson("unknown op: $op")
+            }
+        } finally {
+            pageLock.unlock()
+        }
+    }
+
+    /**
+     * 客户端是否已经断开。
+     *
+     * HTTP 请求已经完整读完了（头 + 按 Content-Length 读的体），正常情况下**不会再有字节**，
+     * 所以这里读一个字节来试探：读到 -1 说明对端发了 FIN（agent 的 shell 被外层杀了就是这条路径）；
+     * 万一真读到了（畸形请求），`unread` 退回去，不影响后续解析。
+     *
+     * 用 `PushbackInputStream` 而不是 `peek()`：后者不是标准 InputStream API。
+     */
+    private fun isClientGone(client: Socket): Boolean {
+        val input = probeInput ?: return false
+        return try {
+            val previous = client.soTimeout
+            val got = try {
+                client.soTimeout = PROBE_TIMEOUT_MS
+                input.read()
+            } finally {
+                client.soTimeout = previous
+            }
+            if (got >= 0) input.unread(got)
+            got == -1                      // 对端发了 FIN
+        } catch (e: SocketTimeoutException) {
+            false                        // 没数据 = 客户端还在等我们
+        } catch (e: Exception) {
+            true                         // 连接已经废了
+        }
+    }
+
+    /**
+     * 请求体的读入口。**所有探测都要经过它**：`Socket` 裸流没有 `peek`，
+     * 而 `peek` 正是判断"客户端还在不在"的唯一无损手段（`read()` 会把字节吃掉，
+     * 后面解析请求体就少了字节）。
+     */
+    private fun serve(client: Socket) {
+        val input = PushbackInputStream(BufferedInputStream(client.getInputStream()), PROBE_PUSHBACK)
+        probeInput = input
+        runCatching {
+            client.soTimeout = SOCKET_TIMEOUT_MS
+            val badRequest = WebProtocol.httpResponse(
+                400, WebProtocol.errJson("bad request"), JSON_TYPE
+            )
+            val raw = readRequest(input)
+                ?: return@runCatching writeQuietly(client, badRequest)
+            val request = WebProtocol.parseRequest(raw)
+                ?: return@runCatching writeQuietly(client, badRequest)
+            writeQuietly(client, route(request, client))
+        }.onFailure { Log.w(TAG, "serve failed", it) }
+        if (probeInput === input) probeInput = null
+        runCatching { client.close() }
     }
 
     // ---------- 无头 WebView ----------
@@ -366,17 +428,25 @@ class WebAutomationService : Service() {
         progress = 0
         if (wv == null) return
         // removeView/destroy 必须在主线程
-        onMain(TEARDOWN_JOIN_MS) {
+        postToMain {
             runCatching {
                 wv.stopLoading()
                 wm.removeView(wv)
                 wv.destroy()
             }.onFailure { Log.w(TAG, "destroy webview failed", it) }
-            null
         }
     }
 
-    /** 页面操作必须回主线程（WebView 只允许在主线程调用）。 */
+    /** 投递到主线程，不等待（等待绝不能发生在主线程上——见 [UiEval]）。 */
+    private fun postToMain(task: () -> Unit): Boolean {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            task()
+            return true
+        }
+        return runCatching { mainHandler.post(task) }.getOrDefault(false)
+    }
+
+    /** 需要拿到返回值的主线程调用（短操作：读 url、销毁视图等）。 */
     private fun <T> onMain(timeoutMs: Long = 30_000, block: () -> T): T? {
         if (Looper.myLooper() == Looper.getMainLooper()) return block()
         val latch = CountDownLatch(1)
@@ -400,16 +470,16 @@ class WebAutomationService : Service() {
 
     /**
      * `open`：建/复用页面并开始加载。
-     * `wait`（毫秒，默认 0=不等）在这里等页面真正加载完再返回——
-     * 否则 agent 紧接着 `html` 拿到的是加载中的空壳页，这是无头浏览器最常见的坑。
+     * `wait`（毫秒，默认 0=不等）在这里等页面真正加载完再返回——否则 agent 紧接着
+     * `html` 拿到的是加载中的空壳页。客户端中途断开时会提前收手。
      */
-    private fun opOpen(request: WebProtocol.Request): String {
+    private fun opOpen(request: WebProtocol.Request, cancelled: () -> Boolean): String {
         val url = WebProtocol.bodyString(request, "url")
         if (url.isBlank()) return WebProtocol.errJson("missing url")
         val waitMs = WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS)
         val wv = onMain { ensureWebView() } ?: return WebProtocol.errJson("webview timeout")
         onMain { wv.loadUrl(url) } ?: return WebProtocol.errJson("load timeout")
-        val ready = waitForPage(waitMs)
+        val ready = waitForPage(waitMs, cancelled)
         return WebProtocol.okJson(
             "msg" to "opened",
             "url" to url,
@@ -419,25 +489,26 @@ class WebAutomationService : Service() {
     }
 
     /**
-     * 等页面加载完成。[waitMs]=0 时只做一次非阻塞检查（页面刚好已就绪才算）。
-     * 超时**不报错**，把进度如实回给 agent 由它决定是否重试。
+     * 等页面加载完成。[waitMs]=0 时只做一次非阻塞检查。
+     * 超时**不报错**，把进度如实回给 agent 由它决定是否重试；客户端断开则立刻收手。
      */
-    private fun waitForPage(waitMs: Int): Boolean {
+    private fun waitForPage(waitMs: Int, cancelled: () -> Boolean): Boolean {
         if (pageReady && progress >= 100) return true
         if (waitMs <= 0) return false
         val deadline = SystemClock.elapsedRealtime() + waitMs
         while (SystemClock.elapsedRealtime() < deadline) {
             if (pageReady && progress >= 100) return true
-            Thread.sleep(50)
+            if (cancelled()) return false
+            Thread.sleep(POLL_MS)
         }
         return pageReady && progress >= 100
     }
 
-    /** `wait`：单独等页面就绪（agent 想在别处加载完再取内容时用）。 */
-    private fun opWait(request: WebProtocol.Request): String {
+    /** `wait`：单独等页面就绪。 */
+    private fun opWait(request: WebProtocol.Request, cancelled: () -> Boolean): String {
         if (webView == null) return WebProtocol.errJson("no page open")
         val waitMs = WebProtocol.bodyInt(request, "ms", 10_000).coerceIn(0, MAX_WAIT_MS)
-        val ready = waitForPage(waitMs)
+        val ready = waitForPage(waitMs, cancelled)
         return WebProtocol.okJson(
             "msg" to if (ready) "ready" else "timeout",
             "ready" to ready,
@@ -447,33 +518,62 @@ class WebAutomationService : Service() {
     }
 
     /**
-     * `eval`：在页面里跑任意 JS，返回值原样带回（字符串就是字符串，不是 JSON 字面量）。
-     *
-     * **必须解码**：evaluateJavascript 的回调给的是 JSON 编码值（字符串带引号、`\n` 转义、
-     * JS 的 null 变成字符串 `"null"`）。不解码的话 agent 拿到的是带引号转义的一坨，解析必错。
+     * 在页面里求值。**等待发生在当前线程，不在主线程**（5.9.1 修的就是这个）。
+     * 结果分四种如实回报：拿到值 / 超时 / 客户端断开 / 投递失败。
      */
-    private fun opEval(request: WebProtocol.Request): String {
+    private fun evalInPage(
+        wv: WebView,
+        js: String,
+        cancelled: () -> Boolean
+    ): WebProtocol.EvalOutcome = when (
+        val result = UiEval.postAndAwait(
+            ui = mainUi,
+            timeoutMs = EVAL_TIMEOUT_MS,
+            cancelled = cancelled,
+            pollMs = POLL_MS,
+            evaluate = { deliver -> wv.evaluateJavascript(js) { deliver(it) } },
+            decode = { WebProtocol.decodeEvalResult(it) }
+        )
+    ) {
+        is UiEval.Result.Ok -> WebProtocol.EvalOutcome.Value(result.value)
+        is UiEval.Result.TimedOut -> WebProtocol.EvalOutcome.Timeout(result.waitedMs)
+        is UiEval.Result.Cancelled -> WebProtocol.EvalOutcome.Cancelled
+        is UiEval.Result.NotPosted -> WebProtocol.EvalOutcome.NotPosted
+    }
+
+    /** 把失败的结果变成对 agent 说的话；成功返回 null。 */
+    private fun outcomeError(outcome: WebProtocol.EvalOutcome): String? = when (outcome) {
+        is WebProtocol.EvalOutcome.Timeout -> "evaluate timeout"
+        is WebProtocol.EvalOutcome.Cancelled -> "client disconnected"
+        is WebProtocol.EvalOutcome.NotPosted -> "cannot reach main thread"
+        is WebProtocol.EvalOutcome.Value -> null
+    }
+
+    /** 取成功结果里的值（失败时 null，调用方已先排掉 [outcomeError]）。 */
+    private fun WebProtocol.EvalOutcome.valueOrNull(): String? =
+        (this as? WebProtocol.EvalOutcome.Value)?.value
+
+    /**
+     * `eval`：在页面里跑任意 JS，返回值原样带回（字符串就是字符串，不是 JSON 字面量）。
+     */
+    private fun opEval(request: WebProtocol.Request, cancelled: () -> Boolean): String {
         val js = WebProtocol.bodyString(request, "js")
         if (js.isBlank()) return WebProtocol.errJson("missing js")
         val wv = webView ?: return WebProtocol.errJson("no page open")
-        return when (val outcome = evalInPage(wv, js)) {
-            is WebProtocol.EvalOutcome.Timeout -> WebProtocol.errJson("evaluate timeout")
-            is WebProtocol.EvalOutcome.Value ->
-                WebProtocol.okJson("value" to outcome.value, "url" to (onMain { wv.url } ?: ""))
-        }
+        val outcome = evalInPage(wv, js, cancelled)
+        outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
+        return WebProtocol.okJson("value" to outcome.valueOrNull(), "url" to (onMain { wv.url } ?: ""))
     }
 
-    private fun opHtml(): String {
+    private fun opHtml(cancelled: () -> Boolean): String {
         val wv = webView ?: return WebProtocol.errJson("no page open")
-        return when (val outcome = evalInPage(wv, "(document.documentElement||{}).outerHTML||''")) {
-            is WebProtocol.EvalOutcome.Timeout -> WebProtocol.errJson("evaluate timeout")
-            is WebProtocol.EvalOutcome.Value ->
-                WebProtocol.okJson("html" to outcome.value, "url" to (onMain { wv.url } ?: ""))
-        }
+        val outcome = evalInPage(wv, "(document.documentElement||{}).outerHTML||''", cancelled)
+        outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
+        return WebProtocol.okJson("html" to outcome.valueOrNull(), "url" to (onMain { wv.url } ?: ""))
     }
 
     /** `text`：取可见文字；不给选择器就是整页正文。 */
-    private fun opText(request: WebProtocol.Request): String {
+    private fun opText(request: WebProtocol.Request, cancelled: () -> Boolean): String {
         val wv = webView ?: return WebProtocol.errJson("no page open")
         val raw = WebProtocol.bodyString(request, "selector")
         val js = if (raw.isBlank()) {
@@ -483,16 +583,15 @@ class WebAutomationService : Service() {
             "(function(){var e=" + WebSelector.pickJs(kind) + ";" +
                 "return e?(e.innerText?e.innerText:(e.value!=null?e.value:'')):null})()"
         }
-        return when (val outcome = evalInPage(wv, js)) {
-            is WebProtocol.EvalOutcome.Timeout -> WebProtocol.errJson("evaluate timeout")
-            is WebProtocol.EvalOutcome.Value -> outcome.value?.let { text ->
-                WebProtocol.okJson("text" to text, "url" to (onMain { wv.url } ?: ""))
-            } ?: WebProtocol.errJson("not found: $raw")
-        }
+        val outcome = evalInPage(wv, js, cancelled)
+        outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
+        return outcome.valueOrNull()?.let { text ->
+            WebProtocol.okJson("text" to text, "url" to (onMain { wv.url } ?: ""))
+        } ?: WebProtocol.errJson("not found: $raw")
     }
 
     /** `click`：真实点击（不是改状态），元素会先滚进可视区。 */
-    private fun opClick(request: WebProtocol.Request): String {
+    private fun opClick(request: WebProtocol.Request, cancelled: () -> Boolean): String {
         val wv = webView ?: return WebProtocol.errJson("no page open")
         val raw = WebProtocol.bodyString(request, "selector")
         val kind = WebSelector.parse(raw) ?: return WebProtocol.errJson("bad selector: $raw")
@@ -500,18 +599,17 @@ class WebAutomationService : Service() {
             "if(!e)return null;" +
             "try{e.scrollIntoView({block:'center',inline:'center'})}catch(_){}" +
             "e.click();return (e.innerText?e.innerText:(e.value!=null?e.value:'ok'))})()"
-        return when (val outcome = evalInPage(wv, js)) {
-            is WebProtocol.EvalOutcome.Timeout -> WebProtocol.errJson("evaluate timeout")
-            is WebProtocol.EvalOutcome.Value -> outcome.value?.let { label ->
-                val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS))
-                WebProtocol.okJson(
-                    "msg" to "clicked",
-                    "label" to label,
-                    "ready" to ready,
-                    "url" to (onMain { wv.url } ?: "")
-                )
-            } ?: WebProtocol.errJson("not found: $raw")
-        }
+        val outcome = evalInPage(wv, js, cancelled)
+        outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
+        return outcome.valueOrNull()?.let { label ->
+            val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS), cancelled)
+            WebProtocol.okJson(
+                "msg" to "clicked",
+                "label" to label,
+                "ready" to ready,
+                "url" to (onMain { wv.url } ?: "")
+            )
+        } ?: WebProtocol.errJson("not found: $raw")
     }
 
     /**
@@ -519,7 +617,7 @@ class WebAutomationService : Service() {
      * 走原生 setter + input/change 事件，而不是逐键模拟——React/Vue 这类框架
      * 监听的是 input 事件上 setter 的痕迹，直接改 `value` 它们收不到。
      */
-    private fun opType(request: WebProtocol.Request): String {
+    private fun opType(request: WebProtocol.Request, cancelled: () -> Boolean): String {
         val wv = webView ?: return WebProtocol.errJson("no page open")
         val value = WebProtocol.bodyString(request, "text")
         if (value.isEmpty()) return WebProtocol.errJson("missing text")
@@ -534,16 +632,15 @@ class WebAutomationService : Service() {
             "(function(){var e=" + WebSelector.pickJs(kind) + ";" +
                 "if(!e)return null;return WEB_FILL(e," + WebSelector.jsString(value) + "," + clear + ")?1:null})()"
         }
-        return when (val outcome = evalInPage(wv, FILL_HELPER + fill)) {
-            is WebProtocol.EvalOutcome.Timeout -> WebProtocol.errJson("evaluate timeout")
-            is WebProtocol.EvalOutcome.Value -> outcome.value?.let {
-                WebProtocol.okJson("msg" to "typed", "bytes" to value.length)
-            } ?: WebProtocol.errJson("not a fillable element: $raw")
-        }
+        val outcome = evalInPage(wv, FILL_HELPER + fill, cancelled)
+        outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
+        return outcome.valueOrNull()?.let {
+            WebProtocol.okJson("msg" to "typed", "bytes" to value.length)
+        } ?: WebProtocol.errJson("not a fillable element: $raw")
     }
 
     /** `select`：按 value 或可见文字选中 `<select>` 的一项，并派发 change。 */
-    private fun opSelect(request: WebProtocol.Request): String {
+    private fun opSelect(request: WebProtocol.Request, cancelled: () -> Boolean): String {
         val wv = webView ?: return WebProtocol.errJson("no page open")
         val value = WebProtocol.bodyString(request, "value")
         if (value.isBlank()) return WebProtocol.errJson("missing value")
@@ -558,13 +655,12 @@ class WebAutomationService : Service() {
             "if(hit==='')return '-1';e.value=hit;" +
             "try{e.dispatchEvent(new Event('change',{bubbles:true}))}catch(_){}" +
             "return hit})()"
-        return when (val outcome = evalInPage(wv, js)) {
-            is WebProtocol.EvalOutcome.Timeout -> WebProtocol.errJson("evaluate timeout")
-            is WebProtocol.EvalOutcome.Value -> when (outcome.value) {
-                null -> WebProtocol.errJson("not found: $raw")
-                "-1" -> WebProtocol.errJson("not a select, or no option matches: $value")
-                else -> WebProtocol.okJson("msg" to "selected", "value" to outcome.value)
-            }
+        val outcome = evalInPage(wv, js, cancelled)
+        outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
+        return when (outcome.valueOrNull()) {
+            null -> WebProtocol.errJson("not found: $raw")
+            "-1" -> WebProtocol.errJson("not a select, or no option matches: $value")
+            else -> WebProtocol.okJson("msg" to "selected", "value" to outcome.valueOrNull())
         }
     }
 
@@ -632,10 +728,10 @@ class WebAutomationService : Service() {
     }
 
     /** `reload`：重载当前页（可带 `wait`）。 */
-    private fun opReload(request: WebProtocol.Request): String {
+    private fun opReload(request: WebProtocol.Request, cancelled: () -> Boolean): String {
         val wv = webView ?: return WebProtocol.errJson("no page open")
         onMain { wv.reload() } ?: return WebProtocol.errJson("reload timeout")
-        val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS))
+        val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS), cancelled)
         return WebProtocol.okJson(
             "msg" to "reloaded",
             "ready" to ready,
@@ -646,8 +742,8 @@ class WebAutomationService : Service() {
     /**
      * 导出 cookie 到 `~/web/cookies.txt|json` 供人查看。
      * Android 不提供"枚举全部 cookie"的 API（[CookieManager] 只能按 URL 取），
-     * 因此这里导出**当前页面**可见的 Cookie 头——这也是 agent 真正关心的部分。
-     * 响应里的 `scope` 字段明说这件事，免得 agent 把"没导出"当成"没有 cookie"。
+     * 因此这里导出**当前页面**可见的 Cookie 头。响应里的 `scope` 字段明说这件事，
+     * 免得 agent 把"没导出"当成"没有 cookie"。
      */
     private fun opCookies(): String {
         val wv = webView
@@ -690,24 +786,6 @@ class WebAutomationService : Service() {
         }.onFailure { Log.w(TAG, "clear web data failed", it) }
     }
 
-    /**
-     * evaluateJavascript 是异步回调：这里在主线程上同步等它回来（带超时），
-     * 并把 JSON 编码的结果**解码回原始值**（字符串不再带引号与转义）。
-     * 超时与"页面返回 null"用 [WebProtocol.EvalOutcome] 分开，不混为一谈。
-     */
-    private fun evalInPage(wv: WebView, js: String, timeoutMs: Long = EVAL_TIMEOUT_MS): WebProtocol.EvalOutcome {
-        var outcome: WebProtocol.EvalOutcome? = null
-        val posted = onMain(timeoutMs + 1_000) {
-            val latch = CountDownLatch(1)
-            wv.evaluateJavascript(js) { result ->
-                outcome = WebProtocol.EvalOutcome.Value(WebProtocol.decodeEvalResult(result))
-                latch.countDown()
-            }
-            if (!latch.await(timeoutMs, TimeUnit.MILLISECONDS)) Unit else Unit
-        }
-        return outcome ?: WebProtocol.EvalOutcome.Timeout(timeoutMs)
-    }
-
     // ---------- 通知 ----------
 
     private fun refreshNotification() {
@@ -747,10 +825,13 @@ class WebAutomationService : Service() {
         private const val MAX_BODY = 2 * 1024 * 1024
         private const val MAX_HEAD = 64 * 1024
         private const val MAX_CLIENTS = 8
-        private const val MAX_WAIT_MS = 60_000
+        private const val MAX_WAIT_MS = 30_000
         private const val SOCKET_TIMEOUT_MS = 60_000
-        private const val EVAL_TIMEOUT_MS = 20_000L
+        private const val PROBE_TIMEOUT_MS = 200
+        private const val PROBE_PUSHBACK = 1
+        private const val EVAL_TIMEOUT_MS = 15_000L
         private const val TEARDOWN_JOIN_MS = 3_000L
+        private const val POLL_MS = 100L
         private const val LOOPBACK = "127.0.0.1"
         private val CONTENT_LENGTH = Regex("(?i)content-length:\\s*(\\d+)")
 
@@ -778,6 +859,19 @@ class WebAutomationService : Service() {
             private set
         @Volatile var statusText = ""
             private set
+
+        /** 最后一次"真指令"的时间（elapsedRealtime），供空闲提示算闲置时长。 */
+        @Volatile var lastActivityAt = 0L
+            private set
+
+        /** 记录一次使用：服务启动与每条真指令都会调它。 */
+        fun markActivity() {
+            lastActivityAt = SystemClock.elapsedRealtime()
+        }
+
+        /** 已经空闲多久；没在跑算"无限空闲"（但那时压根不该提示）。 */
+        fun idleMillis(): Long =
+            if (lastActivityAt <= 0L) Long.MAX_VALUE else SystemClock.elapsedRealtime() - lastActivityAt
 
         /** 每次安装固定令牌：首次生成后落 prefs，agent skill 里可写死。 */
         fun currentToken(context: Context): String {

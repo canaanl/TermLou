@@ -26,7 +26,9 @@ object TabIntroContent {
                 TabIntroSection(R.string.intro_terminal_startup_title, R.string.intro_terminal_startup_body),
                 TabIntroSection(R.string.intro_terminal_ui_title, R.string.intro_terminal_ui_body),
                 TabIntroSection(R.string.intro_terminal_workshop_title, R.string.intro_terminal_workshop_body),
-                TabIntroSection(R.string.web_intro_terminal_title, R.string.web_intro_terminal_body)
+                TabIntroSection(R.string.web_intro_conn_title, R.string.web_intro_conn_body),
+                TabIntroSection(R.string.web_intro_ops_title, R.string.web_intro_ops_body),
+                TabIntroSection(R.string.web_intro_notes_title, R.string.web_intro_notes_body)
             )
         )
         1 -> TabIntroPage(

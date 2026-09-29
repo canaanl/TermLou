@@ -113,6 +113,12 @@ object WebProtocol {
 
         /** 有结果；[value] 为 null 表示页面里算出来的就是 null。 */
         data class Value(val value: String?) : EvalOutcome()
+
+        /** 客户端中途断开（agent 的命令被外层杀掉）：立刻放弃，不再占着页面锁。 */
+        data object Cancelled : EvalOutcome()
+
+        /** 投递不到主线程（服务正在收尾）。 */
+        data object NotPosted : EvalOutcome()
     }
 
     /**
@@ -176,7 +182,9 @@ object WebProtocol {
         appendLine("  · 截图只在页面已渲染时成功；白图会如实报错，不会给你一张空图。")
         appendLine("  · cookies 只导出当前页面可见的 cookie：安卓没有枚举全部的 API。")
         appendLine("  · 只监听 127.0.0.1（同一 WiFi 下别的设备连不上）。")
-        appendLine("  · 指令串行执行，页面操作不会互相踩。")
+        appendLine("  · 碰页面的指令之间串行（同一时刻只有一条在操作页面），但 ping 不会被它们堵住。")
+        appendLine("  · 客户端中途断开（命令被超时杀掉）时，服务端立刻放弃等待，不会留下卡住的会话。")
+        appendLine("  · 推荐节奏：open 不带 wait → wait 短等 → 取内容；单条 wait 上限 30 秒。")
         appendLine("  · 无历史/无痕：每次打开 app 与每次服务启动都会清 cookie 与缓存；不保存密码与表单。")
         appendLine("  · One page at a time; if open's wait runs out it does not error, it returns ready:false.")
         appendLine("  · Shots fail loudly instead of returning a blank image.")

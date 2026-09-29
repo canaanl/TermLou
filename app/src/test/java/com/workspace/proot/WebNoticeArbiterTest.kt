@@ -6,41 +6,47 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 闪烁提示的避让规则锁定测试（5.9.0）。
+ * 空闲闪烁提示的避让规则锁定测试（5.9.1）。
  *
- * 这是用户明确要求必须测的部分：闪烁与 status 栏其它信息的优先级
- * 手动点很难稳定复现（要在 2 秒临时提示的窗口里对上闪烁的暗段），
+ * 手动点很难稳定复现（要在 10 分钟闲置窗口里对上闪烁的暗段，还要恰好有临时提示），
  * 所以规则抽成纯函数后逐条锁死。
  */
 class WebNoticeArbiterTest {
 
     private fun inputs(
         serviceOn: Boolean = true,
-        noticePending: Boolean = true,
+        idleMs: Long = WebNoticeArbiter.IDLE_MS,
         temp: Boolean = false,
         ctrl: Boolean = false
     ) = WebNoticeArbiter.Inputs(
         serviceOn = serviceOn,
-        noticePending = noticePending,
+        idleMs = idleMs,
         tempStatusActive = temp,
         ctrlInfoVisible = ctrl
     )
 
-    // ---------- 何时该闪 ----------
+    // ---------- 何时才闪：闲置满 10 分钟 ----------
 
     @Test
-    fun `开着且没用过就闪`() {
-        assertTrue(WebNoticeArbiter.shouldBlink(inputs()))
+    fun `闲置刚过十分钟才闪`() {
+        assertTrue(WebNoticeArbiter.shouldBlink(inputs(idleMs = WebNoticeArbiter.IDLE_MS)))
+        assertTrue(WebNoticeArbiter.shouldBlink(inputs(idleMs = WebNoticeArbiter.IDLE_MS + 5_000)))
+    }
+
+    @Test
+    fun `开着但一直在用就不闪`() {
+        assertFalse(WebNoticeArbiter.shouldBlink(inputs(idleMs = 0)))
+        assertFalse(WebNoticeArbiter.shouldBlink(inputs(idleMs = 60_000)))
+        assertFalse(WebNoticeArbiter.shouldBlink(inputs(idleMs = WebNoticeArbiter.IDLE_MS - 1)))
     }
 
     @Test
     fun `服务关着不闪`() {
-        assertFalse(WebNoticeArbiter.shouldBlink(inputs(serviceOn = false)))
-    }
-
-    @Test
-    fun `agent 已经用过就不闪`() {
-        assertFalse(WebNoticeArbiter.shouldBlink(inputs(noticePending = false)))
+        assertFalse(
+            WebNoticeArbiter.shouldBlink(
+                inputs(serviceOn = false, idleMs = Long.MAX_VALUE)
+            )
+        )
     }
 
     @Test
@@ -56,6 +62,33 @@ class WebNoticeArbiterTest {
     @Test
     fun `按键信息与临时提示同时存在也不闪`() {
         assertFalse(WebNoticeArbiter.shouldBlink(inputs(temp = true, ctrl = true)))
+    }
+
+    @Test
+    fun `闲置阈值就是十分钟`() {
+        assertEquals(600_000L, WebNoticeArbiter.IDLE_MS)
+    }
+
+    // ---------- 延时检查：空闲等待期不排心跳 ----------
+
+    @Test
+    fun `没到点给出剩余延时`() {
+        assertEquals(600_000L, WebNoticeArbiter.msUntilBlink(0))
+        assertEquals(300_000L, WebNoticeArbiter.msUntilBlink(300_000))
+    }
+
+    @Test
+    fun `已经到点剩余延时为 0`() {
+        assertEquals(0L, WebNoticeArbiter.msUntilBlink(WebNoticeArbiter.IDLE_MS))
+        assertEquals(0L, WebNoticeArbiter.msUntilBlink(WebNoticeArbiter.IDLE_MS + 10_000))
+        assertEquals(0L, WebNoticeArbiter.msUntilBlink(Long.MAX_VALUE))
+    }
+
+    @Test
+    fun `剩余延时会随使用归零重来`() {
+        // 用了一次 → 闲置时间清零 → 又要等满十分钟
+        assertEquals(0L, WebNoticeArbiter.msUntilBlink(WebNoticeArbiter.IDLE_MS))
+        assertEquals(WebNoticeArbiter.IDLE_MS, WebNoticeArbiter.msUntilBlink(0))
     }
 
     // ---------- 节奏 ----------
@@ -97,7 +130,7 @@ class WebNoticeArbiterTest {
     @Test
     fun `零时长参数不会除零`() {
         assertFalse(WebNoticeArbiter.phaseOn(0L, onMs = 0L, offMs = 0L))
-        assertTrue(WebNoticeArbiter.phaseOn(0L, onMs = 0L, offMs = 500L).not())
+        assertFalse(WebNoticeArbiter.phaseOn(0L, onMs = 0L, offMs = 500L))
     }
 
     // ---------- 组合 ----------
@@ -116,6 +149,11 @@ class WebNoticeArbiterTest {
     fun `组合判断里避让优先于节奏`() {
         assertFalse(WebNoticeArbiter.noticeVisible(inputs(ctrl = true), 100L))
         assertFalse(WebNoticeArbiter.noticeVisible(inputs(temp = true), 100L))
+    }
+
+    @Test
+    fun `组合判断里闲置不足优先于节奏`() {
+        assertFalse(WebNoticeArbiter.noticeVisible(inputs(idleMs = 1000), 100L))
     }
 
     @Test

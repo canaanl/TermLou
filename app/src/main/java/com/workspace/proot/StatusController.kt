@@ -1,4 +1,4 @@
-﻿package com.workspace.proot
+package com.workspace.proot
 
 import android.os.SystemClock
 import android.view.View
@@ -100,17 +100,28 @@ class StatusController(
     private var webTick: Runnable? = null
     private var webPhase: Boolean? = null
     private var webSince = 0L
+    private var webIdleCheck: Runnable? = null
 
     /**
-     * 让 status 栏的现状与心跳对齐（切 Tab、开关服务、onResume 都会调）。
+     * 让 status 栏与"闲置提示"对齐（切 Tab、开关服务、onResume、每条指令后都会调）。
      *
-     * 心跳只在**确实要闪**的时候才排：服务开着、还没被 agent 用过、且此刻在终端 Tab。
-     * 避让规则（临时提示 > 按键信息 > 闪烁）全交给 [WebNoticeArbiter] 判定，规则本身有单测锁着。
+     * 5.9.1 起改成**闲置满 10 分钟才提示**（此前是"开着没用过就闪"，用着开着也一直闪）。
+     * 心跳只在**真的要闪**的时候才排；等待期只排**一个一次性延时检查**，到点若仍空闲才开始闪——
+     * 所以空闲的那十分钟里完全不空转。
+     *
+     * 避让规则（临时提示 > 按 Ctrl 的按键信息 > 闪烁）全交给 [WebNoticeArbiter] 判定，
+     * 规则本身有单测锁着。
      */
     fun syncWebNotice() {
-        val want = activity.currentTab == 0 &&
-            WebAutomationService.isRunning &&
-            WebArtifacts.noticePending(activity)
+        if (activity.isFinishing || activity.isDestroyed) return
+        val inTerminal = activity.currentTab == 0
+        val serviceOn = WebAutomationService.isRunning
+        val idleMs = WebAutomationService.idleMillis()
+        val want = inTerminal && serviceOn && idleMs >= WebNoticeArbiter.IDLE_MS
+
+        webIdleCheck?.let { scope.mainHandler.removeCallbacks(it) }
+        webIdleCheck = null
+
         val running = webTick
         if (want && running == null) {
             webSince = SystemClock.elapsedRealtime()
@@ -125,17 +136,33 @@ class StatusController(
             }
             webTick = r
             scope.mainHandler.post(r)
-        } else if (!want && running != null) {
-            scope.mainHandler.removeCallbacks(running)
-            webTick = null
-            webPhase = null
-            if (activity.currentTab == 0 && ::statusView.isInitialized) {
-                statusView.animate().cancel()
-                statusView.text = terminalBaseText()
-            }
-        } else if (want) {
-            renderWebNotice()
+            return
         }
+        if (!want) {
+            if (running != null) {
+                scope.mainHandler.removeCallbacks(running)
+                webTick = null
+                webIdleCheck?.let { scope.mainHandler.removeCallbacks(it) }
+                webIdleCheck = null
+                webPhase = null
+                if (inTerminal && ::statusView.isInitialized) {
+                    statusView.animate().cancel()
+                    statusView.text = terminalBaseText()
+                }
+            }
+            // 还没闲置够：排一个到点的检查，届时若仍空闲才开始闪
+            if (inTerminal && serviceOn) {
+                val delay = WebNoticeArbiter.msUntilBlink(idleMs)
+                if (delay in 1..MAX_IDLE_CHECK_DELAY_MS) {
+                    val probe = Runnable { syncWebNotice() }
+                    webIdleCheck = probe
+                    scope.mainHandler.postDelayed(probe, delay)
+                }
+            }
+            return
+        }
+        // 已经在闪：相位或避让状态变了就重画
+        renderWebNotice()
     }
 
     /** 只在相位变化时改文本，且临时提示期间一律不碰 status（否则会把 2 秒提示闪没）。 */
@@ -143,10 +170,7 @@ class StatusController(
         if (!::statusView.isInitialized) return
         val inputs = webNoticeInputs()
         if (inputs.tempStatusActive) return
-        val on = WebNoticeArbiter.noticeVisible(
-            inputs,
-            SystemClock.elapsedRealtime() - webSince
-        )
+        val on = WebNoticeArbiter.noticeVisible(inputs, SystemClock.elapsedRealtime() - webSince)
         if (on == webPhase) return
         webPhase = on
         statusView.animate().cancel()
@@ -159,7 +183,7 @@ class StatusController(
 
     private fun webNoticeInputs() = WebNoticeArbiter.Inputs(
         serviceOn = WebAutomationService.isRunning,
-        noticePending = WebArtifacts.noticePending(activity),
+        idleMs = WebAutomationService.idleMillis(),
         tempStatusActive = terminalTempActive,
         ctrlInfoVisible = lastClickedInfo.isNotEmpty()
     )
@@ -221,5 +245,12 @@ class StatusController(
         settingsStatusJob = null
         webTick?.let { scope.mainHandler.removeCallbacks(it) }
         webTick = null
+        webIdleCheck?.let { scope.mainHandler.removeCallbacks(it) }
+        webIdleCheck = null
+    }
+
+    private companion object {
+        /** 一次性空闲检查的最长延时；超过就不排了，等下次刷新 status 时再算。 */
+        const val MAX_IDLE_CHECK_DELAY_MS = 10 * 60 * 1000L
     }
 }

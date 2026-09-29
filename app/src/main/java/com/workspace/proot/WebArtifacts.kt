@@ -25,7 +25,6 @@ object WebArtifacts {
     const val MAX_SHOTS = 50
 
     private const val PREFS = "term-lou-web"
-private const val PREF_NOTICE = "webNoticePending"
     private const val SHOT_PREFIX = "shot-"
     private const val SHOT_SUFFIX = ".png"
     private const val SHOT_SEQ_RESET_MS = 1_000L
@@ -165,19 +164,4 @@ private const val PREF_NOTICE = "webNoticePending"
         }
         return removed
     }
-
-    // ---------- status 闪烁提示的未读标记 ----------
-
-    /** 服务开着但用户还没用过 → 需要闪烁提示；用过或在设置里关掉就不再提示。 */
-    fun noticePending(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(PREF_NOTICE, false)
-
-    fun setNoticePending(context: Context, pending: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putBoolean(PREF_NOTICE, pending).apply()
-    }
-
-    /** 再次使用浏览器（收到第一条 open）即视为已读。 */
-    fun markUsed(context: Context) = setNoticePending(context, false)
 }
