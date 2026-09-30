@@ -135,6 +135,19 @@ class RegressionScanTest {
         assertTrue("allowContentAccess 必须显式关（默认 true）", c.contains("allowContentAccess = false"))
     }
 
+    @Test
+    fun `存活探测的流必须是参数不能是Service字段`() {
+        // 并发隐患：probeInput 曾是 Service 级共享字段，后连上的盖掉先连上的，
+        // A 的探测读 B 的流。现在字段必须不存在，流只能当参数传
+        val c = code("WebAutomationService.kt")
+        assertFalse(
+            "probeInput 字段不许回来 —— 回来就等于把并发 bug 带回来",
+            c.contains("probeInput")
+        )
+        assertTrue("route 必须接住流参数", c.contains("input: PushbackInputStream"))
+        assertTrue("探测必须用传进来的流", c.contains("isClientGone(client, input)"))
+    }
+
     // ---------- 7：UiEval 不得混淆 ----------
 
     @Test

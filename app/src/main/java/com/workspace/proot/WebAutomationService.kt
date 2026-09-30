@@ -90,8 +90,6 @@ class WebAutomationService : Service() {
 
     private var serverSocket: ServerSocket? = null
     private var acceptThread: Thread? = null
-    /** 当前连接的带缓冲输入流（探测客户端存活要用它，不能直接用裸 Socket 流）。 */
-    private var probeInput: PushbackInputStream? = null
     @Volatile private var running = false
     @Volatile private var stopping = false
     private var webView: WebView? = null
@@ -360,7 +358,24 @@ class WebAutomationService : Service() {
         return head + body
     }
 
-    private fun route(request: WebProtocol.Request, client: Socket): ByteArray {
+    private fun route(
+        request: WebProtocol.Request,
+        client: Socket,
+        /**
+         * 当前连接的带缓冲输入流（5.9.10：由 [serve] 传进来，不再经过 Service 级字段）。
+         *
+         * ⚠ 它**必须是参数**，不能是字段：此前这里是个 Service 级 `probeInput`，
+         * 8 条 worker 线程并发时后来连上的会盖掉先连上的，于是 A 的存活探测
+         * 读的是 B 的流 —— A 断了测不出来（幽灵指令占 `pageLock`），
+         * B 断了反而误杀 A。超时的 `soTimeout` 设在 `client` 上、
+         * 阻塞读的却是别人的流，更是对不上了。
+         *
+         * 也不能每次拿 `client.getInputStream()` 现包：请求解析已经用这个
+         * wrapper 吃过字节了，探测必须用**同一个**（缓冲里的字节不能漏，
+         * `unread` 也要退回这个 wrapper）。
+         */
+        input: PushbackInputStream
+    ): ByteArray {
         // ⚠ 5.9.9：**/help 也要令牌**。
         // 此前它免鉴权，而说明书里又把**真令牌**印在 `X-Token: xxx` 那一行 ——
         // Android 上任何 app 访问 127.0.0.1 都不需要任何权限，于是
@@ -386,7 +401,7 @@ class WebAutomationService : Service() {
         // 任何一条真指令都算"用过了"：重置闲置计时（探活不算），status 的空闲提示据此判断
         if (op != "ping") markActivity()
         val response = try {
-            json(handle(op, request) { isClientGone(client) })
+            json(handle(op, request) { isClientGone(client, input) })
         } catch (e: Exception) {
             Log.e(TAG, "op $op failed", e)
             json(WebProtocol.errJson(e.message ?: e.javaClass.simpleName))
@@ -435,25 +450,13 @@ class WebAutomationService : Service() {
      * 万一真读到了（畸形请求），`unread` 退回去，不影响后续解析。
      *
      * 用 `PushbackInputStream` 而不是 `peek()`：后者不是标准 InputStream API。
+     *
+     * ⚠ `input` 必须是**这个连接自己的流**（由 [serve] 当参数一路传下来）。
+     * 此前这里读的是 Service 级共享字段，8 条线程并发时 A 的探测会读到 B 的流。
+     * 本体逻辑在伴生的 [probeGone] 里（纯函数，可单测），这里只是个薄转发。
      */
-    private fun isClientGone(client: Socket): Boolean {
-        val input = probeInput ?: return false
-        return try {
-            val previous = client.soTimeout
-            val got = try {
-                client.soTimeout = PROBE_TIMEOUT_MS
-                input.read()
-            } finally {
-                client.soTimeout = previous
-            }
-            if (got >= 0) input.unread(got)
-            got == -1                      // 对端发了 FIN
-        } catch (e: SocketTimeoutException) {
-            false                        // 没数据 = 客户端还在等我们
-        } catch (e: Exception) {
-            true                         // 连接已经废了
-        }
-    }
+    private fun isClientGone(client: Socket, input: PushbackInputStream): Boolean =
+        probeGone(client, input)
 
     /**
      * 请求体的读入口。**所有探测都要经过它**：`Socket` 裸流没有 `peek`，
@@ -462,7 +465,6 @@ class WebAutomationService : Service() {
      */
     private fun serve(client: Socket) {
         val input = PushbackInputStream(BufferedInputStream(client.getInputStream()), PROBE_PUSHBACK)
-        probeInput = input
         runCatching {
             client.soTimeout = SOCKET_TIMEOUT_MS
             val badRequest = WebProtocol.httpResponse(
@@ -472,9 +474,8 @@ class WebAutomationService : Service() {
                 ?: return@runCatching writeQuietly(client, badRequest)
             val request = WebProtocol.parseRequest(raw)
                 ?: return@runCatching writeQuietly(client, badRequest)
-            writeQuietly(client, route(request, client))
+            writeQuietly(client, route(request, client, input))
         }.onFailure { Log.w(TAG, "serve failed", it) }
-        if (probeInput === input) probeInput = null
         runCatching { client.close() }
     }
 
@@ -1655,6 +1656,31 @@ class WebAutomationService : Service() {
         private const val TEARDOWN_JOIN_MS = 3_000L
         private const val POLL_MS = 100L
         private const val LOOPBACK = "127.0.0.1"
+
+        /**
+         * 探一下这个连接的对端还在不在。**纯函数**：只碰传进来的 socket 与流，
+         * 不读任何 Service 状态 —— 所以并发时 A 永远探 A 的流（可单测）。
+         *
+         * 此前 [WebAutomationService.isClientGone] 读的是 Service 级共享字段，
+         * 后连上的盖掉先连上的，A 的探测会读到 B 的流。
+         */
+        internal fun probeGone(client: Socket, input: PushbackInputStream): Boolean {
+            return try {
+                val previous = client.soTimeout
+                val got = try {
+                    client.soTimeout = PROBE_TIMEOUT_MS
+                    input.read()
+                } finally {
+                    client.soTimeout = previous
+                }
+                if (got >= 0) input.unread(got)
+                got == -1                      // 对端发了 FIN
+            } catch (e: SocketTimeoutException) {
+                false                        // 没数据 = 客户端还在等我们
+            } catch (e: Exception) {
+                true                         // 连接已经废了
+            }
+        }
 
         /**
          * 页面侧"出错了"的哨兵前缀：JS 里无法直接抛异常（会被 evaluateJavascript
