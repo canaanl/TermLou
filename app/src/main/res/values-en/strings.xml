@@ -437,7 +437,9 @@
     <string name="web_btn_clear">Clear cache files</string>
     <string name="web_copy_hint">Tap to copy: port %1$d · token + first command</string>
     <string name="web_copied">Connection info copied</string>
-    <string name="web_clear_confirm">Delete the headless browser screenshots and cookie files? (Port and token stay.)</string>
+    <string name="web_clear_confirm">Delete everything under /workspace/web/?\nShots, cookies, the port and the token file all go (the service is off).</string>
+    <!-- running when pressed, or the service started while the dialog was open -->
+    <string name="web_clear_busy">Service is running; stop the headless browser first.</string>
     <string name="web_cleared_fmt">Removed %1$d file(s)</string>
     <string name="web_cleared_none">Nothing to clear</string>
     <string name="web_notice_blink">无头浏览器空闲，请关闭！</string>

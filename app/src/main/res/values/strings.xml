@@ -437,7 +437,9 @@
     <string name="web_btn_clear">清除缓存</string>
     <string name="web_copy_hint">点击复制：端口 %1$d · 令牌 + 首条命令</string>
     <string name="web_copied">已复制连接信息</string>
-    <string name="web_clear_confirm">清除无头浏览器的截图与 cookie 文件？（服务运行所需的端口与令牌会保留）</string>
+    <string name="web_clear_confirm">清空 /workspace/web/ 下的全部文件？\n截图、cookie、端口与令牌文件都会删掉（服务已停止）。</string>
+    <!-- 运行中按了清除，或确认框开着时服务被启动 -->
+    <string name="web_clear_busy">服务运行中，不能清除。先关闭无头浏览器。</string>
     <string name="web_cleared_fmt">已清除 %1$d 个文件</string>
     <string name="web_cleared_none">没有可清除的文件</string>
     <string name="web_notice_blink">无头浏览器空闲，请关闭！</string>

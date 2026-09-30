@@ -107,6 +107,12 @@ class WebAutomationController(
         toggleBtn.text = activity.getString(
             if (running) R.string.web_btn_stop else R.string.web_btn_start
         )
+        // 5.9.6：服务在跑时**不给删**。置灰而不是"点了报错"，和网络上那个
+        // 抓包按钮没选应用时一个样（见 NetworkController.refreshNetTab）。
+        // 顺带把"agent 往 web/ 里写的东西会被清掉"这个顾虑一并消掉：
+        // 服务运行中这个按钮按不到，只有停止后的残留物会被清。
+        clearBtn.isEnabled = !running
+        clearBtn.alpha = if (running) 0.5f else 1f
         applySegments()
         activity.refreshStatusBar()
     }
@@ -147,6 +153,12 @@ class WebAutomationController(
         AlertDialog.Builder(activity)
             .setMessage(activity.getString(R.string.web_clear_confirm))
             .setPositiveButton(activity.getString(R.string.clear)) { _, _ ->
+                // 置灰只挡入口，挡不住这个时序：确认框开着的时候服务被启动，
+                // 再点确定就会去删一个正在用的目录。这里补一刀。
+                if (WebAutomationService.isRunning) {
+                    status.showTempStatus(activity.getString(R.string.web_clear_busy))
+                    return@setPositiveButton
+                }
                 val removed = WebArtifacts.clearArtifacts(activity)
                 status.showTempStatus(
                     if (removed > 0) {

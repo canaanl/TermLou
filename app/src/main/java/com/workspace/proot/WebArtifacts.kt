@@ -153,17 +153,58 @@ object WebArtifacts {
     }
 
     /**
-     * 「清除缓存」按钮：删截图与 cookie 文件，**保留 web.env**（服务还开着时 agent 要用）。
-     * 返回删除的文件数（用于状态提示）。
+     * 「清除缓存」按钮：**清空 [webRoot] 下的全部内容**，递归删，目录本身保留。
+     *
+     * 5.9.6 改：此前只删 `shots/` + `cookies.txt` + `cookies.json` 三样白名单 ——
+     * 以后多写一种产物忘了加进来就永远删不掉，而且强杀进程后残留的 `web.env`
+     * （陈旧端口与令牌）这个按钮够不着。现在是"除目录本身外全删"。
+     *
+     * **能删的前提是服务已停**：按钮在运行中是置灰的（见
+     * [WebAutomationController.refreshRow]），所以这里不需要为在跑的会话保留任何东西，
+     * 也不会和正在写的 `shot` 撞上。
+     *
+     * 返回删掉的**文件**数（目录不计入），用于状态提示。
      */
     fun clearArtifacts(context: Context): Int {
+        val root = webRoot(context)
+        if (!root.isDirectory) return 0
         var removed = 0
-        runCatching {
-            shotsDir(context).listFiles()?.forEach { if (it.delete()) removed++ }
-            listOf("cookies.txt", "cookies.json").forEach { name ->
-                if (File(webRoot(context), name).delete()) removed++
+        runCatching { removed = deleteContents(root) }
+        // shots/ 留着空目录：文件页里少一次目录闪烁，服务下次写截图时也少一次 mkdirs
+        runCatching { shotsDir(context).mkdirs() }
+        return removed
+    }
+
+    /**
+     * 递归删掉 [dir] 下的全部内容，[dir] **自己保留**。返回删掉的文件数。
+     *
+     * 每一项都过一遍 [isDisposable]：空串、`.`、`..` 永远不删 ——
+     * 这是防止把目录自己删掉的那道锁，测试专门盯着它。
+     */
+    internal fun deleteContents(dir: File): Int {
+        var removed = 0
+        dir.listFiles()?.forEach { child ->
+            val rel = child.relativeTo(dir).path
+            if (!isDisposable(rel)) return@forEach
+            if (child.isDirectory) {
+                removed += deleteContents(child)
+                // 子目录删不掉不算失败：文件已经清掉了，目录留着无妨
+                runCatching { child.delete() }
+            } else if (child.delete()) {
+                removed++
             }
         }
         return removed
+    }
+
+    /**
+     * 这个相对路径要不要删。
+     *
+     * ⚠ `.` 与 `..` 是 `File.relativeTo` 在路径没落在 [dir] 里时可能给出的结果，
+     * 拿它们去删就是把目录自己删了 —— 所以显式挡掉。
+     */
+    fun isDisposable(relPath: String): Boolean {
+        val p = relPath.replace('\\', '/').trim('/')
+        return p.isNotEmpty() && p != "." && p != ".."
     }
 }
