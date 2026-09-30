@@ -40,3 +40,5 @@ crash.log
 # Rootfs original backup (kept locally only)
 # opencode temp is outside repo, but guard anyway
 opencode/
+
+无头探针.apk

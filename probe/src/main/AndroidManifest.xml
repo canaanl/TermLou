@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- B 组（对照组）要挂 overlay 窗口，也就是 TermLou 现在的做法，必须有这个权限。
+         A 组不挂窗口，不需要 —— 两者只有这一项差别。 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- v4 修：**漏了这个，探针发不出任何网络请求**。合成页是 loadDataWithBaseURL
+         （纯本地，不联网），所以照样全过；一到真实网址就变成 WebView 自己的
+         "网页无法打开"错误页。v1–v3 的「真实站点」那一段因此一直在测错误页，
+         什么也没验到。 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:label="无头探针"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.Light">
+
+        <activity
+            android:name=".ProbeActivity"
+            android:exported="true"
+            android:label="无头探针">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

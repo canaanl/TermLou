@@ -18,6 +18,7 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
+import android.view.View
 import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.WebSettings
@@ -111,7 +112,32 @@ class WebAutomationService : Service() {
      */
     @Volatile private var navSeq = 0L
 
-    /** overlay 窗口最后一次拿到的实际几何（诊断用；null = 窗口还没加上）。 */
+    /** 无头自检做过了没；没做之前第一次建 WebView 时现做。 */
+    @Volatile private var headlessChecked = false
+
+    /** 自检正在跑没 —— 防重复起。 */
+    @Volatile private var headlessCheckRunning = false
+
+    /** 自检结论：HEADLESS = 不挂窗口；OVERLAY = 退回屏外窗口（兜底）。 */
+    @Volatile private var headlessMode: WebHeadless.Mode = WebHeadless.Mode.HEADLESS
+
+    /** 自检的结论说明，`diag` 会原样报出来。 */
+    @Volatile private var headlessReason = "自检还在跑"
+
+    /** 自检没过的那几项（空 = 全过）。只报没过的。 */
+    @Volatile private var headlessDetail = ""
+
+    /** 当前这个 WebView 是不是挂在 overlay 窗口上的。 */
+    @Volatile private var usingOverlay = false
+
+    /** 自检最多等这么久；超时就当不可用，走兜底。 */
+    private val HEADLESS_CHECK_TIMEOUT_MS = 6000L
+
+    /** 自检用的探测视口，比正式的小 —— 机制一样，但省掉十几 MB 的临时位图。 */
+    private val PROBE_W_DP = 240
+    private val PROBE_H_DP = 480
+
+    /** overlay 窗口最后一次拿到的实际几何（诊断用；无头模式下为 null = 压根没开窗口）。 */
     @Volatile private var hostBounds: String? = null
 
     private val pageClient = object : WebViewClient() {
@@ -229,6 +255,9 @@ class WebAutomationService : Service() {
         markActivity()
         statusText = getString(R.string.web_running_fmt, port)
         WebArtifacts.writeEnv(this, port, currentToken(this))
+        // 5.9.7：后台线程上自检"不挂窗口能不能用"。通了就无头（不用悬浮窗权限），
+        // 不通自动落回 overlay。跑在 workers 上，绝不能占用主线程等页面回调。
+        startHeadlessSelfCheck()
         refreshNotification()
     }
 
@@ -420,15 +449,32 @@ class WebAutomationService : Service() {
 
     // ---------- 无头 WebView ----------
 
-    /** WebView 懒加载：只有真的要用网页时才创建。 */
+    /**
+     * WebView 懒加载：只有真的要用网页时才创建。
+     *
+     * 5.9.7：**默认不挂窗口**。只手工 `measure()` + `layout()` 给它一个尺寸，
+     * Chromium 就能排版、跑 JS、`draw()` 出图 —— 实机探针（`:probe` 模块，v4）
+     * 验证过这与"挂在屏外 overlay 窗口里"**完全等价**（合成页 12/12 项一致、
+     * 视口跟着视图走、导航与历史栈通、真实站点一致），于是 `SYSTEM_ALERT_WINDOW`
+     * 不用再问。
+     *
+     * 但那是**没有官方保证**的行为 —— 官方对 WebView 的定位是"UI 的一部分"，
+     * 唯一的离屏 API 早已废弃移除。所以服务启动时先跑 [startHeadlessSelfCheck]：
+     * 通了走无头，不通**自动落回** overlay（那才需要权限）。见 [WebHeadless]。
+     */
     private fun ensureWebView(): WebView {
-        webView?.let { return it }
-        if (!Settings.canDrawOverlays(this)) {
-            throw IllegalStateException("overlay permission missing — grant it in TermLou settings")
+        webView?.let { existing ->
+            // 自检可能在第一个页面之后才出结果，而结论是"该落回"：换掉这个无头的
+            if (headlessMode == WebHeadless.Mode.OVERLAY && !usingOverlay) {
+                destroySession()
+            } else {
+                return existing
+            }
         }
-        val density = resources.displayMetrics.density
-        val w = (WebProtocol.VIEWPORT_W_DP * density).toInt().coerceAtLeast(1)
-        val h = (WebProtocol.VIEWPORT_H_DP * density).toInt().coerceAtLeast(1)
+        val w = viewWidthPx()
+        val h = viewHeightPx()
+        // 上次自检没跑出结论（多半是启动时主线程忙），这会儿再试一次
+        if (!headlessChecked) startHeadlessSelfCheck()
         val wv = WebView(this)
         wv.setBackgroundColor(Color.WHITE)
         wv.settings.apply {
@@ -450,6 +496,42 @@ class WebAutomationService : Service() {
                 if (newProgress >= 100) pageReady = true
             }
         }
+        // 关键：不挂窗口也必须先把尺寸给足，视口才建得起来（探针第 3/4 项验的就是这个）
+        layoutView(wv, w, h)
+        usingOverlay = headlessMode == WebHeadless.Mode.OVERLAY
+        if (usingOverlay) attachOverlay(wv, w, h)
+        webView = wv
+        progress = 0
+        pageReady = false
+        return wv
+    }
+
+    private fun viewWidthPx(): Int =
+        (WebProtocol.VIEWPORT_W_DP * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+
+    private fun viewHeightPx(): Int =
+        (WebProtocol.VIEWPORT_H_DP * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+
+    /** 手工量尺寸。这是无头能跑起来的前提。 */
+    private fun layoutView(v: View, w: Int, h: Int) {
+        v.measure(
+            View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY)
+        )
+        v.layout(0, 0, w, h)
+    }
+
+    /**
+     * 兜底：挂到屏外 overlay 窗口。**只有自检没通过才会走到这里**，
+     * 所以 `SYSTEM_ALERT_WINDOW` 只在这条路上、而且只在那一刻才需要。
+     */
+    private fun attachOverlay(wv: View, w: Int, h: Int) {
+        if (!Settings.canDrawOverlays(this)) {
+            throw IllegalStateException(
+                "this device cannot render a WebView without a window, and the overlay " +
+                    "permission is missing — grant it in system settings"
+            )
+        }
         val params = WindowManager.LayoutParams(
             w, h,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -458,23 +540,141 @@ class WebAutomationService : Service() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
-            // 挪到屏幕左侧外：渲染照常（无头），但用户看不见
+            // 挪到屏幕左侧外：渲染照常，但用户看不见
             x = -(w + 100)
             y = 0
             gravity = Gravity.TOP or Gravity.START
         }
         wm.addView(wv, params)
-        // 记下窗口**实际拿到的**几何：诊断看的是这个，而不是我们请求的值
-        // （5.9.4 之前无法回答"挂在屏外的窗口到底渲没渲染"）
+        // 记下窗口**实际拿到的**几何（诊断要看这个，而不是我们请求的值）
         hostBounds = runCatching {
             val dm = resources.displayMetrics
             "x=${params.x} y=${params.y} w=${wv.width} h=${wv.height} " +
                 "screen=${dm.widthPixels}x${dm.heightPixels}"
         }.getOrDefault("unknown")
-        webView = wv
-        progress = 0
-        pageReady = false
-        return wv
+    }
+
+    /** 服务启动时在后台线程起一次自检。**必须离开主线程** —— 页面回调要主线程才能跑。 */
+    private fun startHeadlessSelfCheck() {
+        if (headlessChecked || headlessCheckRunning) return
+        headlessCheckRunning = true
+        runCatching {
+            workers.execute {
+                val verdict = runHeadlessSelfCheck()
+                if (verdict == null) {
+                    // ⚠ **超时不等于不可用**。服务启动那会儿主线程可能正忙着布局，
+                    // 回调排不上队而已 —— 那是我们没测出来，不是内核不行。
+                    // 保持当前模式、不标记已检查，下次建 WebView 时再试一次。
+                    // 判成"不可用"会让明明好用的设备平白去要悬浮窗权限。
+                    headlessReason = "自检没跑出结果（主线程忙？），保持当前模式并稍后重试"
+                    return@execute
+                }
+                headlessChecked = true
+                headlessMode = verdict
+                headlessReason = WebHeadless.reasonFor(verdict)
+                if (verdict == WebHeadless.Mode.OVERLAY) {
+                    // 兜底要走悬浮窗权限，那得用户自己授；说清楚是哪一种情况
+                    statusText = if (Settings.canDrawOverlays(this)) {
+                        getString(R.string.web_running_fmt, WebProtocol.DEFAULT_PORT)
+                    } else {
+                        getString(R.string.web_overlay_fallback)
+                    }
+                    refreshNotification()
+                }
+            }
+        }.onFailure {
+            headlessCheckRunning = false
+            Log.w(TAG, "headless self check could not start", it)
+        }
+    }
+
+    /**
+     * 无头自检：建一个**不挂窗口**的临时 WebView，加一个纯本地页面，看它到底能不能用。
+     *
+     * 判据见 [WebHeadless.decide]：文字、CSS 排版、视口、截图，四项全过才算无头可用。
+     * 任一项不过就落回 overlay —— 宁可慢一点，也不要"看着在跑其实什么也没渲染"。
+     *
+     * 用比正式视口小得多的探测尺寸：机制一样（`measure`/`layout` 驱动视口），
+     * 但省掉十几 MB 的临时位图。纯本地 `data:` 页，不联网。
+     *
+     * ⚠ 本方法跑在**后台线程**上：每一步用 [onMain] 投递到主线程，然后在本线程等回调。
+     * 反过来（主线程上等主线程回调）就是死锁。
+     *
+     * 返回 `null` 表示**没测出结论**（页面没加载完、或 JS 没回值 —— 通常是主线程忙），
+     * 这和"测了，不可用"是两回事，调用方必须分开处理。
+     */
+    private fun runHeadlessSelfCheck(): WebHeadless.Mode? {
+        val w = (PROBE_W_DP * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+        val h = (PROBE_H_DP * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+        val pageUp = java.util.concurrent.CountDownLatch(1)
+        val jsDone = java.util.concurrent.CountDownLatch(1)
+        val jsRaw = java.util.concurrent.atomic.AtomicReference<String?>(null)
+        val inkFlag = java.util.concurrent.atomic.AtomicBoolean(false)
+        val probeRef = java.util.concurrent.atomic.AtomicReference<WebView?>(null)
+
+        if (onMain {
+                val p = WebView(this)
+                p.setBackgroundColor(Color.WHITE)
+                p.settings.javaScriptEnabled = true
+                layoutView(p, w, h)
+                p.webViewClient = object : android.webkit.WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) = pageUp.countDown()
+                }
+                probeRef.set(p)
+                p.loadDataWithBaseURL(null, WebHeadless.PROBE_HTML, "text/html", "utf-8", null)
+                true
+            } != true
+        ) {
+            headlessCheckRunning = false
+            return null
+        }
+        val probe = probeRef.get()
+        if (probe == null) { headlessCheckRunning = false; return null }
+
+        val gotPage = runCatching {
+            pageUp.await(HEADLESS_CHECK_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }.getOrDefault(false)
+
+        var js = ""
+        if (gotPage) {
+            onMain {
+                probe.evaluateJavascript(WebHeadless.PROBE_JS) { raw ->
+                    jsRaw.set(raw)
+                    jsDone.countDown()
+                }
+            }
+            runCatching {
+                jsDone.await(HEADLESS_CHECK_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+            }
+            js = jsRaw.get().orEmpty()
+            onMain {
+                val bmp = runCatching {
+                    android.graphics.Bitmap.createBitmap(
+                        w, h, android.graphics.Bitmap.Config.ARGB_8888
+                    ).also { b ->
+                        b.eraseColor(Color.WHITE)
+                        probe.draw(android.graphics.Canvas(b))
+                    }
+                }.getOrNull()
+                inkFlag.set(bmp != null && hasContent(bmp))
+                bmp?.recycle()
+            }
+        }
+        onMain { runCatching { probe.destroy() } }
+        headlessCheckRunning = false
+
+        val v = runCatching { org.json.JSONObject(WebProtocol.decodeEvalResult(js).orEmpty()) }.getOrNull()
+        // 没加载完、或 JS 没回值 → **没结论**，不是"不可用"。见 KDoc。
+        if (!gotPage || v == null) {
+            headlessDetail = if (!gotPage) "页面没加载完" else "JS 没回值"
+            return null
+        }
+        val innerW = v.optInt("iw", -1)
+        val textOk = v.optString("t") == "ready"
+        val vpOk = WebHeadless.viewportDriven(innerW, PROBE_W_DP)
+        val layOk = WebHeadless.layoutConsistent(innerW, v.optInt("w", -1))
+        headlessDetail = WebHeadless.failedChecks(gotPage, textOk, vpOk, layOk, inkFlag.get())
+        return WebHeadless.decide(gotPage, textOk, vpOk, layOk, inkFlag.get())
     }
 
     private fun destroySession() {
@@ -737,8 +937,15 @@ class WebAutomationService : Service() {
      */
     private fun opDiag(): String {
         val wv = webView
-        val overlay = hostBounds ?: "no overlay window yet (no page opened)"
+        val overlay = hostBounds ?: if (usingOverlay) {
+            "overlay window not created yet (no page opened)"
+        } else {
+            "no window at all - running headless (measure/layout only)"
+        }
         val base = listOf<Pair<String, Any?>>(
+            "headless_mode" to headlessMode.name,
+            "headless_check" to headlessReason,
+            "headless_failed" to headlessDetail.ifEmpty { "none" },
             "overlay" to overlay,
             "viewport" to "${WebProtocol.VIEWPORT_W_DP}x${WebProtocol.VIEWPORT_H_DP} dp",
             "last_error" to (lastErrorCode ?: "none")
@@ -938,6 +1145,18 @@ class WebAutomationService : Service() {
         if (wv.width <= 0 || wv.height <= 0) return null
         val width = w.coerceAtMost(wv.width)
         val height = h.coerceAtMost(wv.height)
+        // 5.9.7：**先试 draw()**。无头模式下压根没有窗口，capturePicture() 那条
+        // 软件绘制的老路既废弃、又未必可靠，不如直接走实测能出图的那条
+        // （探针验证：不挂窗口时 draw() 一次 97 万+ 非白像素）。
+        val fromDraw = runCatching {
+            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bmp ->
+                bmp.eraseColor(Color.WHITE)
+                wv.draw(Canvas(bmp))
+            }
+        }.getOrNull()
+        if (hasContent(fromDraw)) return fromDraw
+        fromDraw?.recycle()
+        // 兜底：老路。注意它给的是整页 Picture，要等比缩放再裁，不能直接铺
         val fromPicture = runCatching {
             @Suppress("DEPRECATION")
             val pic = wv.capturePicture()
@@ -957,11 +1176,7 @@ class WebAutomationService : Service() {
         }.getOrNull()
         if (hasContent(fromPicture)) return fromPicture
         fromPicture?.recycle()
-        return runCatching {
-            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bmp ->
-                wv.draw(Canvas(bmp))
-            }
-        }.getOrNull()
+        return null
     }
 
     /** 抽样判断是不是"整屏同色"的空图（截图最常见的假成功），规则见 [WebShotSampler]。 */
