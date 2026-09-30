@@ -28,16 +28,56 @@ object WebHeadless {
         OVERLAY
     }
 
-    /** 自检页：纯本地、无网络、无外部资源，几百毫秒就该出结果。 */
+    /**
+     * 自检页必须**有大块颜色**，不然会被判成空图。
+     *
+     * 判空走 [WebShotSampler.looksBlank]：8×12 网格抽样，**采到 2 种颜色**才算有内容。
+     * 自检页若只有一行小字加一根细条，在 240×480 的视口上网格步长约 30×40 CSS px，
+     * 那点内容几乎必然被抽空 —— 于是整屏同色判成空图，
+     * **而那时 draw() 其实完全正常**。这会让自检给出假失败、把明明可用的设备
+     * 逼去要悬浮窗权限（5.9.7 第一版就踩了：真机 diag 报"截图出不来图"，
+     * 而同一台手机上探针实测 draw() 出了 115 万非白像素）。
+     *
+     * 下面的色块盖住大半屏，抽样不可能落空。
+     */
+    const val PROBE_BAR_CSS_PX = 150
+
+    /** 探测视口高（CSS px）。判空抽样步长 = 它 / [WebShotSampler.ROWS]。 */
+    const val PROBE_VIEWPORT_H_CSS = 480
+
+    /**
+     * 自检页：纯本地、无网络、无外部资源。
+     *
+     * 三样各测一件事：
+     *  - `#t` 的文字 → JS 能不能读
+     *  - `#w`（`width:50%`，在 8px padding 的 `#box` 里）→ CSS 排版有没有真发生
+     *  - 底部两块大色块 → `draw()` 出不出像素
+     */
     const val PROBE_HTML = "<!DOCTYPE html><html><head><meta charset=\"utf-8\">" +
-        "<title>termlou-probe</title></head><body>" +
-        "<p id=\"t\">ready</p>" +
-        "<div style=\"width:50%;height:10px;background:#123\"></div>" +
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
+        "<title>termlou-probe</title>" +
+        "<style>body{margin:0;background:#e9e9e9}#box{padding:8px}</style>" +
+        "</head><body>" +
+        "<div id=\"box\"><p id=\"t\">ready</p>" +
+        "<div id=\"w\" style=\"width:50%;height:20px;background:#123456\"></div></div>" +
+        // 大色块：保证 8×12 的判空抽样落不到空处
+        "<div style=\"height:${PROBE_BAR_CSS_PX}px;background:#334455\"></div>" +
+        "<div style=\"height:${PROBE_BAR_CSS_PX}px;background:#99aacc\"></div>" +
         "</body></html>"
 
-    /** 自检要取的东西。 */
+    /**
+     * 自检要取的东西。
+     *
+     * ⚠ **必须 `getElementById('w')`，不能用 `querySelector('div')`**（5.9.9 修）：
+     * 5.9.7 的探针页里那个 50% 宽的 div 是页面上**唯一**的 div，`querySelector`
+     * 碰巧取对了。5.9.8 为了迁就 `body{margin:0}` 给它加了 `#box` 包裹层，
+     * 于是 `querySelector('div')` 改成取**满宽的 `#box`** ——
+     * `layoutConsistent` 拿满宽去比半宽，**恒为 false**，
+     * 真机上 `headless_failed` 一直挂着"CSS 排版不对"。
+     * 根因是取错了元素，不是设备问题。
+     */
     const val PROBE_JS = "(function(){var d=document.getElementById('t');" +
-        "var h=document.querySelector('div');" +
+        "var h=document.getElementById('w');" +
         "return JSON.stringify({t:d?d.textContent:''," +
         "w:h?Math.round(h.getBoundingClientRect().width):-1," +
         "iw:window.innerWidth,ih:window.innerHeight});})()"

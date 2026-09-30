@@ -136,7 +136,7 @@ class UiEvalTest {
     }
 
     @Test
-    fun `发起方抛错时不会永久挂住`() {
+    fun `发起方抛错时不会永久挂住而且要能认出是抛错`() {
         val result = UiEval.postAndAwait<String>(
             ui = UiEval.Ui { task -> task(); true },
             timeoutMs = 1_000,
@@ -144,9 +144,43 @@ class UiEvalTest {
             evaluate = { error("webview already destroyed") },
             decode = { it }
         )
-        // 抛错后 latch 被 countDown：调用方拿到"没值"，而不是永远等下去
-        assertTrue(result is UiEval.Result.Ok)
-        assertNull((result as UiEval.Result.Ok).value)
+        // 5.9.9：这一条从 `Ok(null)` 改成了 `Failed`。
+        // 此前 `onFailure { latch.countDown() }` 不记异常，于是
+        // 「求压根没发出去」和「页面返回 null」塌成同一种结果 ——
+        // 那个混淆贵得很：`probeUsability` 的探针 JS 里混进了一个真实换行
+        // （Kotlin 的 `'\n'`），整段语法错 → `evaluateJavascript` 回调 null，
+        // 真机上 `usable` 对**每一个**页面都是"probe returned no value"，
+        // 而外部看到的是"页面返回了 null"，谁也想不到是脚本压根没跑起来。
+        assertTrue("必须是 Failed，实际 $result", result is UiEval.Result.Failed)
+        assertEquals(
+            "webview already destroyed",
+            (result as UiEval.Result.Failed).error.message
+        )
+    }
+
+    @Test
+    fun `抛错与页面返回null必须能分开`() {
+        val threw = UiEval.postAndAwait<String>(
+            ui = UiEval.Ui { task -> task(); true },
+            timeoutMs = 1_000,
+            cancelled = { false },
+            evaluate = { error("boom") },
+            decode = { it }
+        )
+        // ⚠ 必须喂**真的 JS null**（也就是字符串 "null"），不是 Kotlin 的 null。
+        // `evaluateJavascript` 把页面的 null 编成 JSON 的 `null` 传回来，
+        // 经 `decodeEvalResult` 之后才是 Kotlin 的 null。
+        // 喂 Kotlin 的 null 会让本该测的那条分支根本没被走到。
+        val returnedNull = UiEval.postAndAwait<String>(
+            ui = UiEval.Ui { task -> task(); true },
+            timeoutMs = 1_000,
+            cancelled = { false },
+            evaluate = { deliver -> deliver("null") },
+            decode = { WebProtocol.decodeEvalResult(it) }
+        )
+        assertTrue(threw is UiEval.Result.Failed)
+        assertTrue("页面真的返回 null 时是 Ok，实际 $returnedNull", returnedNull is UiEval.Result.Ok)
+        assertNull((returnedNull as UiEval.Result.Ok).value)
     }
 
     @Test

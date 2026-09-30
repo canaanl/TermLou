@@ -118,6 +118,30 @@ class WebAutomationService : Service() {
     /** 自检正在跑没 —— 防重复起。 */
     @Volatile private var headlessCheckRunning = false
 
+    /**
+     * 自检那次 `draw()` 量到的非白像素数（5.9.9）。
+     *
+     * 放进 `diag` 是为了**一眼分开两种失败**：
+     *  - `0` + tint 是 `E9E9E9` → 底色铺满、内容没画（帧没 commit / 合成器没转）
+     *  - `> 0` 却仍判红 → 判据本身的问题
+     */
+    @Volatile private var headlessInkPixels = -1
+    @Volatile private var headlessInkTint = "n/a"
+    @Volatile private var headlessDetailDrawAttempts = 0
+
+    /** 自检画图的重试策略：`draw()` 早于首帧 commit 时只有背景色。 */
+    private val INK_RETRY_TIMES = 4
+    private val INK_RETRY_WAIT_MS = 300L
+
+    /**
+     * 最近一次页面探针 eval 的原始结果（5.9.9），放进 `diag`。
+     *
+     * `value:…` / `value:null` / `failed:…` / `error:…` 四种。
+     * 有了它就不用猜"eval 到底有没有回值"了 ——
+     * 那正是 5.9.8 真机上"page height unknown"查不出来的原因。
+     */
+    @Volatile private var lastEvalOutcome = "n/a"
+
     /** 自检结论：HEADLESS = 不挂窗口；OVERLAY = 退回屏外窗口（兜底）。 */
     @Volatile private var headlessMode: WebHeadless.Mode = WebHeadless.Mode.HEADLESS
 
@@ -337,16 +361,23 @@ class WebAutomationService : Service() {
     }
 
     private fun route(request: WebProtocol.Request, client: Socket): ByteArray {
-        // /help 免令牌：纯说明书，供 agent 自发现
+        // ⚠ 5.9.9：**/help 也要令牌**。
+        // 此前它免鉴权，而说明书里又把**真令牌**印在 `X-Token: xxx` 那一行 ——
+        // Android 上任何 app 访问 127.0.0.1 都不需要任何权限，于是
+        // 任何装在手机上的应用一条 `curl http://127.0.0.1:39080/help` 就拿到完整凭据，
+        // 之后可以任意驱动这个浏览器。**令牌形同虚设。**
+        //
+        // agent 的自发现另有正路：`web.env` 里就写着端口与令牌（只存在于服务运行期间，
+        // 且在 app 私有目录里，别的 app 读不到）。
+        if (request.token != currentToken(this)) {
+            return WebProtocol.httpResponse(401, WebProtocol.errJson("bad token"), JSON_TYPE)
+        }
         if (request.method == "GET" && request.path == "/help") {
             return WebProtocol.httpResponse(
                 200,
-                WebProtocol.help(WebProtocol.DEFAULT_PORT, currentToken(this)),
+                WebProtocol.help(WebProtocol.DEFAULT_PORT),
                 "text/plain; charset=utf-8"
             )
-        }
-        if (request.token != currentToken(this)) {
-            return WebProtocol.httpResponse(401, WebProtocol.errJson("bad token"), JSON_TYPE)
         }
         if (request.method != "POST" || request.path != "/op") {
             return WebProtocol.httpResponse(404, WebProtocol.errJson("no such endpoint"), JSON_TYPE)
@@ -384,7 +415,7 @@ class WebAutomationService : Service() {
                 "click" -> opClick(request, cancelled)
                 "type" -> opType(request, cancelled)
                 "select" -> opSelect(request, cancelled)
-                "shot" -> opShot()
+                "shot" -> opShot(cancelled)
                 "back" -> opBack(request, cancelled)
                 "reload" -> opReload(request, cancelled)
                 "cookies" -> opCookies()
@@ -471,6 +502,18 @@ class WebAutomationService : Service() {
                 return existing
             }
         }
+        // ⚠ 5.9.9：结论是"该落回 overlay"但**权限没给**时，此前直接 `throw`。
+        // 而 `throw` 发生在 `destroySession()` **之后** —— 会话已经拆了，
+        // 这次 `open` 还失败。所谓"自动落回"在没权限时不是兜底，是**拆了卡死**。
+        // 现在改成：**继续用无头**，如实告诉用户"落回不可用"。
+        // 判据从严是针对"看着在跑其实什么都没渲染"，不是针对"挂不挂窗口"——
+        // 真正要保的是别把可用的东西判成不可用。
+        val wantOverlay = headlessMode == WebHeadless.Mode.OVERLAY
+        val overlayUsable = wantOverlay && Settings.canDrawOverlays(this)
+        if (wantOverlay && !overlayUsable) {
+            headlessReason = WebHeadless.reasonFor(WebHeadless.Mode.OVERLAY) +
+                "（未授悬浮窗权限，继续按无头方式跑）"
+        }
         val w = viewWidthPx()
         val h = viewHeightPx()
         // 上次自检没跑出结论（多半是启动时主线程忙），这会儿再试一次
@@ -485,6 +528,18 @@ class WebAutomationService : Service() {
             builtInZoomControls = false
             displayZoomControls = false
             cacheMode = WebSettings.LOAD_NO_CACHE
+            // ⚠ 5.9.9：**显式关掉文件与内容访问**。
+            // 这几项默认是 true，意味着 `{"op":"open","url":"file:///data/data/com.workspace.proot/..."}`
+            // 能读到 app 私有目录（笔记、设置、令牌都在里面），
+            // 再用 `{"op":"html"}` 原样取回。WebView 跑在 app 进程里、用 app 的权限，
+            // 所以 sandbox 对它不生效。
+            // 这个 WebView 只用来上网，本来就不需要碰本地文件。
+            allowFileAccess = false
+            allowContentAccess = false
+            @Suppress("DEPRECATION")
+            allowFileAccessFromFileURLs = false
+            @Suppress("DEPRECATION")
+            allowUniversalAccessFromFileURLs = false
             // 不持久化任何表单/密码（属性已废弃，但它是唯一能关掉密码保存的开关）
             @Suppress("DEPRECATION")
             saveFormData = false
@@ -498,8 +553,10 @@ class WebAutomationService : Service() {
         }
         // 关键：不挂窗口也必须先把尺寸给足，视口才建得起来（探针第 3/4 项验的就是这个）
         layoutView(wv, w, h)
-        usingOverlay = headlessMode == WebHeadless.Mode.OVERLAY
-        if (usingOverlay) attachOverlay(wv, w, h)
+        // 5.9.9：用上面算出来的 `overlayUsable`，不再拿 `headlessMode` 直接判 ——
+        // 两者在"结论是落回但权限没给"时不同，那是这次要修的那个分支
+        usingOverlay = overlayUsable
+        if (overlayUsable) attachOverlay(wv, w, h)
         webView = wv
         progress = 0
         pageReady = false
@@ -615,7 +672,17 @@ class WebAutomationService : Service() {
         if (onMain {
                 val p = WebView(this)
                 p.setBackgroundColor(Color.WHITE)
-                p.settings.javaScriptEnabled = true
+                p.settings.apply {
+                    javaScriptEnabled = true
+                    // 与生产 WebView 保持一致：自检要验的是**生产那条路径**能不能用。
+                    // 配置不同就等于验了个不存在的东西。
+                    allowFileAccess = false
+                    allowContentAccess = false
+                    @Suppress("DEPRECATION")
+                    allowFileAccessFromFileURLs = false
+                    @Suppress("DEPRECATION")
+                    allowUniversalAccessFromFileURLs = false
+                }
                 layoutView(p, w, h)
                 p.webViewClient = object : android.webkit.WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) = pageUp.countDown()
@@ -647,18 +714,35 @@ class WebAutomationService : Service() {
                 jsDone.await(HEADLESS_CHECK_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
             }
             js = jsRaw.get().orEmpty()
-            onMain {
-                val bmp = runCatching {
-                    android.graphics.Bitmap.createBitmap(
-                        w, h, android.graphics.Bitmap.Config.ARGB_8888
-                    ).also { b ->
-                        b.eraseColor(Color.WHITE)
-                        probe.draw(android.graphics.Canvas(b))
-                    }
-                }.getOrNull()
-                inkFlag.set(bmp != null && hasContent(bmp))
-                bmp?.recycle()
+
+            // ⚠ 5.9.9：**等首帧 commit 之后再画**，别在 eval 回调里立刻画。
+            //
+            // WebView 的内容在合成器里，第一帧还没 commit 时 `draw()` 拿到的
+            // 只有背景色。`:probe` 模块的成功路径是 `postDelayed(1300)` 之后才画，
+            // 这里此前是**零延迟**立刻画 —— 同一台手机上探针出 115 万非白像素、
+            // 自检却判"截图出不来图"，时机差是最像的解释。
+            //
+            // 于是改成**带重试的画**：最多 INK_RETRY_TIMES 次，每次多等
+            // INK_RETRY_WAIT_MS，拿��一次有内容的就收工。
+            onMain { probe.invalidate() }
+            runCatching {
+                Thread.sleep(INK_RETRY_WAIT_MS * INK_RETRY_TIMES + 200L)
             }
+            var drewInk = false
+            var inkPixels = 0
+            var lastTint = "n/a"
+            for (attempt in 1..INK_RETRY_TIMES) {
+                onMain { probe.invalidate() }
+                runCatching { Thread.sleep(INK_RETRY_WAIT_MS) }
+                val got = onMain { drawInkOf(probe, w, h) } ?: InkReading(0, "draw failed")
+                inkPixels = got.pixels
+                lastTint = got.tint
+                if (got.pixels > 0) { drewInk = true; break }
+                headlessDetailDrawAttempts = attempt
+            }
+            headlessInkPixels = inkPixels
+            headlessInkTint = lastTint
+            inkFlag.set(drewInk)
         }
         onMain { runCatching { probe.destroy() } }
         headlessCheckRunning = false
@@ -676,6 +760,48 @@ class WebAutomationService : Service() {
         headlessDetail = WebHeadless.failedChecks(gotPage, textOk, vpOk, layOk, inkFlag.get())
         return WebHeadless.decide(gotPage, textOk, vpOk, layOk, inkFlag.get())
     }
+
+    /**
+     * 画一次自检页，数出**非白像素**。
+     *
+     * ## 为什么不用 `looksBlank`（8×12 稀疏抽样）
+     *
+     * 自检页上只有顶部一点文字加两块色带，稀疏抽样**采不全** —— 5.9.7 真机上
+     * `draw()` 明明出了 115 万非白像素（探针实测），自检却判成空图，
+     * 于是把明明好用的设备逼去要悬浮窗权限。
+     *
+     * `looksBlank` 留着给 `shot` 用（那儿判"整屏同色"是对的，也便宜），
+     * 自检这边改成**逐像素数非白**：判据宽、代价可以接受（自检只跑一次，
+     * 位图只有 240×480dp）。
+     *
+     * 同时取三点颜色（[InkReading.tint]）：两次都是 0 的话，
+     * `E9E9E9`（页面底色）就是"底色铺满、内容没画"的签名。
+     */
+    private fun drawInkOf(probe: WebView, w: Int, h: Int): InkReading {
+        val bmp = runCatching {
+            android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888).also { b ->
+                b.eraseColor(android.graphics.Color.WHITE)
+                probe.draw(android.graphics.Canvas(b))
+            }
+        }.getOrNull() ?: return InkReading(0, "bitmap failed")
+        var n = 0
+        val row = IntArray(w)
+        for (y in 0 until h) {
+            bmp.getPixels(row, 0, w, 0, y, w, 1)
+            for (x in 0 until w) {
+                val p = row[x]
+                if (((p shr 16) and 0xFF) < 245 || ((p shr 8) and 0xFF) < 245 || (p and 0xFF) < 245) n++
+            }
+        }
+        val tint = listOf(10, h / 2, h - 10).map { yy ->
+            "%06X".format(bmp.getPixel((w / 2).coerceIn(0, w - 1), yy.coerceIn(0, h - 1)))
+        }.joinToString(" ")
+        bmp.recycle()
+        return InkReading(n, tint)
+    }
+
+    /** [drawInkOf] 的一次结果：非白像素数 + 三点取色。 */
+    private data class InkReading(val pixels: Int, val tint: String)
 
     private fun destroySession() {
         val wv = webView
@@ -860,6 +986,12 @@ class WebAutomationService : Service() {
         is UiEval.Result.TimedOut -> WebProtocol.EvalOutcome.Timeout(result.waitedMs)
         is UiEval.Result.Cancelled -> WebProtocol.EvalOutcome.Cancelled
         is UiEval.Result.NotPosted -> WebProtocol.EvalOutcome.NotPosted
+        // 发起求值时自己抛了（5.9.9）。**不能当成"页面返回 null"** ——
+        // `evaluateJavascript` 自己抛异常通常是 WebView 已经不可用（destroy 了、
+        // 上下文没了），把它说成 null 会让人往 JS 上找原因，而原因在宿主这边
+        is UiEval.Result.Failed -> WebProtocol.EvalOutcome.Failed(
+            result.error.message ?: result.error.javaClass.simpleName
+        )
     }
 
     /** 把失败的结果变成对 agent 说的话；成功返回 null。 */
@@ -867,6 +999,7 @@ class WebAutomationService : Service() {
         is WebProtocol.EvalOutcome.Timeout -> "evaluate timeout"
         is WebProtocol.EvalOutcome.Cancelled -> "client disconnected"
         is WebProtocol.EvalOutcome.NotPosted -> "cannot reach main thread"
+        is WebProtocol.EvalOutcome.Failed -> "evaluate failed (${outcome.reason})"
         is WebProtocol.EvalOutcome.Value -> null
     }
 
@@ -891,10 +1024,31 @@ class WebAutomationService : Service() {
      * 正是 5.9.3–5.9.4 刚清掉的那类假成功，只是搬到了探测层。
      */
 
-    /** 页面探针：一次 eval 拿回 标题 / 正文片段 / 协议 / 当前地址。 */
+    /**
+     * 页面探针：一次 eval 拿回 标题 / 正文片段 / 协议 / 当前地址。
+     *
+     * ## 必须 JSON.stringify，不能手拼分隔符（5.9.9 修的严重 bug）
+     *
+     * 此前是 `return t+'\n'+b+'\n'+protocol+'\n'+href`：
+     *
+     *  - Kotlin 里的 `'\n'` 编译后是**真实的 LF 字符**，被塞进 JS 的**单引号字符串
+     *    字面量**中间。JS 不允许字面量里裸换行 → **整段语法错** →
+     *    `evaluateJavascript` 回调 `null`。
+     *  - 本地 node 复现过：`SyntaxError: Invalid or unexpected token`，
+     *    双反斜杠（`"\\n"`）才通过。
+     *  - 真机表现：`usable` **对每一个页面**都是 `Unknown("probe returned no value")`，
+     *    `open`/`wait`/`click`/`back`/`reload` 五处都瞎。
+     *  - 而且 Kotlin 侧 `split('\n')` 也错：正文（`innerText` 截 400 字）几乎必然
+     *    自带换行，`parts[2]` 拿到的是正文第二行而不是 protocol，
+     *    **错误页检测因此失效**。
+     *
+     * 改用 `JSON.stringify` 一次干掉两处。全项目只有这一处踩了这个坑 ——
+     * `WebSelector.escape`（`:52`）写的是 `"\\n"`，那才是对的。
+     */
     private val PROBE_JS = "(function(){var t='';try{t=document.title||''}catch(e){};" +
         "var b='';try{b=(document.body?document.body.innerText:'').slice(0,400)}catch(e){};" +
-        "return t+'\n'+b+'\n'+(location.protocol||'')+'\n'+(location.href||'')})()"
+        "var p='',h='';try{p=location.protocol||'';h=location.href||''}catch(e){};" +
+        "return JSON.stringify({t:t,b:b,p:p,h:h})})()"
 
     /**
      * 探一次落地页。
@@ -908,17 +1062,26 @@ class WebAutomationService : Service() {
         }
         val outcome = evalInPage(wv, PROBE_JS) { false }
         // ⚠ 这三条以前都掉进"可用"那一支
-        outcomeError(outcome)?.let { return WebUsability.Unknown(it) }
-        val value = outcome.valueOrNull() ?: return WebUsability.Unknown("probe returned no value")
-        val parts = value.split('\n')
-        if (parts.size < 4) {
-            return WebUsability.Unknown("probe answer is incomplete (${parts.size} of 4 parts)")
+        outcomeError(outcome)?.let {
+            // 5.9.9：把**原始回值**记下来放进 diag。eval 在真页面上不回值这件事
+            // 查了很久没定位，最后靠"拿到原始回值"才分得清是脚本没跑起来、
+            // 还是页面真的返回了 null。记一行成本几乎为零。
+            lastEvalOutcome = if (outcome is WebProtocol.EvalOutcome.Failed) "failed:${outcome.reason}" else it
+            return WebUsability.Unknown(it)
         }
-        val title = parts[0]
-        val text = parts[1]
-        val protocol = parts[2]
-        val href = parts[3]
-        return when (val v = WebPageUsable.judge(protocol, href, title, text)) {
+        val raw = outcome.valueOrNull()
+        lastEvalOutcome = if (raw == null) "value:null" else "value:${raw.take(60)}"
+        if (raw == null) return WebUsability.Unknown("probe returned no value")
+        val parsed = runCatching { org.json.JSONObject(raw) }.getOrNull()
+            ?: return WebUsability.Unknown("probe answer is not JSON (${raw.take(40)})")
+        val href = parsed.optString("h", "")
+        val title = parsed.optString("t", "")
+        return when (val v = WebPageUsable.judge(
+            parsed.optString("p", ""),
+            href,
+            title,
+            parsed.optString("b", "")
+        )) {
             is WebPageUsable.Verdict.Usable -> WebUsability.Usable
             is WebPageUsable.Verdict.ErrorPage ->
                 WebUsability.Unusable("landed on WebView's own error page (chrome-error://) instead of $href")
@@ -943,9 +1106,22 @@ class WebAutomationService : Service() {
             "no window at all - running headless (measure/layout only)"
         }
         val base = listOf<Pair<String, Any?>>(
+            // ⚠ `headless_mode` 是**结论**，`rendering` 是**现状**。
+            // 5.9.8 真机上这两个字段自相矛盾（结论 OVERLAY、现状 no window）——
+            // 因为承载方式只在 `ensureWebView()` 里定一次，而那只有一个调用点。
+            // 拆成两个字段，"结论与现状不一致"从此一眼看得见。
             "headless_mode" to headlessMode.name,
+            "rendering" to if (usingOverlay) "overlay window" else "headless (no window)",
             "headless_check" to headlessReason,
             "headless_failed" to headlessDetail.ifEmpty { "none" },
+            // 5.9.9：自检那次 draw() 到底量到多少像素。`0` + tint E9E9E9
+            // 就是"底色铺满、内容没画"；`>0` 却仍判红才是判据的问题
+            "headless_ink" to headlessInkPixels.toString(),
+            "headless_ink_tint" to headlessInkTint,
+            "headless_ink_tries" to headlessDetailDrawAttempts.toString(),
+            // 5.9.9：最近一次页面探针 eval 的原始结果。分四种：
+            // value:… / value:null / failed:… / error:…
+            "eval_raw" to lastEvalOutcome,
             "overlay" to overlay,
             "viewport" to "${WebProtocol.VIEWPORT_W_DP}x${WebProtocol.VIEWPORT_H_DP} dp",
             "last_error" to (lastErrorCode ?: "none")
@@ -1115,43 +1291,195 @@ class WebAutomationService : Service() {
      *
      * 两路都空就如实报错，不写一张白图糊弄 agent。
      */
-    private fun opShot(): String {
+    /**
+     * `shot`：**长页面截整页**（5.9.8）。
+     *
+     * ## 为什么要多这一步
+     *
+     * 页面滚出去之后 `draw()` 画出来的是一整片页面底色 —— 那块内容压根没被光栅化。
+     * 真机探针扫了 11 种"踢一帧"的办法，22 次全灭（可见性、时间、渲染层全排除）。
+     * 唯一实测成立的是**把视图量到整页那么高**：视图一旦高过整页，页面就没有滚动区了，
+     * **整页就是首屏**。见 [WebShotPlan]。
+     *
+     * ## 流程
+     *
+     * 问一次整页高度 → 按 [WebShotPlan.decide] 定下这张图怎么截 →
+     * 视口模式一次画完；整页模式撑高 → 等首帧 → 最多重试几次（验下三分之一）→
+     * **量回视口**。
+     *
+     * 短页面（不到视口 1.5 倍）走原来的路，**行为一个字都没变**。
+     */
+    private fun opShot(cancelled: () -> Boolean): String {
         val wv = webView ?: return WebProtocol.errJson("no page open")
-        val bmp = onMain { capturePage(wv) }
-            ?: return WebProtocol.errJson("shot failed (view not laid out)")
-        if (!hasContent(bmp)) {
-            bmp.recycle()
-            return WebProtocol.errJson("shot blank (page not rendered yet — retry after wait)")
+        val density = resources.displayMetrics.density
+        val vw = viewWidthPx()
+        val vh = viewHeightPx()
+
+        // 问一次整页高度（CSS px，页面自己报的）。问不到就照常截一屏
+        //
+        // ⚠ 5.9.9 修：**必须拆成两行**。此前写成
+        //     evalInPage(...).let { outcomeError(it) }?.let { return ... }?.toIntOrNull()
+        // 而 `outcomeError()` **成功时返回 null** —— 于是成功那一路上
+        // `?.let` 短路、`?.toIntOrNull()` 根本不执行，`pageHcss` 永远是 null。
+        // 结果：eval 明明回了 2885，整页判定却一直收到 0，
+        // 每次都退回去"截一屏"，真机上表现为 `note: page height unknown`。
+        //
+        // 与 `opEval` / `probeUsability` 同一个形状：**先查错，再取值**，别串成一条链。
+        val heightOutcome = evalInPage(wv, WebShotPlan.PAGE_HEIGHT_JS, cancelled)
+        outcomeError(heightOutcome)?.let { return WebProtocol.errJson(it) }
+        val pageHcss = heightOutcome.valueOrNull()?.toIntOrNull()
+        // CSS px → 设备像素。**别用 density.toInt()** —— 2.75 / 3.5 / 2.625 这些
+        // 密度很常见，先截断成 2 或 3 会把高度算错一截
+        val pageHpx = ((pageHcss ?: 0) * density).toInt().coerceAtLeast(0)
+        val plan = WebShotPlan.decide(pageHpx, vh, vw)
+
+        if (!plan.isLong) {
+            val bmp = onMain { capturePage(wv, plan) }
+                ?: return WebProtocol.errJson(SHOT_NOTHING)
+            if (!hasContent(bmp)) {
+                bmp.recycle()
+                return WebProtocol.errJson(SHOT_NOTHING)
+            }
+            return finishShot(bmp, plan)
         }
-        val file = WebArtifacts.saveShot(this, bmp)
-        bmp.recycle()
-        return if (file == null) WebProtocol.errJson("shot write failed")
-        else WebProtocol.okJson("file" to WebArtifacts.linuxPath(this, file), "bytes" to file.length())
+
+        // 整页模式（5.9.9 修"下半截白"）：
+        // 撑高之后页面按新视口重排、产第一帧 —— 紧接着画只能拿到背景
+        // （真机：qq 长页下半截白）。自检那边同一个毛病等 1400ms 就好了
+        // （headless_ink: 1036800），这里对齐同一套修法。
+        var bmp: Bitmap? = null
+        var rendered = false
+        try {
+            // 修法的全部：把视图量到整页那么高，整页就是首屏
+            onMain { layoutView(wv, vw, plan.viewHeightPx) }
+            runCatching { Thread.sleep(FULL_FIRST_FRAME_MS) }
+            for (attempt in 1..FULL_RETRIES) {
+                if (cancelled()) {
+                    bmp?.recycle()
+                    return WebProtocol.errJson("client disconnected")
+                }
+                bmp?.recycle()
+                bmp = onMain { capturePage(wv, plan) }
+                val b = bmp
+                if (b != null && WebShotSampler.lowerThirdRendered(b.width, b.height) { x, y ->
+                        b.getPixel(x, y)
+                    }
+                ) {
+                    rendered = true
+                    break
+                }
+                runCatching { Thread.sleep(FULL_RETRY_WAIT_MS) }
+            }
+        } finally {
+            // **必须量回视口。** 不还原的话页面按整页高重排过，
+            // 后面 click/type 按视口坐标算的位置全错 —— 那是比截不到图更糟的错。
+            onMain { layoutView(wv, vw, vh) }
+        }
+        val out = bmp
+        if (out == null) {
+            return WebProtocol.errJson(SHOT_NOTHING)
+        }
+        if (!rendered) {
+            out.recycle()
+            return WebProtocol.errJson(SHOT_HALF_BLANK)
+        }
+        if (!hasContent(out)) {
+            out.recycle()
+            return WebProtocol.errJson(SHOT_NOTHING)
+        }
+        return finishShot(out, plan)
     }
 
     /**
-     * 截图取像素，两条路按可靠度依次尝试（`capturePicture` → `View.draw`）。
+     * 落盘 + 组装返回字段。**尺寸在 recycle 之前留下**。
      *
-     * **等比缩放**：此前是 `canvas.scale(w/picW, h/picH)` 两个方向独立缩放，而
+     * width/height 是位图真实像素。**缩放过的话它跟页面真实像素对不上**，
+     * 所以 plan.note 会明说缩到了百分之几 —— 不能让 agent 自己猜。
+     */
+    private fun finishShot(bmp: Bitmap, plan: WebShotPlan.Plan): String {
+        val pxW = bmp.width
+        val pxH = bmp.height
+        val file = WebArtifacts.saveShot(this, bmp)
+        bmp.recycle()
+        if (file == null) return WebProtocol.errJson("shot write failed")
+        val fields = mutableListOf<Pair<String, Any?>>(
+            "file" to WebArtifacts.linuxPath(this, file),
+            "bytes" to file.length(),
+            "width" to pxW,
+            "height" to pxH,
+            "full_page" to plan.isLong
+        )
+        if (plan.note.isNotEmpty()) fields += "note" to plan.note
+        return WebProtocol.okJson(*fields.toTypedArray())
+    }
+
+    /**
+     * 截不出内容时的说法。
+     *
+     * 5.9.7 说的是"retry after wait"和"view not laid out"——**两句都误导**：
+     * 视图一直是量好的，而重试在"滚出去那块画不出来"时永远没用。
+     * 现在只说事实，并把该走的路指出来。
+     */
+    private val SHOT_NOTHING =
+        "shot failed (nothing rendered) — wait for the page, then retry"
+
+    /**
+     * 整页截图 4 次之后下三分之一还是没内容。
+     *
+     * ## 和 [SHOT_NOTHING] 的区别必须说清
+     *
+     * `SHOT_NOTHING` = 整张都没东西（页面没加载完）；
+     * 这个 = 上面有、下面没有（撑高之后新视口的第一帧没产出来）。
+     * agent 拿到这个就知道"重试可能也没用"，而不是无限重试。
+     */
+    private val SHOT_HALF_BLANK =
+        "shot failed (lower part of the long page not rendered) — wait for the page, then retry"
+
+    /**
+     * 整页截图等首帧的策略（5.9.9）。
+     *
+     * 撑高之后页面按新视口重排、产第一帧 —— 紧接着画只能拿到背景。
+     * 和自检的 `INK_RETRY_*` 同一套修法（那边等 1400ms 就好），
+     * 这里首等 900ms + 最多 3 次 300ms。
+     */
+    private val FULL_FIRST_FRAME_MS = 900L
+    private val FULL_RETRIES = 4
+    private val FULL_RETRY_WAIT_MS = 300L
+
+    /**
+     * 截图取像素，两条路按可靠度依次尝试（`draw` → `capturePicture`）。
+     *
+     * ## 位图尺寸怎么定
+     *
+     * **视口模式**：位图与视图同尺寸，比例天然正确。
+     *
+     * **整页模式**（5.9.8）：视图已经被 [opShot] 量到整页那么高，
+     * 位图跟着视图走（`plan.scale` 是超上限时的等比缩放，不裁不补）。
+     *
+     * ## 兜底那条路的等比缩放
+     *
+     * 此前是 `canvas.scale(w/picW, h/picH)` 两个方向独立缩放，而
      * `capturePicture()` 给的是**整页** Picture（长页面高度远大于视口），于是长页面
      * 被纵向压扁 —— 真机表现为"导出能看到图，但比例不对"。
-     * 现在取**单一 scale 因子**（`min`），再居中裁剪：比例永远正确，
-     * 长页面只截到视口那么高的一段（想要整页请改用 full 模式）。
+     * 现在取**单一 scale 因子**（`min`），再居中裁剪：比例永远正确。
      */
-    private fun capturePage(wv: WebView): Bitmap? {
-        val density = resources.displayMetrics.density
-        val w = (WebProtocol.VIEWPORT_W_DP * density).toInt().coerceAtLeast(1)
-        val h = (WebProtocol.VIEWPORT_H_DP * density).toInt().coerceAtLeast(1)
+    private fun capturePage(wv: WebView, plan: WebShotPlan.Plan): Bitmap? {
         if (wv.width <= 0 || wv.height <= 0) return null
-        val width = w.coerceAtMost(wv.width)
-        val height = h.coerceAtMost(wv.height)
+        val vw = plan.viewWidthPx.coerceAtMost(wv.width)
+        val vh = plan.viewHeightPx.coerceAtMost(wv.height)
+        if (vw <= 0 || vh <= 0) return null
+        val bw = (vw * plan.scale).toInt().coerceAtLeast(1)
+        val bh = (vh * plan.scale).toInt().coerceAtLeast(1)
         // 5.9.7：**先试 draw()**。无头模式下压根没有窗口，capturePicture() 那条
         // 软件绘制的老路既废弃、又未必可靠，不如直接走实测能出图的那条
         // （探针验证：不挂窗口时 draw() 一次 97 万+ 非白像素）。
         val fromDraw = runCatching {
-            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bmp ->
-                bmp.eraseColor(Color.WHITE)
-                wv.draw(Canvas(bmp))
+            Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888).also { bmp ->
+                val canvas = Canvas(bmp)
+                canvas.drawColor(Color.WHITE)
+                // 缩放时先把画布缩掉，视图整个塞进位图 —— 不裁不补
+                if (plan.scale != 1f) canvas.scale(plan.scale, plan.scale)
+                wv.draw(canvas)
             }
         }.getOrNull()
         if (hasContent(fromDraw)) return fromDraw
@@ -1161,15 +1489,15 @@ class WebAutomationService : Service() {
             @Suppress("DEPRECATION")
             val pic = wv.capturePicture()
             if (pic == null || pic.width <= 0 || pic.height <= 0) return@runCatching null
-            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bmp ->
+            Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888).also { bmp ->
                 val canvas = Canvas(bmp)
                 canvas.drawColor(Color.WHITE)
                 // 单一缩放因子：比例正确，多余部分裁掉
                 val scale = minOf(
-                    width.toFloat() / pic.width,
-                    height.toFloat() / pic.height
-                )
-                canvas.translate((width - pic.width * scale) / 2f, (height - pic.height * scale) / 2f)
+                    bw.toFloat() / pic.width,
+                    bh.toFloat() / pic.height
+                ) * plan.scale
+                canvas.translate((bw - pic.width * scale) / 2f, (bh - pic.height * scale) / 2f)
                 canvas.scale(scale, scale)
                 pic.draw(canvas)
             }

@@ -135,6 +135,15 @@ object WebProtocol {
 
         /** 投递不到主线程（服务正在收尾）。 */
         data object NotPosted : EvalOutcome()
+
+        /**
+         * **发起**求值时自己抛了（5.9.9）。
+         *
+         * 与 [Value] 里 `value == null` 严格分开：那个是"页面算出来就是 null"，
+         * 这个是"求压根没发出去"（WebView 已 destroy、上下文没了之类）。
+         * 混起来的话会把宿主侧的问题引到 JS 上找原因。
+         */
+        data class Failed(val reason: String) : EvalOutcome()
     }
 
     /**
@@ -157,14 +166,22 @@ object WebProtocol {
     }
 
     /**
-     * `GET /help` 的免令牌说明书（中英双语，agent 也能直接读）。
-     * 面向"skill 里写丢了端口/令牌"的自发现场景。
+     * `GET /help` 的说明书（中英双语，agent 也能直接读）。
+     *
+     * ## 5.9.9：**这里不再印令牌**
+     *
+     * 此前 `/help` 免令牌，而本函数又把真令牌写进 `header X-Token: xxx` 那一行 ——
+     * Android 上任何 app 访问 127.0.0.1 都不需要任何权限，所以
+     * **任何装在手机上的应用一条 `curl http://127.0.0.1:<port>/help` 就拿到完整凭据。**
+     * 现在 `/help` 也要令牌（见 [WebAutomationService] 的 `route`），
+     * 自发现走 `web.env`（app 私有目录，别的 app 读不到）。
      */
-    fun help(port: Int, token: String): String = buildString {
+    fun help(port: Int): String = buildString {
+        val host = "http://127.0.0.1:$port"
         appendLine("TermLou headless browser · TermLou 无头浏览器")
         appendLine()
-        appendLine("Endpoint 端点: http://127.0.0.1:$port   (POST /op, header X-Token: $token)")
-        appendLine("Self-discovery 自发现: cat $WEB_DIR/web.env   ·   GET /help")
+        appendLine("Endpoint 端点: http://127.0.0.1:$port   (POST /op 与 GET /help 都要 header X-Token: <令牌>)")
+        appendLine("Self-discovery 自发现: cat $WEB_DIR/web.env   ·   curl -H \"X-Token: \$TOKEN\" $host/help")
         appendLine()
         appendLine("Commands 指令（全部 POST /op）:")
         appendLine("  {\"op\":\"open\",\"url\":\"https://…\",\"wait\":8000}  打开网址（复用同一页面；wait=等加载完的毫秒数）")
@@ -176,6 +193,8 @@ object WebProtocol {
         appendLine("  {\"op\":\"type\",\"selector\":\"…\",\"text\":\"…\"}   填输入框（clear=false 追加）")
         appendLine("  {\"op\":\"select\",\"selector\":\"…\",\"value\":\"…\"}   选 <select> 的一项")
         appendLine("  {\"op\":\"shot\"}                        截图并写入 $WEB_DIR/shots/，返回路径")
+        appendLine("                                          页面比视口高 1.5 倍时自动截**整页**（长图）；")
+        appendLine("                                          返回带 width/height/full_page，缩放过还会有 note")
         appendLine("  {\"op\":\"back\"} / {\"op\":\"reload\"}      后退 / 重载")
         appendLine("  {\"op\":\"cookies\"}                     导出 cookie 到 $WEB_DIR/cookies.txt|json")
         appendLine("  {\"op\":\"clear\"} / {\"op\":\"close\"}      清 cookie/缓存/localStorage 并结束会话")

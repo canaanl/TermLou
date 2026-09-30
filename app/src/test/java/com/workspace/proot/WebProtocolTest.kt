@@ -171,10 +171,14 @@ class WebProtocolTest {
     // ---------- 说明书 ----------
 
     @Test
-    fun `说明书含端口令牌与全部指令`() {
-        val help = WebProtocol.help(39080, "deadbeef")
+    fun `说明书含端口与全部指令但绝不印令牌`() {
+        val help = WebProtocol.help(39080)
         assertTrue(help.contains("39080"))
-        assertTrue(help.contains("deadbeef"))
+        // 5.9.9：`/help` 改成要令牌了，**说明书里必须不再出现真令牌**。
+        // 此前它免鉴权却又把 `X-Token: <真令牌>` 印在里面 ——
+        // Android 上任何 app 访问 127.0.0.1 都不用权限，一条 curl 就拿到完整凭据。
+        assertFalse("说明书绝不许印令牌", help.contains("deadbeef"))
+        assertTrue("得说清令牌从哪儿来", help.contains("web.env"))
         for (op in listOf("open", "wait", "eval", "html", "text", "click", "type", "select", "shot", "back", "reload", "cookies", "clear", "close", "ping")) {
             assertTrue("说明书缺少 $op", help.contains("\"$op\""))
         }
@@ -187,7 +191,7 @@ class WebProtocolTest {
 
     @Test
     fun `说明书是中英双语的`() {
-        val help = WebProtocol.help(39080, "t")
+        val help = WebProtocol.help(39080)
         assertTrue(help.contains("TermLou 无头浏览器"))
         assertTrue(help.contains("headless browser"))
         assertTrue(help.contains("No history"))
@@ -196,7 +200,7 @@ class WebProtocolTest {
     @Test
     fun `端口常量与说明书一致`() {
         assertEquals(39080, WebProtocol.DEFAULT_PORT)
-        assertTrue(WebProtocol.help(WebProtocol.DEFAULT_PORT, "t").contains("127.0.0.1:39080"))
+        assertTrue(WebProtocol.help(WebProtocol.DEFAULT_PORT).contains("127.0.0.1:39080"))
     }
 
     @Test
@@ -207,7 +211,7 @@ class WebProtocolTest {
     }
     @Test
     fun `说明书写明只监听回环与 cookie 的范围`() {
-        val help = WebProtocol.help(39080, "t")
+        val help = WebProtocol.help(39080)
         assertTrue("应说明只听 127.0.0.1", help.contains("127.0.0.1"))
         assertTrue("应说明 cookie 只覆盖当前页", help.contains("current page"))
         assertTrue("应说明截图不会给白图", help.contains("blank"))
@@ -215,16 +219,17 @@ class WebProtocolTest {
 
     @Test
     fun `说明书含选择器两种写法`() {
-        val help = WebProtocol.help(39080, "t")
+        val help = WebProtocol.help(39080)
         assertTrue(help.contains("input[name=q]"))
         assertTrue(help.contains("text="))
     }
 
     @Test
-    fun `说明书里的示例都带令牌头`() {
-        val help = WebProtocol.help(39080, "abc")
-        assertTrue(help.contains("X-Token: abc"))
+    fun `说明书里的示例都带令牌头但只留占位符`() {
+        val help = WebProtocol.help(39080)
+        // 5.9.9：示例里保留 `X-Token: $TOKEN`（从 web.env 取），但**不许出现真令牌**
         assertTrue(help.contains("X-Token: \$TOKEN"))
+        assertFalse("示例里不许塞真令牌", help.contains("X-Token: abc"))
     }
 
     @Test
@@ -234,13 +239,13 @@ class WebProtocolTest {
     }
     @Test
     fun `说明书含 diag 指令`() {
-        val help = WebProtocol.help(39080, "t")
+        val help = WebProtocol.help(39080)
         assertTrue("应含 diag", help.contains("\"diag\""))
     }
 
     @Test
     fun `说明书区分 ready 与 usable`() {
-        val help = WebProtocol.help(39080, "t")
+        val help = WebProtocol.help(39080)
         assertTrue("应解释 usable 的含义", help.contains("usable"))
         assertTrue("应说明错误页也会触发页面事件", help.contains("error page") || help.contains("错误页"))
     }
@@ -249,7 +254,7 @@ class WebProtocolTest {
     fun `示例不再依赖某个站点的具体文案`() {
         // 5.9.4：旧示例写 text=More information，而 example.com 的链接文字其实是
         // "Learn more"，示例本身就是错的。现在示例用 eval/text:h1 这种与站点无关的写法。
-        val help = WebProtocol.help(39080, "t")
+        val help = WebProtocol.help(39080)
         assertFalse("不该再出现 More information", help.contains("More information"))
         assertTrue(help.contains("document.title"))
     }

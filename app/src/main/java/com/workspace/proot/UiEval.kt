@@ -26,7 +26,7 @@ object UiEval {
         fun post(task: () -> Unit): Boolean
     }
 
-    /** 结果分四种，**不混为一谈**：agent 才知道该重试还是该改代码。 */
+    /** 结果分五种，**不混为一谈**：agent 才知道该重试还是该改代码。 */
     sealed class Result {
         /** 拿到结果；[value] 为 null 表示页面里算出来的就是 null。 */
         data class Ok(val value: String?) : Result()
@@ -39,6 +39,21 @@ object UiEval {
 
         /** 投递失败：主线程收不到这个任务（已销毁/忙）。 */
         data object NotPosted : Result()
+
+        /**
+         * 发起求值时**自己抛了**（5.9.9 新增）。
+         *
+         * 此前 `onFailure { latch.countDown() }` 不记异常，于是
+         * "求值过程抛异常"与"页面返回 null"**塌成同一个 [Ok]**。
+         * 那个混淆贵得很：`probeUsability` 的探针 JS 里有个 `'\n'` 语法错
+         * （Kotlin 的 `'\n'` 编译成真实换行，塞进 JS 单引号字面量里），
+         * 整段语法错 → `evaluateJavascript` 回调 null → `usable` 对**每一个**
+         * 页面都是 `Unknown("probe returned no value")`，
+         * 而外部看到的是"页面返回了 null" —— 谁都想不到是脚本压根没跑起来。
+         *
+         * 这个项目到处在消灭"失败模式混淆"，就这一处漏了。
+         */
+        data class Failed(val error: Throwable) : Result()
     }
 
     /**
@@ -60,6 +75,7 @@ object UiEval {
         val latch = CountDownLatch(1)
         var value: String? = null
         var settled = false
+        var thrown: Throwable? = null
 
         val posted = ui.post {
             runCatching {
@@ -71,14 +87,24 @@ object UiEval {
                         latch.countDown()
                     }
                 }
-            }.onFailure { latch.countDown() }
+            }.onFailure {
+                // ⚠ **不许把它塌成 Ok(null)** —— 见 [Result.Failed] 的说明：
+                // 那样"脚本压根没跑起来"和"页面返回 null"就再也分不开了。
+                settled = true
+                thrown = it
+                latch.countDown()
+            }
         }
         if (!posted) return Result.NotPosted
 
         val startNanos = System.nanoTime()
         val deadline = startNanos + timeoutMs.coerceAtLeast(0L) * 1_000_000L
         while (true) {
-            if (latch.await(pollMs, TimeUnit.MILLISECONDS)) return Result.Ok(value)
+            if (latch.await(pollMs, TimeUnit.MILLISECONDS)) {
+                // 发起求值时自己抛了 → 单独一种结果，别混进 Ok
+                thrown?.let { return Result.Failed(it) }
+                return Result.Ok(value)
+            }
             if (cancelled()) return Result.Cancelled
             if (System.nanoTime() >= deadline) {
                 return Result.TimedOut((System.nanoTime() - startNanos) / 1_000_000L)

@@ -70,4 +70,90 @@ class WebShotSamplerTest {
         assertTrue("采样 x 越界: $maxX", maxX < 1080)
         assertTrue("采样 y 越界: $maxY", maxY < 1920)
     }
+
+    // ---------- 下三分之一验墨（5.9.9 整页截图） ----------
+
+    private val pageBg = 0xFFE9E9E9.toInt()
+    private val red = 0xFFFF0000.toInt()
+
+    @Test
+    fun `下三分之一纯白画布判成没渲染`() {
+        // 真机 qq 长页：撑高之后紧接着画，下半截就是白的
+        assertFalse(WebShotSampler.lowerThirdRendered(1236, 8673) { _, _ -> white })
+    }
+
+    @Test
+    fun `下三分之一纯底色铺满也判成没渲染`() {
+        // 真机 v5：整屏 #e9e9e9，一个内容像素都没有。
+        // 数"非白"会把它当成有内容 —— 这正是这个函数存在的原因
+        assertFalse(WebShotSampler.lowerThirdRendered(1236, 2676) { _, _ -> pageBg })
+        // `looksBlank` 对纯底色说"空"是对的 —— 那是它的职责（整屏同色）。
+        // 但它分不清"底色铺满"和"白画布"，也验不了"下三分之一"这个位置。
+        // 两句话：looksBlank 管整张有没有墨，lowerThirdRendered 管下面那截有没有内容
+        assertTrue(WebShotSampler.looksBlank(1236, 2676) { _, _ -> pageBg })
+    }
+
+    @Test
+    fun `下三分之一有文字就判成渲染出来了`() {
+        // 底色打底 + 黑字 + 红块 + 抗锯齿杂色：颜色数轻松过线
+        var n = 0
+        assertTrue(WebShotSampler.lowerThirdRendered(1236, 3000) { x, y ->
+            n++
+            when {
+                y % 37 == 0 && x % 41 == 0 -> black
+                y % 53 == 0 -> red
+                (x + y) % 97 == 0 -> 0xFF123456.toInt()
+                (x * 31 + y) % 256 < 4 -> white
+                else -> pageBg
+            }
+        })
+        assertTrue("抽样点太少，测试本身没意义", n > 1000)
+    }
+
+    @Test
+    fun `三种颜色正好卡在门槛上判成没渲染`() {
+        // 底色 + 黑 + 红 = 3 种，不超过 FULL_COLOR_MIN。
+        // 真实文字带抗锯齿，颜色数是几十种，不会卡在这里
+        assertFalse(WebShotSampler.lowerThirdRendered(1236, 3000) { x, y ->
+            when {
+                x < 100 -> black
+                x > 1100 -> red
+                else -> pageBg
+            }
+        })
+    }
+
+    @Test
+    fun `第四种颜色一出现就判成渲染出来了`() {
+        var toggle = false
+        assertTrue(WebShotSampler.lowerThirdRendered(1236, 3000) { x, y ->
+            toggle = !toggle
+            when {
+                x < 100 -> black
+                x > 1100 -> red
+                toggle -> white
+                else -> pageBg
+            }
+        })
+    }
+
+    @Test
+    fun `alpha位不同但RGB相同不算两种颜色`() {
+        // 半透明叠加层很常见，不能靠 alpha 凑颜色数
+        assertFalse(WebShotSampler.lowerThirdRendered(100, 100) { _, _ -> 0x80E9E9E9.toInt() })
+    }
+
+    @Test
+    fun `零尺寸判成没渲染`() {
+        assertFalse(WebShotSampler.lowerThirdRendered(0, 100) { _, _ -> black })
+        assertFalse(WebShotSampler.lowerThirdRendered(100, 0) { _, _ -> black })
+    }
+
+    @Test
+    fun `只看下三分之一不管上面`() {
+        // 上面两屏全是字也没用 —— 要验的就是下面那截
+        assertFalse(WebShotSampler.lowerThirdRendered(100, 90) { x, y ->
+            if (y < 60) black else white
+        })
+    }
 }

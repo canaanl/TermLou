@@ -7,6 +7,52 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.9** | 5909 | **`usable` 一直是坏的（探针脚本语法错）** · **`/help` 泄漏令牌** · 截图自检重试 |
+
+这一版是**修 bug**，不是加功能。5.9.8 的整页截图一行都没执行过 —— 原因就是下面第一条。
+
+**① `usable` 对每一个页面都是"探不到"（最严重）**
+
+`WebAutomationService.PROBE_JS` 写着 `return t+'\n'+b+'\n'+protocol+'\n'+href`。Kotlin 里的 `'\n'` 编译后是**真实的换行字符**，被塞进 JS 的**单引号字符串字面量**中间 —— JS 不允许字面量里裸换行，**整段语法错** → `evaluateJavascript` 回调 `null` → `usable` 永远是 `Unknown`。本地 node 复现过：`SyntaxError: Invalid or unexpected token`，改双反斜杠才通过。影响 `open`/`wait`/`click`/`back`/`reload` 五处。
+
+Kotlin 侧 `split('\n')` 也是错的：正文（`innerText` 截 400 字）几乎必然自带换行，`parts[2]` 拿到的是正文第二行而不是 protocol，**错误页检测因此失效**。改用 `JSON.stringify` 一次干掉两处。
+
+**为什么藏了这么久**：`UiEval` 里 `.onFailure { latch.countDown() }` **不记异常**，于是"求值过程抛异常"与"页面返回 null"塌成同一个 `Ok(null)`。这个项目到处在消灭"失败模式混淆"，就这一处漏了 —— 外部看到的永远是"页面返回了 null"，谁也想不到是脚本压根没跑起来。现在加了 `Result.Failed(throwable)`，两种情况严格分开。
+
+**② `/help` 泄漏令牌（安全问题）**
+
+`GET /help` 免鉴权，而说明书里又把**真令牌**印在 `X-Token: xxx` 那一行。Android 上任何 app 访问 127.0.0.1 都不需要任何权限，所以**任何装在手机上的应用一条 `curl http://127.0.0.1:39080/help` 就拿到完整凭据**，之后可以任意驱动这个浏览器。现在 `/help` 也要令牌；agent 的自发现走 `web.env`（app 私有目录，别的 app 读不到）。
+
+配套：生产 WebView 此前**没关** `allowFileAccess` / `allowContentAccess`（默认都是 true），于是 `{"op":"open","url":"file:///data/data/com.workspace.proot/..."}` 能读 app 私有目录（笔记、设置、令牌都在里面），再用 `{"op":"html"}` 原样取回。这个 WebView 只用来上网，本来就不需要碰本地文件，现在显式关掉。
+
+**③ 自检把可用的设备判成不可用**
+
+  - 5.9.8 给自检页加了 `#box` 包裹层（为了迁就 `body{margin:0}`），而 `PROBE_JS` 还在用 `document.querySelector('div')` 取"那个半宽的 div" —— 现在取到的是**满宽的 `#box`**，`layoutConsistent` 拿满宽比半宽**恒为 false**。真机 `headless_failed` 一直挂着"CSS 排版不对"。改用 `getElementById('w')`。
+  - 自检的 `draw()` 此前在 eval 回调里**零延迟**立刻画，而 `:probe` 的成功路径是等 1300ms 之后才画 —— 同一台手机上探针出 115 万非白像素、自检却判"截图出不来图"。现在**带重试**（最多 4 次，每次多等 300ms）并改用**逐像素数非白**，不用 8×12 稀疏抽样（`looksBlank` 判"整屏同色"对 `shot` 是对的，留着）。
+  - 自检的探针 WebView 只开了 `javaScriptEnabled`，与生产配置不同 —— 等于验了个不存在的东西。现在两边一致。
+
+**④ 落回 overlay 时会"拆了会话然后卡死"**
+
+`ensureWebView()` 全项目**只有一个调用点**（在 `opOpen` 里）。首个 `open` 抢在自检结论之前 → 以无头方式建成 → 结论翻成 `OVERLAY` 之后**没有任何代码去换承载方式** → `diag` 两个字段自相矛盾（结论 OVERLAY、现状 no window）。再来一次 `open` 才会 `destroySession()` 然后 `attachOverlay()`，而没悬浮窗权限时那里直接 `throw` —— **会话已拆、这次 open 还失败**。现在：结论是落回但权限没给时**继续按无头跑并如实说明**，不拆会话。
+
+**⑤ `select` 选中 `value=""` 的选项永远失败**
+
+`hit=''` 同时是"命中值"和"没找到"的哨兵。`<option value="">请选择</option>` 按**文字**匹配确实命中，`hit=o.value` 赋成 `''` —— 于是命中了却报 `no option matches`，而且空 value 的选项永远选不中。哨兵改成 `null`。
+
+**⑥ 整页截图一直不生效（5.9.8 那个卖点一行都没执行）**
+
+`opShot` 取页面高度写成了一条链：`evalInPage(...).let { outcomeError(it) }?.let { return … }?.toIntOrNull()`。而 `outcomeError()` **成功时返回 null** —— 于是成功那一路上 `?.let` 短路、`?.toIntOrNull()` 根本不执行，eval 明明回了 `2885`，`pageHcss` 却永远是 null，整页判定每次都收到 0。真机表现：每张截图都带 `note: page height unknown`，而同一时刻 `{"op":"eval","js":"document.documentElement.scrollHeight"}` 回的是 `2885`。**通道是好的，是取值那行把它丢了。** 与 `opEval` 同一个形状：**先查错，再取值**，不串成一条链。
+
+**新增 `RegressionScanTest` 11 条 + `EvalValueTakenTest` 3 条**：上面这些多数属于"字符串与接线"层面的问题，单测很难直接碰到，所以扫源码把形状钉住（真令牌照样、按 id 取元素、哨兵用 null、探针用 JSON.stringify、显式关文件访问、抛错不塌成 Ok、`outcomeError` 之后不许再串 `?.` 链…）。每条扫源码的检查都用**注入坏代码**验证过它真的会红 —— 头一版 `EvalValueTakenTest` 的片段边界划错（找了 `:probe` 模块才有的 `doScrollStep`），注入后不红，是补了边界自检才发现的。
+
+**⑦ 整页截图下半截白（5.9.9 没发版就地追加）**
+
+`full_page:true` 是回了，图也是长的，但**下面一半是白的**。原因：撑高之后页面按新视口重排、产第一帧 —— 紧接着画只能拿到背景。自检那边同一个毛病等 1400ms 就好了（`headless_ink: 1036800`），这里对齐同一套修法：撑高 → 首等 900ms → 最多 3 次 300ms 重试 → **验下三分之一**（`WebShotSampler.lowerThirdRendered`，数颜色数：纯白画布和纯底色铺满都是 1 种颜色，有内容几十种 —— 数"非白"分不清底色铺满和有内容，底色本身非白）→ 有才存图 → 量回视口。4 次之后还白就 `ok:false` + "lower part of the long page not rendered"，**绝不 `ok:true` 给半空白图** —— 那次半空白图就是这么出去的，这比修不好更糟。
+
+**670 全绿**（app 538 + probe 79 + workspace 53）。本版本 5909/5.9.9（5.9.8/5.9.9 均未推送，tag 仍是 v5.9.7，就地改不另起版本） |
+
+**真机验证**（vivo V2505A / WebView 151.0.7922.199 / Android 16）：自检 `headless_mode: HEADLESS`、`headless_failed: none`、`headless_ink: 1036800`（三点取色中间那个命中色带 `FF99AACC`），`usable: true`，`view: attached=false`。**5.9.7 那个「不挂窗口、不要悬浮窗权限」的主卖点，第一次真的启用了。**
+| **5.9.8** | 5908 | **长页面出长截图**（`shot` 截整页）· **截图报错改说人话** · **自检页的假失败修掉**（5.9.9 真机确认：这一版的自检页修复不足，真正的原因是画得太早与取错了元素，已在 5.9.9 一并修好） |
 | **5.9.7** | 5907 | **无头浏览器去掉悬浮窗权限**。**① 不再挂窗口**：此前是把一个真 WebView 放进 `TYPE_APPLICATION_OVERLAY` 窗口、整体挪到屏幕左侧外再 `FLAG_NOT_TOUCHABLE` —— 窗口是真的，只是用户看不见，而 Android 要求任何应用自有的窗口都必须有 `SYSTEM_ALERT_WINDOW`。现在**不挂任何窗口**，只手工 `measure()` + `layout()` 给它尺寸，Chromium 自己就能排版、跑 JS、`draw()` 出图，于是**这个权限彻底不用问了**（权限仍留在 manifest 里，仅供兜底路径使用）。**这不是拍脑袋**：新增 `:probe` 实验模块，一个 880KB 的独立 APK（与正式版零依赖、可并排装、测完整个删掉），在真机上把"不挂窗口"与"挂屏外窗口"两组**逐项对照**跑了四轮 —— 合成页 12/12 项一致（视口由视图驱动、CSS 排版自参照正确、`innerText` 看不见 `display:none` 的内容、图片、canvas、`draw()` 出图、点/填/select、导航与历史栈）、**双尺寸测试**（量成 200dp 报 200、600dp 报 600，证明视口真由视图驱动而不是 Chromium 的 980 默认值）、真实站点（bing.com）两组一致。**② 启动自检 + 自动落回**（`WebHeadless`）：那不是官方保证的行为 —— 官方对 WebView 的定位是"UI 的一部分"，唯一的离屏 API `setOffscreenPreRaster` 不但要求挂在窗口上、还早已废弃移除。WebView 是独立更新的组件，哪天改了内部假设，`text` 会**静默**返回空。所以每次服务启动在后台线程跑一次自检（文字、CSS 排版、视口、截图，四项全过才算无头可用），**任一项不过就自动落回 overlay**；落回且用户还没授权限时，通知栏会说明原因。自检判据从严是故意的：宁可误判成不可用（退回旧方案，慢一点丑一点），也不能误判成可用（看着在跑其实什么也没渲染）。**③ `shot` 改为优先 `View.draw()`**，`capturePicture()` 降为兜底 —— 后者已废弃，且无头下没有窗口未必可靠。**③½ 超时 ≠ 不可用**：自检**测不出结论**（页面没加载完 / JS 没回值，通常是服务启动那会儿主线程正忙着布局）时，**保持当前模式、不标记已检查**，并在下次建 WebView 时重试 —— 而不是直接判成"这台设备不行"。后者会让明明能用的设备平白去要悬浮窗权限，等于把一次时序抖动变成一个功能缺失。`headlessCheckRunning` 防重复起。**④ `diag` 新增** `headless_mode` / `headless_check` / `headless_failed` 三个字段，直接报当前模式、自检结论与没过的那几项。**⑤ 介绍页**那句「需要悬浮窗权限」换成「不用悬浮窗权限，页面直接跑在后台」。探针四轮里也修了它自己的四个 bug（漏 `INTERNET` 权限导致真实站点三轮都在测错误页、主线程 sleep 等主线程回调、`evaluateJavascript` 回值未解码、两条断言硬编码像素数把好结果判成坏）。**新增 `WebHeadless` + `WebHeadlessTest` 11 条**；**565 全绿**（app 489 + workspace 53 + probe 23）；版本 5907/5.9.7 |
 | **5.9.6** | 5906 | **「清除缓存」改成真清空，且运行中按不了**。**① 清除范围**：此前只删 `shots/` + `cookies.txt` + `cookies.json` 三样硬编码白名单 —— 以后多写一种产物忘了加进来就永远删不掉；而且进程被强杀后残留的 `web.env`（陈旧端口与令牌）这个按钮够不着，agent `source` 到一个连不上的端口。现在是**递归清空 `/workspace/web/` 下的全部内容**（目录本身与空的 `shots/` 保留），白名单换成"除目录外全删"。**② 运行中按钮置灰不可按**（`isEnabled=false` + `alpha=0.5f`，与网络上没选应用时那个抓包按钮同一套写法），所以不需要为在跑的会话保留 `web.env`，也不会和正在写的 `shot` 撞上；副作用是"agent 自己往 `web/` 里写东西会被清掉"这个顾虑自动消失 —— 运行中根本按不到。**③ 补一个时序洞**：置灰只挡入口，挡不住"确认框开着时服务被启动"，所以确定回调里再查一次运行状态，是则回提示走人。**④ 确认框改写**：只剩一种结局，直说会删掉什么（含端口与令牌文件），中英同步。**新增 7 条真文件系统测试**（`WebArtifactsTest`，用临时目录实跑递归删除 —— 这段逻辑删错就是丢文件，只断言字符串形状守不住），含"`.` / `..` 永不删"这条防删目录自己的锁与对应自检；**532 全绿**（app 479 + workspace 53）；版本 5906/5.9.6 |
 | **5.9.5** | 5905 | **产物路径修正 + `usable` 语义收口**。**① 产物路径一直是错的**（本轮最严重）：`/help`、介绍页、`shot` 返回的 `file`、`web.env` 注释、设置页复制出来的首条命令，全都写 `~/web/...` —— 但 proot 是用 `-b <workspace>:/workspace` 挂工作区的，`HOME=/root` 指向 rootfs 里的**另一个**目录。于是 agent `cat ~/web/web.env` 直接报 `No such file or directory`，`shot` 返回的路径也打不开，**"产物 Linux 可见"这个需求从 5.9.0 起一直是坏的**。更糟的是 `WebProtocolTest` 有一条断言**锁住了这个错路径**，所以从没暴露。现统一为 `/workspace/web/`，并把挂载点收进 `WebProtocol.WORKSPACE_MOUNT` 常量（与 `TerminalManager.buildProotArgs` 的挂载一致），加断言"不许再出现 `~/web`"。**② `usable` 字段统一**：`wait` 此前不回报 `usable`，于是 `open`（不带 wait 时必然 `usable:false`）之后无从判断；`open`/`reload`/`back` 的 `usable` 写的是 `"usable" to ready` —— 探测结果压根没进这个字段，它只是 `ready` 的复印件。现在四个 op 的 `usable` 都来自同一处映射，`usable:true` 只在「探到可用 **且** ready」时出现。**③ 探测失败不再冒充"可用"**：此前探测超时 / 投不进主线程 / 答案不完整，一律返回 `null`，而 `null` 的含义是"页面可用" —— 探测自己坏了却被报成页面能用，与 5.9.3/5.9.4 清掉的假成功同形，只是搬到了探测层。改为三态 `Usable`/`Unusable`/`Unknown`，`Unknown` 报 `usable:false` + `warning: could not determine`（宁可漏判不误判）。**④ `/help` 写清三个字段各管什么**，并点明"open 不带 wait 时 `usable:false` 不代表打开失败，打开失败是 `ok:false`"。**新增 `WebUsability` + `WebUsabilityTest` 7 条 + `WebPathsTest` 3 条**；**525 全绿**（app 472 + workspace 53）；版本 5905/5.9.5 |

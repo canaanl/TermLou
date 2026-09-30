@@ -36,7 +36,7 @@ class WebPathsTest {
 
     @Test
     fun `说明书里的产物路径与常量一致且不再出现 ~`() {
-        val help = WebProtocol.help(39080, "deadbeef")
+        val help = WebProtocol.help(39080)
         assertTrue(
             "说明书必须给出真路径 ${WebProtocol.WEB_DIR}/web.env",
             help.contains("${WebProtocol.WEB_DIR}/web.env")

@@ -117,17 +117,24 @@ internal object WebOpScripts {
         )
     }
 
-    /** 选 `<select>` 的一项（按 value 或可见文字），并派发 change。 */
+    /**
+     * 选 `<select>` 的一项（按 value 或可见文字），并派发 change。
+     *
+     * ⚠ **"没找到"的哨兵必须是 `null`，不能是空串**（5.9.9 修）：
+     * `<option value="">请选择</option>` 这种（按**文字**匹配确实命中）
+     * 会让 `hit=o.value` 赋成 `''` —— 而空串同时也是"没找到"的哨兵，
+     * 于是**命中了却报 "no option matches"，而且空 value 的选项永远选不中**。
+     */
     fun select(pick: String, value: String): String {
         val literal = WebSelector.jsLiteral(value)     // ← 必须带引号
         return wrap(
             pick,
             "if(String(e.tagName).toUpperCase()!=='SELECT')" +
                 "return WEB_ERR+'not a <select> (got <'+String(e.tagName).toLowerCase()+'>)';" +
-                "var want=" + literal + ";var i,o,hit='';" +
+                "var want=" + literal + ";var i,o,hit=null;" +
                 "for(i=0;i<e.options.length;i++){o=e.options[i];" +
                 "if(o.value===want||String(o.text).trim()===want){hit=o.value;break}}" +
-                "if(hit==='')return WEB_ERR+'no option matches '+want;" +
+                "if(hit===null)return WEB_ERR+'no option matches '+want;" +
                 "e.value=hit;" +
                 "try{e.dispatchEvent(new Event('change',{bubbles:true}))}catch(_){}" +
                 "return hit;"
