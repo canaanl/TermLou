@@ -353,6 +353,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        terminalController.onPause()
         if (::notesController.isInitialized) notesController.flushPendingSave()
     }
 

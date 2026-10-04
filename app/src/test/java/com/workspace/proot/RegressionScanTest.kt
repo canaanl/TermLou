@@ -135,6 +135,139 @@ class RegressionScanTest {
         assertTrue("allowContentAccess 必须显式关（默认 true）", c.contains("allowContentAccess = false"))
     }
 
+    // ---------- 5.9.18：终端缝隙里的 opencode 活动进度条 ----------
+
+    @Test
+    fun `进度条绝不许碰终端的布局`() {
+        // 硬约束：它只是叠在最底层的一层。改 terminalView 的尺寸/位置/padding
+        // 就会改 PTY rows/columns，TUI 会重排 —— 用户明确要求不做任何重新排版。
+        val r = code("TerminalActivityBar.kt")
+        assertFalse("绝不许位移终端", r.contains("translationY") || r.contains("translationX"))
+        assertFalse("绝不许改终端 layoutParams", r.contains("layoutParams =") && r.contains("terminalView"))
+        assertFalse("绝不许调 setPadding", r.contains("setPadding"))
+        assertFalse("绝不许 resize/measure 终端", r.contains("requestLayout") || r.contains("measure("))
+        val c = code("TerminalController.kt")
+        assertFalse("不许调 terminalView.setPadding", c.contains("terminalView.setPadding"))
+        assertFalse("不许改终端 layoutParams", c.contains("terminalView.layoutParams ="))
+        assertFalse("不许改终端高度", c.contains("terminalView.layoutParams.height"))
+        assertFalse("不许直接写 session.updateSize", c.contains("session.updateSize("))
+    }
+
+    @Test
+    fun `三层顺序必须是进度条-终端背景-文字`() {
+        // 中间那层是全部关键：没有它，底层会从文字后面整个透出来（TerminalView
+        // 自己一像素背景都不画），那就变成"整片变色"而不是"填缝"。
+        val c = code("TerminalController.kt")
+        val order = listOf(
+            c.indexOf("addView(activityBar)"),
+            c.indexOf("addView(termBg)"),
+            c.indexOf("addView(terminalView)")
+        )
+        assertTrue("三层都得存在：$order", order.all { it >= 0 })
+        assertTrue(
+            "顺序必须是 底层进度条 → 中层终端背景 → 顶层文字，实际 $order",
+            order[0] < order[1] && order[1] < order[2]
+        )
+        assertTrue("中层必须不透明，否则底层从文字后面透出来", c.contains("setBackgroundColor(scope.cSurface)"))
+        assertTrue(
+            "中层底边必须用 termux 自己的方法，不许猜 ceil(ascent)",
+            c.contains("terminalView.getPointY(rows)")
+        )
+    }
+
+    @Test
+    fun `进度条静默时必须清空成背景色而不是冻结`() {
+        // 用户原话："在没有输出的时候这个静态画面是什么？应该就是背景色吧，
+        // 只有当终端有输出的时候才变成动画"
+        val r = code("TerminalActivityBar.kt")
+        assertTrue("起动时从第 0 帧重新开始", r.contains("frame = 0"))
+        // 静止时一个像素都不画 → 底下透出根容器的 cSurface
+        assertFalse("不许设自己的背景色", r.contains("setBackgroundColor"))
+        // ⚠ 必须锁**精确条件**：只查 "if (!running" 出现过是不够的 ——
+        //    注入"把 `!running` 从 onDraw 判据里删掉"时它照样 ALL_GREEN，静默就变成
+        //    冻结在最后一帧而不是清空成背景色。
+        assertTrue(
+            "onDraw 必须在没在动时直接返回（静默 = 什么都不画）：$r",
+            r.contains("if (!running || cells <= 0 || cellWidth <= 0f || trailColors.isEmpty()) return")
+        )
+        // 清空逻辑收敛到一个具名方法：空闲和停机共用，不许只改一处漏一处
+        assertTrue("必须有统一的清空方法", r.contains("private fun clearToBackground()"))
+        val clear = r.substringAfter("private fun clearToBackground()").take(200)
+        assertTrue(
+            "清空方法必须复位帧号：$clear",
+            clear.contains("frame = 0") && clear.contains("elapsedMs = 0L")
+        )
+        assertTrue(
+            "清空方法必须 invalidate（不重画的话最后一帧会留在屏幕上）：$clear",
+            clear.contains("invalidate()")
+        )
+        // 空闲分支和 stop() 都要走它
+        assertTrue(
+            "空闲分支必须调 clearToBackground",
+            Regex("stopScheduled = false\\s+running = false\\s+removeCallbacks\\(frameTask\\)\\s+clearToBackground\\(\\)")
+                .containsMatchIn(r)
+        )
+        assertTrue(
+            "stop() 必须调 clearToBackground",
+            Regex("startPosted\\.set\\(false\\)\\s+clearToBackground\\(\\)").containsMatchIn(r)
+        )
+    }
+
+    @Test
+    fun `进度条只由PTY输出驱动`() {
+        // 需求：只看 PTY 有没有输出，不判断跑的程序、不解析 TUI、不往 PTY 写
+        val c = code("TerminalController.kt")
+        assertTrue(
+            "onTextChanged（PTY 输出回调）必须报活动",
+            c.contains("pokeActivityBar()")
+        )
+        val r = code("TerminalActivityBar.kt")
+        assertFalse("不许往 PTY 写数据", r.contains("mTermSession.write("))
+        assertFalse("不许读终端内容判断状态", r.contains("getTranscriptText"))
+        assertFalse(
+            "不许 resize 终端",
+            r.contains("updateSize") || r.contains("setPtyWindowSize")
+        )
+    }
+
+    @Test
+    fun `线条必须用可见变体而不是primary`() {
+        // 用 primary 的话，背景接近主题绿时它等于隐形（5.9.11 就是这么写的，看不见）
+        val c = code("TerminalController.kt")
+        assertTrue("必须用 cPrimaryVisible", c.contains("scope.cPrimaryVisible"))
+        assertFalse(
+            "不许把 cPrimary 当线条色",
+            Regex("setInkColor\\([^)]*scope\\.cPrimary\\)").containsMatchIn(c)
+        )
+    }
+
+    @Test
+    fun `色块必须填满整条缝隙高度`() {
+        // 用户原话："我要的是缝隙全部填充"
+        val r = code("TerminalActivityBar.kt")
+        assertTrue(
+            "激活格必须从缝隙顶铺到本视图底边（露出来那段即填满）",
+            r.contains("path.addRect(left, top, left + blockW, bottom, Path.Direction.CW)")
+        )
+        assertTrue("必须量出缝隙顶边", r.contains("val top = stripTop.toFloat()"))
+        assertTrue("横向必须按终端字符格宽排", r.contains("getFontWidth()") || r.contains("setGeometry"))
+        assertFalse("不许画弧线", r.contains("quadTo") || r.contains("drawArc"))
+    }
+
+    @Test
+    fun `不存在的东西不许回来`() {
+        // 5.9.11–5.9.15 那五版的方向全是错的：弯弧线、单向传送带、猜 ceil(ascent)、
+        // 私自把终端上移。这些都删干净了，不许复活。
+        val repo = listOf("TerminalActivityBar.kt", "OpencodeRider.kt", "TerminalController.kt")
+        for (name in repo) {
+            val c = code(name)
+            assertFalse("$name 不许画弧", c.contains("quadTo") || c.contains("drawArc"))
+            assertFalse("$name 不许上移终端", c.contains("terminalView.translationY"))
+            assertFalse("$name 不许复活单向传送带", c.contains("DashPathEffect") || c.contains("phaseAfter"))
+            assertFalse("$name 不许再减保险像素", c.contains("- 1L"))
+        }
+    }
+
     @Test
     fun `存活探测的流必须是参数不能是Service字段`() {
         // 并发隐患：probeInput 曾是 Service 级共享字段，后连上的盖掉先连上的，

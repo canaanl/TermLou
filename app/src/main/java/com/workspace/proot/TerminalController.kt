@@ -1,4 +1,4 @@
-﻿package com.workspace.proot
+package com.workspace.proot
 
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -200,13 +200,67 @@ class TerminalController(
             onStatusRestore = { status.restoreTerminalStatus() }
         )
 
+        /**
+         * 终端区三层结构（5.9.18 起是正式功能）：
+         *
+         * ```
+         * 顶层  终端文字    TerminalView —— **自己不画背景**（termux 渲染器只画非默认背景的行：
+         *                    `if (backColor != palette[BACKGROUND])`）
+         * 中层  终端背景    补成不透明，盖到第 mRows 行底部。颜色 = `scope.cSurface`，与原来
+         *                    根容器刷的色相同，所以看上去毫无变化
+         * 底层  活动进度条  铺满整个区域，只画 opencode v2 同款动画
+         * ───────────────
+         *       快捷栏（定高）
+         * ```
+         *
+         * **中层是关键**：没有它，底层会从文字后面整个透出来（终端在那儿不画背景），
+         * 那就不是"填缝"而是"整片变色"。
+         *
+         * 中层盖住的部分底层画什么都看不见，所以**裁剪由分层免费完成** ——
+         * 底层不需要知道缝有多宽，把色块铺满自己整个高度即可，露出来的那段就是填满的缝。
+         *
+         * 中层底边取 `terminalView.getPointY(mEmulator.mRows)`：termux **自己**的公开方法
+         * （`round((cy − mTopRow) × 行距)`），不去猜 `ceil(ascent)`。
+         */
+        val termBg = View(activity).apply {
+            setBackgroundColor(scope.cSurface)
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, 0
+            )
+        }
+
+        val activityBar = TerminalActivityBar(activity).apply {
+            // 线条用主题色的可见变体：背景接近主题绿时 primary 等于隐形
+            setInkColor(scope.cPrimaryVisible)
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+
         val terminalWrapper = FrameLayout(activity).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
             )
-            addView(terminalView)
+            addView(activityBar)      // 底层：动画
+            addView(termBg)           // 中层：终端自己的背景
+            addView(terminalView)      // 顶层：文字
         }
         terminalArea.addView(terminalWrapper)
+
+        // 行数在 attachSession 之后才有；尺寸变化也会改行数，两个时机都要重算。
+        fun syncGap() {
+            val rows = terminalView.mEmulator?.mRows ?: 0
+            val bottom = if (rows > 0) terminalView.getPointY(rows) else 0
+            val lp = termBg.layoutParams
+            if (lp != null && lp.height != bottom) {
+                lp.height = bottom
+                termBg.layoutParams = lp
+            }
+            activityBar.setGeometry(bottom, terminalView.mRenderer?.getFontWidth() ?: 0f)
+        }
+        terminalView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> syncGap() }
+        syncGapHook = { syncGap() }
+        activityBarHook = { activityBar }
 
         wheelLevelFrame = WheelLevelFrame(
             activity, activity.resources.displayMetrics.widthPixels / 3 + 6
@@ -874,6 +928,14 @@ class TerminalController(
 
     fun onResume() {
         if (wheelPanel.visibility == View.VISIBLE) wheelController?.onResume()
+        // 回前台：重算中层底边（可能整个 Activity 重建过），并把主题色刷给进度条
+        syncGapHook?.invoke()
+        activityBar()?.setInkColor(scope.cPrimaryVisible)
+    }
+
+    /** 切后台：立刻停掉帧循环并清空，别在看不见的时候白烧电。 */
+    fun onPause() {
+        activityBar()?.stop()
     }
 
     fun onDestroy() {
@@ -891,8 +953,15 @@ class TerminalController(
 
     // ---------- TerminalSessionClient ----------
 
+    /**
+     * PTY 输出回调。活动进度条**唯一**的驱动源：只看有没有输出，
+     * 不判断在跑什么程序、不解析 TUI 状态、不往 PTY 写任何东西。
+     * （termux 在自己的输出线程上直接调这里，所以 `TerminalActivityBar.onPtyOutput`
+     *  只写原子变量。）
+     */
     override fun onTextChanged(changedSession: TerminalSession?) {
         terminalView.onScreenUpdated()
+        pokeActivityBar()
         if (scope.settingsManager.keepAlive) KeepAliveWakeLock.poke()
     }
 
@@ -961,5 +1030,24 @@ class TerminalController(
         }
         return false
     }
-    override fun onEmulatorSet() = Unit
+    /**
+     * 行数在这里才定下来（`attachSession` → `updateSize`）。中层底边要按行数重算 ——
+     * 那时终端高度已经量好了，`addOnLayoutChangeListener` 不一定触发过。
+     */
+    override fun onEmulatorSet() {
+        syncGapHook?.invoke()
+    }
+
+    /** 中层底边 + 底层几何的重算钩子，由 [buildInto] 装上。 */
+    private var syncGapHook: (() -> Unit)? = null
+
+    /** 活动进度条（底层），由 [buildInto] 装上。 */
+    private var activityBarHook: (() -> TerminalActivityBar)? = null
+
+    private fun activityBar(): TerminalActivityBar? = activityBarHook?.invoke()
+
+    /** PTY 有输出 → 报活动。这是进度条唯一的驱动源。 */
+    private fun pokeActivityBar() {
+        activityBar()?.onPtyOutput()
+    }
 }
