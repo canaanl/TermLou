@@ -3,41 +3,50 @@ package com.workspace.proot
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Path
 import android.os.SystemClock
 import android.view.View
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
-import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
- * 终端缝隙里的活动进度条 —— opencode v2 的工作进度条同款（[OpencodeRider]）。
+ * 终端缝隙里的活动条 —— 匀速单焦点横向扫描。
  *
  * ## 它靠分层，不用算缝
  *
  * 本视图是 `terminalWrapper` 的**最底层**，铺满整个区域。上面两层会把它挡住：
  *
  * ```
- * 顶层  终端文字        TerminalView（自己不画背景）
- * 中层  终端背景        不透明，盖到第 mRows 行底部
- * 底层  ← 本视图        动画画在这里
+ * 顶层  终端文字    TerminalView（自己不画背景）
+ * 中层  终端背景    不透明，盖到第 mRows 行底部
+ * 底层  ← 本视图    活动条画在这里
  * ──────────────────
  *       快捷栏
  * ```
  *
- * 中层盖住的那部分本视图画什么都看不见，所以**裁剪由分层免费完成**：
+ * 中层盖住的部分本视图画什么都看不见，所以**裁剪由分层免费完成**：
  * 只有终端底边到快捷栏顶边之间那一条会露出来 —— 那就是缝隙。
- * 本视图因此**不需要知道缝隙有多宽**，只要把色块画满自己整个高度即可，
- * 露出来的那一段自然就是"缝隙被填满"。
+ * 本视图因此**不需要知道缝隙有多宽**，把格子铺满自己整个高度即可，
+ * 露出来的那一段自然就是"填满的缝隙"。
+ *
+ * ## 样子
+ *
+ * - **等宽等高**：每格宽度 = 一个字符格，高度 = **整个缝隙高度**，一个像素不差。
+ *   格子之间**只有明暗不同**，没有高矮之分。
+ * - **单焦点**：整条轨道只有**一个**亮点，其余是它身后渐暗的拖尾。
+ *   焦点从左匀速走到右，停一下，折回，再停一下（往复）。
+ * - **不跳格**：亮度按「格子中心到焦点的连续距离」算，焦点位置是浮点像素
+ *   （见 [ActivityTrail]）。opencode 原版按格号取模，那是 8 格小单元的做法；
+ *   全宽 73 格照搬会变成每帧跳 9 格。
  *
  * ## 什么时候有动画
  *
  * 只看 PTY 有没有输出：`TerminalController.onTextChanged()` 调 [onPtyOutput]。
  *
- * - **有输出**：画 opencode 那个进度条。
+ * - **有输出**：画活动条。
  * - **空闲 [IDLE_MS] 之后**：**清空成背景色**（不是冻结在某一帧）。
  *   清空后这个功能等于不存在，缝隙和现在的背景色一模一样。
- *   下次再有输出时从**第 0 帧**重新起 —— 静默时已经空了，接着上一轮会突兀。
+ *   下次再有输出时**从周期开头**重新起。
  *
  * ## 不碰终端
  *
@@ -48,40 +57,13 @@ class TerminalActivityBar(context: Context) : View(context) {
 
     // ---------- 几何（由 TerminalController 喂进来，全是终端自己报的数） ----------
 
-    /**
-     * 缝隙顶边 = 终端第 `mRows` 行的底部（`terminalView.getPointY(mEmulator.mRows)`）。
-     * 画布上 `[stripTop, height)` 就是露出来的那条缝。
-     */
+    /** 缝隙顶边 = 终端第 `mRows` 行底部（`terminalView.getPointY(mEmulator.mRows)`）。 */
     private var stripTop = 0
 
-    /** 终端的字符格宽（`mRenderer.getFontWidth()`），色块按它落在字符格边界上。 */
+    /** 终端的字符格宽（`mRenderer.getFontWidth()`），格子按它落在字符格边界上。 */
     private var cellWidth = 0f
 
     private var cells = 0
-
-    // ---------- 颜色 ----------
-
-    private var inkColor = 0xFF888888.toInt()
-
-    private var trailColors = IntArray(0)
-
-    /** 线条颜色 = 主题色的**可见变体**。不能用 `primary`：背景接近主题绿时它等于隐形。 */
-    fun setInkColor(color: Int) {
-        if (inkColor == color) return
-        inkColor = color
-        val r = (color shr 16) and 0xFF
-        val g = (color shr 8) and 0xFF
-        val b = color and 0xFF
-        trailColors = IntArray(OpencodeRider.TRAIL_STEPS) { step ->
-            val boost = if (step == 1) OpencodeRider.GLARE_BOOST else 1f
-            val alpha = (OpencodeRider.trailAlpha(step) * 255f).toInt().coerceIn(0, 255)
-            (alpha shl 24) or
-                (minOf(255f, r * boost).toInt() shl 16) or
-                (minOf(255f, g * boost).toInt() shl 8) or
-                minOf(255f, b * boost).toInt()
-        }
-        invalidate()
-    }
 
     fun setGeometry(stripTopPx: Int, cellWidthPx: Float) {
         if (stripTopPx != stripTop) {
@@ -96,7 +78,7 @@ class TerminalActivityBar(context: Context) : View(context) {
     }
 
     private fun recountCells() {
-        val next = if (width <= 0 || cellWidth <= 0f) 0 else (width / cellWidth).toInt()
+        val next = if (width <= 0 || cellWidth <= 0f) 0 else (width / cellWidth).roundToInt()
         if (next != cells) {
             cells = next
             invalidate()
@@ -106,6 +88,17 @@ class TerminalActivityBar(context: Context) : View(context) {
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
         recountCells()
+    }
+
+    // ---------- 颜色 ----------
+
+    private var inkColor = 0xFF888888.toInt()
+
+    /** 线条颜色 = 主题色的**可见变体**。不能用 `primary`：背景接近主题绿时它等于隐形。 */
+    fun setInkColor(color: Int) {
+        if (inkColor == color) return
+        inkColor = color
+        invalidate()
     }
 
     // ---------- PTY 活动 → 动/停 ----------
@@ -139,8 +132,7 @@ class TerminalActivityBar(context: Context) : View(context) {
      * `invalidate()` 必须有 —— 不重画的话最后一帧会一直留在屏幕上。
      */
     private fun clearToBackground() {
-        frame = 0
-        elapsedMs = 0L
+        elapsedMs = 0f
         invalidate()
     }
 
@@ -148,13 +140,12 @@ class TerminalActivityBar(context: Context) : View(context) {
         override fun run() {
             if (!running) return
             val now = SystemClock.uptimeMillis()
-            // 用真实经过的时间换算帧号，掉帧时整体节奏仍对齐 opencode 的 40ms/帧
-            val dt = (now - lastFrameUptime).coerceAtLeast(0L).coerceAtMost(250L)
+            val dt = (now - lastFrameUptime).coerceAtLeast(0L).coerceAtMost(100L)
             lastFrameUptime = now
-            elapsedMs += dt
-            frame = ((elapsedMs / OpencodeRider.INTERVAL_MS).toInt()) % OpencodeRider.TOTAL_FRAMES
+            // 周期取模 → 天然无缝循环，不需要像原版那样拼 54 帧序列
+            elapsedMs = (elapsedMs + dt) % ActivityTrail.CYCLE_MS
             invalidate()
-            postOnAnimationDelayed(this, OpencodeRider.INTERVAL_MS)
+            postOnAnimationDelayed(this, FRAME_INTERVAL_MS)
         }
     }
 
@@ -182,9 +173,8 @@ class TerminalActivityBar(context: Context) : View(context) {
         if (idleFor >= IDLE_MS) return                        // 唤起时已经安静了
         if (!running) {
             running = true
-            // 静默时已经清空过，所以每次从第 0 帧重新起
-            frame = 0
-            elapsedMs = 0L
+            // 静默时已经清空过，所以每次从周期开头重新起
+            elapsedMs = 0f
             lastFrameUptime = SystemClock.uptimeMillis()
             removeCallbacks(frameTask)
             postOnAnimationDelayed(frameTask, 0L)
@@ -200,52 +190,54 @@ class TerminalActivityBar(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         // 静默时**什么都不画** → 底下透出根容器的 cSurface，和现在的背景色完全一致
-        if (!running || cells <= 0 || cellWidth <= 0f || trailColors.isEmpty()) return
-        val bandH = height.toFloat()
-        if (stripTop >= bandH) return                         // 没有缝隙可画
-
-        rebuildPaths(frame)
-        // 轨道：未激活格 = 同色 alpha 0.6 × 淡入淡出系数（opencode 的 defaultRgba）
-        fillPaint.color = withAlpha(inkColor, (OpencodeRider.inactiveAlpha(frame) * 255f).toInt())
-        canvas.drawPath(trackPath, fillPaint)
-        for (step in 0 until OpencodeRider.TRAIL_STEPS) {
-            val path = trailPaths[step] ?: continue
-            fillPaint.color = trailColors[step]
-            canvas.drawPath(path, fillPaint)
-        }
-    }
-
-    /**
-     * 每帧重建 7 条路径（1 条轨道 + 6 级拖尾）。
-     *
-     * 激活格的矩形从 `stripTop` 铺到本视图底边 —— 露出来的那一段正好就是**填满的缝隙**，
-     * 高度自动等于缝隙高度，不用另外去算缝有多宽。
-     * 未激活格画成居中短块（对应 opencode 的 `⬝` 比 `■` 小一圈）。
-     */
-    private fun rebuildPaths(currentFrame: Int) {
+        if (!running || cells <= 1 || cellWidth <= 0f) return
         val top = stripTop.toFloat()
         val bottom = height.toFloat()
-        val bandH = bottom - top
-        val inset = cellWidth * BLOCK_INSET_RATIO
-        val blockW = cellWidth - inset * 2f
-        val dotH = max(1f, bandH * TRACK_HEIGHT_RATIO)
-        val dotTop = top + (bandH - dotH) / 2f
-        trackPath.reset()
-        trailPaths.forEach { it?.reset() }
+        if (top >= bottom) return                            // 没有缝隙可画
+
+        val focus = ActivityTrail.focusCell(cells, elapsedMs)
+        val forward = ActivityTrail.isMovingForward(elapsedMs)
+        val focusIndex = kotlin.math.round(focus).toInt()
+
+        // 第 1 步：整条轨道铺一层暗色底（opencode 的 inactive 格）。
+        // 必须先铺满，因为拖尾之外的格子 alpha 会算成 0 —— 不铺底的话那些格子是**全透明**的，
+        // 缝隙会一段一段空掉，看上去就又变成"高度不一致"了。
+        val trackColor = withAlpha(
+            inkColor,
+            (ActivityTrail.trackAlpha(elapsedMs) * 255f).toInt().coerceIn(0, 255)
+        )
+        fillPaint.color = trackColor
+        canvas.drawRect(0f, top, cells * cellWidth, bottom, fillPaint)
+
+        // 第 2 步：逐格叠拖尾明暗。
+        // 等宽等高：每格都从缝隙顶铺到缝隙底，**不做任何居中、不留边**，只有明暗不同。
         for (i in 0 until cells) {
-            val step = OpencodeRider.trailIndex(currentFrame, i % OpencodeRider.WIDTH)
-            val left = i * cellWidth + inset
-            if (step >= 0) {
-                val path = trailPaths[step] ?: Path().also { trailPaths[step] = it }
-                path.addRect(left, top, left + blockW, bottom, Path.Direction.CW)
-            } else {
-                trackPath.addRect(left, dotTop, left + blockW, dotTop + dotH, Path.Direction.CW)
-            }
+            // 格子中心到焦点的有向距离（格坐标）。焦点是浮点 → 不会跳格
+            val distance = ActivityTrail.signedDistance(focus, i.toFloat(), forward)
+            val alpha = ActivityTrail.alphaAt(distance, elapsedMs)
+            if (alpha <= 0.004f) continue                  // 暗色底已经铺好，这格不用再叠
+            val rgb = boosted(i == focusIndex + glareOffset(forward), inkColor, alpha)
+            fillPaint.color = withAlpha(rgb, (alpha * 255f).toInt().coerceIn(0, 255))
+            canvas.drawRect(cellLeft(i), top, cellLeft(i) + cellWidth, bottom, fillPaint)
         }
     }
 
+    private fun glareOffset(forward: Boolean): Int = if (forward) 1 else -1
+
+    /** 焦点后一格泛光提亮（opencode 的 `GLARE_BOOST`）：只提亮 RGB，不动 alpha。 */
+    private fun boosted(glare: Boolean, color: Int, alpha: Float): Int {
+        if (!glare || alpha <= 0.004f) return color
+        val boost = ActivityTrail.GLARE_BOOST
+        val r = minOf(255f, ((color shr 16) and 0xFF) * boost).toInt()
+        val g = minOf(255f, ((color shr 8) and 0xFF) * boost).toInt()
+        val b = minOf(255f, (color and 0xFF) * boost).toInt()
+        return (color and 0xFF000000.toInt()) or (r shl 16) or (g shl 8) or b
+    }
+
+    private fun cellLeft(i: Int): Float = i * cellWidth
+
     private fun withAlpha(color: Int, alpha: Int): Int =
-        (alpha.coerceIn(0, 255) shl 24) or (color and 0x00FFFFFF)
+        (alpha shl 24) or (color and 0x00FFFFFF)
 
     // ---------- 可见性 ----------
 
@@ -261,12 +253,11 @@ class TerminalActivityBar(context: Context) : View(context) {
 
     // ---------- 字段 ----------
 
-    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val trackPath = Path()
-    private val trailPaths = arrayOfNulls<Path>(OpencodeRider.TRAIL_STEPS)
+    private val fillPaint = Paint()
 
-    private var frame = 0
-    private var elapsedMs = 0L
+    /** 周期内已过毫秒，取模后天然无缝循环。 */
+    private var elapsedMs = 0f
+
     private var running = false
     private var stopScheduled = false
     private var lastFrameUptime = 0L
@@ -279,18 +270,13 @@ class TerminalActivityBar(context: Context) : View(context) {
         isFocusable = false
         isFocusableInTouchMode = false
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
-        setInkColor(inkColor)
     }
 
     companion object {
         /**
-         * 方块左右各留一点缝，免得连成一片看不出"格"。
-         * 这是唯一一处**故意不铺满**的地方；纵向一定从缝隙顶铺到缝隙底，铺满。
+         * 60fps。1.5s 一趟 ÷ 73 格 ≈ 每帧 0.9 格 —— 25fps 下会是每帧 3.6 格，看得出跳。
          */
-        private const val BLOCK_INSET_RATIO = 0.18f
-
-        /** 未激活轨道块的高度占缝隙高度的比例（居中），对应 opencode 的 `⬝` 比 `■` 小一圈。 */
-        private const val TRACK_HEIGHT_RATIO = 0.34f
+        private const val FRAME_INTERVAL_MS = 16L
 
         /** PTY 空闲多久后清空。够短能接住 TUI 连续重绘，够长不会在敲完命令后一直转。 */
         const val IDLE_MS = 800L

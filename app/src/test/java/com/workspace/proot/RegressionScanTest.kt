@@ -180,7 +180,10 @@ class RegressionScanTest {
         // 用户原话："在没有输出的时候这个静态画面是什么？应该就是背景色吧，
         // 只有当终端有输出的时候才变成动画"
         val r = code("TerminalActivityBar.kt")
-        assertTrue("起动时从第 0 帧重新开始", r.contains("frame = 0"))
+        assertTrue(
+            "起动时必须从周期开头重新开始（5.9.19 起是时间轴 elapsedMs，不是帧号）：$r",
+            r.contains("elapsedMs = 0f")
+        )
         // 静止时一个像素都不画 → 底下透出根容器的 cSurface
         assertFalse("不许设自己的背景色", r.contains("setBackgroundColor"))
         // ⚠ 必须锁**精确条件**：只查 "if (!running" 出现过是不够的 ——
@@ -188,14 +191,14 @@ class RegressionScanTest {
         //    冻结在最后一帧而不是清空成背景色。
         assertTrue(
             "onDraw 必须在没在动时直接返回（静默 = 什么都不画）：$r",
-            r.contains("if (!running || cells <= 0 || cellWidth <= 0f || trailColors.isEmpty()) return")
+            r.contains("if (!running || cells <= 1 || cellWidth <= 0f) return")
         )
         // 清空逻辑收敛到一个具名方法：空闲和停机共用，不许只改一处漏一处
         assertTrue("必须有统一的清空方法", r.contains("private fun clearToBackground()"))
         val clear = r.substringAfter("private fun clearToBackground()").take(200)
         assertTrue(
-            "清空方法必须复位帧号：$clear",
-            clear.contains("frame = 0") && clear.contains("elapsedMs = 0L")
+            "清空方法必须复位时间轴：$clear",
+            clear.contains("elapsedMs = 0f")
         )
         assertTrue(
             "清空方法必须 invalidate（不重画的话最后一帧会留在屏幕上）：$clear",
@@ -242,23 +245,70 @@ class RegressionScanTest {
     }
 
     @Test
-    fun `色块必须填满整条缝隙高度`() {
-        // 用户原话："我要的是缝隙全部填充"
+    fun `每格必须等宽等高`() {
+        // 用户原话："所有的线条是都等宽等高的"。
+        // 5.9.18 激活格满高、轨道点 34% 高居中，一眼两种高度。现在只分明暗、不分高矮。
+        val r = code("TerminalActivityBar.kt")
+        assertFalse(
+            "不许有按比例缩小的格子（那就是两种高度）：$r",
+            r.contains("TRACK_HEIGHT_RATIO") || r.contains("bandH * ") || r.contains("dotH")
+        )
+        assertTrue(
+            "每格都必须用同一个 top..bottom 区间画（等高）",
+            r.contains("val top = stripTop.toFloat()") &&
+                r.contains("val bottom = height.toFloat()") &&
+                Regex("drawRect\\([^)]*\\btop\\b,[^)]*\\bbottom\\b").containsMatchIn(r)
+        )
+        assertTrue(
+            "每格宽度都必须等于一个字符格（等宽）",
+            Regex("drawRect\\(cellLeft\\(i\\), top, cellLeft\\(i\\) \\+ cellWidth, bottom").containsMatchIn(r)
+        )
+        assertFalse("不许画弧线", r.contains("quadTo") || r.contains("drawArc"))
+        assertFalse("不许留左右边距（那会让格子不等宽）", r.contains("BLOCK_INSET_RATIO"))
+    }
+
+    @Test
+    fun `必须先铺满轨道底色否则拖尾外会空掉`() {
+        // 拖尾只覆盖 18 格，而轨道有 73 格 —— 剩下 55 格的 alpha 算出来是 0。
+        // 不先铺一层暗色底的话那些格子是**全透明**的，缝隙会一段一段空掉，
+        // 看上去又变成"高度不一致"。这条 5.9.19 差点漏掉（注入"去掉铺底"时 ALL_GREEN）。
         val r = code("TerminalActivityBar.kt")
         assertTrue(
-            "激活格必须从缝隙顶铺到本视图底边（露出来那段即填满）",
-            r.contains("path.addRect(left, top, left + blockW, bottom, Path.Direction.CW)")
+            "必须整条轨道铺一层暗色底：$r",
+            r.contains("canvas.drawRect(0f, top, cells * cellWidth, bottom, fillPaint)")
         )
-        assertTrue("必须量出缝隙顶边", r.contains("val top = stripTop.toFloat()"))
-        assertTrue("横向必须按终端字符格宽排", r.contains("getFontWidth()") || r.contains("setGeometry"))
-        assertFalse("不许画弧线", r.contains("quadTo") || r.contains("drawArc"))
+        assertTrue("铺底色必须用 trackAlpha", r.contains("ActivityTrail.trackAlpha(elapsedMs)"))
+        assertTrue(
+            "alpha≈0 的格子必须跳过而不是画透明（底色已经铺好了）",
+            r.contains("if (alpha <= 0.004f) continue")
+        )
+    }
+
+    @Test
+    fun `单焦点不许退回单元平铺`() {
+        // 用户原话："很多一起移动" → 要"只有一个凸显的焦点"。
+        // 5.9.18 是 8 格一个单元平铺满宽 → 9 个亮头。现在轨道 = 全宽，只有 1 个焦点。
+        val r = code("TerminalActivityBar.kt")
+        assertFalse("不许把单元重复画（会出现多个焦点）：$r", r.contains("% OpencodeRider.WIDTH"))
+        assertTrue(
+            "焦点位置必须来自 ActivityTrail.focusCell（全宽轨道）",
+            r.contains("ActivityTrail.focusCell(cells, elapsedMs)")
+        )
+        assertTrue(
+            "明暗必须按**连续距离**算，焦点位置才是浮点、不跳格",
+            r.contains("ActivityTrail.signedDistance(focus,") &&
+                r.contains("i.toFloat()")
+        )
+        assertTrue("不许用格号取模（那是原版 8 格小单元的做法）", !r.contains("trailIndex"))
+        val t = code("ActivityTrail.kt")
+        assertFalse("旧的开码器不许留着", t.contains("OpencodeRider") || t.contains("trailIndex"))
     }
 
     @Test
     fun `不存在的东西不许回来`() {
         // 5.9.11–5.9.15 那五版的方向全是错的：弯弧线、单向传送带、猜 ceil(ascent)、
         // 私自把终端上移。这些都删干净了，不许复活。
-        val repo = listOf("TerminalActivityBar.kt", "OpencodeRider.kt", "TerminalController.kt")
+        val repo = listOf("TerminalActivityBar.kt", "ActivityTrail.kt", "TerminalController.kt")
         for (name in repo) {
             val c = code(name)
             assertFalse("$name 不许画弧", c.contains("quadTo") || c.contains("drawArc"))
