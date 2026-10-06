@@ -161,8 +161,6 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(scope.cSurface)
         }
 
-        val statusView = statusController.createStatusBar()
-
         val (newTabHost, newTabIndicator) = scope.uiBuilder.createTabHost()
         tabHost = newTabHost
         tabIndicator = newTabIndicator
@@ -212,7 +210,7 @@ class MainActivity : AppCompatActivity() {
         }
         settingsUiController.buildInto(settingsWrapper)
 
-        content.addView(statusView)
+        content.addView(statusController.createStatusWrap())
         content.addView(tabHost)
         content.addView(terminalController.buildSetupArea())
 

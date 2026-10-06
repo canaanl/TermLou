@@ -7,7 +7,6 @@ import android.os.SystemClock
 import android.view.View
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
-import kotlin.math.roundToInt
 
 /**
  * 终端缝隙里的活动条 —— 匀速单焦点横向扫描。
@@ -78,12 +77,17 @@ class TerminalActivityBar(context: Context) : View(context) {
     }
 
     private fun recountCells() {
-        val next = if (width <= 0 || cellWidth <= 0f) 0 else (width / cellWidth).roundToInt()
+        // 条间距 = 条宽 × 1.1：条与条之间留一条缝（缝 ≈ 条宽的 10%，缝里透背景色）。
+        // 条数向下取整 —— 末尾不足一条的余量直接丢掉，不画半截条。
+        val next = if (width <= 0 || cellWidth <= 0f) 0 else (width / pitch()).toInt()
         if (next != cells) {
             cells = next
             invalidate()
         }
     }
+
+    /** 条间距（含 10% 缝）。条本身还是一个字符格宽（不断条宽，只加缝）。 */
+    private fun pitch(): Float = cellWidth * (1f + GAP_RATIO)
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
@@ -200,14 +204,17 @@ class TerminalActivityBar(context: Context) : View(context) {
         val focusIndex = kotlin.math.round(focus).toInt()
 
         // 第 1 步：整条轨道铺一层暗色底（opencode 的 inactive 格）。
-        // 必须先铺满，因为拖尾之外的格子 alpha 会算成 0 —— 不铺底的话那些格子是**全透明**的，
+        // 必须先铺底，因为拖尾之外的格子 alpha 会算成 0 —— 不铺底的话那些格子是**全透明**的，
         // 缝隙会一段一段空掉，看上去就又变成"高度不一致"了。
+        // 底也按条画（含 10% 缝），和亮条对齐 —— 缝里透的是背景色，不是暗色。
         val trackColor = withAlpha(
             inkColor,
             (ActivityTrail.trackAlpha(elapsedMs) * 255f).toInt().coerceIn(0, 255)
         )
         fillPaint.color = trackColor
-        canvas.drawRect(0f, top, cells * cellWidth, bottom, fillPaint)
+        for (i in 0 until cells) {
+            canvas.drawRect(cellLeft(i), top, cellLeft(i) + cellWidth, bottom, fillPaint)
+        }
 
         // 第 2 步：逐格叠拖尾明暗。
         // 等宽等高：每格都从缝隙顶铺到缝隙底，**不做任何居中、不留边**，只有明暗不同。
@@ -234,7 +241,7 @@ class TerminalActivityBar(context: Context) : View(context) {
         return (color and 0xFF000000.toInt()) or (r shl 16) or (g shl 8) or b
     }
 
-    private fun cellLeft(i: Int): Float = i * cellWidth
+    private fun cellLeft(i: Int): Float = i * pitch()
 
     private fun withAlpha(color: Int, alpha: Int): Int =
         (alpha shl 24) or (color and 0x00FFFFFF)
@@ -273,6 +280,11 @@ class TerminalActivityBar(context: Context) : View(context) {
     }
 
     companion object {
+        /**
+         * 条间距里的缝占比（5.9.24）：缝 ≈ 条宽的 10%，缝里透背景色。
+         * 条本身还是一个字符格宽 —— 不断条宽，只加缝；条数因此变少，自动重算。
+         */
+        private const val GAP_RATIO = 0.1f
         /**
          * 60fps。1.5s 一趟 ÷ 73 格 ≈ 每帧 0.9 格 —— 25fps 下会是每帧 3.6 格，看得出跳。
          */

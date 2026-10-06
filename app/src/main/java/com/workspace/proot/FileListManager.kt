@@ -22,7 +22,7 @@ class FileListManager(
     private var currentTab: Int = 0
     private var statusText: TextView? = null
     private var mainHandler: Handler? = null
-    private var statusTextRestoreRunnable: Runnable? = null
+    private var statusOverlay: TextView? = null
     private var onExportFolder: ((File) -> Unit)? = null
     private var onExportFile: ((File) -> Unit)? = null
     private var menuHost: FrameLayout? = null
@@ -34,7 +34,26 @@ class FileListManager(
     fun setCurrentTab(tab: Int) { currentTab = tab }
     fun setStatusText(textView: TextView) { statusText = textView }
     fun setMainHandler(handler: Handler) { mainHandler = handler }
-    fun setStatusTextRestoreRunnable(runnable: Runnable?) { statusTextRestoreRunnable = runnable }
+    fun setStatusOverlay(overlay: TextView) { statusOverlay = overlay }
+
+    /**
+     * 回到常态路径显示（`Files | 路径`，5.9.24）。
+     *
+     * 放得下：纯文字静止显示，和原来逐像素一致。
+     * 放不下：**不砍了，横向滚出来看** —— 正文放完整的一整行开系统跑马灯，
+     * `Files | ` 前缀由盖板定死盖住，滚动从 `|` 后面开始（见 [StatusMarquee.showPersistent]）。
+     */
+    private fun restoreStatusPath() {
+        if (currentTab != 2) return
+        val tv = statusText ?: return
+        val p = getRelativePath()
+        if (p.isEmpty()) {
+            StatusMarquee.clearPersistent(tv, statusOverlay)
+            tv.text = "Files"
+            return
+        }
+        StatusMarquee.showPersistent(tv, statusOverlay, "Files | ", p)
+    }
     fun setOnExportFolder(listener: (File) -> Unit) { onExportFolder = listener }
     fun setOnExportFile(listener: (File) -> Unit) { onExportFile = listener }
     fun setMenuHost(host: FrameLayout) { menuHost = host }
@@ -75,16 +94,9 @@ class FileListManager(
                     dir.parentFile?.let { newDir ->
                         currentDir = newDir
                         refreshFileList(fileList, navigateUp, onFileClick)
-                        statusText?.text = newDir.name
-                        statusTextRestoreRunnable?.let { mainHandler?.removeCallbacks(it) }
-                        val r = Runnable {
-                            if (currentTab == 2) {
-                                val p = getRelativePath()
-                                statusText?.text = if (p.isEmpty()) "Files" else "Files | $p"
-                            }
+                        StatusMarquee.show(statusText, newDir.name, StatusMarquee.BASE_MS, mainHandler, statusOverlay) {
+                            restoreStatusPath()
                         }
-                        statusTextRestoreRunnable = r
-                        mainHandler?.postDelayed(r, 1000)
                     }
                 }
             }
@@ -141,16 +153,9 @@ class FileListManager(
                     row.postDelayed({
                         currentDir = f
                         refreshFileList(fileList, navigateUp, onFileClick)
-                        statusText?.text = fullName
-                        statusTextRestoreRunnable?.let { mainHandler?.removeCallbacks(it) }
-                        val r = Runnable {
-                            if (currentTab == 2) {
-                                val p = getRelativePath()
-                                statusText?.text = if (p.isEmpty()) "Files" else "Files | $p"
-                            }
+                        StatusMarquee.show(statusText, fullName, StatusMarquee.BASE_MS, mainHandler, statusOverlay) {
+                            restoreStatusPath()
                         }
-                        statusTextRestoreRunnable = r
-                        mainHandler?.postDelayed(r, 1000)
                     }, 140)
                 }
                 row.setOnLongClickListener {
@@ -204,16 +209,9 @@ class FileListManager(
                     row.animate().alpha(0.5f).setDuration(60).withEndAction {
                         row.animate().alpha(1f).setDuration(120).start()
                     }.start()
-                    statusText?.text = fullName
-                    statusTextRestoreRunnable?.let { mainHandler?.removeCallbacks(it) }
-                    val r = Runnable {
-                        if (currentTab == 2) {
-                            val p = getRelativePath()
-                            statusText?.text = if (p.isEmpty()) "Files" else "Files | $p"
-                        }
+                    StatusMarquee.show(statusText, fullName, StatusMarquee.BASE_MS, mainHandler, statusOverlay) {
+                        restoreStatusPath()
                     }
-                    statusTextRestoreRunnable = r
-                    mainHandler?.postDelayed(r, 1000)
                     showBraceMenu(row, f, false, fileList, navigateUp, onFileClick)
                 }
             }

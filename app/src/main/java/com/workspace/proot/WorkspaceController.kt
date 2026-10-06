@@ -86,6 +86,8 @@ class WorkspaceController(
         scope.fileListManager.setCurrentTab(activity.currentTab)
         scope.fileListManager.setStatusText(status.statusView)
         scope.fileListManager.setMainHandler(scope.mainHandler)
+        // 盖板在 MainActivity.onCreate 里随状态栏外框一起建，先于这里；runCatching 防万一
+        runCatching { scope.fileListManager.setStatusOverlay(status.statusOverlay) }
         filesListRoot?.let { scope.fileListManager.setMenuHost(it) }
         scope.fileListManager.setOnExportFolder { shareFolder(it) }
         scope.fileListManager.setOnExportFile { shareFile(it) }

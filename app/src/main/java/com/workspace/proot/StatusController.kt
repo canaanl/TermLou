@@ -1,6 +1,7 @@
 package com.workspace.proot
 
 import android.os.SystemClock
+import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -31,6 +32,55 @@ class StatusController(
     fun createStatusBar(): TextView {
         statusView = scope.uiBuilder.createStatusBar()
         return statusView
+    }
+
+    /**
+     * 状态栏外框：`statusView`（正文）+ `statusOverlay`（前缀盖板）。
+     *
+     * 盖板平时是隐藏的，只有文件 tab 的常态长路径需要横向跑马灯时才出现：
+     * 它画着和正文一模一样的 `Files | ` 前缀、不透明底，盖在正文左端。
+     * 正文底下滚的是完整的一整行（含它自己的前缀），滚到盖板下面的部分被挡住 ——
+     * 看上去就是前缀定死、只有 `|` 后面在滚。
+     *
+     * 盖板的字号/颜色/背景/内边距必须和正文逐项一致，差 1px 就会看出重影，
+     * 所以两边都从同一个地方取（`UiBuilder.createStatusBar` 定正文，
+     * 这里照抄它的参数定盖板 —— 改正文样式时这里必须一起改）。
+     */
+    lateinit var statusOverlay: TextView
+        private set
+
+    private var statusWrap: FrameLayout? = null
+
+    /**
+     * 建过就直接返回旧外框 —— 同一个 `statusView` 只能有一个爹，
+     * 调两次（5.9.24 就是这么死的：第二处跳过创建直接 addView，当场抛
+     * `child already has a parent`，onCreate 炸 → 静默杀进程 → 黑屏 + 磁贴全死）。
+     */
+    fun createStatusWrap(): FrameLayout {
+        statusWrap?.let { return it }
+        if (!::statusView.isInitialized) createStatusBar()
+        statusView.layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        )
+        statusOverlay = TextView(activity).apply {
+            // ⚠ 必须和正文同源：正文是 UiBuilder.createStatusBar 定的
+            // （theme.surfaceContainer 底 + theme.onSurface 字 + TEXT_COMPACT + padding 16,8,16,0）。
+            // 这里直接读同一个 theme 对象，换主题两边一起变，不会错开。
+            textSize = UiTokens.TEXT_COMPACT
+            setTextColor(scope.theme.onSurface)
+            setPadding(16, 8, 16, 0)
+            setBackgroundColor(scope.theme.surfaceContainer)
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            ).apply { gravity = Gravity.TOP or Gravity.START }
+        }
+        return FrameLayout(activity).apply {
+            addView(statusView)
+            addView(statusOverlay)
+        }.also { statusWrap = it }
     }
 
     internal fun gen(): Int = statusGen

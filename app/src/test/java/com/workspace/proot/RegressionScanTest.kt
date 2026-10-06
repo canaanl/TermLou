@@ -290,6 +290,123 @@ class RegressionScanTest {
         }
     }
 
+// ---------- 5.9.22：文件状态栏长名纵向整行滚动 ----------
+
+    @Test
+    fun `文件名不许直接塞进状态栏`() {
+        // 之前三处都是 `statusText?.text = fullName`：超长名把栏撑成多行，
+        // 下面所有元素被顶下去。现在必须走 StatusMarquee（栏高锁死 1 行 + 纵向滚动）。
+        val c = code("FileListManager.kt")
+        assertFalse(
+            "文件名必须走 StatusMarquee.show，不许直接设文字：$c",
+            c.contains("statusText?.text = fullName") || c.contains("statusText?.text = newDir.name")
+        )
+        assertTrue("三处展示都要走 StatusMarquee", c.contains("StatusMarquee.show("))
+        assertFalse(
+            "旧的恢复回调字段必须删掉（取消逻辑收进 StatusMarquee 里了）：$c",
+            c.contains("statusTextRestoreRunnable")
+        )
+    }
+
+    @Test
+    fun `展示时长必须和原来一致`() {
+        // 原来三处都是 1000ms。正常名字一毫秒不许加，只有走不完才延长（延长的逻辑在 showMs 里）。
+        val c = code("FileListManager.kt")
+        assertFalse("不许手写 postDelayed 1000", c.contains("postDelayed(r, 1000)"))
+        assertTrue("必须用原来的基础时长", c.contains("StatusMarquee.BASE_MS"))
+        assertEquals("基础时长就是 1000ms", 1000L, StatusMarquee.BASE_MS)
+    }
+
+    @Test
+    fun `恢复前必须先停掉动画否则常态显示会被顶空`() {
+        // 根因：animator 的结束帧和 finish 都排在 total 毫秒，先后没保证。
+        // 结束帧若落在 finish 后面，会把 scrollY 写回最大值 —— 此时栏里已经是
+        // 1 行的常态文字，常态文字被顶出可视区，栏空。
+        // 静态路径没有 animator，所以短名永远没事，只坏滚动的情况。
+        val c = code("StatusMarquee.kt")
+        assertTrue(
+            "finish 必须先 cancel animator 再恢复：$c",
+            Regex("(?s)val finish = Runnable \\{[^}]*animator\\?\\.cancel\\(\\)").containsMatchIn(c)
+        )
+    }
+
+    @Test
+    fun `滚动目标必须是实测行顶不许再乘行高`() {
+        // 5.9.22 用 `i × lineHeight` 算滚动位置，排版的零点几像素累计误差让行对不齐，
+        // 上一行的降部（j 的脚）漏出来一截。改成 `layout.getLineTop(i)` 一行一取。
+        // ⚠ 判据必须形状无关：只禁某几种写法（如 `i * lineH`），换个变量名
+        // （`it * view.lineHeight`）就漏过去，白骗一次验证。
+        val c = code("StatusMarquee.kt")
+        assertTrue("必须用实测行顶", c.contains("layout.getLineTop("))
+        assertFalse(
+            "任何'行号乘行高'的写法都不许回来：$c",
+            Regex("""\b\w+\s*\*\s*(view\.lineHeight|lineH|lineHeight)\b""").containsMatchIn(c)
+        )
+    }
+
+    @Test
+    fun `滚动不能太快`() {
+        // 用户反馈 250/150 太快。5.9.23 起每行停 450ms、过渡 250ms。
+        assertEquals("每行停留", 450L, StatusMarquee.HOLD_MS)
+        assertEquals("行间过渡", 250L, StatusMarquee.STEP_MS)
+    }
+
+    @Test
+    fun `状态栏外框只许建一次`() {
+        // 5.9.24 黑屏根因：MainActivity 里留了两处 createStatusWrap() 调用。
+        // 第一处建了 statusView 并装进外框 1；第二处跳过创建（已初始化）直接 addView ——
+        // 同一个 child 有两个爹，当场抛 `child already has a parent`，onCreate 炸 →
+        // TermLouApp 静默杀进程 → 黑屏 + 磁贴全死 + 无崩溃框。
+        val m = code("MainActivity.kt")
+        assertEquals(
+            "createStatusWrap() 在 MainActivity 里必须只出现一次",
+            1,
+            Regex("createStatusWrap\\(\\)").findAll(m).count()
+        )
+        val s = code("StatusController.kt")
+        assertTrue(
+            "createStatusWrap 必须是幂等的（建过直接返回旧外框）：$s",
+            s.contains("statusWrap?.let { return it }") && s.contains("also { statusWrap = it }")
+        )
+    }
+
+    @Test
+    fun `常态长路径必须横向滚前缀盖板定死`() {
+        // 5.9.24：不砍了，滚出来看。`Files | ` 前缀由盖板定死盖住，滚动从 `|` 后面开始。
+        // 之前那套按段缩短（PathShorten）与"滚出来看"互斥，已删，不许回来。
+        val c = code("FileListManager.kt")
+        assertTrue("恢复路径必须走跑马灯", c.contains("StatusMarquee.showPersistent("))
+        assertFalse(
+            "按段缩短已作废，不许回来：$c",
+            c.contains("PathShorten") || c.contains("fitPath(")
+        )
+        assertFalse(
+            "不许再直接拼全路径静止显示：$c",
+            c.contains("statusText?.text = if (p.isEmpty())")
+        )
+        val m = code("StatusMarquee.kt")
+        assertTrue("必须开系统跑马灯", m.contains("TruncateAt.MARQUEE"))
+        assertTrue("必须无限循环（常态显示，滚一遍停住的话末尾永远是末尾）", m.contains("marqueeRepeatLimit = -1"))
+        assertTrue("前缀必须由盖板画", m.contains("overlay.text = prefix"))
+        assertTrue("盖板平时必须隐藏", m.contains("overlay?.visibility") && m.contains("View.GONE"))
+        assertTrue(
+            "临时展示前必须先关跑马灯（否则单行模式把纵向滚动憋死）：$m",
+            m.contains("clearPersistent(view, overlay)")
+        )
+    }
+
+    @Test
+    fun `盖板必须和正文同源否则看出重影`() {
+        // 盖板盖在正文左端，字号/颜色/背景/内边距差 1px 就是重影。
+        // 两边必须读同一个 theme 对象，换主题一起变。
+        val c = code("StatusController.kt")
+        assertTrue("盖板必须存在", c.contains("statusOverlay"))
+        assertTrue("盖板字色必须同源", c.contains("scope.theme.onSurface"))
+        assertTrue("盖板背景必须同源", c.contains("scope.theme.surfaceContainer"))
+        assertTrue("盖板必须默认隐藏", c.contains("visibility = View.GONE"))
+        assertTrue("三层顺序：正文下、盖板上", c.contains("addView(statusView)") && c.contains("addView(statusOverlay)"))
+    }
+
 // ---------- 5.9.18：终端缝隙里的 opencode 活动进度条 ----------
 
     @Test
@@ -412,24 +529,32 @@ class RegressionScanTest {
             "每格都必须用同一个 top..bottom 区间画（等高）",
             r.contains("val top = stripTop.toFloat()") &&
                 r.contains("val bottom = height.toFloat()") &&
-                Regex("drawRect\\([^)]*\\btop\\b,[^)]*\\bbottom\\b").containsMatchIn(r)
+                Regex("drawRect\\(.*\\btop\\b.*\\bbottom\\b").containsMatchIn(r)
         )
         assertTrue(
             "每格宽度都必须等于一个字符格（等宽）",
             Regex("drawRect\\(cellLeft\\(i\\), top, cellLeft\\(i\\) \\+ cellWidth, bottom").containsMatchIn(r)
         )
         assertFalse("不许画弧线", r.contains("quadTo") || r.contains("drawArc"))
-        assertFalse("不许留左右边距（那会让格子不等宽）", r.contains("BLOCK_INSET_RATIO"))
+        // 5.9.24：条与条之间必须有缝（缝 ≈ 条宽的 10%，缝里透背景色）。
+        // 条本身还是一个字符格宽 —— 不断条宽，只加缝；条数向下取整重算。
+        assertTrue("必须有 10% 缝的常量", r.contains("GAP_RATIO = 0.1f"))
+        assertTrue("条间距必须含缝", r.contains("cellWidth * (1f + GAP_RATIO)"))
+        assertTrue(
+            "条数必须向下取整（末尾不足一条直接丢，不画半截）：$r",
+            r.contains("(width / pitch()).toInt()")
+        )
     }
 
     @Test
     fun `必须先铺满轨道底色否则拖尾外会空掉`() {
-        // 拖尾只覆盖 18 格，而轨道有 73 格 —— 剩下 55 格的 alpha 算出来是 0。
+        // 拖尾只覆盖 18 格，而轨道有 60 多格 —— 剩下格子的 alpha 会算成 0。
         // 不先铺一层暗色底的话那些格子是**全透明**的，缝隙会一段一段空掉，
         // 看上去又变成"高度不一致"。这条 5.9.19 差点漏掉（注入"去掉铺底"时 ALL_GREEN）。
+        // 5.9.24：底也按条画（含 10% 缝），和亮条对齐 —— 缝里透的是背景色，不是暗色。
         val r = code("TerminalActivityBar.kt")
-        assertTrue(
-            "必须整条轨道铺一层暗色底：$r",
+        assertFalse(
+            "底不许画成整条不断的（缝会被暗色盖住）：$r",
             r.contains("canvas.drawRect(0f, top, cells * cellWidth, bottom, fillPaint)")
         )
         assertTrue("铺底色必须用 trackAlpha", r.contains("ActivityTrail.trackAlpha(elapsedMs)"))
