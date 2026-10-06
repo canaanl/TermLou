@@ -7,7 +7,20 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
-| **5.9.19** | 5919 | **格子等宽等高 + 单焦点匀速扫描** |
+| **5.9.20** | 5920 | **双击切换输入法（原来是单击）** |
+
+单击点终端会弹/收输入法，手滑就误触了。改成**双击**：输入法开着就收，关着就弹。
+
+**能干净地改，是因为 termux 的 `onSingleTapUp` 其实是 `GestureDetector.onSingleTapConfirmed`** —— 双击时它根本不触发，而它自己的 `onDoubleTap` 返回 `false` 什么都没做，正好是空位。所以把逻辑搬过去不需要任何延迟处理，也不存在"单击刚处理完又来一次双击"的竞态。
+
+- `buildInto` 里那个已有的 `setOnTouchListener`（同时管着滑动切笔记）挂一个 `GestureDetector`，`onDoubleTap` 执行原来那套弹/收；**返回 `false` 不消费**，长按选字、双指缩放、滑动切笔记全照常。
+- `setIsLongpressEnabled(false)`：长按选中文字后抬手不该被算成双击。参数与 termux 内部那个检测器一致。
+- `onSingleTapUp` 变成空实现；弹/收逻辑抽成 `toggleIme()`，双击分支自己调 `requestFocus()`（termux 那层的 `requestFocus()` 只挂在 `onSingleTapConfirmed` 上，双击走不到）。
+- 不动的地方：切到终端 tab 时的 `requestFocus()`、切走 tab 时的 `hideIme()`。
+- **一个改不了的副作用**：单击时 termux 仍会在自己那层调 `requestFocus()`（`TerminalView` 是 AAR 里的 `final` 类）。所以单击后终端**仍有焦点，只是输入法不弹** —— 硬件键盘用户单击即可直接打字。这是想要的效果，没去动它。
+- **702 全绿**（app 570 + probe 79 + workspace 53）+ 5 处坏代码注入全部会红。
+
+| **5.9.19** | 5919 | 格子等宽等高 + 单焦点匀速扫描 |
 
 5.9.18 真机确认可用之后，用户提了两条：
 

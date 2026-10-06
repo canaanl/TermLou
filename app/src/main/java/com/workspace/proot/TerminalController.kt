@@ -8,6 +8,7 @@ import android.util.Log
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
+import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -145,7 +146,26 @@ class TerminalController(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
             )
             isFocusableInTouchMode = true
+            // 双击切换输入法：开→收，关→弹（5.9.20）。
+            //
+            // 为什么挂在双击而不是单击：termux 的 `onSingleTapUp` 其实是
+            // `GestureDetector.onSingleTapConfirmed`，**双击时它根本不触发**，
+            // 而它的 `onDoubleTap` 返回 false 什么都没做 —— 正好是个空位。
+            // 所以把原来挂在单击上的弹/收逻辑搬到双击，不需要任何延迟处理。
+            //
+            // `ignoreMultitouch=true` 与 termux 内部那个 GestureDetector 保持一致，
+            // 免得双指缩放被当成双击。
+            val tapDetector = GestureDetector(
+                activity,
+                object : GestureDetector.SimpleOnGestureListener() {
+                    override fun onDoubleTap(e: MotionEvent): Boolean {
+                        toggleIme()
+                        return true
+                    }
+                }
+            ).apply { setIsLongpressEnabled(false) }
             setOnTouchListener { _, event ->
+                tapDetector.onTouchEvent(event)
                 if (event.action == MotionEvent.ACTION_DOWN) {
                     touchStartX = event.x
                 } else if (event.action == MotionEvent.ACTION_UP) {
@@ -154,7 +174,7 @@ class TerminalController(
                         activity.showNotesView()
                     }
                 }
-                false
+                false                    // 不消费：termux 的手势/长按选字/缩放照常
             }
         }
 
@@ -997,7 +1017,14 @@ class TerminalController(
     // ---------- TerminalViewClient ----------
 
     override fun onScale(scale: Float): Float = scale.coerceIn(0.5f, 2.0f)
-    override fun onSingleTapUp(e: MotionEvent?) {
+    /**
+     * 切换输入法：开着就收，收了弹（5.9.20 起挂在**双击**上）。
+     *
+     * 必须自己调 `requestFocus()`：termux 那层的 `requestFocus()` 只在
+     * `onSingleTapConfirmed` 里，而双击不会触发它。
+     * manifest 的 `stateAlwaysHidden` 保证光有焦点不会自己弹输入法，所以要显式 show。
+     */
+    private fun toggleIme() {
         val imm = activity.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
         val keyboardVisible = Build.VERSION.SDK_INT >= 30 && activity.window.decorView.rootWindowInsets
             ?.isVisible(android.view.WindowInsets.Type.ime()) == true
@@ -1005,9 +1032,20 @@ class TerminalController(
             imm.hideSoftInputFromWindow(terminalView.windowToken, 0)
         } else {
             terminalView.requestFocus()
-            terminalView.post { imm.showSoftInput(terminalView, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT) }
+            terminalView.post {
+                imm.showSoftInput(terminalView, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+            }
         }
     }
+
+    /**
+     * 单击**不再**碰输入法（5.9.20 起改成双击切换）。
+     *
+     * 注意 termux 仍会在自己那层对确认过的单击调 `requestFocus()`（`TerminalView` 是
+     * AAR 里的 final 类，改不了），所以单击后终端**仍有焦点，只是输入法不弹**。
+     * 硬件键盘用户单击即可直接打字。
+     */
+    override fun onSingleTapUp(e: MotionEvent?) = Unit
     override fun shouldBackButtonBeMappedToEscape(): Boolean = true
     override fun shouldEnforceCharBasedInput(): Boolean = false
     override fun shouldUseCtrlSpaceWorkaround(): Boolean = true

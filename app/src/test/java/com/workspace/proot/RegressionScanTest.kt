@@ -135,7 +135,64 @@ class RegressionScanTest {
         assertTrue("allowContentAccess 必须显式关（默认 true）", c.contains("allowContentAccess = false"))
     }
 
-    // ---------- 5.9.18：终端缝隙里的 opencode 活动进度条 ----------
+    // ---------- 5.9.20：双击切换输入法 ----------
+
+    @Test
+    fun `输入法必须挂在双击上不许挂回单击`() {
+        // 5.9.19 及以前：单击切换输入法（开→收，关→弹）。用户要求改成双击。
+        //
+        // 能干净地改，是因为 termux 的 `onSingleTapUp` 其实是
+        // `GestureDetector.onSingleTapConfirmed` —— 双击时它根本不触发，
+        // 而它自己的 `onDoubleTap` 返回 false 什么都没做，正好是空位。
+        val c = code("TerminalController.kt")
+        assertTrue("必须有 GestureDetector 接双击", c.contains("GestureDetector("))
+        assertTrue(
+            "必须有 onDoubleTap 覆写",
+            c.contains("override fun onDoubleTap(e: MotionEvent): Boolean")
+        )
+        // ⚠ 必须锁**双击体内部**：只查 "onDoubleTap(...)" 出现过是不够的 ——
+        //    注入"把 onDoubleTap 改成 return false"或"把里面的 toggleIme() 删掉"时
+        //    它照样 ALL_GREEN，而功能已经废了。
+        val dbl = c.substringAfter("override fun onDoubleTap(e: MotionEvent): Boolean")
+            .substringBefore("\n                    }")
+        assertTrue("双击必须真的执行弹/收：$dbl", dbl.contains("toggleIme()"))
+        assertTrue("双击必须吃掉事件以免继续判定：$dbl", dbl.contains("return true"))
+        assertTrue(
+            "单击必须什么都不做",
+            Regex("override fun onSingleTapUp\\(e: MotionEvent\\?\\) = Unit").containsMatchIn(c)
+        )
+        // ⚠ 不许把 showSoftInput / hideSoftInputFromWindow 塞回 onSingleTapUp
+        val singleTap = c.substringAfter("override fun onSingleTapUp(e: MotionEvent?) = Unit")
+            .substringBefore("\n    }")
+        assertFalse(
+            "单击里不许再弹/收输入法：$singleTap",
+            singleTap.contains("showSoftInput") || singleTap.contains("hideSoftInputFromWindow")
+        )
+    }
+
+    @Test
+    fun `双击检测不许消费事件`() {
+        // OnTouchListener 返回 false 才不会吃掉 termux 的手势：
+        // 长按选字、双指缩放、滑动切笔记都得照常。
+        val c = code("TerminalController.kt")
+        assertTrue("必须把事件喂给检测器", c.contains("tapDetector.onTouchEvent(event)"))
+        val listener = c.substringAfter("setOnTouchListener { _, event ->").take(700)
+        assertTrue(
+            "OnTouchListener 必须返回 false（不消费）：$listener",
+            Regex("false\\s*(//[^\\n]*)?\\n\\s*\\}").containsMatchIn(listener)
+        )
+        assertTrue("滑动切笔记必须保留", c.contains("activity.showNotesView()"))
+        assertTrue("双指缩放不该被当成双击", c.contains("setIsLongpressEnabled(false)"))
+    }
+
+    @Test
+    fun `切tab的聚焦与收键盘不许被这次改动带坏`() {
+        val m = code("MainActivity.kt")
+        assertTrue("切到终端 tab 仍要 requestFocus", m.contains("terminalController.terminalView.requestFocus()"))
+        assertTrue("切走 tab 仍要 hideIme", m.contains("hideIme()"))
+    }
+
+// ---------- 5.9.18：终端缝隙里的 opencode 活动进度条 ----------
 
     @Test
     fun `进度条绝不许碰终端的布局`() {
