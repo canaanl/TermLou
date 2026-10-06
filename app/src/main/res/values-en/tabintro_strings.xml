@@ -5,6 +5,8 @@
     <string name="intro_terminal_lead">The terminal tab is the main workspace: Linux terminal, shortcut rows, and the command wheel.</string>
     <string name="intro_terminal_shortcut_title">Shortcut rows and Ctrl mode</string>
     <string name="intro_terminal_shortcut_body">Adds the control keys a screen keyboard lacks.\n▸ `/` `Tab` `Esc` `Ctrl` on the top row — tap to send\n▸ Tap `Ctrl` — arm it (the button turns red); the next key is sent with Ctrl\n▸ Tap an arrow — move the cursor; while armed, arrows jump word by word\n▸ The Back key — sends Esc (terminal tab only)\n⚠ Arming auto-resets after 3 seconds without input.</string>
+    <string name="intro_terminal_ime_title">Showing and hiding the keyboard</string>
+    <string name="intro_terminal_ime_body">▸ Double-tap the terminal — hides the keyboard if shown, shows it if hidden</string>
     <string name="intro_terminal_wheel_title">Command wheel</string>
     <string name="intro_terminal_wheel_body">A visual wheel for frequent commands: swipe to pick, tap to run.\n▸ Swipe up / down on the shortcut bar — switch between shortcut rows and the command wheel\n▸ Swipe horizontally — the centered card is highlighted; tap it to run\n▸ A centered group — expands its members automatically\n▸ Tap the gray area — collapse the wheel; long-press it — open the command library\n● Recommendations rank by frequency, order and recency, so likely commands land in the center.</string>
     <string name="intro_terminal_library_title">Command library</string>

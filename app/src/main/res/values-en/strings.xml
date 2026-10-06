@@ -67,7 +67,7 @@
     <string name="palette_chip_error">Error red</string>
     <string name="palette_chip_term_bg">Terminal background</string>
     <string name="palette_chip_term_fg">Terminal text</string>
-    <string name="palette_save">Save &amp; apply</string>
+    <string name="palette_save">SAVE &amp; APPLY</string>
     <string name="palette_reset">Restore default colors</string>
     <string name="palette_saved">Saved — applying new colors…</string>
     <string name="palette_reset_done">Default colors restored</string>
@@ -386,12 +386,16 @@
     <string name="notes_common_tags">Existing tags</string>
     <string name="notes_add_todo">Add todo</string>
     <string name="notes_todo_hint">Enter todo text</string>
-    <string name="notes_insert_tag">+Tag</string>
-    <string name="notes_insert_todo">+Todo</string>
+    <string name="notes_insert_tag">+TAG</string>
+    <string name="notes_insert_todo">+TODO</string>
     <string name="notes_todo_tab">Todos</string>
     <string name="notes_tags_tab">Tags</string>
+    <!-- 分段按钮专用全大写：标题栏/分区标签继续用上面的首字母大写 -->
+    <string name="notes_todo_tab_btn">TODOS</string>
+    <string name="notes_tags_tab_btn">TAGS</string>
     <!-- Calendar view: month header / weekday header / day detail dialog -->
     <string name="notes_cal_tab">Calendar</string>
+    <string name="notes_cal_tab_btn">CALENDAR</string>
     <string name="notes_cal_month_fmt">%2$s %1$d</string>
     <string name="notes_cal_day_fmt">%4$s, %2$s %3$d, %1$d</string>
     <string name="notes_cal_month_names">Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec</string>
@@ -432,9 +436,9 @@
     <string name="web_notif_title">TermLou headless browser</string>
     <string name="web_notif_stop">Stop service</string>
     <string name="web_settings_title">Headless browser</string>
-    <string name="web_btn_start">Start service</string>
-    <string name="web_btn_stop">Stop service</string>
-    <string name="web_btn_clear">Clear cache files</string>
+    <string name="web_btn_start">START SERVICE</string>
+    <string name="web_btn_stop">STOP SERVICE</string>
+    <string name="web_btn_clear">CLEAR CACHE FILES</string>
     <string name="web_copy_hint">Tap to copy: port %1$d · token + first command</string>
     <string name="web_copied">Connection info copied</string>
     <string name="web_clear_confirm">Delete everything under /workspace/web/?\nShots, cookies, the port and the token file all go (the service is off).</string>

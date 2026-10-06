@@ -192,6 +192,104 @@ class RegressionScanTest {
         assertTrue("切走 tab 仍要 hideIme", m.contains("hideIme()"))
     }
 
+// ---------- 5.9.21：英文按钮全大写 + 介绍页加双击切输入法 ----------
+
+    /** 读 res/values(-en)/xxx.xml 的原始文本（扫源码锁的写法，不走 Android 资源系统）。 */
+    private fun resXml(relative: String): String {
+        var d: File? = File("").absoluteFile
+        var hops = 0
+        while (d != null && hops < 6) {
+            val f = File(d, "app/src/main/res/$relative")
+            if (f.isFile) return f.readText()
+            d = d.parentFile
+            hops++
+        }
+        throw AssertionError("找不到 $relative，这条检查等于没跑")
+    }
+
+    /** 从 strings.xml 里取某个键的原始值（`&amp;` 这类转义要先解开再判）。 */
+    private fun stringValue(xml: String, key: String): String {
+        val m = Regex("<string name=\"$key\">(.*?)</string>", RegexOption.DOT_MATCHES_ALL)
+            .find(xml) ?: throw AssertionError("strings.xml 里没有 $key")
+        return m.groupValues[1]
+            .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+            .replace("\\'", "'").replace("\\n", "\n")
+    }
+
+    @Test
+    fun `英文按钮串必须全大写`() {
+        // 5.9.20 及以前：走 ButtonStyle / SegmentStyle 的按钮是 `isAllCaps = false`
+        // （按串原样显示），而散在各处的 Button 是 `isAllCaps = true`（强制大写）——
+        // 于是英文界面下 `Todos` 和 `START CAPTURE` 放一屏，一个首字母大写一个全大写。
+        // 定的是全大写：只改串，不碰代码（中文串无大小写，不用动）。
+        val en = resXml("values-en/strings.xml")
+        val buttonKeys = listOf(
+            "notes_todo_tab_btn", "notes_tags_tab_btn", "notes_cal_tab_btn",
+            "notes_insert_todo", "notes_insert_tag",
+            "palette_save",
+            "web_btn_start", "web_btn_stop", "web_btn_clear"
+        )
+        for (key in buttonKeys) {
+            val v = stringValue(en, key)
+            assertFalse(
+                "$key = [$v] 里还有小写字母，英文按钮就不统一了",
+                v.any { it.isLowerCase() }
+            )
+        }
+    }
+
+    @Test
+    fun `标题栏不许跟着按钮变大写`() {
+        // `notes_todo_tab`（Todos）既是分段按钮又是标题栏/分区标签。
+        // 修法是拆键：按钮用 `_btn` 键，标题继续用原键 —— 首字母大写的标题是对的，不许动。
+        for (name in listOf("NotesController.kt", "NotesStandaloneActivity.kt")) {
+            val c = code(name)
+            assertFalse(
+                "$name 的分段按钮还在用标题键（会显示首字母大写）：$c",
+                Regex("segButton\\([^)]*R\\.string\\.notes_(todo|tags|cal)_tab\\)").containsMatchIn(c)
+            )
+            assertTrue("$name 必须用 _btn 键", c.contains("notes_todo_tab_btn"))
+        }
+        // 标题侧一个不许动
+        assertTrue(
+            "标题栏必须继续用原键",
+            code("NotesTodoActivity.kt").contains("R.string.notes_todo_tab)") &&
+                code("NotesTagsActivity.kt").contains("R.string.notes_tags_tab)") &&
+                code("NotesCalendarActivity.kt").contains("R.string.notes_cal_tab)")
+        )
+        // 中英键必须对齐：英文有 _btn 键，中文默认串里也必须有（否则中文环境取不到会崩）
+        val zh = resXml("values/strings.xml")
+        for (key in listOf("notes_todo_tab_btn", "notes_tags_tab_btn", "notes_cal_tab_btn")) {
+            stringValue(zh, key)
+        }
+    }
+
+    @Test
+    fun `终端介绍页必须有双击切输入法这一节`() {
+        // 5.9.20 把单击切换输入法改成双击，介绍页要同步（中英各 +1 节，子弹格式与现有节一致）。
+        assertTrue(
+            "必须挂进终端页",
+            code("TabIntroContent.kt").contains("R.string.intro_terminal_ime_title")
+        )
+        for ((file, title, bullet) in listOf(
+            Triple(
+                "values/tabintro_strings.xml",
+                "输入法的弹出与收起",
+                "▸ 双击终端 —— 输入法开着就收起，收着就弹出"
+            ),
+            Triple(
+                "values-en/tabintro_strings.xml",
+                "Showing and hiding the keyboard",
+                "▸ Double-tap the terminal — hides the keyboard if shown, shows it if hidden"
+            )
+        )) {
+            val xml = resXml(file)
+            assertTrue("$file 缺 title", stringValue(xml, "intro_terminal_ime_title") == title)
+            val body = stringValue(xml, "intro_terminal_ime_body")
+            assertTrue("$file 正文必须是一条子弹：[$body]", body == bullet)
+        }
+    }
+
 // ---------- 5.9.18：终端缝隙里的 opencode 活动进度条 ----------
 
     @Test

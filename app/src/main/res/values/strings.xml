@@ -392,6 +392,10 @@
     <string name="notes_tags_tab">标签</string>
     <!-- 日历视图：月头/周表头/当日详情弹窗 -->
     <string name="notes_cal_tab">日历</string>
+    <!-- 分段按钮专用：标题栏/分区标签继续用上面的首字母大写（中文无大小写，此处仅为与英文键对齐） -->
+    <string name="notes_todo_tab_btn">待办</string>
+    <string name="notes_tags_tab_btn">标签</string>
+    <string name="notes_cal_tab_btn">日历</string>
     <string name="notes_cal_month_fmt">%1$d年%2$s</string>
     <string name="notes_cal_day_fmt">%1$d年%2$s%3$d日 · %4$s</string>
     <string name="notes_cal_month_names">1月,2月,3月,4月,5月,6月,7月,8月,9月,10月,11月,12月</string>

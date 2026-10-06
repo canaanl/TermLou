@@ -256,18 +256,18 @@ class NotesStandaloneActivity : NotesPageActivity() {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(theme.surface)
             setPadding(4, 0, 4, 0)
-            addView(segButton(getString(R.string.notes_todo_tab)) {
+            addView(segButton(getString(R.string.notes_todo_tab_btn)) {
                 flushPendingSave()
                 startActivity(Intent(this@NotesStandaloneActivity, NotesTodoActivity::class.java))
             })
-            addView(segButton(getString(R.string.notes_tags_tab)) {
+            addView(segButton(getString(R.string.notes_tags_tab_btn)) {
                 flushPendingSave()
                 startActivity(
                     Intent(this@NotesStandaloneActivity, NotesTagsActivity::class.java)
                         .putExtra(EXTRA_FROM_STANDALONE, true)
                 )
             })
-            addView(segButton(getString(R.string.notes_cal_tab)) {
+            addView(segButton(getString(R.string.notes_cal_tab_btn)) {
                 flushPendingSave()
                 startActivity(
                     Intent(this@NotesStandaloneActivity, NotesCalendarActivity::class.java)

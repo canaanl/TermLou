@@ -21,6 +21,7 @@ object TabIntroContent {
             showSystemInfo = true,
             sections = listOf(
                 TabIntroSection(R.string.intro_terminal_shortcut_title, R.string.intro_terminal_shortcut_body),
+                TabIntroSection(R.string.intro_terminal_ime_title, R.string.intro_terminal_ime_body),
                 TabIntroSection(R.string.intro_terminal_wheel_title, R.string.intro_terminal_wheel_body),
                 TabIntroSection(R.string.intro_terminal_library_title, R.string.intro_terminal_library_body),
                 TabIntroSection(R.string.intro_terminal_startup_title, R.string.intro_terminal_startup_body),

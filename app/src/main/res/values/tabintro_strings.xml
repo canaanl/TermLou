@@ -5,6 +5,8 @@
     <string name="intro_terminal_lead">终端页是 TermLou 的主战场：Linux 终端、快捷键行与命令拨轮。</string>
     <string name="intro_terminal_shortcut_title">快捷键行与 Ctrl 模式</string>
     <string name="intro_terminal_shortcut_body">补齐屏幕键盘缺的常用控制键。\n▸ 上行 `/` `Tab` `Esc` `Ctrl` —— 点按即发送\n▸ 点按 `Ctrl` —— 进入武装（按钮变红），下一个键自动带 Ctrl 发送\n▸ 点按方向键 —— 移动光标；武装中按方向键 —— 按词跳转\n▸ 按返回键 —— 发送 Esc（仅终端页）\n⚠ 武装状态 3 秒无操作自动解除。</string>
+    <string name="intro_terminal_ime_title">输入法的弹出与收起</string>
+    <string name="intro_terminal_ime_body">▸ 双击终端 —— 输入法开着就收起，收着就弹出</string>
     <string name="intro_terminal_wheel_title">命令拨轮</string>
     <string name="intro_terminal_wheel_body">常用命令的图形化转盘：横滑挑选，点按执行。\n▸ 在快捷栏上下滑 —— 快捷键行 ↔ 命令拨轮 互切\n▸ 横向滚动 —— 中央卡片高亮，点按执行\n▸ 命令组居中 —— 自动展开组内成员\n▸ 点灰色区域 —— 收起拨轮；长按灰色区域 —— 进命令库管理\n● 推荐按使用频次、排序与近因，把可能要用的命令滚到中央。</string>
     <string name="intro_terminal_library_title">命令库管理</string>

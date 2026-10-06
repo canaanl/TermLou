@@ -242,19 +242,19 @@ class NotesController(
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(theme.surface)
             setPadding(4, 0, 4, 0)
-            addView(segButton(activity.getString(R.string.notes_todo_tab)) {
+            addView(segButton(activity.getString(R.string.notes_todo_tab_btn)) {
                 flushPendingSave()
                 activity.startActivity(
                     android.content.Intent(activity, NotesTodoActivity::class.java)
                 )
             })
-            addView(segButton(activity.getString(R.string.notes_tags_tab)) {
+            addView(segButton(activity.getString(R.string.notes_tags_tab_btn)) {
                 flushPendingSave()
                 activity.startActivity(
                     android.content.Intent(activity, NotesTagsActivity::class.java)
                 )
             })
-            addView(segButton(activity.getString(R.string.notes_cal_tab)) {
+            addView(segButton(activity.getString(R.string.notes_cal_tab_btn)) {
                 flushPendingSave()
                 activity.startActivity(
                     android.content.Intent(activity, NotesCalendarActivity::class.java)
