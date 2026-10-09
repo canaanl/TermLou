@@ -1,7 +1,7 @@
 package com.workspace.proot
 
 /**
- * status 栏「无头浏览器空闲了，该关了」闪烁提示的**仲裁规则**
+ * status 栏「浏览器空闲了，该关了」闪烁提示的**仲裁规则**
  * （5.9.1，纯逻辑、无安卓依赖，故可单测）。
  *
  * ## 什么时候才提示
@@ -42,7 +42,7 @@ object WebNoticeArbiter {
     /**
      * status 栏此刻的真实状况。
      *
-     * @param serviceOn 无头浏览器服务是否开着
+     * @param serviceOn 浏览器服务是否开着
      * @param idleMs 已经闲置多久（毫秒）
      * @param tempStatusActive 2 秒临时提示是否正在显示
      * @param ctrlInfoVisible 按 Ctrl 后那行按键信息是否可见

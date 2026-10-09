@@ -11,10 +11,13 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
- * 无头浏览器设置小节（5.9.0）：照 [LanController] 的形态——**手动开关**、状态行、
+ * 浏览器设置小节（5.9.0）：照 [LanController] 的形态——**手动开关**、状态行、
  * 按钮按状态变色、清除缓存要二次确认，外加"一键复制连接信息"（端口 + 令牌 + 首条命令）。
  *
  * 服务本体在 [WebAutomationService]，产物在 [WebArtifacts]，闪烁提示规则在 [WebNoticeArbiter]。
+ *
+ * 5.9.27：浏览器改成**可见悬浮窗**，`SYSTEM_ALERT_WINDOW` 从"落回兜底才要"
+ * 变成**硬需求** —— 开启前就检查，没权限先跳系统授权页（同 [LauncherTileService] 的做法）。
  */
 class WebAutomationController(
     private val activity: MainActivity,
@@ -118,6 +121,21 @@ class WebAutomationController(
     }
 
     private fun start() {
+        // 5.9.27：**悬浮窗权限是硬需求**。以前无头为主，权限只在"自检落回"那条路上要；
+        // 现在浏览器就要显示在小窗里，所以开服务之前先问一句 ——
+        // 不问的话用户开完服务才发现屏幕上什么都没有。
+        if (!android.provider.Settings.canDrawOverlays(activity)) {
+            status.showTempStatus(activity.getString(R.string.web_overlay_fallback))
+            runCatching {
+                activity.startActivity(
+                    android.content.Intent(
+                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.parse("package:${activity.packageName}")
+                    )
+                )
+            }
+            return
+        }
         WebAutomationService.start(activity)
         status.showTempStatus(activity.getString(R.string.web_starting_toast))
         scope.mainHandler.postDelayed({ refreshRow() }, 1200)
@@ -135,7 +153,7 @@ class WebAutomationController(
         val token = WebAutomationService.currentToken(activity)
         val port = WebProtocol.DEFAULT_PORT
         val text = buildString {
-            appendLine("# TermLou 无头浏览器 · headless browser")
+            appendLine("# TermLou 浏览器 · browser")
             appendLine("PORT=$port")
             appendLine("TOKEN=$token")
             appendLine("source ${WebProtocol.WEB_DIR}/web.env")

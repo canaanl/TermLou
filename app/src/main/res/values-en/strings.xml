@@ -428,14 +428,14 @@
     <string name="notes_search_notes">Search notes</string>
     <string name="notes_search_empty">No matches</string>
     <string name="notes_standalone_title">Notes</string>
-    <string name="web_channel">Headless browser</string>
-    <string name="web_starting">Starting headless browser…</string>
-    <string name="web_running_fmt">Headless browser running · port %1$d</string>
-    <string name="web_failed">Headless browser failed to start</string>
+    <string name="web_channel">Browser</string>
+    <string name="web_starting">Starting browser…</string>
+    <string name="web_running_fmt">Browser running · port %1$d</string>
+    <string name="web_failed">Browser failed to start</string>
     <string name="web_port_busy_fmt">Port %1$d is in use, cannot start (close whatever holds it)</string>
-    <string name="web_notif_title">TermLou headless browser</string>
+    <string name="web_notif_title">TermLou Browser</string>
     <string name="web_notif_stop">Stop service</string>
-    <string name="web_settings_title">Headless browser</string>
+    <string name="web_settings_title">Browser</string>
     <string name="web_btn_start">START SERVICE</string>
     <string name="web_btn_stop">STOP SERVICE</string>
     <string name="web_btn_clear">CLEAR CACHE FILES</string>
@@ -443,28 +443,28 @@
     <string name="web_copied">Connection info copied</string>
     <string name="web_clear_confirm">Delete everything under /workspace/web/?\nShots, cookies, the port and the token file all go (the service is off).</string>
     <!-- running when pressed, or the service started while the dialog was open -->
-    <string name="web_clear_busy">Service is running; stop the headless browser first.</string>
+    <string name="web_clear_busy">Service is running; stop the browser first.</string>
     <string name="web_cleared_fmt">Removed %1$d file(s)</string>
     <string name="web_cleared_none">Nothing to clear</string>
-    <string name="web_notice_blink">无头浏览器空闲，请关闭！</string>
-    <string name="web_starting_toast">Starting headless browser…</string>
-    <string name="web_stopped_toast">Headless browser stopped</string>
+    <string name="web_notice_blink">Browser idle, please close it!</string>
+    <string name="web_starting_toast">Starting browser…</string>
+    <string name="web_stopped_toast">Browser stopped</string>
 
-<!-- Headless browser 5.9.1 · tab help (three cards on the terminal tab) -->
-    <string name="web_intro_conn_title">Headless browser · On and connect</string>
-    <string name="web_intro_ops_title">Headless browser · Commands</string>
-    <string name="web_intro_notes_title">Headless browser · Notes and troubleshooting</string>
+<!-- Browser 5.9.1 · tab help (three cards on the terminal tab) -->
+    <string name="web_intro_conn_title">Browser · On and connect</string>
+    <string name="web_intro_ops_title">Browser · Commands</string>
+    <string name="web_intro_notes_title">Browser · Notes and troubleshooting</string>
 
-<!-- Headless browser 5.9.2 · settings row -->
-    <!-- Headless browser 5.9.2 · tab help: self-discovery only, details live in /help -->
+<!-- Browser 5.9.2 · settings row -->
+    <!-- Browser 5.9.2 · tab help: self-discovery only, details live in /help -->
 
-<!-- Headless browser 5.9.3 · tab help: one item per line (must use \n, aapt2 strips &#10;) -->
+<!-- Browser 5.9.3 · tab help: one item per line (must use \n, aapt2 strips &#10;) -->
 
-<!-- Headless browser 5.9.4 · tab help: plain statements, no filler -->
-    <string name="web_intro_conn_body">A browser for AI agents inside Linux. The engine is the one built into\nAndroid; pages render off-screen, so nothing shows on screen and no history is kept.\n▸ On: Settings → Advanced → Headless browser\n▸ Connect: tap the &quot;Tap to copy&quot; line to take port, token and first command\n● Fixed port 39080, token generated once at install\n● Listens on 127.0.0.1 only\n● Cookies and cache are wiped on every start\n● No overlay permission needed; the page runs in the background</string>
-    <!-- used when the self check fails: engine cannot run in the background -->
-    <string name="web_overlay_fallback">The browser engine on this device cannot run in the background; falling back to an off-screen window, which needs the overlay permission</string>
+<!-- Browser 5.9.4 · tab help: plain statements, no filler -->
+    <string name="web_intro_conn_body">A browser for AI agents inside Linux. The engine is the one built into\nAndroid; every step the agent takes shows in a small window on screen, and no history is kept.\n▸ On: Settings → Advanced → Browser\n▸ Connect: tap the &quot;Tap to copy&quot; line to take port, token and first command\n● Fixed port 39080, token generated once at install\n● Listens on 127.0.0.1 only\n● Cookies and cache are wiped on every start\n● A small window pops up on start — drag it anywhere, it cannot be clicked</string>
+    <!-- 5.9.27: needed when the overlay permission is missing -->
+    <string name="web_overlay_fallback">The overlay permission is required to show the browser window; enable &quot;Display over other apps&quot; for TermLou in system settings</string>
     <string name="web_intro_ops_body">The service serves the full list; one read is enough for the agent.\n▸ GET /help — all commands, selectors and troubleshooting\n▸ cat /workspace/web/web.env — port and token, source it\n▸ Put port 39080 + token in the skill\n● Then it can browse, click, fill forms and screenshot\n⚠ Connection refused means the service is off</string>
-    <string name="web_intro_notes_body">▸ One page at a time, repeated opens reuse it\n▸ Shots and cookies land in /workspace/web/\n● Idle for 10 minutes: the status bar blinks\n⚠ A few sites refuse embedded browsers</string>
-    <string name="web_intro_settings_body">A headless browser for AI agents inside Linux:\nstart the service below, then tap the &quot;Tap to copy&quot; line to take the port, token and first command;\nthe port and the full command list see the intro page in the terminal tab.</string>
+    <string name="web_intro_notes_body">▸ One page at a time, repeated opens reuse it\n▸ Shots and cookies land in /workspace/web/\n● Long full-page shots are taken by scrolling — you can watch it scroll\n● Idle for 10 minutes: the status bar blinks\n⚠ A few sites refuse embedded browsers</string>
+    <string name="web_intro_settings_body">A browser for AI agents inside Linux:\nstart the service below and a small draggable window pops up on screen —\nyou can watch every step the agent takes;\ntap the &quot;Tap to copy&quot; line to take the port, token and first command;\nthe port and the full command list see the intro page in the terminal tab.</string>
 </resources>

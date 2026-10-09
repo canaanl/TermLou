@@ -9,7 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 无头浏览器的 HTTP/JSON 协议锁定测试（5.9.0）。
+ * 浏览器的 HTTP/JSON 协议锁定测试（5.9.0）。
  *
  * 这是 agent 与 app 之间唯一的契约：解析错一个字，Linux 侧的 skill 就废了，
  * 所以请求解析、响应格式、说明书内容都逐条锁死。
@@ -192,8 +192,8 @@ class WebProtocolTest {
     @Test
     fun `说明书是中英双语的`() {
         val help = WebProtocol.help(39080)
-        assertTrue(help.contains("TermLou 无头浏览器"))
-        assertTrue(help.contains("headless browser"))
+        assertTrue("中文名要同步：$help", help.contains("TermLou 浏览器"))
+        assertTrue("英文名要同步：$help", help.contains("TermLou Browser"))
         assertTrue(help.contains("No history"))
     }
 

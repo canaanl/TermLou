@@ -65,14 +65,32 @@ class WebShotPlanTest {
     }
 
     @Test
-    fun `长页面走整页且视图要撑到整页高`() {
+    fun `长页面走整页但视图不被撑高`() {
         val p = WebShotPlan.decide(fullPage, h, w)
         assertEquals(WebShotPlan.Mode.FULL_PAGE, p.mode)
         assertTrue(p.isLong)
-        // **整页模式的全部原理就在这一行**：视图高过整页 → 没有滚动区 → 整页就是首屏
-        assertEquals("视图必须高过整页", fullPage, p.viewHeightPx)
-        assertTrue("必须真的高过视口", p.viewHeightPx > h)
+        // 5.9.27：**视图永远保持视口高**，改成滚动分段。
+        // 撑高会让长页面按整页版式重新排版一次（100vh 变高、懒加载全触发、
+        // 吸顶页头贴到整页顶部），画出来的是长页面版式而不是滚动后的视口版式。
+        assertEquals("视图不许被撑高", h, p.viewHeightPx)
         assertEquals(w, p.viewWidthPx)
+        assertEquals("整页高要如实记下来", fullPage, p.pageHeightPx)
+    }
+
+    @Test
+    fun `整页模式必须给出滚动分段方案`() {
+        val p = WebShotPlan.decide(fullPage, h, w)
+        val sp = p.scrollPlan()
+        assertTrue("整页必须有分段方案", sp != null)
+        assertEquals(fullPage, sp!!.pageHeightPx)
+        assertEquals(3, sp.shots)
+        // 一屏模式没有分段方案 —— 截一次就完了
+        assertEquals(null, WebShotPlan.decide(1000, h, w).scrollPlan())
+    }
+
+    @Test
+    fun `一屏模式不记整页高`() {
+        assertEquals(0, WebShotPlan.decide(1000, h, w).pageHeightPx)
     }
 
     // ---------- 问不到高度时要说实话 ----------
@@ -113,9 +131,13 @@ class WebShotPlanTest {
     }
 
     @Test
-    fun `没缩过就不要多嘴`() {
-        assertFalse(WebShotPlan.decide(fullPage, h, w).downscaled)
-        assertEquals("", WebShotPlan.decide(fullPage, h, w).note)
+    fun `没缩过就不许提缩放`() {
+        val p = WebShotPlan.decide(fullPage, h, w)
+        assertFalse(p.downscaled)
+        // 5.9.27：note 现在会说"滚了几屏拼的"（对 agent 有用：整页不再是重排版式），
+        // 但**没缩放就不许出现百分比或原尺寸** —— 那是缩放才要说的。
+        assertFalse("没缩放就不该说缩放：${p.note}", p.note.contains("%"))
+        assertFalse("没缩放就不该报原尺寸：${p.note}", p.note.contains("device px"))
     }
 
     @Test
@@ -270,16 +292,22 @@ class EvalValueTakenTest {
 }
 
 /**
- * 「量完必须还原视口」这条的锁。
+ * 「截完必须还原」这条的锁（5.9.27 改成"滚回原位"）。
  *
  * ## 为什么用扫源码来锁
  *
- * 整页模式会把视图量到整页高再量回视口。**万一没还原**，页面就停在整页版式上，
+ * 整页截图要滚着拍。**万一没滚回去**，页面就停在长图底部，
  * 后面 `click` / `type` 按视口坐标算出来的位置全错 —— 那比"截不到图"糟得多，
  * 而且**在单测里测不到**：这段代码贴着 WebView，没有 Robolectric 跑不了。
  *
  * 所以直接查源码里那个 `finally`。这是"测不出接线"时唯一能用的办法
  * （探针那边因为同类问题卡死过一次，见 `CallbackWiringTest`）。
+ *
+ * ## 5.9.27：还原的东西换了
+ *
+ * 以前是"把视图量回视口高"（因为整页模式把视图撑高过）。
+ * 现在**视图不再被撑高**，要还原的是**滚动位置** —— 机制换了，
+ * 但"必须还原"这条不变，不还原的后果也一模一样。
  */
 class ShotViewportRestoreTest {
 
@@ -296,29 +324,31 @@ class ShotViewportRestoreTest {
     }
 
     @Test
-    fun `截图那段必须在finally里量回视口`() {
+    fun `截图那段必须在finally里滚回原位`() {
         val src = serviceSource()
         val body = src.substringAfter("private fun opShot(").substringBefore("SHOT_NOTHING =")
         assertTrue("没找到 opShot 的函数体", body.isNotEmpty())
 
         val finallyAt = body.indexOf("finally {")
-        assertTrue("opShot 里没有 finally —— 截图一出问题视口就回不去了", finallyAt >= 0)
+        assertTrue("opShot 里没有 finally —— 截图一出问题滚动位置就回不去了", finallyAt >= 0)
 
-        val restoreAt = body.indexOf("layoutView(wv, vw, vh)", finallyAt)
+        val restoreAt = body.indexOf("scrollTo(wv, originScroll)", finallyAt)
         assertTrue(
-            "finally 里没有把视图量回视口高 vh —— 不还原的话后面 click/type 的坐标全错",
+            "finally 里必须滚回原来的位置 —— 不还原的话后面 click/type 的坐标全错",
             restoreAt > finallyAt
         )
     }
 
     @Test
-    fun `量回视口的高度必须来自视口而不是计划`() {
+    fun `原位必须在开滚之前先记下来`() {
         val src = serviceSource()
         val body = src.substringAfter("private fun opShot(").substringBefore("SHOT_NOTHING =")
-        // `plan.viewHeightPx` 是整页高；还原必须用 `vh`
+        val saveAt = body.indexOf("originScroll")
+        val tryAt = body.indexOf("try {")
+        assertTrue("opShot 里没有 originScroll —— 压根没记原位", saveAt >= 0)
         assertTrue(
-            "还原时不能拿 plan.viewHeightPx 顶上，那等于没还原",
-            body.contains("layoutView(wv, vw, vh)")
+            "必须在 try 之前记原位，否则记到的已经是被滚过的位置",
+            saveAt in 0 until tryAt
         )
     }
 

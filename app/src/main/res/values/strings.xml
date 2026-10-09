@@ -428,14 +428,14 @@
     <string name="notes_search_notes">搜索笔记</string>
     <string name="notes_search_empty">没有匹配的内容</string>
     <string name="notes_standalone_title">笔记</string>
-    <string name="web_channel">无头浏览器</string>
-    <string name="web_starting">正在启动无头浏览器…</string>
-    <string name="web_running_fmt">无头浏览器运行中 · 端口 %1$d</string>
-    <string name="web_failed">无头浏览器启动失败</string>
+    <string name="web_channel">浏览器</string>
+    <string name="web_starting">正在启动浏览器…</string>
+    <string name="web_running_fmt">浏览器运行中 · 端口 %1$d</string>
+    <string name="web_failed">浏览器启动失败</string>
     <string name="web_port_busy_fmt">端口 %1$d 被占用，无法启动（请先关掉占用它的程序）</string>
-    <string name="web_notif_title">TermLou 无头浏览器</string>
+    <string name="web_notif_title">TermLou 浏览器</string>
     <string name="web_notif_stop">关闭服务</string>
-    <string name="web_settings_title">无头浏览器</string>
+    <string name="web_settings_title">浏览器</string>
     <string name="web_btn_start">开启服务</string>
     <string name="web_btn_stop">关闭服务</string>
     <string name="web_btn_clear">清除缓存</string>
@@ -443,28 +443,28 @@
     <string name="web_copied">已复制连接信息</string>
     <string name="web_clear_confirm">清空 /workspace/web/ 下的全部文件？\n截图、cookie、端口与令牌文件都会删掉（服务已停止）。</string>
     <!-- 运行中按了清除，或确认框开着时服务被启动 -->
-    <string name="web_clear_busy">服务运行中，不能清除。先关闭无头浏览器。</string>
+    <string name="web_clear_busy">服务运行中，不能清除。先关闭浏览器。</string>
     <string name="web_cleared_fmt">已清除 %1$d 个文件</string>
     <string name="web_cleared_none">没有可清除的文件</string>
-    <string name="web_notice_blink">无头浏览器空闲，请关闭！</string>
-    <string name="web_starting_toast">正在启动无头浏览器…</string>
-    <string name="web_stopped_toast">无头浏览器已关闭</string>
+    <string name="web_notice_blink">浏览器空闲，请关闭！</string>
+    <string name="web_starting_toast">正在启动浏览器…</string>
+    <string name="web_stopped_toast">浏览器已关闭</string>
 
-<!-- 无头浏览器 5.9.1 · Tab 说明（三节卡片，终端 tab 写帮助形态） -->
-    <string name="web_intro_conn_title">无头浏览器 · 开启与连接</string>
-    <string name="web_intro_ops_title">无头浏览器 · 指令</string>
-    <string name="web_intro_notes_title">无头浏览器 · 须知与排错</string>
+<!-- 浏览器 5.9.1 · Tab 说明（三节卡片，终端 tab 写帮助形态） -->
+    <string name="web_intro_conn_title">浏览器 · 开启与连接</string>
+    <string name="web_intro_ops_title">浏览器 · 指令</string>
+    <string name="web_intro_notes_title">浏览器 · 须知与排错</string>
 
-<!-- 无头浏览器 5.9.2 · 设置项 -->
-    <!-- 无头浏览器 5.9.2 · Tab 说明：只讲自发现，细节交给 /help -->
+<!-- 浏览器 5.9.2 · 设置项 -->
+    <!-- 浏览器 5.9.2 · Tab 说明：只讲自发现，细节交给 /help -->
 
-<!-- 无头浏览器 5.9.3 · Tab 说明：条目一律独立成行（换行必须用 \n，&#10; 会被 aapt2 清掉） -->
+<!-- 浏览器 5.9.3 · Tab 说明：条目一律独立成行（换行必须用 \n，&#10; 会被 aapt2 清掉） -->
 
-<!-- 无头浏览器 5.9.4 · 设置项：不再放长段说明（细节在终端 Tab 说明页） -->
-    <string name="web_intro_conn_body">给 Linux 里的 AI agent 用的浏览器。内核是安卓自带的，\n页面渲染在屏幕外，屏幕上什么也看不到，也不留任何历史。\n▸ 开启：设置 → 高级 → 无头浏览器\n▸ 连接：点那行「点击复制」，端口、令牌与首条命令一次带走\n● 端口固定 39080，令牌安装时生成一次\n● 只监听 127.0.0.1，同一网络下别的设备连不上\n● 每次开启都会清空 cookie 与缓存\n● 不用悬浮窗权限，页面直接跑在后台</string>
-    <!-- 自检没过时用：内核不能在后台直接跑，退回屏外窗口 -->
-    <string name="web_overlay_fallback">这台设备的网页内核不能在后台直接跑，已改用屏外窗口，需要悬浮窗权限</string>
+<!-- 浏览器 5.9.4 · 设置项：不再放长段说明（细节在终端 Tab 说明页） -->
+    <string name="web_intro_conn_body">给 Linux 里的 AI agent 用的浏览器。内核是安卓自带的，\nagent 的每一步操作都在屏幕上的小窗里看得见，也不留任何历史。\n▸ 开启：设置 → 高级 → 浏览器\n▸ 连接：点那行「点击复制」，端口、令牌与首条命令一次带走\n● 端口固定 39080，令牌安装时生成一次\n● 只监听 127.0.0.1，同一网络下别的设备连不上\n● 每次开启都会清空 cookie 与缓存\n● 开启后会弹出一个小窗，按住窗体任意位置就能拖走，点不动它</string>
+    <!-- 5.9.27：没给悬浮窗权限时用（自检与屏外兜底已删除，权限变成硬需求） -->
+    <string name="web_overlay_fallback">需要悬浮窗权限才能显示浏览器小窗，请在系统设置里给 TermLou 打开「显示在其他应用上层」</string>
     <string name="web_intro_ops_body">指令清单随时可取，agent 读一次就够。\n▸ GET /help —— 全部指令、选择器写法与排错\n▸ cat /workspace/web/web.env —— 端口与令牌，可直接 source\n▸ 写进 skill：固定端口 39080 + 令牌\n● 读完它就能自己开网页、点按钮、填表单、截图\n⚠ 服务没开时连接被拒，先在上面开启</string>
-    <string name="web_intro_notes_body">▸ 一次只开一个页面，反复 open 即复用\n▸ 截图与 cookie 落在 /workspace/web/，可翻到\n● 闲置满 10 分钟，状态栏会闪一句提醒\n⚠ 个别站点会拒绝内嵌浏览器，换站即可</string>
-    <string name="web_intro_settings_body">给 Linux 里的 AI agent 用的无头浏览器：\n在下面开启服务，点那行「点击复制」带走端口、令牌与首条命令；\n端口与全部指令见终端 Tab 的说明。</string>
+    <string name="web_intro_notes_body">▸ 一次只开一个页面，反复 open 即复用\n▸ 截图与 cookie 落在 /workspace/web/，可翻到\n● 长页面截整页时会滚着拍，小窗里能看见它一路滚到底\n● 闲置满 10 分钟，状态栏会闪一句提醒\n⚠ 个别站点会拒绝内嵌浏览器，换站即可</string>
+    <string name="web_intro_settings_body">给 Linux 里的 AI agent 用的浏览器：\n在下面开启服务，屏幕上会弹出一个可以拖动的小窗，\nagent 的每一步操作你都能看见；\n点那行「点击复制」带走端口、令牌与首条命令；\n端口与全部指令见终端 Tab 的说明。</string>
 </resources>

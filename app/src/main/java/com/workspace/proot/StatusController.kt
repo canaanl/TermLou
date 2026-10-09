@@ -145,7 +145,7 @@ class StatusController(
         if (::statusView.isInitialized) statusView.text = text
     }
 
-    // ---------- 无头浏览器的闪烁提示 ----------
+    // ---------- 浏览器的闪烁提示 ----------
 
     private var webTick: Runnable? = null
     private var webPhase: Boolean? = null

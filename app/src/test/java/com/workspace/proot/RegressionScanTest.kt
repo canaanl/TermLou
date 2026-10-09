@@ -80,24 +80,6 @@ class RegressionScanTest {
         assertTrue(source("WebSelector.kt").contains("""append("\\n")"""))
     }
 
-    // ---------- 3：自检取元素 ----------
-
-    @Test
-    fun `自检必须按id取那个半宽div而不是取第一个div`() {
-        val js = WebHeadless.PROBE_JS
-        assertTrue("必须用 getElementById('w')", js.contains("getElementById('w')"))
-        assertFalse(
-            "querySelector('div') 取到的是第一个 div —— 5.9.8 加了 #box 包裹层之后" +
-                "就是满宽那个，layoutConsistent 拿满宽比半宽恒为 false",
-            js.contains("querySelector('div')")
-        )
-    }
-
-    @Test
-    fun `探针页里那个半宽div真的有id`() {
-        assertTrue("PROBE_HTML 里必须有 id=\"w\"", WebHeadless.PROBE_HTML.contains("id=\"w\""))
-    }
-
     // ---------- 4：select 哨兵 ----------
 
     @Test
@@ -367,6 +349,126 @@ class RegressionScanTest {
         assertTrue(
             "createStatusWrap 必须是幂等的（建过直接返回旧外框）：$s",
             s.contains("statusWrap?.let { return it }") && s.contains("also { statusWrap = it }")
+        )
+    }
+
+    // ---------- 5.9.27：悬浮窗 ----------
+
+    @Test
+    fun `悬浮窗不许用NOT_TOUCHABLE`() {
+        // 用户要求"点小窗唯一的行为就是拖动"。NOT_TOUCHABLE 会让整窗
+        // **连 touch 都收不到** —— 拖动也就没了。要拦就在 onInterceptTouchEvent 里拦。
+        val c = code("WebFloatWindowHost.kt")
+        assertTrue("必须靠 onInterceptTouchEvent 拦，而不是 NOT_TOUCHABLE：$c",
+            c.contains("onInterceptTouchEvent"))
+        assertFalse(
+            "NOT_TOUCHABLE 会把拖动一起关掉 —— 必须去掉：$c",
+            c.contains("FLAG_NOT_TOUCHABLE")
+        )
+    }
+
+    @Test
+    fun `触摸必须从ACTION_DOWN就全拦`() {
+        // 只在 MOVE 拦不行：那之前 WebView 已经拿到手势，一个滚动手势就把页面滚走。
+        // 用户要的是"唯一行为就是拖动"，WebView 一个 touch 都不能收到。
+        val c = code("WebFloatWindowHost.kt")
+        assertTrue("必须显式处理 ACTION_DOWN：$c", c.contains("ACTION_DOWN"))
+        assertTrue("必须显式处理 ACTION_MOVE：$c", c.contains("ACTION_MOVE"))
+        // onInterceptTouchEvent 的收尾必须返回 true（吃掉）
+        assertTrue(
+            "onInterceptTouchEvent 必须返回 true 把事件吃掉，否则会漏给子视图：$c",
+            Regex("""override fun onInterceptTouchEvent[\s\S]*?return true\s*\}""").containsMatchIn(c)
+        )
+    }
+
+    @Test
+    fun `窗口不许给WebView打NOT_FOCUSABLE之外的焦点旗标`() {
+        // NOT_FOCUSABLE 必须留着：不加的话悬浮窗会吃掉输入法焦点，
+        // agent 的 type 就失灵了（这是加这个 flag 的唯一理由）。
+        val c = code("WebFloatWindowHost.kt")
+        assertTrue(
+            "NOT_FOCUSABLE 必须留着，否则 agent 输入会失灵：$c",
+            c.contains("FLAG_NOT_FOCUSABLE")
+        )
+    }
+
+    @Test
+    fun `视口不许跟着窗口缩`() {
+        // 窗口只有屏宽 1/3，但 WebView 仍按 412×892dp 排版。
+        // 若把视图量成窗口大小，视口变 160dp 宽，多数手机站重排，
+        // agent 学过的选择器与坐标全失效。
+        val svc = code("WebAutomationService.kt")
+        assertTrue(
+            "视口宽高必须走 WebProtocol 的常量，不能跟窗口走：$svc",
+            svc.contains("WebProtocol.VIEWPORT_W_DP") &&
+                svc.contains("WebProtocol.VIEWPORT_H_DP")
+        )
+        val host = code("WebFloatWindowHost.kt")
+        assertTrue(
+            "缩放只能靠 scaleX/scaleY（显示层），不许改布局尺寸：$host",
+            host.contains("wv.scaleX = sx") && host.contains("wv.scaleY = sy")
+        )
+    }
+
+    @Test
+    fun `整页截图必须滚动不许再撑高视图`() {
+        // 撑高会让长页面按整页高度**重新排版一次**（100vh 变高、
+        // 懒加载一次性全触发、吸顶页头贴到整页顶部）。有真窗口之后不需要了。
+        val svc = code("WebAutomationService.kt")
+        assertFalse(
+            "opShot 里不许再把视图量到整页高：$svc",
+            svc.contains("layoutView(wv, vw, plan.viewHeightPx)")
+        )
+        assertTrue("必须靠滚动分段：$svc", svc.contains("captureByScrolling"))
+    }
+
+    @Test
+    fun `截完图必须滚回原位`() {
+        // 不还原的话页面停在长图底部，后面 click/type 按视口坐标算的位置全错 ——
+        // 那比"截不到图"糟得多。
+        val svc = source("WebAutomationService.kt")
+        val body = svc.substringAfter("private fun opShot(").substringBefore("SHOT_NOTHING =")
+        assertTrue("没找到 opShot 的函数体", body.isNotEmpty())
+        val finallyAt = body.indexOf("finally {")
+        assertTrue("opShot 里没有 finally —— 截图一出问题滚动位置就回不去了", finallyAt >= 0)
+        val restoreAt = body.indexOf("scrollTo(wv, originScroll)", finallyAt)
+        assertTrue(
+            "finally 里必须滚回原来的位置（originScroll）",
+            restoreAt > finallyAt
+        )
+    }
+
+    @Test
+    fun `无头自检那条路不许复活`() {
+        // 有了真窗口就没有"要不要窗口"这个问题了。自检 + 落回那套
+        // （WebHeadless / headlessMode / usingOverlay）已整体删除。
+        val svc = code("WebAutomationService.kt")
+        for (dead in listOf("WebHeadless", "startHeadlessSelfCheck", "usingOverlay", "headlessMode")) {
+            assertFalse("无头自检的 $dead 不许回来：$svc", svc.contains(dead))
+        }
+        assertFalse(
+            "WebHeadless.kt 已删除，不许重建",
+            File("").absoluteFile.let { d ->
+                var cur: File? = d
+                var hops = 0
+                var found = false
+                while (cur != null && hops < 6 && !found) {
+                    found = File(cur, "app/src/main/java/com/workspace/proot/WebHeadless.kt").isFile
+                    cur = cur.parentFile; hops++
+                }
+                found
+            }
+        )
+    }
+
+    @Test
+    fun `建不出悬浮窗不许报成timeout`() {
+        // "timeout" 会让 agent 以为是主线程忙，于是不停重试 ——
+        // 而"没给悬浮窗权限"这件事重试一万次也是这个结果。
+        val svc = code("WebAutomationService.kt")
+        assertTrue(
+            "必须把建窗失败的真实原因报出去：$svc",
+            svc.contains("floatWindow.lastError")
         )
     }
 
@@ -647,34 +749,48 @@ class RegressionScanTest {
         assertEquals("UiEval 结果被混了：$distinctUi", uiResults.size, distinctUi.size)
     }
 
-    // ---------- 8：整页截图必须等首帧 + 验墨（5.9.9"下半截白"） ----------
+    // ---------- 8：整页截图必须等帧 + 不许交半张图（5.9.9"下半截白"，5.9.27 改机制） ----------
 
     @Test
-    fun `整页分支必须等首帧而不是紧接着画`() {
-        // 真机：撑高之后紧接着画，下半截是白的。自检那边等 1400ms 就好，
-        // 这里首等 900ms + 最多 3 次 300ms —— 但"等"这件事不能丢
+    fun `每滚一段都必须等一帧而不是紧接着画`() {
+        // `scrollTo` 只改值，内容是合成器**异步**画的。紧接着画拿到的还是上一段
+        // —— 真机上就是一片底色。5.9.9 那次"下半截白"就是没等帧。
+        // 机制从"撑高后等首帧"换成了"每段滚完等一帧"，但"等"这件事不能丢。
         val c = code("WebAutomationService.kt")
-        assertTrue("必须等首帧", c.contains("FULL_FIRST_FRAME_MS"))
-        assertTrue("必须有有限次重试", c.contains("FULL_RETRIES"))
-    }
-
-    @Test
-    fun `整页分支必须验下三分之一而不是只验整张有内容`() {
-        // `hasContent` 整张判空分不清"底色铺满"和"有内容"（底色本身非白）。
-        // 下半截白的那次，整张是有内容的（上半截），照样 ok:true 出去了
-        val c = code("WebAutomationService.kt")
-        assertTrue("必须验下三分之一", c.contains("lowerThirdRendered"))
-    }
-
-    @Test
-    fun `四次之后还白必须明说而不是按成功返回`() {
-        // 那次半空白图是 ok:true + full_page:true 出去的 —— agent 会以为那就是整页。
-        // 这比修不好更糟：修不好 agent 知道，能骗过去 agent 就信了
-        val c = code("WebAutomationService.kt")
-        assertTrue("必须有下半截没渲染的报错", c.contains("SHOT_HALF_BLANK"))
+        assertTrue("必须等一帧", c.contains("SHOT_SEGMENT_WAIT_MS"))
         assertTrue(
-            "报错必须说清是下半部分：",
-            c.contains("lower part of the long page not rendered")
+            "等帧必须发生在画之前（截图循环里）",
+            c.contains("Thread.sleep(SHOT_SEGMENT_WAIT_MS)")
+        )
+    }
+
+    @Test
+    fun `某段画不出来不许交半张图`() {
+        // 5.9.9：那次半空白图是 ok:true + full_page:true 出去的 —— agent 会以为那就是整页。
+        // 这比修不好更糟：修不好 agent 知道，能骗过去 agent 就信了。
+        // 滚动分段下同样成立：某一段没画出来就得整体失败，不能把其余段拼上去交差。
+        val svc = source("WebAutomationService.kt")
+        val body = svc.substringAfter("private fun captureByScrolling(")
+            .substringBefore("private fun scrollTo(")
+        assertTrue("没找到 captureByScrolling 的函数体", body.length > 300)
+        assertTrue(
+            "某段画不出来必须 recycle 整张并返回 null，不能交半张：\n$body",
+            Regex("""piece\s*==\s*null[\s\S]{0,200}?full\.recycle\(\)[\s\S]{0,80}?return null""")
+                .containsMatchIn(body)
+        )
+    }
+
+    @Test
+    fun `分段的缩放只做一次不许每段都缩`() {
+        // 每段都先缩一遍的话，误差会一段段叠上去，最后那张长图对不上原页面。
+        // 分段一律 1:1 拍，缩放只由拼接那一步统一做。
+        val c = code("WebAutomationService.kt")
+        val cap = c.substringAfter("private fun captureViewport(")
+            .substringBefore("private fun hasContent(")
+        assertTrue("没找到 captureViewport 的函数体", cap.length > 300)
+        assertFalse(
+            "captureViewport 里不许按 plan.scale 缩 —— 缩放由拼接统一做：\n$cap",
+            cap.contains("plan.scale")
         )
     }
 

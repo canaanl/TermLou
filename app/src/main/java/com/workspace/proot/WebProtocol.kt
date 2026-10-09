@@ -3,7 +3,7 @@ package com.workspace.proot
 import org.json.JSONObject
 
 /**
- * 无头浏览器的 HTTP/JSON 指令协议（5.9.0，纯逻辑、不依赖安卓，可单测）。
+ * 浏览器的 HTTP/JSON 指令协议（5.9.0，纯逻辑、不依赖安卓，可单测）。
  *
  * 传输：**仅回环地址**的固定端口 + 每次安装固定的令牌（`X-Token` 头）；`GET /help` 免令牌
  * （纯说明书，供"skill 写丢了"时自发现），其余一律要令牌。
@@ -31,7 +31,12 @@ object WebProtocol {
     /** 产物目录在 Linux 侧的路径（端口、令牌、截图、cookie 都在底下）。 */
     const val WEB_DIR = "$WORKSPACE_MOUNT/web"
 
-    /** 视口尺寸（dp）：无头页面按手机竖屏渲染，截图与取文本都基于它。 */
+    /**
+     * 视口尺寸（dp）：页面按手机竖屏渲染，截图与取文本都基于它。
+     *
+     * 5.9.27：**这不跟悬浮窗大小走**。窗口只有屏宽 1/3，但视口锁死在这里 ——
+     * 缩放只发生在显示那一层，agent 的版式与坐标一个像素都不变。
+     */
     const val VIEWPORT_W_DP = 412
     const val VIEWPORT_H_DP = 892
 
@@ -178,7 +183,7 @@ object WebProtocol {
      */
     fun help(port: Int): String = buildString {
         val host = "http://127.0.0.1:$port"
-        appendLine("TermLou headless browser · TermLou 无头浏览器")
+        appendLine("TermLou Browser · TermLou 浏览器")
         appendLine()
         appendLine("Endpoint 端点: http://127.0.0.1:$port   (POST /op 与 GET /help 都要 header X-Token: <令牌>)")
         appendLine("Self-discovery 自发现: cat $WEB_DIR/web.env   ·   curl -H \"X-Token: \$TOKEN\" $host/help")
@@ -258,7 +263,7 @@ object WebProtocol {
         appendLine("  · A missing element always returns ok:false; ok:true means it really happened.")
         appendLine("  · A click with no wait reports ready:false once it started a new navigation.")
         appendLine()
-        appendLine("提示：服务未开启时连接被拒——请在 TermLou 设置 → 高级 → 无头浏览器 里开启。")
-        appendLine("Note: connection refused means the service is off — enable it in TermLou 设置 → 高级 → 无头浏览器.")
+        appendLine("提示：服务未开启时连接被拒——请在 TermLou 设置 → 高级 → 浏览器 里开启。")
+        appendLine("Note: connection refused means the service is off — enable it in TermLou 设置 → 高级 → 浏览器.")
     }
 }
