@@ -355,30 +355,91 @@ class RegressionScanTest {
     // ---------- 5.9.27：悬浮窗 ----------
 
     @Test
-    fun `悬浮窗不许用NOT_TOUCHABLE`() {
-        // 用户要求"点小窗唯一的行为就是拖动"。NOT_TOUCHABLE 会让整窗
-        // **连 touch 都收不到** —— 拖动也就没了。要拦就在 onInterceptTouchEvent 里拦。
+    fun `悬浮窗不许用NOT_TOUCHABLE也不许用LAYOUT_NO_LIMITS`() {
+        // 用户要求"点小窗唯一的行为就是拖动"。
+        // - NOT_TOUCHABLE：整窗连 touch 都收不到，拖动也就没了。
+        // - LAYOUT_NO_LIMITS（5.9.28 去掉）：窗口本来就只有屏宽 1/3、不超屏，
+        //   这个 flag 让窗口无视屏幕边界与系统栏 inset —— 压在状态栏上的
+        //   那一块收不到触摸，是"拖不动"的嫌疑之一。
         val c = code("WebFloatWindowHost.kt")
-        assertTrue("必须靠 onInterceptTouchEvent 拦，而不是 NOT_TOUCHABLE：$c",
-            c.contains("onInterceptTouchEvent"))
-        assertFalse(
-            "NOT_TOUCHABLE 会把拖动一起关掉 —— 必须去掉：$c",
-            c.contains("FLAG_NOT_TOUCHABLE")
+        assertFalse("NOT_TOUCHABLE 会把拖动一起关掉：\n$c", c.contains("FLAG_NOT_TOUCHABLE"))
+        assertFalse("LAYOUT_NO_LIMITS 必须去掉：\n$c", c.contains("FLAG_LAYOUT_NO_LIMITS"))
+        assertTrue(
+            "NOT_TOUCH_MODAL 必须留着，否则这个窗会吃掉全屏触摸、底下 app 点不动：\n$c",
+            c.contains("FLAG_NOT_TOUCH_MODAL")
         )
     }
 
     @Test
-    fun `触摸必须从ACTION_DOWN就全拦`() {
-        // 只在 MOVE 拦不行：那之前 WebView 已经拿到手势，一个滚动手势就把页面滚走。
-        // 用户要的是"唯一行为就是拖动"，WebView 一个 touch 都不能收到。
+    fun `触摸必须拦在dispatchTouchEvent这个入口上`() {
+        // 5.9.27 第一版用 `onInterceptTouchEvent` + `onTouchEvent` 那套，**真机上拖不动**。
+        // 现在钉死在 `dispatchTouchEvent`（事件分发的入口）——子视图连分发都进不去。
         val c = code("WebFloatWindowHost.kt")
-        assertTrue("必须显式处理 ACTION_DOWN：$c", c.contains("ACTION_DOWN"))
-        assertTrue("必须显式处理 ACTION_MOVE：$c", c.contains("ACTION_MOVE"))
-        // onInterceptTouchEvent 的收尾必须返回 true（吃掉）
+        val start = c.indexOf("override fun dispatchTouchEvent(")
+        assertTrue("必须在 dispatchTouchEvent 里拦：$c", start >= 0)
+        // ⚠ 别用 substringAfter("...dispatchTouchEvent(") —— 那会把签名里
+        // 剩下的 "ev: MotionEvent)" 一起切掉，后面再拿签名去匹配就永远匹配不上。
+        val body = c.substring(start, minOf(c.length, start + 1200))
+        assertTrue("必须处理 ACTION_DOWN：\n$body", body.contains("MotionEvent.ACTION_DOWN"))
+        assertTrue("必须处理 ACTION_MOVE：\n$body", body.contains("MotionEvent.ACTION_MOVE"))
         assertTrue(
-            "onInterceptTouchEvent 必须返回 true 把事件吃掉，否则会漏给子视图：$c",
-            Regex("""override fun onInterceptTouchEvent[\s\S]*?return true\s*\}""").containsMatchIn(c)
+            "必须一律返回 true 把事件吃掉，否则会漏给 WebView：\n$body",
+            Regex("""return true\s*\n\s*\}""").containsMatchIn(body)
         )
+        assertFalse(
+            "不许调 super.dispatchTouchEvent —— 调了子视图就可能拿到事件：\n$body",
+            body.contains("super.dispatchTouchEvent")
+        )
+    }
+
+    @Test
+    fun `拖动必须绝对落位不许累加截断的增量`() {
+        // 第一版是 `p.x += dx`，dx 来自 `(rawX - lastX).toInt()`：
+        // density 3.0 的屏上一次 MOVE 位移不足 1px 就截成 0，窗口几乎不动。
+        // 现在按下记锚点、按 `锚点 + 手指位移` 一次算完，位移全程 Float。
+        val c = code("WebFloatWindowHost.kt")
+        assertTrue(
+            "位移必须以 Float **原样**传下去 —— 中途截断成 Int 就回到第一版那个毛病：\n$c",
+            c.contains("onDragDelta?.invoke(ev.rawX - downX, ev.rawY - downY)")
+        )
+        assertTrue(
+            "moveBy 必须收 Float（全程只有最后一次取整）：\n$c",
+            c.contains("private fun moveBy(targetX: Float, targetY: Float)")
+        )
+        assertTrue(
+            "落点必须是「按下时记下的窗口位置 + 手指位移」：\n$c",
+            c.contains("anchorX = cur?.x ?: 0") &&
+                c.contains("anchorY = cur?.y ?: 0") &&
+                c.contains("moveBy(anchorX + dx, anchorY + dy)")
+        )
+        assertFalse(
+            "不许出现 p.x + dx 这种累加（每步截断，误差会一路叠上去）：\n$c",
+            c.contains("p.x + dx") || c.contains("p.y + dy")
+        )
+    }
+
+    @Test
+    fun `updateViewLayout失败不许静默吞掉`() {
+        // 第一版 `runCatching { updateViewLayout }` 把失败吞了 ——
+        // 界面表现是"按住没反应"，一句日志都不打，只能靠猜。
+        val c = code("WebFloatWindowHost.kt")
+        assertFalse(
+            "不许 runCatching 包 updateViewLayout（失败会被静默吞掉）：\n$c",
+            Regex("""runCatching\s*\{\s*wm\.updateViewLayout""").containsMatchIn(c)
+        )
+        assertTrue("必须把失败原因记下来给 diag 看：$c", c.contains("layoutError = msg"))
+    }
+
+    @Test
+    fun `拖动必须有诊断计数不然下次只能猜`() {
+        // 这轮已经猜错太多次。down/move 计数能一眼分开
+        // "触摸没进窗口" 与 "拦到了但没落地"。
+        val c = code("WebFloatWindowHost.kt")
+        assertTrue("必须记 DOWN 次数：$c", c.contains("touchDowns++"))
+        assertTrue("必须记 MOVE 次数：$c", c.contains("touchMoves++"))
+        assertTrue("必须能拼出可读报告：$c", c.contains("down=\$touchDowns move=\$touchMoves"))
+        val svc = code("WebAutomationService.kt")
+        assertTrue("diag 必须报这一栏：$svc", svc.contains("float_touch"))
     }
 
     @Test
@@ -393,7 +454,7 @@ class RegressionScanTest {
     }
 
     @Test
-    fun `视口不许跟着窗口缩`() {
+    fun `视口不许跟着窗口缩而且截图不许带着缩放`() {
         // 窗口只有屏宽 1/3，但 WebView 仍按 412×892dp 排版。
         // 若把视图量成窗口大小，视口变 160dp 宽，多数手机站重排，
         // agent 学过的选择器与坐标全失效。
@@ -407,6 +468,21 @@ class RegressionScanTest {
         assertTrue(
             "缩放只能靠 scaleX/scaleY（显示层），不许改布局尺寸：$host",
             host.contains("wv.scaleX = sx") && host.contains("wv.scaleY = sy")
+        )
+        // 5.9.28：截图必须先把缩放归 1。
+        // WebView 在窗里是缩着放的，`draw()` 会不会把那个变换带进来没有保证 ——
+        // 带进来就是一张缩小 3 倍、四周留白的图。
+        val cap = svc.substringAfter("private fun captureViewport(")
+            .substringBefore("private fun hasContent(")
+        assertTrue("没找到 captureViewport 的函数体", cap.length > 300)
+        assertTrue(
+            "画之前必须把 scaleX/scaleY 归 1：\n$cap",
+            cap.contains("wv.scaleX = 1f") && cap.contains("wv.scaleY = 1f")
+        )
+        assertTrue(
+            "画完必须还原（finally 里）：\n$cap",
+            Regex("""finally\s*\{[^}]*wv\.scaleX = keepX[^}]*wv\.scaleY = keepY""")
+                .containsMatchIn(cap)
         )
     }
 

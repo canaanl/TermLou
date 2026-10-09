@@ -42,16 +42,24 @@ import android.widget.TextView
  *
  * ## 触摸：整窗拖动，一个 touch 都不给 WebView
  *
- * 用户要求"点小窗唯一的行为就是拖动"。做法是外层 [DragFrameLayout] 在
- * `onInterceptTouchEvent` 里**一律返回 true** —— WebView 收不到任何事件，
- * 点不动它、也滚不了它。这比 `FLAG_NOT_TOUCHABLE` 强：那个 flag 会让整个窗口
- * 连拖动都收不到。
+ * 用户要求"点小窗唯一的行为就是拖动"。做法见 [DragFrameLayout]：在
+ * `dispatchTouchEvent`（**事件分发的入口**）里就把事件吃掉 —— 子视图连分发
+ * 都进不去，所以 WebView 点不动、也滚不了。
+ *
+ * 5.9.27 第一版用 `onInterceptTouchEvent` + `onTouchEvent` 那套，**真机上拖不动**。
+ * 改成 `dispatchTouchEvent` 是因为它是入口，不依赖拦截与处理两个环节的配合。
  *
  * ## 与系统小窗共存
  *
  * Android 12 起，App 进入分屏/自由窗口时系统会藏掉自己的 `TYPE_APPLICATION_OVERLAY`。
  * 想共存得显式声明，那是个 `@hide` 字段（公开 SDK 里没有），只能反射设置 ——
  * 而**它到底存不存在、语义是不是这样，必须真机验**，所以见 [multiWindowOptOut]。
+ *
+ * ## 拖不动时怎么查
+ *
+ * [touchReport] 记了收到过几次 DOWN / MOVE。`diag` 原样报出来：
+ * `down=0` 说明触摸压根没进窗口（标志位/窗口类型那一层），
+ * `down>0` 说明拦到了、问题在落地那一步。
  */
 class WebFloatWindowHost(
     private val service: WebAutomationService,
@@ -78,6 +86,13 @@ class WebFloatWindowHost(
     @Volatile var lastError: String? = null
         private set
 
+    /** 收到过几次 DOWN / MOVE。**拖不动时先看这两个数** —— 见类注释。 */
+    @Volatile private var touchDowns = 0
+    @Volatile private var touchMoves = 0
+
+    /** 最近一次 `updateViewLayout` 失败的原因；`null` = 没失败过。 */
+    @Volatile private var layoutError: String? = null
+
     /** 拖动时回调新的左上角坐标（主线程）。 */
     private var onMoved: ((Int, Int) -> Unit)? = null
 
@@ -88,7 +103,14 @@ class WebFloatWindowHost(
     /** 当前挂在窗口里的 WebView —— 拆的时候要用它摘下来。 */
     private var attached: WebView? = null
 
-    @Volatile private var attachedView = false
+    /** 拖动锚点：按下那一刻窗口在哪。之后按"锚点 + 手指位移"算，不累加。 */
+    private var anchorX = 0
+    private var anchorY = 0
+
+    /** 拖动诊断：`down=N move=M` 外加落地失败的原因。 */
+    val touchReport: String
+        get() = "down=$touchDowns move=$touchMoves" +
+            (layoutError?.let { " layout_error=$it" } ?: "")
 
     // ---------- 建 / 拆 ----------
 
@@ -111,11 +133,16 @@ class WebFloatWindowHost(
         val p = WindowManager.LayoutParams(
             winW, winH,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            // **不给 NOT_TOUCHABLE** —— 那样连拖动都收不到。
+            // ⚠ **不给 NOT_TOUCHABLE** —— 那样连拖动都收不到。
             // NOT_FOCUSABLE 是为了不吃输入法焦点（否则 agent 的 type 会失灵）。
+            // NOT_TOUCH_MODAL 必须有：否则这个窗会吃掉**全屏**的触摸，
+            // 底下的 app 就一点都点不动了。
+            //
+            // 5.9.28：**去掉 LAYOUT_NO_LIMITS**。窗口只有屏宽 1/3，本来就不超屏，
+            // 这个 flag 没用；而它会让窗口无视屏幕边界与系统栏 inset ——
+            // 压在状态栏上的那一块收不到触摸，正是"拖不动"的嫌疑之一。
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -128,7 +155,17 @@ class WebFloatWindowHost(
             layoutParams = ViewGroup.LayoutParams(winW, winH)
             clipChildren = false
             setBackgroundColor(Color.TRANSPARENT)
-            onDrag = { dx, dy -> moveBy(dx, dy) }
+        }
+        // 接线：按下记锚点，移动按"锚点 + 位移"落位
+        host.onGrab = {
+            val cur = params
+            anchorX = cur?.x ?: 0
+            anchorY = cur?.y ?: 0
+            touchDowns++
+        }
+        host.onDragDelta = { dx, dy ->
+            touchMoves++
+            moveBy(anchorX + dx, anchorY + dy)
         }
         host.addView(hintView(winW, winH))
 
@@ -137,6 +174,7 @@ class WebFloatWindowHost(
             root = host
             params = p
             this.onMoved = onMoved
+            layoutError = null
             null
         } catch (e: Exception) {
             // 权限被撤销、系统拦了 —— 都走到这里。**如实说**，不假装成功
@@ -159,12 +197,13 @@ class WebFloatWindowHost(
      */
     fun hide() {
         attached = null
-        attachedView = false
         onMoved = null
         val host = root
         root = null
         params = null
         hint = null
+        touchDowns = 0
+        touchMoves = 0
         if (host == null) return
         runCatching { wm.removeViewImmediate(host) }
             .onFailure { Log.w(TAG, "removeViewImmediate failed", it) }
@@ -192,7 +231,6 @@ class WebFloatWindowHost(
             wv.scaleY = sy
             host.addView(wv)
             attached = wv
-            attachedView = true
             hint?.visibility = View.GONE
         }
     }
@@ -200,7 +238,6 @@ class WebFloatWindowHost(
     /** 把 WebView 从窗口里摘下来（页面会话销毁时）。窗口留着，空窗提示回来。 */
     fun detachWebView(wv: WebView) {
         val host = root
-        attachedView = false
         onMain {
             runCatching { host?.removeView(wv) }
             if (attached === wv) attached = null
@@ -211,46 +248,47 @@ class WebFloatWindowHost(
     /** 窗口当前在不在（`diag` 报"用户看得见一个窗吗"的依据）。 */
     val isShown: Boolean get() = root != null
 
-    /** 缩放因子 —— 截图那边要知道，得按**未缩放**的视口出图。 */
+    /** 缩放因子（诊断用：看得见缩放到底有没有挂上）。 */
     fun currentScale(): Pair<Float, Float> {
         val wv = attached ?: return 1f to 1f
         return wv.scaleX to wv.scaleY
     }
 
-    /**
-     * 截图期间把缩放**临时归 1**，画完再恢复。
-     *
-     * 不这么做的话 `draw()` 出来的是缩过的图 —— 而 agent 要的是视口原尺寸。
-     */
-    fun withoutScale(block: () -> Unit) {
-        val wv = attached
-        val sx = wv?.scaleX
-        val sy = wv?.scaleY
-        onMain {
-            if (sx != null) wv!!.scaleX = 1f
-            if (sy != null) wv!!.scaleY = 1f
-            try {
-                block()
-            } finally {
-                if (sx != null) wv!!.scaleX = sx
-                if (sy != null) wv!!.scaleY = sy
-            }
-        }
-    }
-
     // ---------- 拖动 ----------
 
-    private fun moveBy(dx: Int, dy: Int) {
+    /**
+     * 把窗口落到指定左上角。
+     *
+     * ## 为什么是"绝对落位"而不是"加一段增量"
+     *
+     * 5.9.27 第一版是 `p.x += dx`，而 `dx` 来自 `(rawX - lastX).toInt()`。
+     * 在 density 3.0 的屏上手指稍慢一点，一次 MOVE 的位移截断成 Int 就是 **0** ——
+     * 于是每次都判定成"没动"，表现就是按住拖不动。
+     *
+     * 现在改成：按下时记下窗口锚点，移动时按 `锚点 + 手指位移` 一次算出落点。
+     * 位移全程用 `Float`，只在最后取整，不累加、不截断中间值。
+     */
+    private fun moveBy(targetX: Float, targetY: Float) {
         val p = params ?: return
+        val host = root ?: return
         val dm = service.resources.displayMetrics
         val (nx, ny) = WebFloatWindow.clampToScreen(
-            p.x + dx, p.y + dy, p.width, p.height, dm.widthPixels, dm.heightPixels
+            targetX.toInt(), targetY.toInt(), p.width, p.height,
+            dm.widthPixels, dm.heightPixels
         )
         if (nx == p.x && ny == p.y) return
         p.x = nx
         p.y = ny
-        runCatching { wm.updateViewLayout(root, p) }
-            .onFailure { Log.w(TAG, "updateViewLayout failed", it) }
+        // ⚠ **不许静默吞掉失败**。第一版用 `runCatching` 包着，失败就吞 ——
+        // 界面表现是"按住没反应"，一句日志都不打，只能靠猜。
+        try {
+            wm.updateViewLayout(host, p)
+            layoutError = null
+        } catch (e: Exception) {
+            val msg = "${e.javaClass.simpleName}: ${e.message}"
+            layoutError = msg
+            Log.w(TAG, "updateViewLayout failed", e)
+        }
         onMoved?.invoke(nx, ny)
     }
 
@@ -284,8 +322,7 @@ class WebFloatWindowHost(
      * ## 为什么返回值要如实报出来
      *
      * **我不能靠记忆断言它的字段名与语义** —— 这轮已经猜错太多次。
-     * 所以：反射不到就返回 null（照常工作，系统爱藏就藏），
-     * 反射到了就报出来，让 `diag` 里有据可查。真机跑一次就知道对不对。
+     * 所以反射不到就照常工作，反射到了就报出来，让 `diag` 里有据可查。
      */
     private fun multiWindowOptOut(p: WindowManager.LayoutParams) {
         multiWindowReport = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
@@ -303,50 +340,46 @@ class WebFloatWindowHost(
 /**
  * 整窗拖动的容器。
  *
- * ## 为什么 `onInterceptTouchEvent` 一律返回 true
+ * ## 为什么拦在 `dispatchTouchEvent` 而不是 `onInterceptTouchEvent`
  *
- * 用户要求"点小窗唯一的行为就是拖动"。返回 true 意味着**所有** touch 都在这里
- * 被吃掉，WebView 一个事件都收不到 —— 点不动它，也滚不了它。
+ * `onInterceptTouchEvent` 是"要不要把事件从子视图手里抢回来"的钩子，
+ * 抢回来之后还得靠 `onTouchEvent` 接住 —— 两个环节，哪一个不配合就整个失效。
  *
- * 只在 `ACTION_DOWN` 拦是不够的：那之后 WebView 已经拿到手势了，
- * 一个滚动手势会把页面滚走。**从 DOWN 就全拦**。
+ * `dispatchTouchEvent` 是**事件分发的入口**：在这里返回 true，子视图**连分发都进不去**。
+ * 用户要求"点小窗唯一的行为就是拖动"，那就把这件事钉死在一个地方。
+ *
+ * ## 为什么位移用 Float 往上传
+ *
+ * 第一版在 `onInterceptTouchEvent` 里写的是 `(rawX - lastX).toInt()` ——
+ * density 3.0 的屏上，一次 MOVE 位移不足 1px 时截断成 0，
+ * 累加下来窗口几乎不动。这里改成 Float，由上层一次算完落点。
  */
 @SuppressLint("ClickableViewAccessibility")
 private class DragFrameLayout(context: Context) : FrameLayout(context) {
 
-    var onDrag: ((dx: Int, dy: Int) -> Unit)? = null
+    /** 按下（用来记锚点）。 */
+    var onGrab: (() -> Unit)? = null
 
-    private var lastX = 0f
-    private var lastY = 0f
-    private var dragging = false
+    /** 移动：位移是**相对按下那一下**的，单位设备像素。 */
+    var onDragDelta: ((dx: Float, dy: Float) -> Unit)? = null
 
-    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+    private var downX = 0f
+    private var downY = 0f
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        // 不调 super —— 一律自己吃掉，子视图（WebView）收不到任何事件
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                lastX = ev.rawX
-                lastY = ev.rawY
-                dragging = false
-                // 从 DOWN 就吃掉 —— 子视图（WebView）从此收不到任何事件
-                return true
+                downX = ev.rawX
+                downY = ev.rawY
+                onGrab?.invoke()
             }
             MotionEvent.ACTION_MOVE -> {
-                val dx = (ev.rawX - lastX).toInt()
-                val dy = (ev.rawY - lastY).toInt()
-                if (dx != 0 || dy != 0) {
-                    lastX = ev.rawX
-                    lastY = ev.rawY
-                    dragging = true
-                    onDrag?.invoke(dx, dy)
-                }
-                return true
+                onDragDelta?.invoke(ev.rawX - downX, ev.rawY - downY)
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                dragging = false
-                return true
-            }
+            // UP / CANCEL 什么都不用做：这里只负责拖动，窗口位置已经是最终值
+            else -> Unit
         }
         return true
     }
-
-    override fun onTouchEvent(ev: MotionEvent): Boolean = true
 }

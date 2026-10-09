@@ -888,6 +888,10 @@ class WebAutomationService : Service() {
             // **多窗口共存那行反射到底成没成** —— `@hide` 字段，必须真机验，
             // 不猜。原样报出来：`hideOverlayWindows=false` / `字段不存在（…）`
             "float_multiwindow" to floatWindow.multiWindowReport,
+            // **拖动诊断**：`down=0` = 触摸压根没进窗口（标志位/窗口类型那一层）；
+            // `down>0` = 拦到了、问题在落地那一步（layout_error 会带原因）。
+            // 5.9.27 真机上"按住拖不动"就是靠这一栏定到位置的。
+            "float_touch" to floatWindow.touchReport,
             // 5.9.9：最近一次页面探针 eval 的原始结果。分四种：
             // value:… / value:null / failed:… / error:…
             "eval_raw" to lastEvalOutcome,
@@ -1286,11 +1290,29 @@ class WebAutomationService : Service() {
         val bh = vh
         // 5.9.7：**先试 draw()**。真机窗口下 draw() 出图最稳，
         // capturePicture() 那条软件绘制的老路只作兜底。
+        //
+        // ⚠ 5.9.28：**画之前把 `scaleX/scaleY` 临时归 1**。
+        // WebView 在悬浮窗里是缩着放的（屏宽 1/3，缩放约 0.39）。
+        // `draw()` 走的是软件绘制路径，**会不会把那个变换一起带进来没有保证** ——
+        // 带进来就是一张缩小了 3 倍、四周留白的图，agent 全看走样。
+        // 与其赌，不如画之前显式归 1、画完还原。**必须在主线程上做**
+        // （本方法正是从 onMain 调进来的）。
+        val keepX = wv.scaleX
+        val keepY = wv.scaleY
         val fromDraw = runCatching {
-            Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888).also { bmp ->
-                val canvas = Canvas(bmp)
-                canvas.drawColor(Color.WHITE)
-                wv.draw(canvas)
+            if (keepX != 1f || keepY != 1f) {
+                wv.scaleX = 1f
+                wv.scaleY = 1f
+            }
+            try {
+                Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888).also { bmp ->
+                    val canvas = Canvas(bmp)
+                    canvas.drawColor(Color.WHITE)
+                    wv.draw(canvas)
+                }
+            } finally {
+                wv.scaleX = keepX
+                wv.scaleY = keepY
             }
         }.getOrNull()
         if (hasContent(fromDraw)) return fromDraw
