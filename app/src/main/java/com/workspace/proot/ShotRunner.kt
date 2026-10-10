@@ -180,7 +180,7 @@ object ShotRunner {
      * 5.9.33 只有一句 `screen N: nothing rendered (blank)`，三步全归它，
      * 于是我只能靠反推才猜出"整页图其实只有一屏高"。现在三步分开报。
      *
-     * @param step 1/2/3，见类注释的表
+     * @param step 1/2/3/4，见类注释的表
      * @param screenNo 第几屏（1 起）
      * @param yDevice 这一屏在文档里的起点（设备像素）
      */
@@ -189,6 +189,9 @@ object ShotRunner {
         return when (step) {
             1 -> "screen $screenNo: the page would not scroll to y=$yDevice$tail"
             2 -> "screen $screenNo: the window showed nothing new at y=$yDevice$tail"
+            // 第 4 步是 5.9.35 加的：画面卡住不更新时会拍出**和上一屏一模一样**的图。
+            // 那种图"有内容"、判空查不出来，不挡它就会当成正常的一屏交出去。
+            4 -> "screen $screenNo: the capture is identical to the previous screen at y=$yDevice$tail"
             else -> "screen $screenNo: the capture came back blank at y=$yDevice$tail"
         }
     }

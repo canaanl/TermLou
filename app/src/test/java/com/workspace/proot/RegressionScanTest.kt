@@ -467,7 +467,7 @@ class RegressionScanTest {
         val walk = c.substringAfter("private fun walkScreens(")
             .substringBefore("private class Screens(")
         assertTrue("没抓到 walkScreens 的函数体", walk.length > 600)
-        for (step in listOf(1, 2, 3)) {
+        for (step in listOf(1, 2, 4)) {
             assertTrue(
                 "第 $step 步的失败必须报出来：\n$walk",
                 walk.contains("ShotRunner.failure($step,")
@@ -641,33 +641,170 @@ class RegressionScanTest {
         )
     }
 
+    /**
+     * ⚠ **5.9.35 退役**：原来那条 `I2_每屏必须等渲染跟上` 断言的是
+     * "源码里出现过 `observer.registerFrameCommitCallback(`"。
+     *
+     * 它**通过了** —— 而那行代码被包在一个把主线程锁死的循环里，回调永远等不到。
+     * 这条锁不是在保护我，是在**给一个坏设计盖章**；我拿它当证据说
+     * "帧提交机制已就位"，实际是反的。
+     *
+     * **扫源码的锁只能验字样，验不了"它有没有用"。**
+     * 下面这组锁换了个角度：锁**调用位置**（谁在哪根线程上跑），
+     * 那才是这条 bug 真正所在的地方。
+     */
+
     @Test
-    fun `I2_每屏必须等渲染跟上不许只剩固定sleep`() {
-        // 固定 700ms 是拍出来的数字，对"页面有多重"一无所知 —— 第 3 屏就追不上了。
-        // 现在必须**等到画面真的稳住**为止：等帧提交 + 探针指纹校验，两者都要。
+    fun `等画面期间不许占住主线程`() {
+        // **5.9.35 修的真 bug。** awaitScreenStable 一旦被 `onMain { }` 包住，
+        // 循环里的 Thread.sleep 就全在主线程上睡；
+        // 而网页要把新画面交给主线程画 —— 主线程在睡，它永远画不出来。
+        // 真机症状：第 1 屏正常（内容早就画好），第 2 屏起整片空白 4 秒。
         val svc = code("WebAutomationService.kt")
         assertFalse(
-            "固定等待必须删掉（SHOT_SEGMENT_WAIT_MS 已作废）：\n$svc",
-            svc.contains("SHOT_SEGMENT_WAIT_MS")
+            "等待画面的循环不许被整个丢进主线程：\n$svc",
+            svc.contains("onMain { awaitScreenStable(")
         )
-        assertTrue(
-            "必须等帧提交：\n$svc",
-            // ⚠ 必须带 `observer.` 前缀：`unregisterFrameCommitCallback` 里
-            // 也含 `registerFrameCommitCallback` 这段子串，只查方法名会漏。
-            svc.contains("observer.registerFrameCommitCallback(")
+        assertFalse(
+            "等待画面的循环不许被整个丢进主线程：\n$svc",
+            Regex("""onMain\s*\{\s*awaitScreenStable""").containsMatchIn(svc)
         )
-        assertTrue(
-            "必须有上限，不许死等：\n$svc",
-            svc.contains("SHOT_FRAME_BUDGET_MS")
-        )
-        // 必须放在循环里 —— 等一次不算"等到"
+    }
+
+    @Test
+    fun `等待循环里的sleep只能发生在工作线程`() {
+        // onMain 是"进去就出来"的短调用；awaitScreenStable 里却有好几个 sleep。
+        // 只要它整体在主线程上跑，主线程就是被连续按住。
+        val svc = code("WebAutomationService.kt")
         val body = svc.substringAfter("private fun awaitScreenStable(")
-            .substringBefore("private fun awaitFrameCommit(")
-        assertTrue("没抓到 awaitScreenStable 的函数体", body.length > 400)
+            .substringBefore("private fun armFrameCommit(")
+        assertTrue("没抓到 awaitScreenStable 的函数体", body.length > 800)
         assertTrue(
-            "必须在循环里轮询到画面稳为止：\n$body",
-            body.contains("while (true)") && body.contains("fingerprint")
+            "里面必须真的有 sleep（等待发生在这一层）：\n$body",
+            body.contains("Thread.sleep(SHOT_FRAME_POLL_MS)")
         )
+        // 关键判据：**sleep 不能出现在任何 onMain 调用内部**
+        for (m in Regex("""onMain\s*\{[^}]*\}""").findAll(body)) {
+            assertFalse(
+                "主线程调用里不许 sleep —— 那是把主线程按住：\n${m.value}",
+                m.value.contains("Thread.sleep")
+            )
+        }
+    }
+
+    @Test
+    fun `等帧的地方不许阻塞`() {
+        // 帧回调是**主线程派发**的。调用它的时候已经在主线程上了，
+        // latch.await 就是在堵着主线程等主线程 —— 注定等不到，只会白占满超时。
+        // 5.9.31–5.9.34 就是这么写的：每轮白堵 200ms。
+        val svc = code("WebAutomationService.kt")
+        val arm = svc.substringAfter("private fun armFrameCommit(")
+            .substringBefore("private fun disarmFrameCommit(")
+        assertTrue("没抓到 armFrameCommit 的函数体", arm.length > 150)
+        assertFalse(
+            "注册帧回调的函数里不许 await/join/sleep：\n$arm",
+            Regex("""\.(await|join)\(|\bThread\.sleep""").containsMatchIn(arm)
+        )
+        assertFalse(
+            "旧那个阻塞式等帧函数不许再存在：\n$svc",
+            svc.contains("private fun awaitFrameCommit(")
+        )
+    }
+
+    @Test
+    fun `这屏不许和上一屏一样`() {
+        // 5.9.34 把这条删了。画面卡住不更新时探针拍到的是**旧内容**，
+        // "连两次相同"会误判成"画完了"，于是交出一张和上一屏一模一样的图 ——
+        // 那张图"有内容"，判空查不出来，agent 会以为翻页成功了。
+        val svc = code("WebAutomationService.kt")
+        val walk = svc.substringAfter("private fun walkScreens(")
+            .substringBefore("private class Screens(")
+        assertTrue("没抓到 walkScreens 的函数体", walk.length > 600)
+        assertTrue(
+            "必须拿上一屏的指纹做比对：\n$walk",
+            walk.contains("WebShotSampler.sameContent(prevPrint, ready.print)")
+        )
+        assertTrue(
+            "必须在写盘**之前**挡下来：\n$walk",
+            walk.indexOf("sameContent(prevPrint") in 1 until walk.indexOf("writer.write(screenNo"),
+        )
+    }
+
+    @Test
+    fun `报错必须对应真正失败的那一步`() {
+        // 5.9.34 的错：探针白 → 返回 hasContent=false → 报第 3 步
+        // "the capture came back blank"。可第 3 步**根本没被调用**，
+        // 白的是第 2 步的探针。标签贴错，我只能靠反推才猜出原因。
+        val walk = code("WebAutomationService.kt")
+            .substringAfter("private fun walkScreens(")
+            .substringBefore("private class Screens(")
+        assertTrue("没抓到 walkScreens 的函数体", walk.length > 600)
+        assertFalse(
+            "一直是白的那条路径不许报第 3 步（capture 压根没被调用）：\n$walk",
+            Regex("""!\w+\.hasContent[\s\S]{0,400}?ShotRunner\.failure\(3,""").containsMatchIn(walk)
+        )
+        assertTrue(
+            "它必须报第 2 步：\n$walk",
+            Regex("""!\w+\.hasContent[\s\S]{0,400}?ShotRunner\.failure\(2,""").containsMatchIn(walk)
+        )
+    }
+
+    @Test
+    fun `报给agent的尺寸必须是真实位图尺寸`() {
+        // captureScreen 里是 vw.coerceAtMost(wv.width) —— 视图没量好时位图比参数小，
+        // 报参数就等于告诉 agent 一个对不上的尺寸。
+        val fin = code("WebAutomationService.kt")
+            .substringAfter("private fun finishShot(")
+            .substringBefore("截不出内容时的说法")
+        assertTrue("没抓到 finishShot 的函数体", fin.length > 400)
+        assertTrue(
+            "width 必须来自真实位图：\n$fin",
+            fin.contains("val shotW = if (walk.shotW > 0)")
+        )
+        assertTrue(
+            "height 必须来自真实位图：\n$fin",
+            fin.contains("val shotH = if (walk.shotH > 0)")
+        )
+        assertFalse(
+            "不许再直接把视口参数报出去：\n$fin",
+            Regex(""""width" to vw,""").containsMatchIn(fin)
+        )
+    }
+
+    @Test
+    fun `长页面不许因为失败而被报成一屏`() {
+        // 5.9.34 的 isLong = files.size > 1 || walk.measuredPageHeight > vh，
+        // 而**第 1 屏就失败时 measuredPageHeight 还是 0** ——
+        // 明明是 2025px 的长页面，却报 page_height: 756, full_page: false。
+        val fin = code("WebAutomationService.kt")
+            .substringAfter("private fun finishShot(")
+            .substringBefore("截不出内容时的说法")
+        assertTrue("没抓到 finishShot 的函数体", fin.length > 400)
+        assertTrue(
+            "页高必须取两个来源里大的那个：\n$fin",
+            fin.contains("val knownPageHeight = maxOf(walk.measuredPageHeight, measuredPageHeightPx)"),
+        )
+        assertFalse(
+            "isLong 不许只看拍到的张数：\n$fin",
+            fin.contains("val isLong = files.size > 1 || walk.measuredPageHeight > vh"),
+        )
+    }
+
+    @Test
+    fun `诊断值必须来自本趟而不是上一次`() {
+        // 5.9.34：lastScreenWaits 只在"走完"那行赋值，所有失败路径直接 return，
+        // 于是 diag 里显示的是上一次跑出来的旧数 —— 越看越误导。
+        val svc = code("WebAutomationService.kt")
+        val walk = svc.substringAfter("private fun walkScreens(")
+            .substringBefore("private class Screens(")
+        assertTrue(
+            "必须有一个收尾函数给每条返回路径赋值：\n$walk",
+            walk.contains("fun done(s: Screens)")
+        )
+        val returns = Regex("""return Screens\(""").findAll(walk).count()
+        val viaDone = Regex("""return done\(Screens\(""").findAll(walk).count()
+        assertEquals("不许有绕过 done() 的裸 return —— 那条路上 lastScreenWaits 是上一次的旧值", 0, returns)
+        assertTrue("至少要有一条 return 走 done()（自检：判据没写错）", viaDone > 0)
     }
 
     @Test
@@ -677,12 +814,12 @@ class RegressionScanTest {
         val c = code("WebAutomationService.kt")
         assertTrue(
             "必须把 listener 存成变量再传：\n$c",
-            c.contains("val listener: Runnable = Runnable {")
+            c.contains("val l = Runnable {")
         )
         assertTrue(
             "注册与注销必须用同一个变量：\n$c",
-            c.contains("observer.registerFrameCommitCallback(listener)") &&
-                c.contains("observer.unregisterFrameCommitCallback(listener)")
+            c.contains("observer.registerFrameCommitCallback(l)") &&
+                c.contains("observer.unregisterFrameCommitCallback(l)")
         )
     }
 
@@ -879,7 +1016,7 @@ class RegressionScanTest {
         assertTrue("没找到 walkScreens 的函数体", body.length > 600)
         assertTrue(
             "某屏画不出来必须带屏号报错（不能悄悄跳过继续）：\n$body",
-            body.contains("ShotRunner.failure(3, screenNo, yDevice)")
+            body.contains("ShotRunner.failure(2, screenNo, yDevice")
         )
         assertFalse(
             "空图那一屏不许再报那句糊在一起的话：\n$body",
