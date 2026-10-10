@@ -68,6 +68,44 @@ object WebScrollShot {
         val shots: Int get() = segments.size
     }
 
+    // ---------- 滚动用的 JS（可单测） ----------
+
+    /**
+     * 滚动文档到指定 CSS 像素。
+     *
+     * ## 为什么必须走 JS，不能用 `View.scrollTo`
+     *
+     * `wv.scrollTo(0, y)` 改的是**视图自己的滚动偏移**，WebView 的**文档滚动**
+     * 它根本不管 —— 5.9.28 整页截图只有第一屏、后面全白，就是栽在这里。
+     *
+     * 佐证：`:probe` v8 扫过 11 种"踢一帧"的办法，**`View.scrollTo` 就在里面，
+     * 22 次全灭** —— 这条路对 WebView 不通，当时已经验过了。
+     *
+     * 文档滚动只有一条正路：`window.scrollTo`。
+     */
+    fun scrollToJs(cssY: Int): String =
+        "(function(){try{window.scrollTo(0,${cssY.coerceAtLeast(0)});" +
+            "return String(Math.round(window.pageYOffset||window.scrollY||0));}" +
+            "catch(e){return 'ERR:'+e}})()"
+
+    /** 读回当前文档滚动位置（CSS px）。用于**确认真的滚到位**，不是猜。 */
+    const val SCROLL_Y_JS =
+        "(function(){try{return String(Math.round(window.pageYOffset||window.scrollY||0));}" +
+            "catch(e){return 'ERR:'+e}})()"
+
+    /** 设备像素 → CSS 像素。**别用 `density.toInt()`** —— 2.75/3.5/2.625 会截错。 */
+    fun toCss(px: Int, density: Float): Int =
+        if (density <= 0f) px else Math.round(px / density.toDouble()).toInt()
+
+    /**
+     * 滚动到位没有。
+     *
+     * 容差 2 CSS px：浏览器滚动吸附（scroll-snap）、子像素布局都可能差一两像素，
+     * 那不是"没滚到"。
+     */
+    fun scrollLanded(targetCss: Int, actualCss: Int, toleranceCss: Int = 2): Boolean =
+        Math.abs(targetCss.toLong() - actualCss.toLong()) <= toleranceCss.toLong()
+
     /**
      * 分段方案。
      *

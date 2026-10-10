@@ -352,6 +352,114 @@ class RegressionScanTest {
         )
     }
 
+    // ---------- 5.9.29：整页截图必须滚文档，不能滚视图 ----------
+
+    @Test
+    fun `整页截图不许用View的scrollTo`() {
+        // 5.9.28 的根因：`wv.scrollTo(0, y)` 改的是**视图**的滚动偏移，
+        // WebView 的**文档滚动**它根本不管 —— 文档压根没滚。
+        // 于是第一段画的还是首屏（对的），后面每段都只是把同一个视图往上挪，
+        // 露出来的是渲染内容之下的空白 → 真机上"只有第一屏，后面全白"。
+        //
+        // 佐证：`:probe` v8 扫过 11 种"踢一帧"的办法，**`View.scrollTo` 就在里面、
+        // 22 次全灭** —— 这条路对 WebView 不通，当时已经验过了。
+        val c = code("WebAutomationService.kt")
+        assertFalse(
+            "整页分段不许用 View.scrollTo（那是视图偏移，不是文档滚动）：\n$c",
+            c.contains("wv.scrollTo(")
+        )
+        assertFalse(
+            "也不许拿 wv.scrollY 当文档滚动位置：\n$c",
+            Regex("""wv\.scrollY""").containsMatchIn(c)
+        )
+    }
+
+    @Test
+    fun `整页分段必须用JS滚文档并回读确认`() {
+        // `window.scrollTo` 是个**请求**：页面可以 scroll-snap 改掉、可以 JS 拦掉、
+        // 可以在平滑滚动动画里还没到位。只看"JS 有没有回值"不算数，
+        // 必须**回读 window.pageYOffset** 才知道真到没到。
+        val c = code("WebAutomationService.kt")
+        assertTrue(
+            "必须走 JS 滚动：\n$c",
+            c.contains("WebScrollShot.scrollToJs(")
+        )
+        assertTrue(
+            "必须回读滚动位置：\n$c",
+            c.contains("WebScrollShot.SCROLL_Y_JS")
+        )
+        assertTrue(
+            "必须拿回读值判到位（scrollLanded），不能只看 JS 回过值：\n$c",
+            c.contains("WebScrollShot.scrollLanded(")
+        )
+    }
+
+    @Test
+    fun `scrollDocumentTo里的每个return true都必须由scrollLanded把门`() {
+        // 这条锁的是"回读校验"本身。
+        // 5.9.29 第一版只锁了"文件里出现过 scrollLanded"——
+        // 注入一行 `if (nowCss >= 0) return true`（回读到任意值就当成功）照样全绿，
+        // 那是**空跑**：判据存在，但它不再把门。
+        //
+        // 精确判据：`scrollDocumentTo` 里**每一处 `return true` 所在行**
+        // 都必须同时出现 `scrollLanded`。
+        val c = code("WebAutomationService.kt")
+        val body = c.substringAfter("private fun scrollDocumentTo(")
+            .substringBefore("private fun readScrollCss(")
+        assertTrue("没找到 scrollDocumentTo 的函数体", body.length > 300)
+
+        val trueLines = body.lines().filter { it.contains("return true") }
+        assertTrue(
+            "scrollDocumentTo 里一处 return true 都没有 —— 判据写错了：\n$body",
+            trueLines.isNotEmpty()
+        )
+        for (line in trueLines) {
+            assertTrue(
+                "这一行 return true 没有由 scrollLanded 把门 —— 页面滚不动也会被当成功：" +
+                    "\n  ${line.trim()}",
+                line.contains("scrollLanded")
+            )
+        }
+    }
+
+    @Test
+    fun `滚不到位不许交半张图`() {
+        // 页面劫持滚动、滚动中高度变了 —— 这时候拼出来的长图是残的。
+        // 5.9.9 那次的教训：半空白图以 ok:true + full_page:true 出去，
+        // agent 会以为那就是整页。这比修不好更糟。
+        val svc = source("WebAutomationService.kt")
+        val body = svc.substringAfter("private fun captureByScrolling(")
+            .substringBefore("private fun scrollDocumentTo(")
+        assertTrue("没找到 captureByScrolling 的函数体", body.length > 400)
+        assertTrue(
+            "滚不到位必须整体失败（recycle + return null），不能接着往下拼：\n$body",
+            Regex("""scrollDocumentTo\(wv, targetCss, cancelled\)\)[\s\S]{0,200}?full\.recycle\(\)[\s\S]{0,80}?return null""")
+                .containsMatchIn(body)
+        )
+    }
+
+    @Test
+    fun `截完必须用JS滚回原位且原位是用JS读的`() {
+        // `wv.scrollY` 读的是视图偏移，拿它当"原位"会存下一个错的值，
+        // 还原到错的地方 —— 页面就停在长图底部，click/type 的坐标全错。
+        // ⚠ 这里必须用 code()（剥掉 KDoc）而不是 source()：
+        // 类注释里正引着 `wv.scrollTo(0, y)` 那句"这就是 5.9.28 的错"，
+        // 用 source() 会把那段说明当成代码扫出来。
+        val body = code("WebAutomationService.kt")
+            .substringAfter("private fun opShot(").substringBefore("SHOT_NOTHING =")
+        assertTrue("必须用 JS 读原位：\n$body", body.contains("readScrollCss(wv, cancelled)"))
+        val finallyAt = body.indexOf("finally {")
+        assertTrue("opShot 里没有 finally —— 截图一出问题滚动位置就回不去了", finallyAt >= 0)
+        assertTrue(
+            "finally 里必须用 JS 滚回原位：\n$body",
+            body.substring(finallyAt).contains("scrollDocumentTo(wv, it, cancelled)")
+        )
+        assertFalse(
+            "不许用 View 的滚动去还原：\n$body",
+            Regex("""wv\.scroll(To|Y)""").containsMatchIn(body)
+        )
+    }
+
     // ---------- 5.9.27：悬浮窗 ----------
 
     @Test
@@ -507,9 +615,9 @@ class RegressionScanTest {
         assertTrue("没找到 opShot 的函数体", body.isNotEmpty())
         val finallyAt = body.indexOf("finally {")
         assertTrue("opShot 里没有 finally —— 截图一出问题滚动位置就回不去了", finallyAt >= 0)
-        val restoreAt = body.indexOf("scrollTo(wv, originScroll)", finallyAt)
+        val restoreAt = body.indexOf("scrollDocumentTo(wv, it, cancelled)", finallyAt)
         assertTrue(
-            "finally 里必须滚回原来的位置（originScroll）",
+            "finally 里必须滚回原来的位置",
             restoreAt > finallyAt
         )
     }

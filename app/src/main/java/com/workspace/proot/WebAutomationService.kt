@@ -1127,11 +1127,11 @@ class WebAutomationService : Service() {
 
         // ⚠ **必须记住原来的滚动位置并还原。** 不还原的话页面就停在长图底部，
         // 后面 click/type 按视口坐标算的位置全错 —— 那是比截不到图更糟的错。
-        val originScroll = onMain { wv.scrollY } ?: 0
+        val originCss = readScrollCss(wv, cancelled)
         val out = try {
-            captureByScrolling(wv, plan, shotPlan, cancelled)
+            captureByScrolling(wv, plan, shotPlan, density, cancelled)
         } finally {
-            onMain { scrollTo(wv, originScroll) }
+            originCss?.let { scrollDocumentTo(wv, it, cancelled) }
         }
         val stitched = out
             ?: return WebProtocol.errJson(SHOT_NOTHING)
@@ -1145,20 +1145,31 @@ class WebAutomationService : Service() {
     /**
      * 滚动分段 → 逐段画 → 拼成一张长图。
      *
-     * ## 为什么每段都要"滚过去再等一等"
+     * ## 顺序是有讲究的
      *
-     * `scrollTo` 只是改了个值，**内容是合成器异步画的**。紧接着画拿到的还是
-     * 上一段（真机上就是一片底色）。所以每段之后要等一帧真画出来。
+     * 1. **JS 滚动** —— `window.scrollTo(0, cssY)`，滚的是**文档**。
+     *    2. **回读 `window.pageYOffset` 确认真的到位** —— 不是等固定时间，是等它真到。
+     *    3. **等一帧** —— 内容是合成器异步画的，滚到位 ≠ 已经画出来。
+     *    4. **画**。
      *
-     * 这里用 [SHOT_SEGMENT_WAIT_MS] 固定等，而不是"poll 到内容变了才画"——
-     * 后者在整页底部本来就白的地方会永远等不到，退化成超时。
+     * 悬浮窗会跟着一起滚：**你在窗里看着它滚到哪里，那一段就截哪里**。
      *
-     * @return 拼好的长图；任一段彻底画不出来就返回 null（不交半张图）
+     * ## 5.9.29 修的根因
+     *
+     * 5.9.28 这里用的是 `wv.scrollTo(0, y)` —— 那是**视图**的滚动偏移，
+     * WebView 的**文档滚动**它根本不管。于是文档压根没滚：第一段画的还是首屏（对的），
+     * 后面每一段都只是把同一个视图往上挪，露出来的是渲染内容之下的空白 → **全白**。
+     *
+     * 佐证：`:probe` v8 扫过 11 种"踢一帧"的办法，**`View.scrollTo` 就在里面、
+     * 22 次全灭** —— 这条路对 WebView 不通，当时已经验过了。
+     *
+     * @return 拼好的长图；任一段滚不到位或画不出来就返回 null（不交半张图）
      */
     private fun captureByScrolling(
         wv: WebView,
         plan: WebShotPlan.Plan,
         shotPlan: WebScrollShot.Plan,
+        density: Float,
         cancelled: () -> Boolean
     ): Bitmap? {
         val scale = plan.scale
@@ -1173,7 +1184,9 @@ class WebAutomationService : Service() {
                 full.recycle()
                 return null
             }
-            onMain { scrollTo(wv, seg.scrollY) } ?: run {
+            val targetCss = WebScrollShot.toCss(seg.scrollY, density)
+            if (!scrollDocumentTo(wv, targetCss, cancelled)) {
+                // 滚不到位（页面劫持滚动 / 高度变了）—— 如实失败，不交半张图
                 full.recycle()
                 return null
             }
@@ -1207,13 +1220,37 @@ class WebAutomationService : Service() {
     }
 
     /**
-     * 滚到指定位置（文档坐标，设备像素）。
+     * 把**文档**滚到指定 CSS 像素，并回读确认真的到位。
      *
-     * `scrollTo` 走的是 View 的滚动 —— WebView 内部页面滚动同样吃这套，
-     * 所以 agent 之后 `click`/`type` 用的视口坐标与截图一致。
+     * @return 到位（容差 2 CSS px）返回 true；滚不动 / 超时 / 页面报错返回 false
      */
-    private fun scrollTo(wv: WebView, y: Int) {
-        wv.scrollTo(0, y.coerceAtLeast(0))
+    private fun scrollDocumentTo(
+        wv: WebView, targetCss: Int, cancelled: () -> Boolean
+    ): Boolean {
+        // 先看现在在哪：已经在那儿就别白等一轮
+        val startCss = readScrollCss(wv, cancelled) ?: return false
+        if (WebScrollShot.scrollLanded(targetCss, startCss)) return true
+
+        val asked = evalInPage(wv, WebScrollShot.scrollToJs(targetCss), cancelled)
+        outcomeError(asked)?.let { return false }
+
+        // ⚠ **必须回读，不能只看 JS 有没有回值。** `window.scrollTo` 是个请求：
+        // 页面可以用 scroll-snap 改掉、可以用 JS 拦掉、可以在滚动动画里还没到位。
+        // 回读到的才是**真的**滚动位置。
+        for (attempt in 1..SCROLL_SETTLE_TRIES) {
+            if (cancelled()) return false
+            val nowCss = readScrollCss(wv, cancelled) ?: return false
+            if (WebScrollShot.scrollLanded(targetCss, nowCss)) return true
+            runCatching { Thread.sleep(SCROLL_SETTLE_WAIT_MS) }
+        }
+        return false
+    }
+
+    /** 读当前文档滚动位置（CSS px）。读不到返回 null。 */
+    private fun readScrollCss(wv: WebView, cancelled: () -> Boolean): Int? {
+        val outcome = evalInPage(wv, WebScrollShot.SCROLL_Y_JS, cancelled)
+        outcomeError(outcome)?.let { return null }
+        return outcome.valueOrNull()?.trim()?.toIntOrNull()
     }
 
     /**
@@ -1250,13 +1287,19 @@ class WebAutomationService : Service() {
         "shot failed (nothing rendered) — wait for the page, then retry"
 
     /**
-     * 每滚一段之后等多久再画（5.9.27）。
+     * 滚动**回读**确认的轮询策略（5.9.29）。
      *
-     * `scrollTo` 只改值，**内容是合成器异步画的** —— 紧接着画拿到的还是上一段。
+     * `window.scrollTo` 是个**请求**：页面可以用 scroll-snap 改掉、可以用 JS 拦掉、
+     * 可以在平滑滚动动画里还没到位。所以必须回读 `window.pageYOffset` 才知道真到没到。
+     */
+    private val SCROLL_SETTLE_TRIES = 8
+    private val SCROLL_SETTLE_WAIT_MS = 120L
+
+    /**
+     * 每滚一段之后等多久再画。
      *
-     * 用固定等待而不是"轮询到内容变了才画"：后者在**本来就白**的地方
-     * （长页面末尾的留白）会永远等不到，退化成超时。
-     * 700ms 是探针里"等一帧"那条路的量级，够快也够稳。
+     * 滚动**回读确认**之后还要再等 —— 位置对了不等于**画出来了**，
+     * 内容是合成器异步产的。700ms 是探针里"等一帧"那条路的量级。
      */
     private val SHOT_SEGMENT_WAIT_MS = 700L
 

@@ -1,6 +1,7 @@
 package com.workspace.proot
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -150,6 +151,71 @@ class WebScrollShotTest {
                 assertTrue("尺寸得为正", p.bitmapWidth >= 1 && p.bitmapHeight >= 1)
             }
         }
+    }
+
+    // ---------- 滚动：必须走 JS，不能走 View.scrollTo ----------
+
+    @Test
+    fun `滚动脚本必须滚的是文档`() {
+        val js = WebScrollShot.scrollToJs(1200)
+        assertTrue("必须用 window.scrollTo（文档滚动）：$js", js.contains("window.scrollTo(0,1200)"))
+        assertFalse(
+            "不许出现 View 层的东西：$js",
+            js.contains("scrollTo(0,") && js.contains("document.documentElement.scrollTop")
+        )
+    }
+
+    @Test
+    fun `滚动脚本自己会回读一次位置`() {
+        // 第一次回读能省掉大部分轮询 —— 同步滚动的页面 scrollTo 之后立刻就位。
+        val js = WebScrollShot.scrollToJs(800)
+        assertTrue("滚动脚本自己也要回读 pageYOffset：$js", js.contains("pageYOffset"))
+    }
+
+    @Test
+    fun `滚动脚本不许有换行`() {
+        // `evaluateJavascript` 回的是 JSON 字符串，脚本里带真实换行会被当字符串内容。
+        val js = WebScrollShot.scrollToJs(500)
+        assertFalse("不能有换行：$js", js.contains("\n"))
+        assertFalse(WebScrollShot.SCROLL_Y_JS.contains("\n"))
+    }
+
+    @Test
+    fun `负数滚动位置被兜到零`() {
+        assertTrue(WebScrollShot.scrollToJs(-100).contains("window.scrollTo(0,0)"))
+    }
+
+    @Test
+    fun `设备像素转CSS像素用浮点密度`() {
+        // 真机 density=3.0。`density.toInt()` 在 2.75/3.5/2.625 上会截错。
+        assertEquals(400, WebScrollShot.toCss(1200, 3.0f))
+        assertEquals(343, WebScrollShot.toCss(1200, 3.5f))
+        assertEquals(436, WebScrollShot.toCss(1200, 2.75f))
+    }
+
+    @Test
+    fun `密度为零或负时按1比1处理不崩`() {
+        for (d in listOf(0f, -1f, -3.5f)) {
+            assertEquals("密度 $d 得原样返回", 1200, WebScrollShot.toCss(1200, d))
+        }
+    }
+
+    @Test
+    fun `滚动到位的判定留了两像素容差`() {
+        // scroll-snap 与子像素布局都会差一两像素，那不算"没滚到"。
+        assertTrue("正好到位", WebScrollShot.scrollLanded(1000, 1000))
+        assertTrue("差 1 像素算到位", WebScrollShot.scrollLanded(1000, 1001))
+        assertTrue("差 2 像素算到位", WebScrollShot.scrollLanded(1000, 998))
+        assertFalse("差 3 像素就不算", WebScrollShot.scrollLanded(1000, 1003))
+        assertFalse("差很多更不算", WebScrollShot.scrollLanded(1000, 0))
+    }
+
+    @Test
+    fun `回读脚本要能同时兼容pageYOffset和scrollY`() {
+        val js = WebScrollShot.SCROLL_Y_JS
+        assertTrue("老浏览器只有 scrollY：$js", js.contains("scrollY"))
+        assertTrue("标准写法是 pageYOffset：$js", js.contains("pageYOffset"))
+        assertTrue("必须包 try：滚动可能被页面拦掉", js.contains("try"))
     }
 
     @Test

@@ -332,7 +332,7 @@ class ShotViewportRestoreTest {
         val finallyAt = body.indexOf("finally {")
         assertTrue("opShot 里没有 finally —— 截图一出问题滚动位置就回不去了", finallyAt >= 0)
 
-        val restoreAt = body.indexOf("scrollTo(wv, originScroll)", finallyAt)
+        val restoreAt = body.indexOf("scrollDocumentTo(wv, it, cancelled)", finallyAt)
         assertTrue(
             "finally 里必须滚回原来的位置 —— 不还原的话后面 click/type 的坐标全错",
             restoreAt > finallyAt
@@ -343,9 +343,9 @@ class ShotViewportRestoreTest {
     fun `原位必须在开滚之前先记下来`() {
         val src = serviceSource()
         val body = src.substringAfter("private fun opShot(").substringBefore("SHOT_NOTHING =")
-        val saveAt = body.indexOf("originScroll")
+        val saveAt = body.indexOf("readScrollCss(wv, cancelled)")
         val tryAt = body.indexOf("try {")
-        assertTrue("opShot 里没有 originScroll —— 压根没记原位", saveAt >= 0)
+        assertTrue("opShot 里没读原位 —— 压根没记", saveAt >= 0)
         assertTrue(
             "必须在 try 之前记原位，否则记到的已经是被滚过的位置",
             saveAt in 0 until tryAt
