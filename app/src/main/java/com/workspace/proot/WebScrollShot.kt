@@ -93,6 +93,75 @@ object WebScrollShot {
         "(function(){try{return String(Math.round(window.pageYOffset||window.scrollY||0));}" +
             "catch(e){return 'ERR:'+e}})()"
 
+    /**
+     * 一次拿全页面度量（5.9.32）。
+     *
+     * ## 为什么要它
+     *
+     * 整页截图必须**边走边量**：`maxScroll` 每拍完一屏就重读一次。
+     * 真机实测两次 `shot` 的 `page_height` 是 **6621 → 7443** —— 页面在拍摄途中
+     * 还在长高（懒加载、评论展开）。原先按开拍前那个数算好段数与滚动位置，
+     * 那份计划**从一开始就是过期的**。
+     *
+     * 一次 eval 把四个值都拿回来，省掉三趟往返。
+     */
+    const val METRICS_JS =
+        "(function(){try{var d=document.documentElement||{},b=document.body||{};" +
+            "var h=Math.max(d.scrollHeight||0,b.scrollHeight||0);" +
+            "return JSON.stringify({h:Math.round(h)," +
+            "y:Math.round(window.pageYOffset||window.scrollY||0)," +
+            "vh:window.innerHeight||0,ready:String(document.readyState||'')});}" +
+            "catch(e){return ''}})()"
+
+    /** `document.readyState`。`'complete'` = 页面连同资源都加载完了。 */
+    const val READY_STATE_JS =
+        "(function(){try{return String(document.readyState||'')}catch(e){return ''}})()"
+
+    /**
+     * 解析 [METRICS_JS] 的返回（纯逻辑，可单测）。
+     *
+     * 解析不出来返回 null —— 调用方**必须**分得清"没量到"与"量到 0"：
+     * 当成 0 会把"到底了"判成真，于是只拍一屏就停。
+     */
+    fun parseMetrics(raw: String?): Metrics? {
+        val s = raw?.trim().orEmpty()
+        if (s.isEmpty()) return null
+        val o = runCatching { org.json.JSONObject(s) }.getOrNull() ?: return null
+        if (!o.has("h")) return null
+        return Metrics(
+            pageHeightCss = o.optInt("h", 0).coerceAtLeast(0),
+            scrollYCss = o.optInt("y", 0).coerceAtLeast(0),
+            viewportHCss = o.optInt("vh", 0).coerceAtLeast(0),
+            readyState = o.optString("ready", "")
+        )
+    }
+
+    /** [METRICS_JS] 的解析结果（CSS px）。 */
+    data class Metrics(
+        val pageHeightCss: Int,
+        val scrollYCss: Int,
+        val viewportHCss: Int,
+        val readyState: String
+    ) {
+        /**
+         * 能滚到的最远处。页面比视口矮时是 0。
+         *
+         * ⚠ **每拍完一屏都要重读** —— 页面可能又长高了。
+         */
+        val maxScrollCss: Int get() = (pageHeightCss - viewportHCss).coerceAtLeast(0)
+    }
+
+    /**
+     * 下���屏的起点；返回 `null` 表示**已经到底了**。
+     *
+     * "到底了"是**实测**的（`next <= current`），不是"拍够 N 屏"——
+     * 段数是走出来的，不是算出来的。
+     */
+    fun nextScreenTop(currentPx: Int, stepPx: Int, maxScrollPx: Int): Int? {
+        val next = (currentPx.toLong() + stepPx).coerceAtMost(maxScrollPx.toLong()).toInt()
+        return if (next <= currentPx) null else next
+    }
+
     /** 设备像素 → CSS 像素。**别用 `density.toInt()`** —— 2.75/3.5/2.625 会截错。 */
     fun toCss(px: Int, density: Float): Int =
         if (density <= 0f) px else Math.round(px / density.toDouble()).toInt()

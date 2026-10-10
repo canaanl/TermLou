@@ -180,6 +180,15 @@ class WebAutomationService : Service() {
             // 两个字段自相矛盾（5.9.4 真机复查指出）。
             progress = 100
             pageReady = true
+            /**
+             * 5.9.32：`onPageFinished` 是**公开 API**里"页面加载完了"的那个回调
+             * （`WebChromeClient.onLoadingFinished` 与 `View.postVisualStateCallback`
+             * 都是 `@hide`，`javap` 查过 android-34 里根本没有）。
+             *
+             * 整页截图开拍前等的就是它（或 `document.readyState === 'complete'`）——
+             * **官方回调，不是猜一个时间**。页面还在加载时拍，拿到的就是半张。
+             */
+            pageLoadFinished = true
         }
     }
 
@@ -667,6 +676,7 @@ class WebAutomationService : Service() {
     private fun markNavigationStarted() {
         progress = 0
         pageReady = false
+        pageLoadFinished = false   // 新导航开始 → 重新算"加载完了没有"
         lastErrorCode = null
     }
 
@@ -1124,17 +1134,16 @@ class WebAutomationService : Service() {
                 bmp.recycle()
                 return WebProtocol.errJson(SHOT_NOTHING)
             }
-            return finishShot(listOf(bmp), plan)
+            return finishShot(listOf(bmp), plan, null, true)
         }
 
-        val shotPlan = plan.scrollPlan()
-            ?: return WebProtocol.errJson(SHOT_NOTHING)
 
         // ⚠ **必须记住原来的滚动位置并还原。** 不还原的话页面就停在长图底部，
         // 后面 click/type 按视口坐标算的位置全错 —— 那是比截不到图更糟的错。
+        val settledUpFront = awaitPageSettled(wv, cancelled)
         val originCss = readScrollCss(wv, cancelled)
         val shots = try {
-            captureByScrolling(wv, plan, shotPlan, density, cancelled)
+            captureByScrolling(wv, plan, density, cancelled)
         } finally {
             originCss?.let { scrollDocumentTo(wv, it, cancelled) }
         }
@@ -1148,74 +1157,83 @@ class WebAutomationService : Service() {
                 shots.bitmaps.forEach { it.recycle() }
                 return WebProtocol.errJson(bad)
             }
-            val partial = finishShot(shots.bitmaps, plan)
+            val partial = finishShot(shots.bitmaps, plan, shots, settledUpFront)
             return WebProtocol.errJsonWith(bad, partial)
         }
-        return finishShot(shots.bitmaps, plan)
+        return finishShot(shots.bitmaps, plan, shots, settledUpFront)
     }
 
     /**
-     * 滚动分段 → **每屏存一张**（5.9.30）。
+     * 整页截图：**滚一屏拍一屏，走到���底为止**（5.9.32 重写）。
      *
-     * ## 为什么不再拼成一张长图
+     * ## 为什么不再预先算好段数（5.9.27–5.9.31 的根因）
      *
-     * 拼接是我自己加的，用户没要求。它带来两个纯负担：
+     * 旧做法：量一次整页高 → 据此**一次性算好**拍几屏、每屏滚到哪 → 按计划滚一遍。
      *
-     * 1. 一堆 `src`/`dst` 矩形换算 —— 真机 5.9.29 的"首页缩小版 + 大片空白"就出在那儿；
-     * 2. 一张 1236×11440 的巨位图（56MB），手机上很容易撑不住。
+     * 真机数据打穿了它：两次 `shot` 的 `page_height` 是 **6621 → 7443**。
+     * 页面在拍摄过程中还在长高（懒加载、评论展开），所以那份计划**从一开始就是过期的** ——
+     * 第 3 屏要滚到的位置是按 6621 算的，而那时页面已经 7443 了。
      *
-     * 去掉拼接，这两样一起消失：每屏就是"视口原尺寸"这一张图，干净、可单独检查。
+     * 现在改成**边走边量**：每拍完一屏就**重新读**一次 `maxScroll`，
+     * 于是"页面长了多少"下一屏自动跟上。**过期计划这一类问题从结构上不存在了。**
      *
-     * ## 顺序是有讲究的
+     * ## "到底了"也是实测的
      *
-     * 1. **JS 滚动** —— `window.scrollTo(0, cssY)`，滚的是**文档**。
-     * 2. **回读 `window.pageYOffset` 确认真的到位** —— 不是等固定时间，是等它真到。
-     * 3. **等一帧** —— 内容是合成器异步画的，滚到位 ≠ 已经画出来。
-     * 4. **画**。
+     * `nextScreenTop()` 返回 null 才停 —— 不是"拍够 N 屏"。N 是走出来的，不是算出来的。
      *
-     * 悬浮窗跟着一起滚：**你在窗里看着它滚一屏，那一屏就存一张**。
+     * ## 「这一屏好了」的判据
      *
-     * ## 「这屏和上一屏一样」= 没滚到，直接报错
+     * 旧做法是"和上一屏不同就算好"。那是错的：**页面边滚边加载，内容一直在变**，
+     * "变了"不代表"好了" —— 真机第 2 屏就是这么被收下的，收下的是半张。
      *
-     * 最阴的一种失败：第二屏拍出来和第一屏一模一样。滚动没生效或渲染没跟上，
-     * 但两张都"有内容"，判空查不出来 —— 于是一张首页的复制品被当成整页交出去。
-     * [WebShotSampler.sameContent] 抓这个，**并报出是第几屏**。
+     * 现在要**连续两次指纹相同**才算好：变了 = 还在加载；连续两次不变 = 渲染完了。
+     * 这正是"渲染完了就截图"。
      *
      * @return 每屏一张，外加失败原因（成功时为 null）
      */
     private fun captureByScrolling(
         wv: WebView,
         plan: WebShotPlan.Plan,
-        shotPlan: WebScrollShot.Plan,
         density: Float,
         cancelled: () -> Boolean
     ): Shots {
         val shots = mutableListOf<Bitmap>()
         var prevPrint: Long = 0L
         var worstWaits = 0
-
-        for (seg in shotPlan.segments) {
+        var unsettledScreens = 0
+        var yDevice = 0                       // 设备像素，下一屏的起点
+        val stepDevice = plan.viewHeightPx
+        var finalPageHeight = plan.pageHeightPx
+        val dollar = '$'
+        while (true) {
             val screenNo = shots.size + 1
             if (cancelled()) return Shots(shots, "client disconnected", worstWaits)
-            val targetCss = WebScrollShot.toCss(seg.scrollY, density)
-            if (!scrollDocumentTo(wv, targetCss, cancelled)) {
+            if (screenNo > MAX_SCREENS) {
                 return Shots(
                     shots,
-                    "screen $screenNo: the page would not scroll there — the site may block " +
-                        "scrolling; retry, or use eval to scroll and take one screen at a time",
+                    "stopped after $MAX_SCREENS screens — the page reports more content " +
+                        "than that; it may be an infinite-scroll feed",
                     worstWaits
                 )
             }
 
-            // ⚠ **等渲染真的跟上，而不是等够多少毫秒**（5.9.31）。
-            // 固定 700ms 那套对"页面有多重"一无所知 —— 真机上第 3 屏就追不上了。
-            val ready = onMain { awaitScreen(wv, plan, prevPrint) }
+            // 1. 滚到这一屏的起点。JS 滚**文档**，回读确认真到了。
+            if (!scrollDocumentTo(wv, WebScrollShot.toCss(yDevice, density), cancelled)) {
+                return Shots(
+                    shots,
+                    "screen $screenNo: the page would not scroll there — the site may " +
+                        "block scrolling; retry, or use eval to scroll and take one screen at a time",
+                    worstWaits
+                )
+            }
+
+            // 2. 等这一屏**渲染完**（连续两帧内容相同），不是"变了就算"。
+            val ready = onMain { awaitScreenStable(wv, plan, prevPrint) }
             if (ready == null) {
                 return Shots(
                     shots,
-                    "screen $screenNo: the render never caught up with the scroll within " +
-                        "${SHOT_FRAME_BUDGET_MS}ms — the page is still drawing. Wait a moment " +
-                        "and retry, or use eval to scroll and take one screen at a time",
+                    "screen $screenNo: the view never moved off the previous screen " +
+                        "within ${SHOT_FRAME_BUDGET_MS}ms — the scroll did not take effect",
                     worstWaits
                 )
             }
@@ -1223,70 +1241,126 @@ class WebAutomationService : Service() {
                 ready.bitmap?.recycle()
                 return Shots(shots, "screen $screenNo: nothing rendered (blank)", worstWaits)
             }
+            if (!ready.settled) unsettledScreens++
             prevPrint = ready.print
             worstWaits = maxOf(worstWaits, ready.waits)
             ready.bitmap?.let { shots.add(it) }
+
+            // 3. **每屏重读**页面度量 —— 页面可能又长高了。绝不缓存。
+            val m = readMetrics(wv, cancelled)
+                ?: return Shots(shots, "screen $screenNo: could not read the page metrics", worstWaits)
+            finalPageHeight = (m.pageHeightCss * density).toInt().coerceAtLeast(0)
+            val maxScrollDevice = (m.maxScrollCss * density).toInt().coerceAtLeast(0)
+
+            // 4. **实测**判"到底了"：null 就是底。段数是走出来的，不是算出来的。
+            val nextY = WebScrollShot.nextScreenTop(yDevice, stepDevice, maxScrollDevice)
+                ?: break
+            yDevice = nextY
         }
         lastScreenWaits = worstWaits
-        return Shots(shots, null, worstWaits)
+        return Shots(shots, null, worstWaits, finalPageHeight, unsettledScreens)
     }
 
-    /** [captureByScrolling] 的结果：每屏一张 + 失败原因 + 最长等待帧数（诊断）。 */
-    private class Shots(val bitmaps: List<Bitmap>, val error: String?, val worstWaits: Int)
+    /**
+     * [captureByScrolling] 的结果：每屏一张 + 失败原因 + 诊断 + 走完之后的实测整页高。
+     */
+    private class Shots(
+        val bitmaps: List<Bitmap>,
+        val error: String?,
+        val worstWaits: Int,
+        /** 走完之后**实测**的整页高（设备像素）。不是开拍前那个会过期的数。 */
+        val measuredPageHeight: Int = 0,
+        /** 有几屏是"超时降级收下"的（渲染还在加载）。 */
+        val unsettledScreens: Int = 0
+    )
 
-    /** 一屏的结果：位图、内容指纹、有没有内容、等了几帧。 */
+    /** 一屏的结果。 */
     private class ScreenReady(
         val bitmap: Bitmap?,
         val print: Long,
         val hasContent: Boolean,
-        val waits: Int
+        val waits: Int,
+        /** `true` = 连续两帧内容相同，确已渲染完；`false` = 超时降级收下。 */
+        val settled: Boolean
     )
 
     /**
-     * 等到"这一屏画好了"为止：**帧提交了** + **内容确实变了**。
+     * 等到"这一屏**渲染完**"为止：**帧提交了** + **连续两次内容相同**。
      *
-     * ## 两步缺一不可
+     * ## 三步，缺一不可
      *
-     * - 只等帧提交：帧提交不等于这一帧里已经是新滚动位置的内容；
-     * - 只比指纹：不等帧就是空转，`draw()` 反复拿到同一张旧图。
+     * - 不等帧提交：`draw()` 反复拿到同一张旧图，纯空转；
+     * - 只看"和上一屏不同"：页面**边滚边加载**，内容一直在变，"变了"不等于"好了"
+     *   （真机 5.9.31 的第 2 屏就是这么被收下的，收下的是半张）；
+     * - 只看"变了"就收：同上。
      *
-     * 上限 [SHOT_FRAME_BUDGET_MS]。三种结局：
+     * **连续两次相同 = 这一屏不再变了 = 渲染完了。** 这正是"渲染完了就截图"。
      *
-     * - `null` —— 一直等到还是上一屏那一帧，渲染没跟上；
-     * - `bitmap == null && !hasContent` —— 这一屏一直是空的；
-     * - `bitmap != null` —— 画好了。
+     * ## 超时两级判
+     *
+     * - 内容**和上一屏一样** → 压根没滚动到位 → 返回 null，调用方报屏号；
+     * - 内容**变了但一直没稳** → 收下，但 [ScreenReady.settled] = false，
+     *   最终写进 note 让 agent 知道这一屏可能还在加载。
      *
      * @param prevPrint 上一屏的指纹；`0` 表示这是第一屏（不用比对）
      */
-    private fun awaitScreen(wv: WebView, plan: WebShotPlan.Plan, prevPrint: Long): ScreenReady? {
+    private fun awaitScreenStable(
+        wv: WebView, plan: WebShotPlan.Plan, prevPrint: Long
+    ): ScreenReady? {
         val deadline = System.currentTimeMillis() + SHOT_FRAME_BUDGET_MS
         var waits = 0
+        var lastPrint = 0L
         var sawBlank = false
         while (true) {
             awaitFrameCommit(wv)
             val bmp = captureViewport(wv, plan)
-            if (bmp != null) {
-                if (hasContent(bmp)) {
-                    val print = WebShotSampler.fingerprint(bmp.width, bmp.height) { x, y ->
-                        bmp.getPixel(x, y)
-                    }
-                    if (prevPrint == 0L || !WebShotSampler.sameContent(prevPrint, print)) {
-                        return ScreenReady(bmp, print, true, waits)
-                    }
-                } else {
-                    sawBlank = true
-                }
-                bmp.recycle()
+            if (bmp == null) {
+                waits++
+                if (System.currentTimeMillis() >= deadline) return null
+                runCatching { Thread.sleep(SHOT_FRAME_POLL_MS) }
+                continue
             }
+            if (!hasContent(bmp)) {
+                sawBlank = true
+                bmp.recycle()
+                waits++
+                if (System.currentTimeMillis() >= deadline) {
+                    return ScreenReady(null, 0L, false, waits, false)
+                }
+                runCatching { Thread.sleep(SHOT_FRAME_POLL_MS) }
+                continue
+            }
+            val print = WebShotSampler.fingerprint(bmp.width, bmp.height) { x, y ->
+                bmp.getPixel(x, y)
+            }
+            // 连续两次相同 → **这一屏不再变了 = 渲染完了**
+            if (print == lastPrint) {
+                return ScreenReady(bmp, print, true, waits, true)
+            }
+            bmp.recycle()
+            lastPrint = print
             waits++
             if (System.currentTimeMillis() >= deadline) {
-                // 一直是空的 → 如实说"空"；只是没跟上 → 返回 null 说"没跟上"。
-                // 两者含义不同：前者页面有问题，后者页面只是慢。
-                return if (sawBlank) ScreenReady(null, 0L, false, waits) else null
+                // 变了但一直没稳：降级收下，但如实标记"没稳"。
+                val final = captureViewport(wv, plan)
+                if (final == null || !hasContent(final)) {
+                    final?.recycle()
+                    return ScreenReady(null, 0L, false, waits, false)
+                }
+                val finalPrint = WebShotSampler.fingerprint(final.width, final.height) { x, y ->
+                    final.getPixel(x, y)
+                }
+                // 和上一屏一样 = 压根没动。那是失败，不是降级。
+                if (prevPrint != 0L && WebShotSampler.sameContent(prevPrint, finalPrint)) {
+                    final.recycle()
+                    return null
+                }
+                return ScreenReady(final, finalPrint, true, waits, false)
             }
             runCatching { Thread.sleep(SHOT_FRAME_POLL_MS) }
         }
     }
+
 
     /**
      * 等一帧提交到窗口表面（API 29+）。更早的版本直接返回，由外层定时轮询顶上。
@@ -1313,6 +1387,31 @@ class WebAutomationService : Service() {
 
     /** 最近一趟整页截图里，最慢的一屏等了几帧（`diag` 诊断；>1 = 页面出帧慢）。 */
     @Volatile private var lastScreenWaits = 0
+
+    /**
+     * 页面（含全部资源）是否加载完（5.9.32）。
+     *
+     * 由 [WebChromeClient.onLoadingFinished] 置位，新导航开始时清掉。
+     */
+    @Volatile private var pageLoadFinished = false
+
+    /**
+     * 开拍前等"页面静止"的上限（5.9.32）。
+     *
+     * 等的是 [pageLoadFinished] 或 `document.readyState === 'complete'` ——
+     * **官方回调，不是猜的时间**。超时也照常开拍（不能因为动画永远截不到），
+     * 但会在 note 里说明。
+     */
+    private val PAGE_SETTLE_BUDGET_MS = 5000L
+    private val PAGE_SETTLE_POLL_MS = 250L
+
+    /**
+     * 整页截图最多拍多少屏（5.9.32）。
+     *
+     * 防御：无限滚动的页面 `maxScroll` 一直变，走下去没完。
+     * 16 屏 × 2676px ≈ 42816 设备像素，正常文章页面远不到。
+     */
+    private val MAX_SCREENS = 16
 
     /**
      * 把**文档**滚到指定 CSS 像素，并回读确认真的到位。
@@ -1349,6 +1448,41 @@ class WebAutomationService : Service() {
     }
 
     /**
+     * 读页面度量：整页高、最大滚动量、当前滚动位置、加载态（一次 eval 拿全）。
+     *
+     * ⚠ **每拍完一屏都要重读** —— 页面可能又长高了。绝不缓存到循环外。
+     */
+    private fun readMetrics(wv: WebView, cancelled: () -> Boolean): WebScrollShot.Metrics? {
+        val outcome = evalInPage(wv, WebScrollShot.METRICS_JS, cancelled)
+        outcomeError(outcome)?.let { return null }
+        return WebScrollShot.parseMetrics(outcome.valueOrNull())
+    }
+
+    /**
+     * 等页面**静止**了再开拍（前置条件，5.9.32）。
+     *
+     * ## 这是"渲染完了"的标准反馈，不是猜
+     *
+     * - [pageLoadFinished] 由 [WebChromeClient.onLoadingFinished] 置位
+     *   —— 那是"页面连同它的资源都加载完了"的**官方回调**；
+     * - `document.readyState === 'complete'` 是 JS 侧同一件事的表述。
+     *
+     * 页面还在加载时开拍，拿到的是半张 —— 真机第 2 屏的"大块空白/错位"就是加载中的页面。
+     *
+     * 有上限；一直不静止也照常往下走（不能因为动画就永远截不到），但 note 里会说明。
+     */
+    private fun awaitPageSettled(wv: WebView, cancelled: () -> Boolean): Boolean {
+        val deadline = System.currentTimeMillis() + PAGE_SETTLE_BUDGET_MS
+        while (true) {
+            if (pageLoadFinished) return true
+            val rs = evalInPage(wv, WebScrollShot.READY_STATE_JS, cancelled)
+            if (outcomeError(rs) == null && rs.valueOrNull()?.trim() == "complete") return true
+            if (System.currentTimeMillis() >= deadline) return false
+            runCatching { Thread.sleep(PAGE_SETTLE_POLL_MS) }
+        }
+    }
+
+    /**
      * 落盘 + 组装返回字段（5.9.30：整页拆成多张）。
      *
      * ## 返回字段（agent 看这里）
@@ -1366,7 +1500,12 @@ class WebAutomationService : Service() {
      *
      * @param bitmaps 每屏一张，顺序必须是从上到下
      */
-    private fun finishShot(bitmaps: List<Bitmap>, plan: WebShotPlan.Plan): String {
+    private fun finishShot(
+        bitmaps: List<Bitmap>,
+        plan: WebShotPlan.Plan,
+        shots: Shots?,
+        settledUpFront: Boolean
+    ): String {
         if (bitmaps.isEmpty()) return WebProtocol.errJson(SHOT_NOTHING)
         val pxW = bitmaps[0].width
         val pxH = bitmaps[0].height
@@ -1376,6 +1515,21 @@ class WebAutomationService : Service() {
             // 半落盘比全失败更难解释 —— saveShotScreens 会把已写的删掉，这里只报实话
             return WebProtocol.errJson("shot write failed")
         }
+        // ⚠ 5.9.32：`page_height` 报**走完之后实测**的值。
+        // 开拍前量到的那个会过期 —— 真机实测两次 shot 是 6621 → 7443。
+        val measured = shots?.measuredPageHeight ?: 0
+        val pageH = if (plan.isLong && measured > 0) measured else plan.pageHeightPx
+        val notes = mutableListOf<String>()
+        if (plan.note.isNotEmpty()) notes += plan.note
+        if (!settledUpFront) {
+            notes += "the page had not finished loading when this shot started; " +
+                "later screens may be missing content"
+        }
+        val unsettled = shots?.unsettledScreens ?: 0
+        if (unsettled > 0) {
+            notes += "$unsettled of ${files.size} screen(s) were still loading when " +
+                "captured — those images may be incomplete"
+        }
         val fields = mutableListOf<Pair<String, Any?>>(
             "files" to files.map { WebArtifacts.linuxPath(this, it) },
             "screens" to files.size,
@@ -1383,10 +1537,10 @@ class WebAutomationService : Service() {
             "bytes" to files.sumOf { it.length() },
             "width" to pxW,
             "height" to pxH,
-            "page_height" to (if (plan.isLong) plan.pageHeightPx else pxH),
+            "page_height" to (if (plan.isLong) pageH else pxH),
             "full_page" to plan.isLong
         )
-        if (plan.note.isNotEmpty()) fields += "note" to plan.note
+        if (notes.isNotEmpty()) fields += "note" to notes.joinToString("; ")
         return WebProtocol.okJson(*fields.toTypedArray())
     }
     /**

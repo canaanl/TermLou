@@ -352,7 +352,148 @@ class RegressionScanTest {
         )
     }
 
-    // ---------- 5.9.31：结构不变式（正向设计，不是补丁） ----------
+    // ---------- 5.9.32：边走边量，不许预先算好段数 ----------
+
+    @Test
+    fun `整页截图不许用预先算好的段数`() {
+        // 真机数据：两次 shot 的 page_height 是 6621 → 7443 —— 页面在拍摄途中还在长高。
+        // 按开拍前那个数算好"拍几屏、每屏滚到哪"，那份计划**从一开始就是过期的**，
+        // 真机上第 3 屏就是滚到了一个按旧版式算出来的位置。
+        val svc = source("WebAutomationService.kt")
+        val walk = svc.substringAfter("private fun captureByScrolling(")
+            .substringBefore("private class Shots(")
+        assertTrue("没抓到 captureByScrolling 的函数体", walk.length > 600)
+        assertFalse(
+            "编排里不许再按 segments 循环 —— 段数必须是走出来的：\n$walk",
+            walk.contains("segments")
+        )
+        assertFalse(
+            "不许把 shotPlan 当参数传进来：\n$walk",
+            walk.contains("shotPlan")
+        )
+        assertTrue(
+            "必须用 while 走到实测的底：\n$walk",
+            walk.contains("while (true)")
+        )
+    }
+
+    @Test
+    fun `maxScroll必须每屏重读不许缓存`() {
+        // 这是"过期计划"的直接解药：页面长了多少，下一屏就自动读到多少。
+        val svc = source("WebAutomationService.kt")
+        val walk = svc.substringAfter("private fun captureByScrolling(")
+            .substringBefore("private class Shots(")
+        val readAt = walk.indexOf("readMetrics(wv, cancelled)")
+        assertTrue("必须每屏读一次页面度量", readAt >= 0)
+        assertTrue(
+            "读度量必须在循环体内（在 while 之后）：\n$walk",
+            readAt > walk.indexOf("while (true)")
+        )
+        // 读出来的 maxScroll 必须参与下一屏的落点计算
+        assertTrue(
+            "下一屏落点必须用刚读到的 maxScroll：\n$walk",
+            walk.contains("nextScreenTop(yDevice, stepDevice, maxScrollDevice)")
+        )
+    }
+
+    @Test
+    fun `到底了必须实测不许按段数算`() {
+        val svc = source("WebAutomationService.kt")
+        val walk = svc.substringAfter("private fun captureByScrolling(")
+            .substringBefore("private class Shots(")
+        assertTrue(
+            "必须靠 nextScreenTop 返回 null 来停：\n$walk",
+            Regex("""nextScreenTop\([^)]*\)[\s\S]{0,40}?\?: break""").containsMatchIn(walk)
+        )
+    }
+
+    @Test
+    fun `这一屏好了必须连续两次指纹相同`() {
+        // 旧做法是"和上一屏不同就算好" —— 页面边滚边加载，内容一直在变，
+        // "变了"不等于"好了"。真机第 2 屏就是这么被收下的，收下的是半张。
+        val svc = source("WebAutomationService.kt")
+        val await = svc.substringAfter("private fun awaitScreenStable(")
+            .substringBefore("private fun awaitFrameCommit(")
+        assertTrue("没抓到 awaitScreenStable 的函数体", await.length > 400)
+        assertTrue(
+            "必须拿两次指纹比对（连续相同才算渲染完）：\n$await",
+            await.contains("if (print == lastPrint)")
+        )
+        assertTrue(
+            "必须先记上一次指纹：\n$await",
+            await.contains("lastPrint = print")
+        )
+        assertTrue(
+            "降级收下时必须如实标记没稳：\n$await",
+            Regex("""ScreenReady\(final, finalPrint, true, waits, false\)""").containsMatchIn(await)
+        )
+    }
+
+    @Test
+    fun `开拍前必须等页面静止且只用公开API`() {
+        // ⚠ `WebChromeClient.onLoadingFinished` 与 `View.postVisualStateCallback`
+        // 都是 `@hide` —— `javap` 查过 android-34 的公开 SDK 里**根本没有**。
+        // 我按记忆写了，编译器当场打回来。公开可用的是 `WebViewClient.onPageFinished`
+        // 与 `document.readyState === 'complete'`。
+        val svc = code("WebAutomationService.kt")
+        assertFalse(
+            "不许 override 不存在的 onLoadingFinished（编译就过不了）：\n$svc",
+            svc.contains("override fun onLoadingFinished")
+        )
+        assertFalse(
+            "不许用 @hide 的 postVisualStateCallback：\n$svc",
+            svc.contains("postVisualStateCallback")
+        )
+        assertTrue(
+            "必须用 onPageFinished 置位（公开 API）：\n$svc",
+            svc.contains("pageLoadFinished = true")
+        )
+        assertTrue(
+            "开拍前必须先等页面静止：\n$svc",
+            svc.contains("awaitPageSettled(wv, cancelled)")
+        )
+        assertTrue(
+            "静止判据要用 readyState（JS 侧同一件事）：\n$svc",
+            svc.contains("WebScrollShot.READY_STATE_JS")
+        )
+    }
+
+    @Test
+    fun `page_height必须报走完之后实测的值`() {
+        // ⚠ 光查"出现过 measuredPageHeight"是**空跑**：把 pageH 改成直接用
+        // plan.pageHeightPx（开拍前那个会过期的数），那个字样仍然在函数体里，锁照样绿。
+        // 所以要查**它真的被用上了**。
+        val svc = code("WebAutomationService.kt")
+        val fin = svc.substringAfter("private fun finishShot(")
+            .substringBefore("截不出内容时的说法")
+        assertTrue("没抓到 finishShot 的函数体", fin.length > 400)
+        assertTrue(
+            "必须先把实测值取出来：\n$fin",
+            Regex("""val measured = shots\?\.measuredPageHeight""").containsMatchIn(fin)
+        )
+        assertTrue(
+            "pageH 必须真的用上那个实测值 —— 绕开它就等于还在报开拍前的旧数：\n$fin",
+            Regex("""val pageH = [^;\n]*measured[^;\n]*""").containsMatchIn(fin)
+        )
+    }
+
+    @Test
+    fun `没渲染完的那几屏必须在note里说清`() {
+        // 降级收下是允许的，但**必须说** —— 静默糊过去就是 5.9.9 的老错误。
+        val svc = code("WebAutomationService.kt")
+        val fin = svc.substringAfter("private fun finishShot(")
+            .substringBefore("截不出内容时的说法")
+        assertTrue(
+            "必须报出有几屏还在加载：\n$fin",
+            fin.contains("were still loading when")
+        )
+        assertTrue(
+            "开拍时页面就没加载完也必须说：\n$fin",
+            fin.contains("had not finished loading")
+        )
+    }
+
+// ---------- 5.9.31：结构不变式（正向设计，不是补丁） ----------
 
     @Test
     fun `I1_任何文件都不许改WebView的scale`() {
@@ -404,8 +545,8 @@ class RegressionScanTest {
             svc.contains("observer.registerFrameCommitCallback(")
         )
         assertTrue(
-            "必须用指纹校验内容变了：\n$svc",
-            svc.contains("WebShotSampler.sameContent(prevPrint, print)")
+            "必须用指纹校验内容稳住了：\n$svc",
+            svc.contains("WebShotSampler.sameContent(prevPrint, finalPrint)")
         )
         assertTrue(
             "必须有上限，不许死等：\n$svc",
@@ -485,22 +626,22 @@ class RegressionScanTest {
         // 判空查不出来，于是一张首页的复制品被当成整页交出去了。
         // 现在必须靠指纹抓住，并且**报出第几屏**。
         val svc = source("WebAutomationService.kt")
-        // 5.9.31：指纹比较搬进了 awaitScreen（"等到内容变了为止"那个循环里），
+        // 指纹比较在 awaitScreenStable 里（"等到内容稳定为止"那个循环）；
         // captureByScrolling 只负责滚动、调用、报屏号。所以判据分两处查。
         val loop = svc.substringAfter("private fun captureByScrolling(")
             .substringBefore("private class Shots(")
         assertTrue("没抓到 captureByScrolling 的函数体", loop.length > 600)
-        val await = svc.substringAfter("private fun awaitScreen(")
+        val await = svc.substringAfter("private fun awaitScreenStable(")
             .substringBefore("private fun awaitFrameCommit(")
-        assertTrue("没抓到 awaitScreen 的函数体", await.length > 400)
+        assertTrue("没抓到 awaitScreenStable 的函数体", await.length > 400)
         assertTrue("必须比指纹：\n$await", await.contains("WebShotSampler.fingerprint("))
         assertTrue(
-            "必须用 sameContent 判：\n$await",
-            await.contains("WebShotSampler.sameContent(prevPrint, print)")
+            "必须用 sameContent 判超时降级（和上一屏一样 = 压根没动）：\n$await",
+            await.contains("WebShotSampler.sameContent(prevPrint, finalPrint)")
         )
         assertTrue(
-            "captureByScrolling 必须调用 awaitScreen（等渲染跟上）：\n$loop",
-            loop.contains("awaitScreen(wv, plan, prevPrint)")
+            "captureByScrolling 必须调用 awaitScreenStable（等渲染完）：\n$loop",
+            loop.contains("awaitScreenStable(wv, plan, prevPrint)")
         )
         // 报错必须带**动态**屏号，不能写死数字 —— 写死的话 agent 不知道是哪一屏坏的
         val dollar = '$'
@@ -618,8 +759,9 @@ class RegressionScanTest {
         val c = code("WebAutomationService.kt")
         assertTrue("必须等帧提交", c.contains("observer.registerFrameCommitCallback("))
         assertTrue(
-            "等帧必须在截图循环里，且轮询到内容变了为止",
-            c.contains("private fun awaitScreen(") && c.contains("WebShotSampler.sameContent(")
+            "等帧必须在截图循环里，且轮询到内容稳定为止",
+            c.contains("private fun awaitScreenStable(") &&
+                c.contains("WebShotSampler.sameContent(")
         )
     }
 
