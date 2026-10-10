@@ -152,7 +152,7 @@ object WebScrollShot {
     }
 
     /**
-     * 下���屏的起点；返回 `null` 表示**已经到底了**。
+     * 下一屏的起点；返回 `null` 表示**已经到底了**。
      *
      * "到底了"是**实测**的（`next <= current`），不是"拍够 N 屏"——
      * 段数是走出来的，不是算出来的。
@@ -160,6 +160,43 @@ object WebScrollShot {
     fun nextScreenTop(currentPx: Int, stepPx: Int, maxScrollPx: Int): Int? {
         val next = (currentPx.toLong() + stepPx).coerceAtMost(maxScrollPx.toLong()).toInt()
         return if (next <= currentPx) null else next
+    }
+
+    /** 切整页时，每一屏要切的那一块（纯算术，可单测）。 */
+    data class SrcRect(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+        val width: Int get() = right - left
+        val height: Int get() = bottom - top
+    }
+
+    /**
+     * 第 `scrollDeviceY` 屏在整页里对应的那一块（5.9.33）。
+     *
+     * ## 为什么是"切"而不是"缩"
+     *
+     * 旧兜底是 `canvas.scale(min(bw/picW, bh/picH))` 把**整页缩进一张图**——
+     * 那正是真机上报的"第 2 屏起变成缩小的长图"。现在只切，**永不缩放**。
+     *
+     * ## 为什么要夹
+     *
+     * 整页可能比"滚到最后那一屏"该有的高度更短（页面中途还在长高/变矮）。
+     * 切出来的块必须**始终是视口原尺寸**，否则拼不出统一的几何。
+     *
+     * @param picW/picH 整页尺寸
+     * @param vw/vh 视口尺寸（目标尺寸，一个像素都不缩）
+     * @param scrollDeviceY 这一屏在文档里的起点
+     * @return 切哪一块；画不出东西时返回 null
+     */
+    fun scrollSrcRect(
+        picW: Int, picH: Int, vw: Int, vh: Int, scrollDeviceY: Int
+    ): SrcRect? {
+        if (picW <= 0 || picH <= 0) return null
+        val w = vw.coerceAtLeast(1).coerceAtMost(picW)
+        val h = vh.coerceAtLeast(1)
+        val top = scrollDeviceY.coerceIn(0, (picH - 1).coerceAtLeast(0))
+        // 底部夹到整页末尾，但**至少留 1 行** —— 否则切出 0 高
+        val bottom = (top + h).coerceAtMost(picH).coerceAtLeast(top + 1).coerceAtMost(picH)
+        if (bottom <= top || w <= 0) return null
+        return SrcRect(0, top, w, bottom)
     }
 
     /** 设备像素 → CSS 像素。**别用 `density.toInt()`** —— 2.75/3.5/2.625 会截错。 */

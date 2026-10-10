@@ -235,3 +235,71 @@ class WebScrollShotTest {
         assertTrue("缩完还超上限：$px", px <= WebShotPlan.MAX_PIXELS)
     }
 }
+
+/**
+ * 切整页：**只切，不缩**（5.9.33）。
+ *
+ * 旧兜底是 `canvas.scale(min(bw/picW, bh/picH))` 把**整页缩进一张图** ——
+ * 那正是真机上报的"第 2 屏起变成缩小的长图"。现在每屏只切出视口原尺寸，**永不缩放**。
+ */
+class WebScrollSliceTest {
+
+    private val vw = 1236
+    private val vh = 2676
+
+    @Test
+    fun `第一屏切出视口原尺寸`() {
+        val r = WebScrollShot.scrollSrcRect(1236, 7443, vw, vh, 0)!!
+        assertEquals(0, r.top)
+        assertEquals(vw, r.width)
+        assertEquals("切出来必须是视口高，一个像素都不缩", vh, r.height)
+    }
+
+    @Test
+    fun `第二屏切的是它自己那一段`() {
+        val r = WebScrollShot.scrollSrcRect(1236, 7443, vw, vh, vh)!!
+        assertEquals(vh, r.top)
+        assertEquals(vh, r.height)
+        assertEquals(0, r.left)
+    }
+
+    @Test
+    fun `每屏切出来都一样宽高`() {
+        // 尺寸一致是"统一几何"的前提：任何一屏被缩过，整套图就对不齐
+        val maxScroll = 7443 - vh
+        var y = 0
+        var screens = 1
+        while (true) {
+            val r = WebScrollShot.scrollSrcRect(1236, 7443, vw, vh, y)
+                ?: throw AssertionError("第 $screens 屏切不出东西")
+            assertEquals("第 $screens 屏宽", vw, r.width)
+            assertTrue("第 $screens 屏高不该超过视口高", r.height <= vh)
+            val next = WebScrollShot.nextScreenTop(y, vh, maxScroll) ?: break
+            y = next
+            screens++
+        }
+        // 屏数 = 走过的步数 + 1（y=0 那一屏也算）
+        assertEquals("7443 高、视口 2676，应该切出 3 屏", 3, screens)
+    }
+
+    @Test
+    fun `越界的滚动位置被夹住不会崩`() {
+        for (y in listOf(-100, 0, 999999)) {
+            val r = WebScrollShot.scrollSrcRect(1236, 7443, vw, vh, y)
+            assertTrue("滚动 $y 必须切出合法块", r != null && r.height >= 1 && r.width >= 1)
+        }
+    }
+
+    @Test
+    fun `整页尺寸为零时返回null`() {
+        assertEquals(null, WebScrollShot.scrollSrcRect(0, 100, vw, vh, 0))
+        assertEquals(null, WebScrollShot.scrollSrcRect(1236, 0, vw, vh, 0))
+    }
+
+    @Test
+    fun `视口比整页还大时切出来的就是整页`() {
+        val r = WebScrollShot.scrollSrcRect(800, 500, vw, vh, 0)!!
+        assertEquals("不许比整页还宽", 800, r.width)
+        assertEquals("不许比整页还高", 500, r.height)
+    }
+}

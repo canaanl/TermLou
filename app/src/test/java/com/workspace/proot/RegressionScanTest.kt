@@ -352,7 +352,76 @@ class RegressionScanTest {
         )
     }
 
-    // ---------- 5.9.32：边走边量，不许预先算好段数 ----------
+    // ---------- 5.9.33：只有一条拍摄路径，只切不缩，不回头 ----------
+
+    @Test
+    fun `拍摄只有一条路不许有第二条兜底`() {
+        // 两条路的坏处不是"多写了一份代码"，而是**一条不行时另一条会静默顶替**，
+        // 交出看起来正常、其实错的图。真机上报的"第 2 屏起变成缩小的长图"就是
+        // `draw()` 失败后掉进 `capturePicture()` 兜底造成的。
+        val svc = source("WebAutomationService.kt")
+        val cap = svc.substringAfter("private fun captureScreen(")
+            .substringBefore("private fun hasContent(")
+        assertTrue("没抓到 captureScreen 的函数体", cap.length > 300)
+        assertFalse(
+            "captureScreen 里不许再直接 draw() 视图 —— 它在真机上第 2 屏就拍不出来、原因不明：\n$cap",
+            cap.contains("wv.draw(")
+        )
+        assertTrue(
+            "只有 capturePicture 这一条：\n$cap",
+            cap.contains("wv.capturePicture()")
+        )
+    }
+
+    @Test
+    fun `切出来不许缩放只许平移`() {
+        // 旧兜底那句 canvas.scale(min(bw/picW, bh/picH)) 把**整页缩进一张图**，
+        // 那就是"缩小长图"的来源。现在只许 translate。
+        //
+        // ⚠ 必须用 code()（剥掉 KDoc）而不是 source()：类注释里正引着那句
+        // `canvas.scale(...)` 是在讲它为什么不对，用 source() 会把注释当代码扫出来。
+        val svc = code("WebAutomationService.kt")
+        val cap = svc.substringAfter("private fun captureScreen(")
+            .substringBefore("private fun hasContent(")
+        assertTrue("没抓到 captureScreen 的函数体", cap.length > 200)
+        assertFalse(
+            "拍摄里不许出现任何缩放：\n$cap",
+            cap.contains("canvas.scale(")
+        )
+        assertTrue(
+            "只许平移切出这一屏：\n$cap",
+            cap.contains("canvas.translate(")
+        )
+        assertTrue(
+            "切哪一块必须走纯逻辑（可单测）：\n$cap",
+            cap.contains("WebScrollShot.scrollSrcRect(")
+        )
+    }
+
+    @Test
+    fun `拍完不许滚回原处`() {
+        // "记住原位并还原"是我自己加的，用户流程里没有这一步；
+        // 而且它有害：往回滚会重新触发懒加载，页面在拍完之后又变一次。
+        val svc = source("WebAutomationService.kt")
+        val body = svc.substringAfter("private fun opShot(").substringBefore("SHOT_NOTHING =")
+        assertFalse(
+            "opShot 里不许再记原位：\n$body",
+            body.contains("originCss")
+        )
+        assertFalse(
+            "opShot 里不许再滚回去：\n$body",
+            body.contains("scrollDocumentTo(wv, originCss")
+        )
+    }
+
+    @Test
+    fun `门槛已经删掉`() {
+        // 1.5 倍门槛是给"撑高视图"那道破坏性做法设的；改成滚动分段后没有存在理由，
+        // 而且有害（一屏半高的页面下半页永远拍不到）。
+        assertEquals("门槛必须回到 1.0", 1.0f, WebShotPlan.FULL_PAGE_RATIO, 0f)
+    }
+
+// ---------- 5.9.32：边走边量，不许预先算好段数 ----------
 
     @Test
     fun `整页截图不许用预先算好的段数`() {
@@ -641,7 +710,7 @@ class RegressionScanTest {
         )
         assertTrue(
             "captureByScrolling 必须调用 awaitScreenStable（等渲染完）：\n$loop",
-            loop.contains("awaitScreenStable(wv, plan, prevPrint)")
+            loop.contains("awaitScreenStable(wv, plan, prevPrint, yDevice)")
         )
         // 报错必须带**动态**屏号，不能写死数字 —— 写死的话 agent 不知道是哪一屏坏的
         val dollar = '$'
@@ -672,8 +741,8 @@ class RegressionScanTest {
     @Test
     fun `help里必须讲清整页是拆成多张`() {
         // agent 自发现全靠 help。字段变了不说，agent 就会当没变化。
-        val h = code("WebProtocol.kt")
-        assertTrue("help 必须提到 files：$h", h.contains("\\\"files\\\"") || h.contains("files 按从上到下"))
+        val h = WebProtocol.help(39080)
+        assertTrue("help 必须提到 files：$h", h.contains("files/screens/file/width/height/"))
         assertTrue("help 必须说明按顺序看：$h", h.contains("从上到下"))
         assertTrue(
             "help 不许再说'自动截整页（长图）'—— 那已经不成立了：$h",

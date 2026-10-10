@@ -58,10 +58,17 @@ class WebShotPlanTest {
     }
 
     @Test
-    fun `刚过1_5倍就切整页`() {
-        val cut = (h * WebShotPlan.FULL_PAGE_RATIO).toInt()
-        assertEquals("不到门槛就该走一屏", WebShotPlan.Mode.VIEWPORT, WebShotPlan.decide(cut - 1, h, w).mode)
-        assertEquals("过了门槛就该走整页", WebShotPlan.Mode.FULL_PAGE, WebShotPlan.decide(cut, h, w).mode)
+    fun `只要比一屏高就分屏没有门槛`() {
+        // 5.9.33：1.5 倍门槛已删。那是给"把视图撑到整页高"那道破坏性做法设的保护栏；
+        // 改成滚动分段后页面不再重新排版，那道栏没有存在理由了。
+        // 而且它有害：页面只有一屏半高时下半页永远拍不到，也没人告诉 agent "下面还有"。
+        assertEquals("一屏高就该一屏", WebShotPlan.Mode.VIEWPORT, WebShotPlan.decide(h, h, w).mode)
+        assertEquals("比一屏高一像素就要分屏", WebShotPlan.Mode.FULL_PAGE, WebShotPlan.decide(h + 1, h, w).mode)
+        assertEquals("一屏半也必须分屏", WebShotPlan.Mode.FULL_PAGE, WebShotPlan.decide(h * 3 / 2, h, w).mode)
+        assertTrue(
+            "一屏半高时必须能切出第二屏（页高 - 视口高 > 0）",
+            WebScrollShot.scrollSrcRect(w, h * 3 / 2, w, h, h) != null
+        )
     }
 
     @Test
@@ -180,8 +187,10 @@ class WebShotPlanTest {
     // ---------- 自检：把判据写回旧版会被抓住 ----------
 
     @Test
-    fun `自检——阈值必须是1_5不是1`() {
-        assertEquals(1.5f, WebShotPlan.FULL_PAGE_RATIO, 0f)
+    fun `自检——门槛已经删掉`() {
+        // 1.5 倍是给"撑高视图"那道破坏性做法设的保护栏；改成滚动分段后没有理由了。
+        // 把它写回去 = 页面只有一屏半高时下半页永远拍不到。
+        assertEquals(1.0f, WebShotPlan.FULL_PAGE_RATIO, 0f)
     }
 
     @Test
@@ -291,25 +300,17 @@ class EvalValueTakenTest {
     }
 }
 
+
 /**
- * 「截完必须还原」这条的锁（5.9.27 改成"滚回原位"）。
+ * 5.9.33：整页截图**拍完不滚回原位**。
  *
- * ## 为什么用扫源码来锁
+ * 原来的 `ShotViewportRestoreTest`（要求"必须在 finally 里滚回原来的位置"）已退役 ——
+ * 那条行为是我自己加的，用户流程里没有这一步，
+ * 而且它有害：往回滚会重新触发懒加载，页面在拍完之后又变一次。
  *
- * 整页截图要滚着拍。**万一没滚回去**，页面就停在长图底部，
- * 后面 `click` / `type` 按视口坐标算出来的位置全错 —— 那比"截不到图"糟得多，
- * 而且**在单测里测不到**：这段代码贴着 WebView，没有 Robolectric 跑不了。
- *
- * 所以直接查源码里那个 `finally`。这是"测不出接线"时唯一能用的办法
- * （探针那边因为同类问题卡死过一次，见 `CallbackWiringTest`）。
- *
- * ## 5.9.27：还原的东西换了
- *
- * 以前是"把视图量回视口高"（因为整页模式把视图撑高过）。
- * 现在**视图不再被撑高**，要还原的是**滚动位置** —— 机制换了，
- * 但"必须还原"这条不变，不还原的后果也一模一样。
+ * 现在由 RegressionScanTest 的「拍完不许滚回原处」从另一边把住。
  */
-class ShotViewportRestoreTest {
+class ShotNoRestoreTest {
 
     private fun serviceSource(): String {
         var d: File? = File("").absoluteFile
@@ -324,31 +325,11 @@ class ShotViewportRestoreTest {
     }
 
     @Test
-    fun `截图那段必须在finally里滚回原位`() {
-        val src = serviceSource()
-        val body = src.substringAfter("private fun opShot(").substringBefore("SHOT_NOTHING =")
-        assertTrue("没找到 opShot 的函数体", body.isNotEmpty())
-
-        val finallyAt = body.indexOf("finally {")
-        assertTrue("opShot 里没有 finally —— 截图一出问题滚动位置就回不去了", finallyAt >= 0)
-
-        val restoreAt = body.indexOf("scrollDocumentTo(wv, it, cancelled)", finallyAt)
-        assertTrue(
-            "finally 里必须滚回原来的位置 —— 不还原的话后面 click/type 的坐标全错",
-            restoreAt > finallyAt
-        )
-    }
-
-    @Test
-    fun `原位必须在开滚之前先记下来`() {
-        val src = serviceSource()
-        val body = src.substringAfter("private fun opShot(").substringBefore("SHOT_NOTHING =")
-        val saveAt = body.indexOf("readScrollCss(wv, cancelled)")
-        val tryAt = body.indexOf("try {")
-        assertTrue("opShot 里没读原位 —— 压根没记", saveAt >= 0)
-        assertTrue(
-            "必须在 try 之前记原位，否则记到的已经是被滚过的位置",
-            saveAt in 0 until tryAt
+    fun `opShot里不许再记原位`() {
+        val body = serviceSource().substringAfter("private fun opShot(").substringBefore("SHOT_NOTHING =")
+        assertFalse(
+            "「记住原位并还原」是我自己加的，用户流程里没有这一步 —— 不许回来：\n$body",
+            body.contains("originCss")
         )
     }
 
@@ -356,7 +337,7 @@ class ShotViewportRestoreTest {
     fun `那句误导人的旧报错不许回来`() {
         // 只看代码行。KDoc 里正引着那两句 —— 那是在讲它们为什么不对，不算
         val code = serviceSource().lines()
-            .map { it.trimStart().let { t -> if (t.startsWith("*") || t.startsWith("/*")) "" else it } }
+            .map { it.trimStart().let { t -> if (t.startsWith("*") || t.startsWith("/*")) "" else t } }
             .joinToString("\n")
         assertFalse(
             "「retry after wait」在滚出去那块画不出来时是骗人的 —— agent 会无限重试",

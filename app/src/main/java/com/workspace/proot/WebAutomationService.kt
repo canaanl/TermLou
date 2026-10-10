@@ -1128,7 +1128,7 @@ class WebAutomationService : Service() {
         val plan = WebShotPlan.decide(pageHpx, vh, vw)
 
         if (!plan.isLong) {
-            val bmp = onMain { captureViewport(wv, plan) }
+            val bmp = onMain { captureScreen(wv, plan, 0) }
                 ?: return WebProtocol.errJson(SHOT_NOTHING)
             if (!hasContent(bmp)) {
                 bmp.recycle()
@@ -1137,16 +1137,11 @@ class WebAutomationService : Service() {
             return finishShot(listOf(bmp), plan, null, true)
         }
 
-
-        // ⚠ **必须记住原来的滚动位置并还原。** 不还原的话页面就停在长图底部，
-        // 后面 click/type 按视口坐标算的位置全错 —— 那是比截不到图更糟的错。
+        // ⚠ 5.9.33：**拍完不滚回原处。**
+        // "记住原位并还原"是我自己加的，你的流程里没有这一步。
+        // 而且它有害：往回滚会重新触发懒加载，页面在拍完之后又变一次。
         val settledUpFront = awaitPageSettled(wv, cancelled)
-        val originCss = readScrollCss(wv, cancelled)
-        val shots = try {
-            captureByScrolling(wv, plan, density, cancelled)
-        } finally {
-            originCss?.let { scrollDocumentTo(wv, it, cancelled) }
-        }
+        val shots = captureByScrolling(wv, plan, density, cancelled)
         val bad = shots.error
         if (bad != null) {
             // ⚠ **已经拍好的屏照交，但仍然是 ok:false**（I3）。
@@ -1227,8 +1222,8 @@ class WebAutomationService : Service() {
                 )
             }
 
-            // 2. 等这一屏**渲染完**（连续两帧内容相同），不是"变了就算"。
-            val ready = onMain { awaitScreenStable(wv, plan, prevPrint) }
+            // 2. 等这一屏**内容加载完**，再拍。
+            val ready = onMain { awaitScreenStable(wv, plan, prevPrint, yDevice) }
             if (ready == null) {
                 return Shots(
                     shots,
@@ -1305,7 +1300,7 @@ class WebAutomationService : Service() {
      * @param prevPrint 上一屏的指纹；`0` 表示这是第一屏（不用比对）
      */
     private fun awaitScreenStable(
-        wv: WebView, plan: WebShotPlan.Plan, prevPrint: Long
+        wv: WebView, plan: WebShotPlan.Plan, prevPrint: Long, scrollDeviceY: Int
     ): ScreenReady? {
         val deadline = System.currentTimeMillis() + SHOT_FRAME_BUDGET_MS
         var waits = 0
@@ -1313,7 +1308,7 @@ class WebAutomationService : Service() {
         var sawBlank = false
         while (true) {
             awaitFrameCommit(wv)
-            val bmp = captureViewport(wv, plan)
+            val bmp = captureScreen(wv, plan, scrollDeviceY)
             if (bmp == null) {
                 waits++
                 if (System.currentTimeMillis() >= deadline) return null
@@ -1342,7 +1337,7 @@ class WebAutomationService : Service() {
             waits++
             if (System.currentTimeMillis() >= deadline) {
                 // 变了但一直没稳：降级收下，但如实标记"没稳"。
-                val final = captureViewport(wv, plan)
+                val final = captureScreen(wv, plan, scrollDeviceY)
                 if (final == null || !hasContent(final)) {
                     final?.recycle()
                     return ScreenReady(null, 0L, false, waits, false)
@@ -1589,71 +1584,59 @@ class WebAutomationService : Service() {
     private val SHOT_FRAME_POLL_MS = 200L
 
     /**
-     * 截图取像素，两条路按可靠度依次尝试（`draw` → `capturePicture`）。
+     * 拍一屏：**整页 → 切出这一屏 → 原尺寸存**（5.9.33）。
      *
-     * ## 位图尺寸怎么定
+     * ## 只有这一条路
      *
-     * **视口模式**：位图与视图同尺寸，比例天然正确。
+     * 此前有两条（先 `draw()`、失败再 `capturePicture()`），而那条兜底把**整页**按比例
+     * 缩进一张图里 —— 真机上"第 2 屏起变成缩小的长图"就是它干的。有两条路就意味着
+     * 哪条在跑要靠猜，而一条不行时另一条会**静默顶替**，交出看起来正常、其实错的图。
      *
-     * **整页模式**（5.9.8）：视图已经被 [opShot] 量到整页那么高，
-     * 位图跟着视图走（`plan.scale` 是超上限时的等比缩放，不裁不补）。
+     * 现在只留一条：取整页，**切出第 N 屏那一块**，原尺寸。
      *
-     * ## 兜底那条路的等比缩放
+     * ## 为什么不用"直接 `draw()` 视图"
      *
-     * 此前是 `canvas.scale(w/picW, h/picH)` 两个方向独立缩放，而
-     * `capturePicture()` 给的是**整页** Picture（长页面高度远大于视口），于是长页面
-     * 被纵向压扁 —— 真机表现为"导出能看到图，但比例不对"。
-     * 现在取**单一 scale 因子**（`min`），再居中裁剪：比例永远正确。
+     * 因为它在真机上第 1 屏能拍出来、第 2 屏拍不出来，**原因不明**。原因不明的东西
+     * 不能当主路 —— 它什么时候坏、为什么坏都说不清。
+     *
+     * 切整页这条路**不依赖窗口大小**：小窗只有视口的 1/6.8 面积，直接拍视图要赌
+     * 视图里有没有那块像素；取整页就没有这个赌。
+     *
+     * ## 绝不缩放
+     *
+     * 只切，不缩 —— [scrollSrcRect] 保证切出来的永远是视口原尺寸。
+     * 之前那句 `canvas.scale(min(bw/picW, bh/picH))` 就是"缩小长图"的来源。
+     *
+     * @param scrollDeviceY 这一屏在文档里的起点（设备像素）
      */
-    private fun captureViewport(wv: WebView, plan: WebShotPlan.Plan): Bitmap? {
+    private fun captureScreen(
+        wv: WebView, plan: WebShotPlan.Plan, scrollDeviceY: Int
+    ): Bitmap? {
         if (wv.width <= 0 || wv.height <= 0) return null
-        // 5.9.27：**视口高就是视图高**。整页模式不再撑高视图（那会重新排版），
-        // 改成滚动分段 —— 每屏拍的都是视口尺寸这张图。
         val vw = plan.viewWidthPx.coerceAtMost(wv.width)
         val vh = plan.viewHeightPx.coerceAtMost(wv.height)
         if (vw <= 0 || vh <= 0) return null
-        val bw = vw
-        val bh = vh
-        // ⚠ 5.9.31：**这里不再碰 `wv.scaleX/scaleY`。**
-        // 显示缩放搬到了窗口里的 [ScaleFrameLayout] 容器上，WebView 自己的缩放
-        // 是**常量 1**，没有任何代码去改它。
-        //
-        // 于是截图 1:1 **结构上就成立**：`View.draw(Canvas)` 画的是这个视图自己的内容，
-        // 祖先的变换由父视图的 `drawChild` 施加，不在这里面。
-        //
-        // 5.9.28 之前的写法是"截图时把 scale 临时归 1、画完 finally 还原"——
-        // 那既是对抗结构的补救，又每屏来回改两次视图变换去搅合成器
-        // （真机症状：整页截图第 3 屏起画面不跟随滚动）。现在这套动作**一次都不需要了**。
-        val fromDraw = runCatching {
-            Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888).also { bmp ->
+
+        @Suppress("DEPRECATION")
+        val pic = runCatching { wv.capturePicture() }.getOrNull() ?: return null
+        if (pic.width <= 0 || pic.height <= 0) return null
+
+        val src = WebScrollShot.scrollSrcRect(pic.width, pic.height, vw, vh, scrollDeviceY)
+            ?: return null
+
+        return runCatching {
+            Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888).also { bmp ->
                 val canvas = Canvas(bmp)
                 canvas.drawColor(Color.WHITE)
-                wv.draw(canvas)
-            }
-        }.getOrNull()
-        if (hasContent(fromDraw)) return fromDraw
-        fromDraw?.recycle()
-        // 兜底：老路。注意它给的是整页 Picture，要等比缩放再裁，不能直接铺
-        val fromPicture = runCatching {
-            @Suppress("DEPRECATION")
-            val pic = wv.capturePicture()
-            if (pic == null || pic.width <= 0 || pic.height <= 0) return@runCatching null
-            Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888).also { bmp ->
-                val canvas = Canvas(bmp)
-                canvas.drawColor(Color.WHITE)
-                // 单一缩放因子：比例正确，多余部分裁掉（分段模式不在这里缩）
-                val scale = minOf(
-                    bw.toFloat() / pic.width,
-                    bh.toFloat() / pic.height
-                )
-                canvas.translate((bw - pic.width * scale) / 2f, (bh - pic.height * scale) / 2f)
-                canvas.scale(scale, scale)
+                // ⚠ **只平移，不缩放**。
+                // `Picture.draw(Canvas, Rect, Rect)` 那两个重载在 API 34 的公开 SDK 里
+                // 已经被拿掉了（`javap` 只剩 `draw(Canvas)`），所以只能用画布变换切。
+                // 而这里**只有平移**，一个缩放调用都没有 —— 当初把整页按比例缩进一张图、
+                // 造出"缩小长图"的就是它。
+                canvas.translate(-src.left.toFloat(), -src.top.toFloat())
                 pic.draw(canvas)
             }
         }.getOrNull()
-        if (hasContent(fromPicture)) return fromPicture
-        fromPicture?.recycle()
-        return null
     }
 
     /** 抽样判断是不是"整屏同色"的空图（截图最常见的假成功），规则见 [WebShotSampler]。 */

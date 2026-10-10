@@ -26,8 +26,13 @@ package com.workspace.proot
  */
 object WebShotPlan {
 
-    /** 页面比视口高多少倍才值得走整页。 */
-    const val FULL_PAGE_RATIO = 1.5f
+    /**
+     * 5.9.33：**没有门槛了。**
+     *
+     * 只要页面比一屏高就一屏一屏拍。原来那个 1.5 倍是给"把视图撑到整页高"那道
+     * 破坏性做法设的保护栏；改成滚动分段后页面不再重新排版，那道栏没有存在理由了。
+     */
+    const val FULL_PAGE_RATIO = 1.0f
 
     /**
      * 位图面积上限（像素数）。
@@ -89,22 +94,27 @@ object WebShotPlan {
 
         // 量不到页面高度：照常截一屏，但**如实说**没量到，不能让 agent 以为这就是整页
         if (pageHeightPx <= 0) return viewport("page height unknown — this is one screen, not the full page", true)
-        if (pageHeightPx < (h * FULL_PAGE_RATIO).toInt()) return viewport()
+        // ⚠ 5.9.33：**只要比一屏高就分屏**，不再有 1.5 倍门槛。
+        //
+        // 那条门槛当初存在，是因为旧做法会把视图**撑到整页高**，那会**让页面重新排版一次**
+        // （100vh 变高、懒加载一次性全触发、吸顶页头贴到整页顶部）—— 门槛是在保护页面。
+        // 5.9.29 起改成滚动分段，视图不再撑高、版式一个像素不动，**那个理由已经不存在了**，
+        // 门槛却还留着。
+        //
+        // 而且它**有害**：页面只有一屏半高时，agent 永远看不到下半页，
+        // 那半屏内容永远拍不到，也没人告诉它"下面还有"。
+        if (pageHeightPx <= h) return viewport()
 
         val s = scaleFor(w, pageHeightPx)
         val note = if (s < 1f) {
-            "full page (scrolled ${segmentsNote(pageHeightPx, h)} screens), " +
-                "downscaled to ${(s * 100).toInt()}% (${w}x$pageHeightPx device px)"
+            "full page (captured screen by screen), downscaled to ${(s * 100).toInt()}% " +
+                "(${w}x$pageHeightPx device px)"
         } else {
-            "full page, captured by scrolling ${segmentsNote(pageHeightPx, h)} screens"
+            "full page, captured screen by screen"
         }
-        // **viewHeightPx 是视口高，不是整页高** —— 视图不再被撑高。
-        // 撑高会让长页面按整页版式重新排版一次（见类注释）。
+        // **viewHeightPx 是视口高** —— 每屏拍的都是视口原尺寸这一张。
         return Plan(Mode.FULL_PAGE, w, h, pageHeightPx, s, false, note)
     }
-
-    private fun segmentsNote(pageHeightPx: Int, viewportHeightPx: Int): Int =
-        WebScrollShot.plan(pageHeightPx, 1, viewportHeightPx.coerceAtLeast(1)).shots
 
     /**
      * 位图面积超上限时的缩放系数，`1f` = 不缩。

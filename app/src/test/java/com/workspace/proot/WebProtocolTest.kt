@@ -258,4 +258,58 @@ class WebProtocolTest {
         assertFalse("不该再出现 More information", help.contains("More information"))
         assertTrue(help.contains("document.title"))
     }
+
+    // ---------- 5.9.33：说明书跟着实际行为走 ----------
+
+    @Test
+    fun `说明书里不许再提1_5倍门槛`() {
+        // 门槛 5.9.33 已删。说明书还写"比视口高 1.5 倍"的话，agent 会以为
+        // 一屏半高的页面只有一张图 —— 而实际是比一屏高就分屏。
+        val help = WebProtocol.help(39080)
+        assertFalse("门槛已删，说明书不该再提 1.5 倍：\n$help", help.contains("1.5 倍"))
+    }
+
+    @Test
+    fun `说明书说清一屏一张不拼接`() {
+        // 用户明说：不许拼接整页长图。agent 拿到 files 就该知道要按顺序读几张，
+        // 而不是去找一张 tall image。
+        val help = WebProtocol.help(39080)
+        assertTrue("要写明一屏一张：\n$help", help.contains("一屏拍一张"))
+        assertTrue("要写明不拼接：\n$help", help.contains("不拼接"))
+        assertTrue("英文也要说一句：\n$help", help.contains("never stitched"))
+    }
+
+    @Test
+    fun `说明书说清shot不带参数且报哪些字段`() {
+        // 接口一个字都不许加参数 —— 说明书里的示例必须还是裸的 {"op":"shot"}
+        val help = WebProtocol.help(39080)
+        assertTrue("示例必须是裸 shot：\n$help", help.contains("{\"op\":\"shot\"}"))
+        assertFalse(
+            "shot 不带参数，说明书里不许出现 shot 跟参数同行：\n$help",
+            Regex("\\{\"op\":\"shot\"\\s*,").containsMatchIn(help)
+        )
+        for (f in listOf("files", "screens", "page_height", "full_page")) {
+            assertTrue("字段 $f 要写进说明书", help.contains(f))
+        }
+    }
+
+    @Test
+    fun `说明书说清width是一屏page_height才是整页`() {
+        // 这两个最容易用错：width/height 是**一屏**的尺寸。
+        // agent 拿 width/height 当整页尺寸去算缩放就会错。
+        val help = WebProtocol.help(39080)
+        assertTrue(
+            "要写明 width/height 是一屏的尺寸：\n$help",
+            help.contains("width/height 是**一屏**的尺寸")
+        )
+    }
+
+    @Test
+    fun `说明书说清部分失败是ok_false加partial`() {
+        // 半张图报成功比修不好更糟 —— 说明书必须让 agent 知道
+        // partial:true 时 files 只是已经拍好的那几屏，不是全的。
+        val help = WebProtocol.help(39080)
+        assertTrue("要写明 partial：\n$help", help.contains("partial:true"))
+        assertTrue("要写明照交已拍好的屏：\n$help", help.contains("照交"))
+    }
 }

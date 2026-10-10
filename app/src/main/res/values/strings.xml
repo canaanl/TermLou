@@ -465,6 +465,6 @@
     <!-- 5.9.27：没给悬浮窗权限时用（自检与屏外兜底已删除，权限变成硬需求） -->
     <string name="web_overlay_fallback">需要悬浮窗权限才能显示浏览器小窗，请在系统设置里给 TermLou 打开「显示在其他应用上层」</string>
     <string name="web_intro_ops_body">指令清单随时可取，agent 读一次就够。\n▸ GET /help —— 全部指令、选择器写法与排错\n▸ cat /workspace/web/web.env —— 端口与令牌，可直接 source\n▸ 写进 skill：固定端口 39080 + 令牌\n● 读完它就能自己开网页、点按钮、填表单、截图\n⚠ 服务没开时连接被拒，先在上面开启</string>
-    <string name="web_intro_notes_body">▸ 一次只开一个页面，反复 open 即复用\n▸ 截图与 cookie 落在 /workspace/web/，可翻到\n● 长页面截整页时会滚着拍，小窗里能看见它一路滚到底\n● 闲置满 10 分钟，状态栏会闪一句提醒\n⚠ 个别站点会拒绝内嵌浏览器，换站即可</string>
+    <string name="web_intro_notes_body">▸ 一次只开一个页面，反复 open 即复用\n▸ 截图与 cookie 落在 /workspace/web/，可翻到\n● 长页面会滚着拍，小窗里能看见它一路滚到底\n● 一屏存一张、顺序编号，不会拼成一张长图\n● 闲置满 10 分钟，状态栏会闪一句提醒\n⚠ 个别站点会拒绝内嵌浏览器，换站即可</string>
     <string name="web_intro_settings_body">给 Linux 里的 AI agent 用的浏览器：\n在下面开启服务，屏幕上会弹出一个可以拖动的小窗，\nagent 的每一步操作你都能看见；\n点那行「点击复制」带走端口、令牌与首条命令；\n端口与全部指令见终端 Tab 的说明。</string>
 </resources>
