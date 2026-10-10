@@ -106,6 +106,32 @@ object WebProtocol {
     fun errJson(message: String): String =
         JSONObject().put("ok", false).put("error", message).toString()
 
+    /**
+     * 失败，但**带上已经拿到的数据**（5.9.31 整页截图）。
+     *
+     * ## 为什么需要它
+     *
+     * 整页截图滚着拍，第 3 屏没跟上时，前两屏是**真的拍到了**的。
+     * 两种做法都有代价：
+     *
+     * - 全扔 → agent 什么都拿不到，而那两张明明是好的；
+     * - 报 `ok:true` → **5.9.9 的教训**：半张图报成功比修不好更糟，
+     *   agent 会拿残缺的整页做判断。
+     *
+     * 所以：仍然 `ok:false`，但把那几张**一起返回**，并说明缺了哪几屏。
+     *
+     * @param message 说清哪一屏、为什么
+     * @param okBody 之前 [WebAutomationService.finishShot] 拼好的成功体
+     */
+    fun errJsonWith(message: String, okBody: String): String {
+        val o = runCatching { JSONObject(okBody) }.getOrElse { JSONObject() }
+        o.put("ok", false)
+        o.put("error", message)
+        // 明确标出来：这些是**部分**结果，不是完整整页
+        o.put("partial", true)
+        return o.toString()
+    }
+
     fun httpResponse(status: Int, body: String, contentType: String): ByteArray {
         val reason = when (status) {
             200 -> "OK"

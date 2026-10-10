@@ -352,7 +352,112 @@ class RegressionScanTest {
         )
     }
 
-    // ---------- 5.9.30：整页截图一屏一张，不许再拼 ----------
+    // ---------- 5.9.31：结构不变式（正向设计，不是补丁） ----------
+
+    @Test
+    fun `I1_任何文件都不许改WebView的scale`() {
+        // 5.9.27–5.9.30 一直把显示缩放挂在 **WebView 自己**身上，于是：
+        // 1. 截图绕不开它 → 只能"临时归 1、画完 finally 还原"（事后补救）；
+        // 2. 每屏来回切两次视图变换去搅合成器
+        //    → 真机症状：整页截图前两屏正常，**第 3 屏起画面不跟随滚动**。
+        // 缩放搬到容器（ScaleFrameLayout）之后，这两样一起消失。
+        // 这条锁把 I1 钉死：**WebView 的 scale 是常量 1**。
+        for (f in listOf("WebAutomationService.kt", "WebFloatWindowHost.kt")) {
+            val c = code(f)
+            assertFalse(
+                "$f 里不许改 WebView 的 scale（缩放只许在容器上）：\n$c",
+                c.contains("wv.scaleX =") || c.contains("wv.scaleY =")
+            )
+        }
+    }
+
+    @Test
+    fun `I1_显示缩放必须挂在缩放容器上`() {
+        val c = code("WebFloatWindowHost.kt")
+        assertTrue(
+            "必须有独立的缩放容器：$c",
+            c.contains("private class ScaleFrameLayout")
+        )
+        assertTrue(
+            "缩放必须加在容器上：\n$c",
+            c.contains("layer.scaleX = sx") && c.contains("layer.scaleY = sy")
+        )
+        assertTrue(
+            "容器必须夹在窗口与 WebView 之间：\n$c",
+            c.contains("host.addView(scaled,") && c.contains("layer.addView(wv)")
+        )
+    }
+
+    @Test
+    fun `I2_每屏必须等渲染跟上不许只剩固定sleep`() {
+        // 固定 700ms 是拍出来的数字，对"页面有多重"一无所知 —— 第 3 屏就追不上了。
+        // 现在必须**等到内容真的变了**为止：等帧提交 + 指纹校验，两者都要。
+        val svc = code("WebAutomationService.kt")
+        assertFalse(
+            "固定等待必须删掉（SHOT_SEGMENT_WAIT_MS 已作废）：\n$svc",
+            svc.contains("SHOT_SEGMENT_WAIT_MS")
+        )
+        assertTrue(
+            "必须等帧提交：\n$svc",
+            // ⚠ 必须带 `observer.` 前缀：`unregisterFrameCommitCallback` 里
+            // 也含 `registerFrameCommitCallback` 这段子串，只查方法名会漏。
+            svc.contains("observer.registerFrameCommitCallback(")
+        )
+        assertTrue(
+            "必须用指纹校验内容变了：\n$svc",
+            svc.contains("WebShotSampler.sameContent(prevPrint, print)")
+        )
+        assertTrue(
+            "必须有上限，不许死等：\n$svc",
+            svc.contains("SHOT_FRAME_BUDGET_MS")
+        )
+        // 必须放在循环里 —— 等一次不算"等到"
+        val body = svc.substringAfter("private fun awaitScreen(")
+            .substringBefore("private fun awaitFrameCommit(")
+        assertTrue("没抓到 awaitScreen 的函数体", body.length > 400)
+        assertTrue(
+            "必须在循环里轮询到变了为止：\n$body",
+            body.contains("while (true)") && body.contains("fingerprint")
+        )
+    }
+
+    @Test
+    fun `I2_帧回调必须用同一个lambda注销`() {
+        // 新建一个 lambda 去注销是注销不掉的 —— 每次截图往 ViewTreeObserver 上
+        // 多挂一个回调，越用越多，最后回调列表被系统拒绝添加。
+        val c = code("WebAutomationService.kt")
+        assertTrue(
+            "必须把 listener 存成变量再传：\n$c",
+            c.contains("val listener: Runnable = Runnable {")
+        )
+        assertTrue(
+            "注册与注销必须用同一个变量：\n$c",
+            c.contains("observer.registerFrameCommitCallback(listener)") &&
+                c.contains("observer.unregisterFrameCommitCallback(listener)")
+        )
+    }
+
+    @Test
+    fun `I3_失败时报屏号且保留已拍好的屏`() {
+        // 5.9.9 的教训：半张图报 ok:true 比修不好更糟 —— 所以必须仍是 ok:false。
+        // 但把真的拍到的那两张扔掉同样是浪费。
+        val svc = code("WebAutomationService.kt")
+        assertTrue(
+            "部分成功必须走 errJsonWith（ok:false + 带上已有文件）：\n$svc",
+            svc.contains("WebProtocol.errJsonWith(bad, partial)")
+        )
+        val proto = code("WebProtocol.kt")
+        assertTrue(
+            "errJsonWith 必须标 partial：\n$proto",
+            proto.contains("o.put(\"partial\", true)")
+        )
+        assertTrue(
+            "errJsonWith 必须仍然 ok:false —— 绝不能改成成功：\n$proto",
+            proto.contains("o.put(\"ok\", false)")
+        )
+    }
+
+// ---------- 5.9.30：整页截图一屏一张，不许再拼 ----------
 
     @Test
     fun `整页截图不许再拼成一张长图`() {
@@ -380,24 +485,33 @@ class RegressionScanTest {
         // 判空查不出来，于是一张首页的复制品被当成整页交出去了。
         // 现在必须靠指纹抓住，并且**报出第几屏**。
         val svc = source("WebAutomationService.kt")
-        val body = svc.substringAfter("private fun captureByScrolling(")
+        // 5.9.31：指纹比较搬进了 awaitScreen（"等到内容变了为止"那个循环里），
+        // captureByScrolling 只负责滚动、调用、报屏号。所以判据分两处查。
+        val loop = svc.substringAfter("private fun captureByScrolling(")
             .substringBefore("private class Shots(")
-        assertTrue("没抓到 captureByScrolling 的函数体", body.length > 600)
-        assertTrue("必须比指纹：\n$body", body.contains("WebShotSampler.fingerprint("))
+        assertTrue("没抓到 captureByScrolling 的函数体", loop.length > 600)
+        val await = svc.substringAfter("private fun awaitScreen(")
+            .substringBefore("private fun awaitFrameCommit(")
+        assertTrue("没抓到 awaitScreen 的函数体", await.length > 400)
+        assertTrue("必须比指纹：\n$await", await.contains("WebShotSampler.fingerprint("))
         assertTrue(
-            "必须用 sameContent 判：\n$body",
-            body.contains("WebShotSampler.sameContent(prevPrint, print)")
+            "必须用 sameContent 判：\n$await",
+            await.contains("WebShotSampler.sameContent(prevPrint, print)")
+        )
+        assertTrue(
+            "captureByScrolling 必须调用 awaitScreen（等渲染跟上）：\n$loop",
+            loop.contains("awaitScreen(wv, plan, prevPrint)")
         )
         // 报错必须带**动态**屏号，不能写死数字 —— 写死的话 agent 不知道是哪一屏坏的
         val dollar = '$'
         val placeholder = "screen ${dollar}screenNo"
         assertTrue(
-            "报错文案必须用动态屏号占位符：\n$body",
-            body.contains(placeholder)
+            "报错文案必须用动态屏号占位符：\n$loop",
+            loop.contains(placeholder)
         )
         assertTrue(
-            "屏号必须按拍到的张数递增：\n$body",
-            body.contains("val screenNo = shots.size + 1")
+            "屏号必须按拍到的张数递增：\n$loop",
+            loop.contains("val screenNo = shots.size + 1")
         )
     }
 
@@ -500,12 +614,12 @@ class RegressionScanTest {
     fun `每滚一段都必须等一帧而不是紧接着画`() {
         // `scrollTo` 只改值，内容是合成器**异步**画的。紧接着画拿到的还是上一段
         // —— 真机上就是一片底色。5.9.9 那次"下半截白"就是没等帧。
-        // 机制从"撑高后等首帧"换成了"每段滚完等一帧"，但"等"这件事不能丢。
+        // 5.9.31：机制从"固定 sleep"换成"等帧提交 + 指纹校验"，但"等"这件事不能丢。
         val c = code("WebAutomationService.kt")
-        assertTrue("必须等一帧", c.contains("SHOT_SEGMENT_WAIT_MS"))
+        assertTrue("必须等帧提交", c.contains("observer.registerFrameCommitCallback("))
         assertTrue(
-            "等帧必须发生在画之前（截图循环里）",
-            c.contains("Thread.sleep(SHOT_SEGMENT_WAIT_MS)")
+            "等帧必须在截图循环里，且轮询到内容变了为止",
+            c.contains("private fun awaitScreen(") && c.contains("WebShotSampler.sameContent(")
         )
     }
 
@@ -539,12 +653,15 @@ class RegressionScanTest {
         assertTrue("没找到 captureByScrolling 的函数体", body.length > 600)
         assertTrue(
             "滚不到位必须带屏号报错，不能接着往下拍：\n$body",
-            Regex("""!scrollDocumentTo\(wv, targetCss, cancelled\)[\s\S]{0,160}?return Shots\(shots, "screen """)
-                .containsMatchIn(body)
+            body.contains("screen ${'$'}screenNo: the page would not scroll there")
         )
         assertTrue(
             "文案要说清是页面不让滚（agent 才知道该换站还是该等）：\n$body",
             body.contains("would not scroll there")
+        )
+        assertTrue(
+            "文案要给退路（用 eval 自己滚、逐屏截）：\n$body",
+            body.contains("eval to scroll")
         )
     }
 

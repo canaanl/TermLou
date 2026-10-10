@@ -892,6 +892,11 @@ class WebAutomationService : Service() {
             // `down>0` = 拦到了、问题在落地那一步（layout_error 会带原因）。
             // 5.9.27 真机上"按住拖不动"就是靠这一栏定到位置的。
             "float_touch" to floatWindow.touchReport,
+            // 5.9.31：显示缩放挂在**容器**上，WebView 自己的缩放恒为 1。
+            // 报容器上那个，好确认"小窗确实在缩放显示"。
+            "float_scale" to "container=${floatWindow.displayScale().first} webview=1",
+            // 最近一趟整页截图，最慢的一屏等了几帧才画好（>1 = 页面出帧慢）
+            "shot_frame_waits" to lastScreenWaits.toString(),
             // 5.9.9：最近一次页面探针 eval 的原始结果。分四种：
             // value:… / value:null / failed:… / error:…
             "eval_raw" to lastEvalOutcome,
@@ -1135,8 +1140,16 @@ class WebAutomationService : Service() {
         }
         val bad = shots.error
         if (bad != null) {
-            shots.bitmaps.forEach { it.recycle() }
-            return WebProtocol.errJson(bad)
+            // ⚠ **已经拍好的屏照交，但仍然是 ok:false**（I3）。
+            // 5.9.9 的教训是"半张图报成功比修不好更糟" —— 所以绝不能改成 ok:true；
+            // 但把真的拍到的那两张扔掉同样是浪费：agent 拿到的是
+            // "2 张好的 + 明确说第 3 屏坏了"，比什么都没有强。
+            if (shots.bitmaps.isEmpty()) {
+                shots.bitmaps.forEach { it.recycle() }
+                return WebProtocol.errJson(bad)
+            }
+            val partial = finishShot(shots.bitmaps, plan)
+            return WebProtocol.errJsonWith(bad, partial)
         }
         return finishShot(shots.bitmaps, plan)
     }
@@ -1179,41 +1192,127 @@ class WebAutomationService : Service() {
     ): Shots {
         val shots = mutableListOf<Bitmap>()
         var prevPrint: Long = 0L
+        var worstWaits = 0
 
         for (seg in shotPlan.segments) {
             val screenNo = shots.size + 1
-            if (cancelled()) return Shots(shots, "client disconnected")
+            if (cancelled()) return Shots(shots, "client disconnected", worstWaits)
             val targetCss = WebScrollShot.toCss(seg.scrollY, density)
             if (!scrollDocumentTo(wv, targetCss, cancelled)) {
-                return Shots(shots, "screen $screenNo: the page would not scroll there — the site may block scrolling; retry or take the single screen")
-            }
-            runCatching { Thread.sleep(SHOT_SEGMENT_WAIT_MS) }
-            val piece = onMain { captureViewport(wv, plan) }
-                ?: return Shots(shots, "screen $screenNo: nothing rendered")
-            if (!hasContent(piece)) {
-                piece.recycle()
-                return Shots(shots, "screen $screenNo: nothing rendered (blank)")
-            }
-            // ⚠ **和上一屏一模一样 = 没滚到新地方。** 报错并报序号，
-            // 不能交一张"看起来有图、其实没滚"的图。
-            val print = WebShotSampler.fingerprint(piece.width, piece.height) { x, y ->
-                piece.getPixel(x, y)
-            }
-            if (WebShotSampler.sameContent(prevPrint, print)) {
-                piece.recycle()
                 return Shots(
                     shots,
-                    "screen $screenNo: identical to the previous screen — the page scrolled but the render did not follow; retry after the page settles"
+                    "screen $screenNo: the page would not scroll there — the site may block " +
+                        "scrolling; retry, or use eval to scroll and take one screen at a time",
+                    worstWaits
                 )
             }
-            prevPrint = print
-            shots.add(piece)
+
+            // ⚠ **等渲染真的跟上，而不是等够多少毫秒**（5.9.31）。
+            // 固定 700ms 那套对"页面有多重"一无所知 —— 真机上第 3 屏就追不上了。
+            val ready = onMain { awaitScreen(wv, plan, prevPrint) }
+            if (ready == null) {
+                return Shots(
+                    shots,
+                    "screen $screenNo: the render never caught up with the scroll within " +
+                        "${SHOT_FRAME_BUDGET_MS}ms — the page is still drawing. Wait a moment " +
+                        "and retry, or use eval to scroll and take one screen at a time",
+                    worstWaits
+                )
+            }
+            if (!ready.hasContent) {
+                ready.bitmap?.recycle()
+                return Shots(shots, "screen $screenNo: nothing rendered (blank)", worstWaits)
+            }
+            prevPrint = ready.print
+            worstWaits = maxOf(worstWaits, ready.waits)
+            ready.bitmap?.let { shots.add(it) }
         }
-        return Shots(shots, null)
+        lastScreenWaits = worstWaits
+        return Shots(shots, null, worstWaits)
     }
 
-    /** [captureByScrolling] 的结果：每屏一张 + 失败原因。 */
-    private class Shots(val bitmaps: List<Bitmap>, val error: String?)
+    /** [captureByScrolling] 的结果：每屏一张 + 失败原因 + 最长等待帧数（诊断）。 */
+    private class Shots(val bitmaps: List<Bitmap>, val error: String?, val worstWaits: Int)
+
+    /** 一屏的结果：位图、内容指纹、有没有内容、等了几帧。 */
+    private class ScreenReady(
+        val bitmap: Bitmap?,
+        val print: Long,
+        val hasContent: Boolean,
+        val waits: Int
+    )
+
+    /**
+     * 等到"这一屏画好了"为止：**帧提交了** + **内容确实变了**。
+     *
+     * ## 两步缺一不可
+     *
+     * - 只等帧提交：帧提交不等于这一帧里已经是新滚动位置的内容；
+     * - 只比指纹：不等帧就是空转，`draw()` 反复拿到同一张旧图。
+     *
+     * 上限 [SHOT_FRAME_BUDGET_MS]。三种结局：
+     *
+     * - `null` —— 一直等到还是上一屏那一帧，渲染没跟上；
+     * - `bitmap == null && !hasContent` —— 这一屏一直是空的；
+     * - `bitmap != null` —— 画好了。
+     *
+     * @param prevPrint 上一屏的指纹；`0` 表示这是第一屏（不用比对）
+     */
+    private fun awaitScreen(wv: WebView, plan: WebShotPlan.Plan, prevPrint: Long): ScreenReady? {
+        val deadline = System.currentTimeMillis() + SHOT_FRAME_BUDGET_MS
+        var waits = 0
+        var sawBlank = false
+        while (true) {
+            awaitFrameCommit(wv)
+            val bmp = captureViewport(wv, plan)
+            if (bmp != null) {
+                if (hasContent(bmp)) {
+                    val print = WebShotSampler.fingerprint(bmp.width, bmp.height) { x, y ->
+                        bmp.getPixel(x, y)
+                    }
+                    if (prevPrint == 0L || !WebShotSampler.sameContent(prevPrint, print)) {
+                        return ScreenReady(bmp, print, true, waits)
+                    }
+                } else {
+                    sawBlank = true
+                }
+                bmp.recycle()
+            }
+            waits++
+            if (System.currentTimeMillis() >= deadline) {
+                // 一直是空的 → 如实说"空"；只是没跟上 → 返回 null 说"没跟上"。
+                // 两者含义不同：前者页面有问题，后者页面只是慢。
+                return if (sawBlank) ScreenReady(null, 0L, false, waits) else null
+            }
+            runCatching { Thread.sleep(SHOT_FRAME_POLL_MS) }
+        }
+    }
+
+    /**
+     * 等一帧提交到窗口表面（API 29+）。更早的版本直接返回，由外层定时轮询顶上。
+     *
+     * `registerFrameCommitCallback` 必须在主线程注册 —— 本方法正是从 `onMain` 进来的。
+     * 注销必须传**同一个** lambda 实例；新建一个 lambda 是注销不掉的，
+     * 那会让每次截图都往 ViewTreeObserver 上挂一个回调 → 越用越多。
+     */
+    private fun awaitFrameCommit(wv: WebView) {
+        if (android.os.Build.VERSION.SDK_INT < 29) return
+        val observer = wv.viewTreeObserver
+        if (!observer.isAlive) return
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val listener: Runnable = Runnable { runCatching { latch.countDown() } }
+        // 只等一小段：帧提交不来也不能把整趟截图卡死 —— 外层还有指纹复核在兜
+        runCatching {
+            // 方法名是 registerFrameCommit**Callback**（不是 Listener）——
+            // `javap` 查过 android-34 的 ViewTreeObserver，只有 Callback 那两个。
+            observer.registerFrameCommitCallback(listener)
+            latch.await(SHOT_FRAME_POLL_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+            observer.unregisterFrameCommitCallback(listener)
+        }
+    }
+
+    /** 最近一趟整页截图里，最慢的一屏等了几帧（`diag` 诊断；>1 = 页面出帧慢）。 */
+    @Volatile private var lastScreenWaits = 0
 
     /**
      * 把**文档**滚到指定 CSS 像素，并回读确认真的到位。
@@ -1310,12 +1409,30 @@ class WebAutomationService : Service() {
     private val SCROLL_SETTLE_WAIT_MS = 120L
 
     /**
-     * 每滚一段之后等多久再画。
+     * 每屏的"等渲染跟上"策略（5.9.31）。
      *
-     * 滚动**回读确认**之后还要再等 —— 位置对了不等于**画出来了**，
-     * 内容是合成器异步产的。700ms 是探针里"等一帧"那条路的量级。
+     * ## 为什么不是固定 sleep
+     *
+     * 5.9.27–5.9.30 用的是**固定 700ms** —— 那是我拍的数字。真机上：
+     * 长页面前两屏正常，**第 3 屏起画面不跟随滚动**（页面越往下内容越多，出帧越慢）。
+     * 固定等待对"页面有多重"一无所知。
+     *
+     * ## 现在的做法
+     *
+     * 事件驱动 + 事实校验，两步：
+     *
+     * 1. **等一帧真的提交** —— `ViewTreeObserver.registerFrameCommitCallback`（API 29+），
+     *    帧真的进到窗口表面时才回调。API 29 以下退回复核循环里的定时等待。
+     * 2. **校验内容确实变了** —— 拍一张比指纹（[WebShotSampler.sameContent]）。
+     *    变了才算这一屏画好；没变就再等下一帧。
+     *
+     * 上限 [SHOT_FRAME_BUDGET_MS]：超时按"渲染没跟上"报错并**报出屏号**，
+     * 不交一张看起来有图、其实还是上一屏的图。
      */
-    private val SHOT_SEGMENT_WAIT_MS = 700L
+    private val SHOT_FRAME_BUDGET_MS = 4000L
+
+    /** 每帧之间的复核间隔。API 29 以下没有帧提交回调，靠它轮询。 */
+    private val SHOT_FRAME_POLL_MS = 200L
 
     /**
      * 截图取像素，两条路按可靠度依次尝试（`draw` → `capturePicture`）。
@@ -1337,39 +1454,27 @@ class WebAutomationService : Service() {
     private fun captureViewport(wv: WebView, plan: WebShotPlan.Plan): Bitmap? {
         if (wv.width <= 0 || wv.height <= 0) return null
         // 5.9.27：**视口高就是视图高**。整页模式不再撑高视图（那会重新排版），
-        // 改成滚动分段 —— 每段拍的都是视口尺寸这张图。
+        // 改成滚动分段 —— 每屏拍的都是视口尺寸这张图。
         val vw = plan.viewWidthPx.coerceAtMost(wv.width)
         val vh = plan.viewHeightPx.coerceAtMost(wv.height)
         if (vw <= 0 || vh <= 0) return null
-        // ⚠ **每段都按 1:1 拍**。分段方案自己负责缩放与拼接，
-        // 在这里先缩一遍会把每段都缩一次，误差叠起来就对不上了。
         val bw = vw
         val bh = vh
-        // 5.9.7：**先试 draw()**。真机窗口下 draw() 出图最稳，
-        // capturePicture() 那条软件绘制的老路只作兜底。
+        // ⚠ 5.9.31：**这里不再碰 `wv.scaleX/scaleY`。**
+        // 显示缩放搬到了窗口里的 [ScaleFrameLayout] 容器上，WebView 自己的缩放
+        // 是**常量 1**，没有任何代码去改它。
         //
-        // ⚠ 5.9.28：**画之前把 `scaleX/scaleY` 临时归 1**。
-        // WebView 在悬浮窗里是缩着放的（屏宽 1/3，缩放约 0.39）。
-        // `draw()` 走的是软件绘制路径，**会不会把那个变换一起带进来没有保证** ——
-        // 带进来就是一张缩小了 3 倍、四周留白的图，agent 全看走样。
-        // 与其赌，不如画之前显式归 1、画完还原。**必须在主线程上做**
-        // （本方法正是从 onMain 调进来的）。
-        val keepX = wv.scaleX
-        val keepY = wv.scaleY
+        // 于是截图 1:1 **结构上就成立**：`View.draw(Canvas)` 画的是这个视图自己的内容，
+        // 祖先的变换由父视图的 `drawChild` 施加，不在这里面。
+        //
+        // 5.9.28 之前的写法是"截图时把 scale 临时归 1、画完 finally 还原"——
+        // 那既是对抗结构的补救，又每屏来回改两次视图变换去搅合成器
+        // （真机症状：整页截图第 3 屏起画面不跟随滚动）。现在这套动作**一次都不需要了**。
         val fromDraw = runCatching {
-            if (keepX != 1f || keepY != 1f) {
-                wv.scaleX = 1f
-                wv.scaleY = 1f
-            }
-            try {
-                Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888).also { bmp ->
-                    val canvas = Canvas(bmp)
-                    canvas.drawColor(Color.WHITE)
-                    wv.draw(canvas)
-                }
-            } finally {
-                wv.scaleX = keepX
-                wv.scaleY = keepY
+            Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888).also { bmp ->
+                val canvas = Canvas(bmp)
+                canvas.drawColor(Color.WHITE)
+                wv.draw(canvas)
             }
         }.getOrNull()
         if (hasContent(fromDraw)) return fromDraw
