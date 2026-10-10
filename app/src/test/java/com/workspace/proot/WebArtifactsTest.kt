@@ -39,6 +39,45 @@ class WebArtifactsTest {
         assertEquals("shot-1234.png", WebArtifacts.shotFileName(1234))
     }
 
+    // ---------- 5.9.30：整页截图一屏一个文件 ----------
+
+    @Test
+    fun `整页截图每屏的文件名带屏号`() {
+        assertEquals("shot-0007-1.png", WebArtifacts.shotScreenFileName(7, 1))
+        assertEquals("shot-0007-2.png", WebArtifacts.shotScreenFileName(7, 2))
+        assertEquals("shot-0042-3.png", WebArtifacts.shotScreenFileName(42, 3))
+    }
+
+    @Test
+    fun `屏号从1起不许是0或负`() {
+        // 屏号 0 会读起来像"第 0 屏"，那不是人话
+        assertEquals("shot-0007-1.png", WebArtifacts.shotScreenFileName(7, 0))
+        assertEquals("shot-0007-1.png", WebArtifacts.shotScreenFileName(7, -5))
+    }
+
+    @Test
+    fun `带屏号的文件名照样能解析出序号`() {
+        // ⚠ 这是 5.9.30 修的坑：`shot-0007-2.png` 去掉前缀后缀剩 `0007-2`，
+        // 整串 toIntOrNull() 直接 null → 序号永远算成 0 → **新截图覆盖旧截图**。
+        assertEquals(7, WebArtifacts.highestShotSeq(listOf("shot-0007-1.png")))
+        assertEquals(7, WebArtifacts.highestShotSeq(listOf("shot-0007-2.png", "shot-0007-3.png")))
+        assertEquals(
+            "混着普通截图与整页截图也要能取到最大值",
+            42,
+            WebArtifacts.highestShotSeq(listOf("shot-0042.png", "shot-0007-1.png"))
+        )
+    }
+
+    @Test
+    fun `整页截图的几张算同一次截图只占一个序号`() {
+        val screens = (1..5).map { WebArtifacts.shotScreenFileName(7, it) }
+        assertEquals(
+            "5 屏的序号必须都是 7 —— 否则看图时分不清哪几张是一组",
+            7,
+            WebArtifacts.highestShotSeq(screens)
+        )
+    }
+
     @Test
     fun `未超上限时不删任何东西`() {
         val names = (1..50).map { WebArtifacts.shotFileName(it) }

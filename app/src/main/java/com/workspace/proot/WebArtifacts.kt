@@ -107,11 +107,54 @@ object WebArtifacts {
 
     /** 已有文件名里最大的序号；没有就 0。 */
     fun highestShotSeq(names: List<String>): Int = names.maxOfOrNull { name ->
-        name.removePrefix(SHOT_PREFIX).removeSuffix(SHOT_SUFFIX).toIntOrNull() ?: 0
+        // ⚠ 5.9.30：**只取前导数字**，不能整串解析。
+        // 整页截图一屏一张，名字带屏号：`shot-0007-2.png`。
+        // 去掉前缀后缀剩 `0007-2`，`toIntOrNull()` 直接 null → 序号永远算成 0 →
+        // 新截图会覆盖旧截图。那是**静默丢数据**，所以这里改成取前导数字。
+        name.removePrefix(SHOT_PREFIX).takeWhile { it.isDigit() }.toIntOrNull() ?: 0
     } ?: 0
 
     /** 截图文件名（4 位序号，可排序 = 可按时间排序）。 */
     fun shotFileName(seq: Int): String = "$SHOT_PREFIX%04d$SHOT_SUFFIX".format(seq)
+
+    /** 整页截图里第 `index` 屏（1 起）的文件名：`shot-0007-1.png`、`-2.png`… */
+    fun shotScreenFileName(seq: Int, index: Int): String =
+        "$SHOT_PREFIX%04d-%d$SHOT_SUFFIX".format(seq, index.coerceAtLeast(1))
+
+    /**
+     * 一次落盘多屏（5.9.30 整页截图）。
+     *
+     * **共用一个基准序号**，屏号跟在后面 —— 于是 `shot-0007-1/2/3.png`
+     * 一眼就是同一次整页截图的第三屏，而不是三次无关的截图。
+     *
+     * @param bitmaps 顺序必须是从上到下
+     * @return 成功落盘的文件；**长度必须等于入参**（半落盘视为失败，由调用方回收）
+     */
+    fun saveShotScreens(context: Context, bitmaps: List<Bitmap>): List<File> {
+        if (bitmaps.isEmpty()) return emptyList()
+        val dir = shotsDir(context)
+        dir.mkdirs()
+        val existing = dir.listFiles { f -> f.name.startsWith(SHOT_PREFIX) && f.name.endsWith(SHOT_SUFFIX) }
+            ?.map { it.name }
+            ?: emptyList()
+        val base = nextShotSeq(highestShotSeq(existing) + 1)
+        val files = mutableListOf<File>()
+        bitmaps.forEachIndexed { i, bmp ->
+            val f = File(dir, shotScreenFileName(base, i + 1))
+            val ok = runCatching {
+                f.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                true
+            }.getOrDefault(false)
+            if (!ok) {
+                // 已经写出去的那几张要删掉 —— 留下半套比全失败更难解释
+                files.forEach { runCatching { it.delete() } }
+                return emptyList()
+            }
+            files.add(f)
+        }
+        trimShots(dir)
+        return files
+    }
 
     /**
      * 纯逻辑：给定已有的截图文件名，返回**要删掉的最旧的那些**（超出 [max] 时）。

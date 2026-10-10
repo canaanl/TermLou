@@ -1119,7 +1119,7 @@ class WebAutomationService : Service() {
                 bmp.recycle()
                 return WebProtocol.errJson(SHOT_NOTHING)
             }
-            return finishShot(bmp, plan)
+            return finishShot(listOf(bmp), plan)
         }
 
         val shotPlan = plan.scrollPlan()
@@ -1128,42 +1128,47 @@ class WebAutomationService : Service() {
         // ⚠ **必须记住原来的滚动位置并还原。** 不还原的话页面就停在长图底部，
         // 后面 click/type 按视口坐标算的位置全错 —— 那是比截不到图更糟的错。
         val originCss = readScrollCss(wv, cancelled)
-        val out = try {
+        val shots = try {
             captureByScrolling(wv, plan, shotPlan, density, cancelled)
         } finally {
             originCss?.let { scrollDocumentTo(wv, it, cancelled) }
         }
-        val stitched = out
-            ?: return WebProtocol.errJson(SHOT_NOTHING)
-        if (!hasContent(stitched)) {
-            stitched.recycle()
-            return WebProtocol.errJson(SHOT_NOTHING)
+        val bad = shots.error
+        if (bad != null) {
+            shots.bitmaps.forEach { it.recycle() }
+            return WebProtocol.errJson(bad)
         }
-        return finishShot(stitched, plan)
+        return finishShot(shots.bitmaps, plan)
     }
 
     /**
-     * 滚动分段 → 逐段画 → 拼成一张长图。
+     * 滚动分段 → **每屏存一张**（5.9.30）。
+     *
+     * ## 为什么不再拼成一张长图
+     *
+     * 拼接是我自己加的，用户没要求。它带来两个纯负担：
+     *
+     * 1. 一堆 `src`/`dst` 矩形换算 —— 真机 5.9.29 的"首页缩小版 + 大片空白"就出在那儿；
+     * 2. 一张 1236×11440 的巨位图（56MB），手机上很容易撑不住。
+     *
+     * 去掉拼接，这两样一起消失：每屏就是"视口原尺寸"这一张图，干净、可单独检查。
      *
      * ## 顺序是有讲究的
      *
      * 1. **JS 滚动** —— `window.scrollTo(0, cssY)`，滚的是**文档**。
-     *    2. **回读 `window.pageYOffset` 确认真的到位** —— 不是等固定时间，是等它真到。
-     *    3. **等一帧** —— 内容是合成器异步画的，滚到位 ≠ 已经画出来。
-     *    4. **画**。
+     * 2. **回读 `window.pageYOffset` 确认真的到位** —— 不是等固定时间，是等它真到。
+     * 3. **等一帧** —— 内容是合成器异步画的，滚到位 ≠ 已经画出来。
+     * 4. **画**。
      *
-     * 悬浮窗会跟着一起滚：**你在窗里看着它滚到哪里，那一段就截哪里**。
+     * 悬浮窗跟着一起滚：**你在窗里看着它滚一屏，那一屏就存一张**。
      *
-     * ## 5.9.29 修的根因
+     * ## 「这屏和上一屏一样」= 没滚到，直接报错
      *
-     * 5.9.28 这里用的是 `wv.scrollTo(0, y)` —— 那是**视图**的滚动偏移，
-     * WebView 的**文档滚动**它根本不管。于是文档压根没滚：第一段画的还是首屏（对的），
-     * 后面每一段都只是把同一个视图往上挪，露出来的是渲染内容之下的空白 → **全白**。
+     * 最阴的一种失败：第二屏拍出来和第一屏一模一样。滚动没生效或渲染没跟上，
+     * 但两张都"有内容"，判空查不出来 —— 于是一张首页的复制品被当成整页交出去。
+     * [WebShotSampler.sameContent] 抓这个，**并报出是第几屏**。
      *
-     * 佐证：`:probe` v8 扫过 11 种"踢一帧"的办法，**`View.scrollTo` 就在里面、
-     * 22 次全灭** —— 这条路对 WebView 不通，当时已经验过了。
-     *
-     * @return 拼好的长图；任一段滚不到位或画不出来就返回 null（不交半张图）
+     * @return 每屏一张，外加失败原因（成功时为 null）
      */
     private fun captureByScrolling(
         wv: WebView,
@@ -1171,53 +1176,44 @@ class WebAutomationService : Service() {
         shotPlan: WebScrollShot.Plan,
         density: Float,
         cancelled: () -> Boolean
-    ): Bitmap? {
-        val scale = plan.scale
-        val outW = (shotPlan.viewportWidthPx * scale).toInt().coerceAtLeast(1)
-        val outH = (shotPlan.pageHeightPx * scale).toInt().coerceAtLeast(1)
-        val full = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(full)
-        canvas.drawColor(Color.WHITE)
+    ): Shots {
+        val shots = mutableListOf<Bitmap>()
+        var prevPrint: Long = 0L
 
         for (seg in shotPlan.segments) {
-            if (cancelled()) {
-                full.recycle()
-                return null
-            }
+            val screenNo = shots.size + 1
+            if (cancelled()) return Shots(shots, "client disconnected")
             val targetCss = WebScrollShot.toCss(seg.scrollY, density)
             if (!scrollDocumentTo(wv, targetCss, cancelled)) {
-                // 滚不到位（页面劫持滚动 / 高度变了）—— 如实失败，不交半张图
-                full.recycle()
-                return null
+                return Shots(shots, "screen $screenNo: the page would not scroll there — the site may block scrolling; retry or take the single screen")
             }
             runCatching { Thread.sleep(SHOT_SEGMENT_WAIT_MS) }
             val piece = onMain { captureViewport(wv, plan) }
-            if (piece == null) {
-                full.recycle()
-                return null
-            }
-            // sourceY：这段的新内容从拍到的那张图的第几行开始
-            // （最后一段滚不到它该在的格子，前面有拍过的部分 —— 见 [WebScrollShot]）
-            val srcY = (seg.sourceY * scale).toInt().coerceIn(0, piece.height - 1)
-            val dstY = (seg.top * scale).toInt()
-            val dstH = ((seg.height * scale).toInt()).coerceAtMost(piece.height - srcY)
-            if (dstH <= 0) {
+                ?: return Shots(shots, "screen $screenNo: nothing rendered")
+            if (!hasContent(piece)) {
                 piece.recycle()
-                continue
+                return Shots(shots, "screen $screenNo: nothing rendered (blank)")
             }
-            canvas.save()
-            if (scale != 1f) canvas.scale(scale, scale)
-            canvas.translate(0f, (dstY / scale).toFloat())
-            val src = android.graphics.Rect(
-                0, srcY, piece.width, (srcY + dstH).coerceAtMost(piece.height)
-            )
-            val dst = android.graphics.Rect(0, dstY, outW, dstY + dstH)
-            canvas.drawBitmap(piece, src, dst, null)
-            canvas.restore()
-            piece.recycle()
+            // ⚠ **和上一屏一模一样 = 没滚到新地方。** 报错并报序号，
+            // 不能交一张"看起来有图、其实没滚"的图。
+            val print = WebShotSampler.fingerprint(piece.width, piece.height) { x, y ->
+                piece.getPixel(x, y)
+            }
+            if (WebShotSampler.sameContent(prevPrint, print)) {
+                piece.recycle()
+                return Shots(
+                    shots,
+                    "screen $screenNo: identical to the previous screen — the page scrolled but the render did not follow; retry after the page settles"
+                )
+            }
+            prevPrint = print
+            shots.add(piece)
         }
-        return full
+        return Shots(shots, null)
     }
+
+    /** [captureByScrolling] 的结果：每屏一张 + 失败原因。 */
+    private class Shots(val bitmaps: List<Bitmap>, val error: String?)
 
     /**
      * 把**文档**滚到指定 CSS 像素，并回读确认真的到位。
@@ -1254,28 +1250,46 @@ class WebAutomationService : Service() {
     }
 
     /**
-     * 落盘 + 组装返回字段。**尺寸在 recycle 之前留下**。
+     * 落盘 + 组装返回字段（5.9.30：整页拆成多张）。
      *
-     * width/height 是位图真实像素。**缩放过的话它跟页面真实像素对不上**，
-     * 所以 plan.note 会明说缩到了百分之几 —— 不能让 agent 自己猜。
+     * ## 返回字段（agent 看这里）
+     *
+     * | 字段 | 含义 |
+     * |---|---|
+     * | `files` | **所有屏，按从上到下**（`shot-0007-1.png`、`-2.png`…） |
+     * | `screens` | 屏数 |
+     * | `file` | 第一屏（保留：老 agent 只认这个字段，不至于炸） |
+     * | `width`/`height` | **一屏**的像素尺寸 |
+     * | `page_height` | **整页**高（`full_page` 时页面真实高度） |
+     *
+     * ⚠ **`height` 不再是整页高**（5.9.30 起）。老 agent 拿它当页面长度会算错，
+     * 所以补了 `page_height`，并在 note 里写明拆成几屏、按顺序看。
+     *
+     * @param bitmaps 每屏一张，顺序必须是从上到下
      */
-    private fun finishShot(bmp: Bitmap, plan: WebShotPlan.Plan): String {
-        val pxW = bmp.width
-        val pxH = bmp.height
-        val file = WebArtifacts.saveShot(this, bmp)
-        bmp.recycle()
-        if (file == null) return WebProtocol.errJson("shot write failed")
+    private fun finishShot(bitmaps: List<Bitmap>, plan: WebShotPlan.Plan): String {
+        if (bitmaps.isEmpty()) return WebProtocol.errJson(SHOT_NOTHING)
+        val pxW = bitmaps[0].width
+        val pxH = bitmaps[0].height
+        val files = WebArtifacts.saveShotScreens(this, bitmaps)
+        bitmaps.forEach { it.recycle() }
+        if (files.size != bitmaps.size) {
+            // 半落盘比全失败更难解释 —— saveShotScreens 会把已写的删掉，这里只报实话
+            return WebProtocol.errJson("shot write failed")
+        }
         val fields = mutableListOf<Pair<String, Any?>>(
-            "file" to WebArtifacts.linuxPath(this, file),
-            "bytes" to file.length(),
+            "files" to files.map { WebArtifacts.linuxPath(this, it) },
+            "screens" to files.size,
+            "file" to WebArtifacts.linuxPath(this, files[0]),
+            "bytes" to files.sumOf { it.length() },
             "width" to pxW,
             "height" to pxH,
+            "page_height" to (if (plan.isLong) plan.pageHeightPx else pxH),
             "full_page" to plan.isLong
         )
         if (plan.note.isNotEmpty()) fields += "note" to plan.note
         return WebProtocol.okJson(*fields.toTypedArray())
     }
-
     /**
      * 截不出内容时的说法。
      *

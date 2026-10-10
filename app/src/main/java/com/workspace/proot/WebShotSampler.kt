@@ -83,4 +83,48 @@ object WebShotSampler {
         }
         return false
     }
+
+    /**
+     * 内容指纹：抽样几个点的颜色**按顺序**混成一个整数（5.9.30）。
+     *
+     * ## 它抓什么
+     *
+     * 整页截图滚着拍时，最阴的一种失败是**第二屏拍出来的和第一屏一模一样** ——
+     * 滚动没生效，或者渲染没跟上。但两张图都"有内容"，判空查不出来，
+     * 于是一张首页的复制品被当成整页交出去了。
+     *
+     * 真机 5.9.29 就是这个症状：第一屏正常，后面几屏是**首页的缩小版**加大片空白。
+     *
+     * 指纹相同就说明**没滚到新地方**，此时必须报错并报出是第几屏，
+     * 不能交一张看起来有图、其实没滚的图。
+     *
+     * ## 为什么够用
+     *
+     * 两屏内容真的完全一样的概率极低；而抓错的代价只是"多报一次错、让 agent 重试"，
+     * 远小于"交出一张假整页"。
+     */
+    fun fingerprint(width: Int, height: Int, pixelAt: (Int, Int) -> Int): Long {
+        if (width <= 0 || height <= 0) return 0L
+        var h = 1125899906842597L
+        val stepX = (width / 4).coerceAtLeast(1)
+        val stepY = (height / 6).coerceAtLeast(1)
+        var y = 0
+        while (y < height) {
+            var x = 0
+            while (x < width) {
+                h = (h xor (pixelAt(x, y) and 0xFFFFFF).toLong()) * 31L
+                x += stepX
+            }
+            y += stepY
+        }
+        return h
+    }
+
+    /**
+     * 两张图的指纹一样 = 没滚到新地方。
+     *
+     * 指纹为 `0` 表示尺寸非法（空图），那种情况交给 [looksBlank] 管，
+     * **不在这里当成"相同"** —— 否则第一张空图会把后面每一张都带下水。
+     */
+    fun sameContent(a: Long, b: Long): Boolean = a != 0L && a == b
 }

@@ -352,7 +352,81 @@ class RegressionScanTest {
         )
     }
 
-    // ---------- 5.9.29：整页截图必须滚文档，不能滚视图 ----------
+    // ---------- 5.9.30：整页截图一屏一张，不许再拼 ----------
+
+    @Test
+    fun `整页截图不许再拼成一张长图`() {
+        // 拼接是我自己加的、用户没要求的。两样纯负担：
+        // 一堆 src/dst 矩形换算（真机"首页缩小版+大片空白"就出在那儿），
+        // 以及一张 1236×11440 的巨位图（56MB）。
+        val svc = code("WebAutomationService.kt")
+        assertFalse(
+            "captureByScrolling 里不许再往大位图上 drawBitmap 拼：\n$svc",
+            svc.contains("canvas.drawBitmap(piece")
+        )
+        assertFalse(
+            "不许再建整页那么大的位图：\n$svc",
+            Regex("""Bitmap\.createBitmap\(outW, outH""").containsMatchIn(svc)
+        )
+        assertTrue(
+            "每屏存一张，走 saveShotScreens：\n$svc",
+            svc.contains("WebArtifacts.saveShotScreens")
+        )
+    }
+
+    @Test
+    fun `这屏和上一屏一样必须报错并报出是第几屏`() {
+        // 真机 5.9.29：第二屏拍出来是第一屏的缩小版。两张都"有内容"，
+        // 判空查不出来，于是一张首页的复制品被当成整页交出去了。
+        // 现在必须靠指纹抓住，并且**报出第几屏**。
+        val svc = source("WebAutomationService.kt")
+        val body = svc.substringAfter("private fun captureByScrolling(")
+            .substringBefore("private class Shots(")
+        assertTrue("没抓到 captureByScrolling 的函数体", body.length > 600)
+        assertTrue("必须比指纹：\n$body", body.contains("WebShotSampler.fingerprint("))
+        assertTrue(
+            "必须用 sameContent 判：\n$body",
+            body.contains("WebShotSampler.sameContent(prevPrint, print)")
+        )
+        // 报错必须带**动态**屏号，不能写死数字 —— 写死的话 agent 不知道是哪一屏坏的
+        val dollar = '$'
+        val placeholder = "screen ${dollar}screenNo"
+        assertTrue(
+            "报错文案必须用动态屏号占位符：\n$body",
+            body.contains(placeholder)
+        )
+        assertTrue(
+            "屏号必须按拍到的张数递增：\n$body",
+            body.contains("val screenNo = shots.size + 1")
+        )
+    }
+
+    @Test
+    fun `shot返回必须带files和screens`() {
+        // agent 靠 files 逐屏看整页；靠 screens 知道有几屏
+        val svc = code("WebAutomationService.kt")
+        val body = svc.substringAfter("private fun finishShot(")
+            .substringBefore("截不出内容时的说法")
+        assertTrue("没抓到 finishShot 的函数体", body.length > 400)
+        assertTrue("必须返回 files：\n$body", body.contains("\"files\" to"))
+        assertTrue("必须返回 screens：\n$body", body.contains("\"screens\" to"))
+        // height 不再是整页高 —— 必须补 page_height，否则老 agent 会算错页面长度
+        assertTrue("必须返回 page_height：\n$body", body.contains("\"page_height\" to"))
+    }
+
+    @Test
+    fun `help里必须讲清整页是拆成多张`() {
+        // agent 自发现全靠 help。字段变了不说，agent 就会当没变化。
+        val h = code("WebProtocol.kt")
+        assertTrue("help 必须提到 files：$h", h.contains("\\\"files\\\"") || h.contains("files 按从上到下"))
+        assertTrue("help 必须说明按顺序看：$h", h.contains("从上到下"))
+        assertTrue(
+            "help 不许再说'自动截整页（长图）'—— 那已经不成立了：$h",
+            !h.contains("自动截**整页**")
+        )
+    }
+
+// ---------- 5.9.29：整页截图必须滚文档，不能滚视图 ----------
 
     @Test
     fun `整页截图不许用View的scrollTo`() {
@@ -423,519 +497,6 @@ class RegressionScanTest {
     }
 
     @Test
-    fun `滚不到位不许交半张图`() {
-        // 页面劫持滚动、滚动中高度变了 —— 这时候拼出来的长图是残的。
-        // 5.9.9 那次的教训：半空白图以 ok:true + full_page:true 出去，
-        // agent 会以为那就是整页。这比修不好更糟。
-        val svc = source("WebAutomationService.kt")
-        val body = svc.substringAfter("private fun captureByScrolling(")
-            .substringBefore("private fun scrollDocumentTo(")
-        assertTrue("没找到 captureByScrolling 的函数体", body.length > 400)
-        assertTrue(
-            "滚不到位必须整体失败（recycle + return null），不能接着往下拼：\n$body",
-            Regex("""scrollDocumentTo\(wv, targetCss, cancelled\)\)[\s\S]{0,200}?full\.recycle\(\)[\s\S]{0,80}?return null""")
-                .containsMatchIn(body)
-        )
-    }
-
-    @Test
-    fun `截完必须用JS滚回原位且原位是用JS读的`() {
-        // `wv.scrollY` 读的是视图偏移，拿它当"原位"会存下一个错的值，
-        // 还原到错的地方 —— 页面就停在长图底部，click/type 的坐标全错。
-        // ⚠ 这里必须用 code()（剥掉 KDoc）而不是 source()：
-        // 类注释里正引着 `wv.scrollTo(0, y)` 那句"这就是 5.9.28 的错"，
-        // 用 source() 会把那段说明当成代码扫出来。
-        val body = code("WebAutomationService.kt")
-            .substringAfter("private fun opShot(").substringBefore("SHOT_NOTHING =")
-        assertTrue("必须用 JS 读原位：\n$body", body.contains("readScrollCss(wv, cancelled)"))
-        val finallyAt = body.indexOf("finally {")
-        assertTrue("opShot 里没有 finally —— 截图一出问题滚动位置就回不去了", finallyAt >= 0)
-        assertTrue(
-            "finally 里必须用 JS 滚回原位：\n$body",
-            body.substring(finallyAt).contains("scrollDocumentTo(wv, it, cancelled)")
-        )
-        assertFalse(
-            "不许用 View 的滚动去还原：\n$body",
-            Regex("""wv\.scroll(To|Y)""").containsMatchIn(body)
-        )
-    }
-
-    // ---------- 5.9.27：悬浮窗 ----------
-
-    @Test
-    fun `悬浮窗不许用NOT_TOUCHABLE也不许用LAYOUT_NO_LIMITS`() {
-        // 用户要求"点小窗唯一的行为就是拖动"。
-        // - NOT_TOUCHABLE：整窗连 touch 都收不到，拖动也就没了。
-        // - LAYOUT_NO_LIMITS（5.9.28 去掉）：窗口本来就只有屏宽 1/3、不超屏，
-        //   这个 flag 让窗口无视屏幕边界与系统栏 inset —— 压在状态栏上的
-        //   那一块收不到触摸，是"拖不动"的嫌疑之一。
-        val c = code("WebFloatWindowHost.kt")
-        assertFalse("NOT_TOUCHABLE 会把拖动一起关掉：\n$c", c.contains("FLAG_NOT_TOUCHABLE"))
-        assertFalse("LAYOUT_NO_LIMITS 必须去掉：\n$c", c.contains("FLAG_LAYOUT_NO_LIMITS"))
-        assertTrue(
-            "NOT_TOUCH_MODAL 必须留着，否则这个窗会吃掉全屏触摸、底下 app 点不动：\n$c",
-            c.contains("FLAG_NOT_TOUCH_MODAL")
-        )
-    }
-
-    @Test
-    fun `触摸必须拦在dispatchTouchEvent这个入口上`() {
-        // 5.9.27 第一版用 `onInterceptTouchEvent` + `onTouchEvent` 那套，**真机上拖不动**。
-        // 现在钉死在 `dispatchTouchEvent`（事件分发的入口）——子视图连分发都进不去。
-        val c = code("WebFloatWindowHost.kt")
-        val start = c.indexOf("override fun dispatchTouchEvent(")
-        assertTrue("必须在 dispatchTouchEvent 里拦：$c", start >= 0)
-        // ⚠ 别用 substringAfter("...dispatchTouchEvent(") —— 那会把签名里
-        // 剩下的 "ev: MotionEvent)" 一起切掉，后面再拿签名去匹配就永远匹配不上。
-        val body = c.substring(start, minOf(c.length, start + 1200))
-        assertTrue("必须处理 ACTION_DOWN：\n$body", body.contains("MotionEvent.ACTION_DOWN"))
-        assertTrue("必须处理 ACTION_MOVE：\n$body", body.contains("MotionEvent.ACTION_MOVE"))
-        assertTrue(
-            "必须一律返回 true 把事件吃掉，否则会漏给 WebView：\n$body",
-            Regex("""return true\s*\n\s*\}""").containsMatchIn(body)
-        )
-        assertFalse(
-            "不许调 super.dispatchTouchEvent —— 调了子视图就可能拿到事件：\n$body",
-            body.contains("super.dispatchTouchEvent")
-        )
-    }
-
-    @Test
-    fun `拖动必须绝对落位不许累加截断的增量`() {
-        // 第一版是 `p.x += dx`，dx 来自 `(rawX - lastX).toInt()`：
-        // density 3.0 的屏上一次 MOVE 位移不足 1px 就截成 0，窗口几乎不动。
-        // 现在按下记锚点、按 `锚点 + 手指位移` 一次算完，位移全程 Float。
-        val c = code("WebFloatWindowHost.kt")
-        assertTrue(
-            "位移必须以 Float **原样**传下去 —— 中途截断成 Int 就回到第一版那个毛病：\n$c",
-            c.contains("onDragDelta?.invoke(ev.rawX - downX, ev.rawY - downY)")
-        )
-        assertTrue(
-            "moveBy 必须收 Float（全程只有最后一次取整）：\n$c",
-            c.contains("private fun moveBy(targetX: Float, targetY: Float)")
-        )
-        assertTrue(
-            "落点必须是「按下时记下的窗口位置 + 手指位移」：\n$c",
-            c.contains("anchorX = cur?.x ?: 0") &&
-                c.contains("anchorY = cur?.y ?: 0") &&
-                c.contains("moveBy(anchorX + dx, anchorY + dy)")
-        )
-        assertFalse(
-            "不许出现 p.x + dx 这种累加（每步截断，误差会一路叠上去）：\n$c",
-            c.contains("p.x + dx") || c.contains("p.y + dy")
-        )
-    }
-
-    @Test
-    fun `updateViewLayout失败不许静默吞掉`() {
-        // 第一版 `runCatching { updateViewLayout }` 把失败吞了 ——
-        // 界面表现是"按住没反应"，一句日志都不打，只能靠猜。
-        val c = code("WebFloatWindowHost.kt")
-        assertFalse(
-            "不许 runCatching 包 updateViewLayout（失败会被静默吞掉）：\n$c",
-            Regex("""runCatching\s*\{\s*wm\.updateViewLayout""").containsMatchIn(c)
-        )
-        assertTrue("必须把失败原因记下来给 diag 看：$c", c.contains("layoutError = msg"))
-    }
-
-    @Test
-    fun `拖动必须有诊断计数不然下次只能猜`() {
-        // 这轮已经猜错太多次。down/move 计数能一眼分开
-        // "触摸没进窗口" 与 "拦到了但没落地"。
-        val c = code("WebFloatWindowHost.kt")
-        assertTrue("必须记 DOWN 次数：$c", c.contains("touchDowns++"))
-        assertTrue("必须记 MOVE 次数：$c", c.contains("touchMoves++"))
-        assertTrue("必须能拼出可读报告：$c", c.contains("down=\$touchDowns move=\$touchMoves"))
-        val svc = code("WebAutomationService.kt")
-        assertTrue("diag 必须报这一栏：$svc", svc.contains("float_touch"))
-    }
-
-    @Test
-    fun `窗口不许给WebView打NOT_FOCUSABLE之外的焦点旗标`() {
-        // NOT_FOCUSABLE 必须留着：不加的话悬浮窗会吃掉输入法焦点，
-        // agent 的 type 就失灵了（这是加这个 flag 的唯一理由）。
-        val c = code("WebFloatWindowHost.kt")
-        assertTrue(
-            "NOT_FOCUSABLE 必须留着，否则 agent 输入会失灵：$c",
-            c.contains("FLAG_NOT_FOCUSABLE")
-        )
-    }
-
-    @Test
-    fun `视口不许跟着窗口缩而且截图不许带着缩放`() {
-        // 窗口只有屏宽 1/3，但 WebView 仍按 412×892dp 排版。
-        // 若把视图量成窗口大小，视口变 160dp 宽，多数手机站重排，
-        // agent 学过的选择器与坐标全失效。
-        val svc = code("WebAutomationService.kt")
-        assertTrue(
-            "视口宽高必须走 WebProtocol 的常量，不能跟窗口走：$svc",
-            svc.contains("WebProtocol.VIEWPORT_W_DP") &&
-                svc.contains("WebProtocol.VIEWPORT_H_DP")
-        )
-        val host = code("WebFloatWindowHost.kt")
-        assertTrue(
-            "缩放只能靠 scaleX/scaleY（显示层），不许改布局尺寸：$host",
-            host.contains("wv.scaleX = sx") && host.contains("wv.scaleY = sy")
-        )
-        // 5.9.28：截图必须先把缩放归 1。
-        // WebView 在窗里是缩着放的，`draw()` 会不会把那个变换带进来没有保证 ——
-        // 带进来就是一张缩小 3 倍、四周留白的图。
-        val cap = svc.substringAfter("private fun captureViewport(")
-            .substringBefore("private fun hasContent(")
-        assertTrue("没找到 captureViewport 的函数体", cap.length > 300)
-        assertTrue(
-            "画之前必须把 scaleX/scaleY 归 1：\n$cap",
-            cap.contains("wv.scaleX = 1f") && cap.contains("wv.scaleY = 1f")
-        )
-        assertTrue(
-            "画完必须还原（finally 里）：\n$cap",
-            Regex("""finally\s*\{[^}]*wv\.scaleX = keepX[^}]*wv\.scaleY = keepY""")
-                .containsMatchIn(cap)
-        )
-    }
-
-    @Test
-    fun `整页截图必须滚动不许再撑高视图`() {
-        // 撑高会让长页面按整页高度**重新排版一次**（100vh 变高、
-        // 懒加载一次性全触发、吸顶页头贴到整页顶部）。有真窗口之后不需要了。
-        val svc = code("WebAutomationService.kt")
-        assertFalse(
-            "opShot 里不许再把视图量到整页高：$svc",
-            svc.contains("layoutView(wv, vw, plan.viewHeightPx)")
-        )
-        assertTrue("必须靠滚动分段：$svc", svc.contains("captureByScrolling"))
-    }
-
-    @Test
-    fun `截完图必须滚回原位`() {
-        // 不还原的话页面停在长图底部，后面 click/type 按视口坐标算的位置全错 ——
-        // 那比"截不到图"糟得多。
-        val svc = source("WebAutomationService.kt")
-        val body = svc.substringAfter("private fun opShot(").substringBefore("SHOT_NOTHING =")
-        assertTrue("没找到 opShot 的函数体", body.isNotEmpty())
-        val finallyAt = body.indexOf("finally {")
-        assertTrue("opShot 里没有 finally —— 截图一出问题滚动位置就回不去了", finallyAt >= 0)
-        val restoreAt = body.indexOf("scrollDocumentTo(wv, it, cancelled)", finallyAt)
-        assertTrue(
-            "finally 里必须滚回原来的位置",
-            restoreAt > finallyAt
-        )
-    }
-
-    @Test
-    fun `无头自检那条路不许复活`() {
-        // 有了真窗口就没有"要不要窗口"这个问题了。自检 + 落回那套
-        // （WebHeadless / headlessMode / usingOverlay）已整体删除。
-        val svc = code("WebAutomationService.kt")
-        for (dead in listOf("WebHeadless", "startHeadlessSelfCheck", "usingOverlay", "headlessMode")) {
-            assertFalse("无头自检的 $dead 不许回来：$svc", svc.contains(dead))
-        }
-        assertFalse(
-            "WebHeadless.kt 已删除，不许重建",
-            File("").absoluteFile.let { d ->
-                var cur: File? = d
-                var hops = 0
-                var found = false
-                while (cur != null && hops < 6 && !found) {
-                    found = File(cur, "app/src/main/java/com/workspace/proot/WebHeadless.kt").isFile
-                    cur = cur.parentFile; hops++
-                }
-                found
-            }
-        )
-    }
-
-    @Test
-    fun `建不出悬浮窗不许报成timeout`() {
-        // "timeout" 会让 agent 以为是主线程忙，于是不停重试 ——
-        // 而"没给悬浮窗权限"这件事重试一万次也是这个结果。
-        val svc = code("WebAutomationService.kt")
-        assertTrue(
-            "必须把建窗失败的真实原因报出去：$svc",
-            svc.contains("floatWindow.lastError")
-        )
-    }
-
-    @Test
-    fun `常态长路径必须横向滚前缀盖板定死`() {
-        // 5.9.24：不砍了，滚出来看。`Files | ` 前缀由盖板定死盖住，滚动从 `|` 后面开始。
-        // 之前那套按段缩短（PathShorten）与"滚出来看"互斥，已删，不许回来。
-        val c = code("FileListManager.kt")
-        assertTrue("恢复路径必须走跑马灯", c.contains("StatusMarquee.showPersistent("))
-        assertFalse(
-            "按段缩短已作废，不许回来：$c",
-            c.contains("PathShorten") || c.contains("fitPath(")
-        )
-        assertFalse(
-            "不许再直接拼全路径静止显示：$c",
-            c.contains("statusText?.text = if (p.isEmpty())")
-        )
-        val m = code("StatusMarquee.kt")
-        assertTrue("必须开系统跑马灯", m.contains("TruncateAt.MARQUEE"))
-        assertTrue("必须无限循环（常态显示，滚一遍停住的话末尾永远是末尾）", m.contains("marqueeRepeatLimit = -1"))
-        assertTrue("前缀必须由盖板画", m.contains("overlay.text = prefix"))
-        assertTrue("盖板平时必须隐藏", m.contains("overlay?.visibility") && m.contains("View.GONE"))
-        assertTrue(
-            "临时展示前必须先关跑马灯（否则单行模式把纵向滚动憋死）：$m",
-            m.contains("clearPersistent(view, overlay)")
-        )
-    }
-
-    @Test
-    fun `盖板必须和正文同源否则看出重影`() {
-        // 盖板盖在正文左端，字号/颜色/背景/内边距差 1px 就是重影。
-        // 两边必须读同一个 theme 对象，换主题一起变。
-        val c = code("StatusController.kt")
-        assertTrue("盖板必须存在", c.contains("statusOverlay"))
-        assertTrue("盖板字色必须同源", c.contains("scope.theme.onSurface"))
-        assertTrue("盖板背景必须同源", c.contains("scope.theme.surfaceContainer"))
-        assertTrue("盖板必须默认隐藏", c.contains("visibility = View.GONE"))
-        assertTrue("三层顺序：正文下、盖板上", c.contains("addView(statusView)") && c.contains("addView(statusOverlay)"))
-    }
-
-// ---------- 5.9.18：终端缝隙里的 opencode 活动进度条 ----------
-
-    @Test
-    fun `进度条绝不许碰终端的布局`() {
-        // 硬约束：它只是叠在最底层的一层。改 terminalView 的尺寸/位置/padding
-        // 就会改 PTY rows/columns，TUI 会重排 —— 用户明确要求不做任何重新排版。
-        val r = code("TerminalActivityBar.kt")
-        assertFalse("绝不许位移终端", r.contains("translationY") || r.contains("translationX"))
-        assertFalse("绝不许改终端 layoutParams", r.contains("layoutParams =") && r.contains("terminalView"))
-        assertFalse("绝不许调 setPadding", r.contains("setPadding"))
-        assertFalse("绝不许 resize/measure 终端", r.contains("requestLayout") || r.contains("measure("))
-        val c = code("TerminalController.kt")
-        assertFalse("不许调 terminalView.setPadding", c.contains("terminalView.setPadding"))
-        assertFalse("不许改终端 layoutParams", c.contains("terminalView.layoutParams ="))
-        assertFalse("不许改终端高度", c.contains("terminalView.layoutParams.height"))
-        assertFalse("不许直接写 session.updateSize", c.contains("session.updateSize("))
-    }
-
-    @Test
-    fun `三层顺序必须是进度条-终端背景-文字`() {
-        // 中间那层是全部关键：没有它，底层会从文字后面整个透出来（TerminalView
-        // 自己一像素背景都不画），那就变成"整片变色"而不是"填缝"。
-        val c = code("TerminalController.kt")
-        val order = listOf(
-            c.indexOf("addView(activityBar)"),
-            c.indexOf("addView(termBg)"),
-            c.indexOf("addView(terminalView)")
-        )
-        assertTrue("三层都得存在：$order", order.all { it >= 0 })
-        assertTrue(
-            "顺序必须是 底层进度条 → 中层终端背景 → 顶层文字，实际 $order",
-            order[0] < order[1] && order[1] < order[2]
-        )
-        assertTrue("中层必须不透明，否则底层从文字后面透出来", c.contains("setBackgroundColor(scope.cSurface)"))
-        assertTrue(
-            "中层底边必须用 termux 自己的方法，不许猜 ceil(ascent)",
-            c.contains("terminalView.getPointY(rows)")
-        )
-    }
-
-    @Test
-    fun `进度条静默时必须清空成背景色而不是冻结`() {
-        // 用户原话："在没有输出的时候这个静态画面是什么？应该就是背景色吧，
-        // 只有当终端有输出的时候才变成动画"
-        val r = code("TerminalActivityBar.kt")
-        assertTrue(
-            "起动时必须从周期开头重新开始（5.9.19 起是时间轴 elapsedMs，不是帧号）：$r",
-            r.contains("elapsedMs = 0f")
-        )
-        // 静止时一个像素都不画 → 底下透出根容器的 cSurface
-        assertFalse("不许设自己的背景色", r.contains("setBackgroundColor"))
-        // ⚠ 必须锁**精确条件**：只查 "if (!running" 出现过是不够的 ——
-        //    注入"把 `!running` 从 onDraw 判据里删掉"时它照样 ALL_GREEN，静默就变成
-        //    冻结在最后一帧而不是清空成背景色。
-        assertTrue(
-            "onDraw 必须在没在动时直接返回（静默 = 什么都不画）：$r",
-            r.contains("if (!running || cells <= 1 || cellWidth <= 0f) return")
-        )
-        // 清空逻辑收敛到一个具名方法：空闲和停机共用，不许只改一处漏一处
-        assertTrue("必须有统一的清空方法", r.contains("private fun clearToBackground()"))
-        val clear = r.substringAfter("private fun clearToBackground()").take(200)
-        assertTrue(
-            "清空方法必须复位时间轴：$clear",
-            clear.contains("elapsedMs = 0f")
-        )
-        assertTrue(
-            "清空方法必须 invalidate（不重画的话最后一帧会留在屏幕上）：$clear",
-            clear.contains("invalidate()")
-        )
-        // 空闲分支和 stop() 都要走它
-        assertTrue(
-            "空闲分支必须调 clearToBackground",
-            Regex("stopScheduled = false\\s+running = false\\s+removeCallbacks\\(frameTask\\)\\s+clearToBackground\\(\\)")
-                .containsMatchIn(r)
-        )
-        assertTrue(
-            "stop() 必须调 clearToBackground",
-            Regex("startPosted\\.set\\(false\\)\\s+clearToBackground\\(\\)").containsMatchIn(r)
-        )
-    }
-
-    @Test
-    fun `进度条只由PTY输出驱动`() {
-        // 需求：只看 PTY 有没有输出，不判断跑的程序、不解析 TUI、不往 PTY 写
-        val c = code("TerminalController.kt")
-        assertTrue(
-            "onTextChanged（PTY 输出回调）必须报活动",
-            c.contains("pokeActivityBar()")
-        )
-        val r = code("TerminalActivityBar.kt")
-        assertFalse("不许往 PTY 写数据", r.contains("mTermSession.write("))
-        assertFalse("不许读终端内容判断状态", r.contains("getTranscriptText"))
-        assertFalse(
-            "不许 resize 终端",
-            r.contains("updateSize") || r.contains("setPtyWindowSize")
-        )
-    }
-
-    @Test
-    fun `线条必须用可见变体而不是primary`() {
-        // 用 primary 的话，背景接近主题绿时它等于隐形（5.9.11 就是这么写的，看不见）
-        val c = code("TerminalController.kt")
-        assertTrue("必须用 cPrimaryVisible", c.contains("scope.cPrimaryVisible"))
-        assertFalse(
-            "不许把 cPrimary 当线条色",
-            Regex("setInkColor\\([^)]*scope\\.cPrimary\\)").containsMatchIn(c)
-        )
-    }
-
-    @Test
-    fun `每格必须等宽等高`() {
-        // 用户原话："所有的线条是都等宽等高的"。
-        // 5.9.18 激活格满高、轨道点 34% 高居中，一眼两种高度。现在只分明暗、不分高矮。
-        val r = code("TerminalActivityBar.kt")
-        assertFalse(
-            "不许有按比例缩小的格子（那就是两种高度）：$r",
-            r.contains("TRACK_HEIGHT_RATIO") || r.contains("bandH * ") || r.contains("dotH")
-        )
-        assertTrue(
-            "每格都必须用同一个 top..bottom 区间画（等高）",
-            r.contains("val top = stripTop.toFloat()") &&
-                r.contains("val bottom = height.toFloat()") &&
-                Regex("drawRect\\(.*\\btop\\b.*\\bbottom\\b").containsMatchIn(r)
-        )
-        assertTrue(
-            "每格宽度都必须等于一个字符格（等宽）",
-            Regex("drawRect\\(cellLeft\\(i\\), top, cellLeft\\(i\\) \\+ cellWidth, bottom").containsMatchIn(r)
-        )
-        assertFalse("不许画弧线", r.contains("quadTo") || r.contains("drawArc"))
-        // 5.9.24：条与条之间必须有缝（缝 ≈ 条宽的 10%，缝里透背景色）。
-        // 条本身还是一个字符格宽 —— 不断条宽，只加缝；条数向下取整重算。
-        assertTrue("必须有 10% 缝的常量", r.contains("GAP_RATIO = 0.1f"))
-        assertTrue("条间距必须含缝", r.contains("cellWidth * (1f + GAP_RATIO)"))
-        assertTrue(
-            "条数必须向下取整（末尾不足一条直接丢，不画半截）：$r",
-            r.contains("(width / pitch()).toInt()")
-        )
-    }
-
-    @Test
-    fun `必须先铺满轨道底色否则拖尾外会空掉`() {
-        // 拖尾只覆盖 18 格，而轨道有 60 多格 —— 剩下格子的 alpha 会算成 0。
-        // 不先铺一层暗色底的话那些格子是**全透明**的，缝隙会一段一段空掉，
-        // 看上去又变成"高度不一致"。这条 5.9.19 差点漏掉（注入"去掉铺底"时 ALL_GREEN）。
-        // 5.9.24：底也按条画（含 10% 缝），和亮条对齐 —— 缝里透的是背景色，不是暗色。
-        val r = code("TerminalActivityBar.kt")
-        assertFalse(
-            "底不许画成整条不断的（缝会被暗色盖住）：$r",
-            r.contains("canvas.drawRect(0f, top, cells * cellWidth, bottom, fillPaint)")
-        )
-        assertTrue("铺底色必须用 trackAlpha", r.contains("ActivityTrail.trackAlpha(elapsedMs)"))
-        assertTrue(
-            "alpha≈0 的格子必须跳过而不是画透明（底色已经铺好了）",
-            r.contains("if (alpha <= 0.004f) continue")
-        )
-    }
-
-    @Test
-    fun `单焦点不许退回单元平铺`() {
-        // 用户原话："很多一起移动" → 要"只有一个凸显的焦点"。
-        // 5.9.18 是 8 格一个单元平铺满宽 → 9 个亮头。现在轨道 = 全宽，只有 1 个焦点。
-        val r = code("TerminalActivityBar.kt")
-        assertFalse("不许把单元重复画（会出现多个焦点）：$r", r.contains("% OpencodeRider.WIDTH"))
-        assertTrue(
-            "焦点位置必须来自 ActivityTrail.focusCell（全宽轨道）",
-            r.contains("ActivityTrail.focusCell(cells, elapsedMs)")
-        )
-        assertTrue(
-            "明暗必须按**连续距离**算，焦点位置才是浮点、不跳格",
-            r.contains("ActivityTrail.signedDistance(focus,") &&
-                r.contains("i.toFloat()")
-        )
-        assertTrue("不许用格号取模（那是原版 8 格小单元的做法）", !r.contains("trailIndex"))
-        val t = code("ActivityTrail.kt")
-        assertFalse("旧的开码器不许留着", t.contains("OpencodeRider") || t.contains("trailIndex"))
-    }
-
-    @Test
-    fun `不存在的东西不许回来`() {
-        // 5.9.11–5.9.15 那五版的方向全是错的：弯弧线、单向传送带、猜 ceil(ascent)、
-        // 私自把终端上移。这些都删干净了，不许复活。
-        val repo = listOf("TerminalActivityBar.kt", "ActivityTrail.kt", "TerminalController.kt")
-        for (name in repo) {
-            val c = code(name)
-            assertFalse("$name 不许画弧", c.contains("quadTo") || c.contains("drawArc"))
-            assertFalse("$name 不许上移终端", c.contains("terminalView.translationY"))
-            assertFalse("$name 不许复活单向传送带", c.contains("DashPathEffect") || c.contains("phaseAfter"))
-            assertFalse("$name 不许再减保险像素", c.contains("- 1L"))
-        }
-    }
-
-    @Test
-    fun `存活探测的流必须是参数不能是Service字段`() {
-        // 并发隐患：probeInput 曾是 Service 级共享字段，后连上的盖掉先连上的，
-        // A 的探测读 B 的流。现在字段必须不存在，流只能当参数传
-        val c = code("WebAutomationService.kt")
-        assertFalse(
-            "probeInput 字段不许回来 —— 回来就等于把并发 bug 带回来",
-            c.contains("probeInput")
-        )
-        assertTrue("route 必须接住流参数", c.contains("input: PushbackInputStream"))
-        assertTrue("探测必须用传进来的流", c.contains("isClientGone(client, input)"))
-    }
-
-    // ---------- 7：UiEval 不得混淆 ----------
-
-    @Test
-    fun `发起求值抛错不许塌成Ok`() {
-        val c = code("UiEval.kt")
-        assertTrue("必须有 Result.Failed", c.contains("data class Failed"))
-        assertTrue("onFailure 里必须记下异常", c.contains("thrown = it"))
-    }
-
-    @Test
-    fun `求值失败与页面返回null是两种结果`() {
-        // 用**运行时**的类型判，不去数源码里的类声明条数 ——
-        // 数条数那种写法会被任何一处无关的格式改动误伤
-        val outcomes = listOf(
-            WebProtocol.EvalOutcome.Timeout(1),
-            WebProtocol.EvalOutcome.Value("x"),
-            WebProtocol.EvalOutcome.Value(null),
-            WebProtocol.EvalOutcome.Cancelled,
-            WebProtocol.EvalOutcome.NotPosted,
-            WebProtocol.EvalOutcome.Failed("webview destroyed")
-        )
-        // 六种互不相同的类型/取值，各占一个 —— 少一种就说明又混了
-        val distinct = outcomes.map { it::class to it.toString() }.toSet()
-        assertEquals("求值结果被混了：$distinct", outcomes.size, distinct.size)
-        val uiResults = listOf(
-            UiEval.Result.Ok("x"),
-            UiEval.Result.Ok(null),
-            UiEval.Result.TimedOut(1),
-            UiEval.Result.Cancelled,
-            UiEval.Result.NotPosted,
-            UiEval.Result.Failed(RuntimeException("webview destroyed"))
-        )
-        val distinctUi = uiResults.map { it::class to it.toString() }.toSet()
-        assertEquals("UiEval 结果被混了：$distinctUi", uiResults.size, distinctUi.size)
-    }
-
-    // ---------- 8：整页截图必须等帧 + 不许交半张图（5.9.9"下半截白"，5.9.27 改机制） ----------
-
-    @Test
     fun `每滚一段都必须等一帧而不是紧接着画`() {
         // `scrollTo` 只改值，内容是合成器**异步**画的。紧接着画拿到的还是上一段
         // —— 真机上就是一片底色。5.9.9 那次"下半截白"就是没等帧。
@@ -952,15 +513,38 @@ class RegressionScanTest {
     fun `某段画不出来不许交半张图`() {
         // 5.9.9：那次半空白图是 ok:true + full_page:true 出去的 —— agent 会以为那就是整页。
         // 这比修不好更糟：修不好 agent 知道，能骗过去 agent 就信了。
-        // 滚动分段下同样成立：某一段没画出来就得整体失败，不能把其余段拼上去交差。
+        // 5.9.30 改成多屏之后更明显：**不能把已经拍好的那几屏照交**，那等于交一套残缺整页。
         val svc = source("WebAutomationService.kt")
         val body = svc.substringAfter("private fun captureByScrolling(")
-            .substringBefore("private fun scrollTo(")
-        assertTrue("没找到 captureByScrolling 的函数体", body.length > 300)
+            .substringBefore("private class Shots(")
+        assertTrue("没找到 captureByScrolling 的函数体", body.length > 600)
         assertTrue(
-            "某段画不出来必须 recycle 整张并返回 null，不能交半张：\n$body",
-            Regex("""piece\s*==\s*null[\s\S]{0,200}?full\.recycle\(\)[\s\S]{0,80}?return null""")
+            "某屏画不出来必须带屏号报错（不能悄悄跳过继续）：\n$body",
+            body.contains("Shots(shots, \"screen " + '$' + "screenNo: nothing rendered")
+        )
+        assertTrue(
+            "空图那一屏也必须带屏号报错：\n$body",
+            body.contains("nothing rendered (blank)")
+        )
+    }
+
+    @Test
+    fun `滚不到位不许交残缺的屏`() {
+        // 页面劫持滚动、滚动中高度变了 —— 这时候拍到的屏是不该有的。
+        // 5.9.30 改成多屏之后更明显：**不能把已经拍好的那几屏照交**，
+        // 那等于交一套残缺整页，agent 会当成完整的看。
+        val svc = source("WebAutomationService.kt")
+        val body = svc.substringAfter("private fun captureByScrolling(")
+            .substringBefore("private class Shots(")
+        assertTrue("没找到 captureByScrolling 的函数体", body.length > 600)
+        assertTrue(
+            "滚不到位必须带屏号报错，不能接着往下拍：\n$body",
+            Regex("""!scrollDocumentTo\(wv, targetCss, cancelled\)[\s\S]{0,160}?return Shots\(shots, "screen """)
                 .containsMatchIn(body)
+        )
+        assertTrue(
+            "文案要说清是页面不让滚（agent 才知道该换站还是该等）：\n$body",
+            body.contains("would not scroll there")
         )
     }
 

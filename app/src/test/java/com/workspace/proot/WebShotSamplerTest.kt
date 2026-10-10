@@ -156,4 +156,53 @@ class WebShotSamplerTest {
             if (y < 60) black else white
         })
     }
+
+    // ---------- 5.9.30：内容指纹（抓"这屏和上一屏一样"） ----------
+
+    @Test
+    fun `同样内容必须同一个指纹`() {
+        val a = WebShotSampler.fingerprint(100, 200) { x, y -> (x + y) }
+        val b = WebShotSampler.fingerprint(100, 200) { x, y -> (x + y) }
+        assertEquals("同样的像素必须同一个指纹", a, b)
+        assertTrue("指纹不能是 0（0 是空图标记）", a != 0L)
+    }
+
+    @Test
+    fun `内容不同指纹就不同`() {
+        val a = WebShotSampler.fingerprint(100, 200) { x, y -> x + y }
+        val b = WebShotSampler.fingerprint(100, 200) { x, y -> (x + y) * 7 }
+        assertTrue("内容不同必须能分辨", a != b)
+    }
+
+    @Test
+    fun `内容整体挪动指纹就变`() {
+        // 这正是"滚了一屏之后内容变了"的样子
+        val a = WebShotSampler.fingerprint(100, 200) { _, y -> if (y < 100) 0xFF0000 else 0x00FF00 }
+        val b = WebShotSampler.fingerprint(100, 200) { _, y -> if (y < 60) 0xFF0000 else 0x00FF00 }
+        assertTrue("挪动之后指纹必须变", a != b)
+    }
+
+    @Test
+    fun `sameContent只对两个非零指纹判相同`() {
+        assertTrue(WebShotSampler.sameContent(12345L, 12345L))
+        assertTrue(WebShotSampler.sameContent(1L, 1L))
+        assertTrue("0 是空图标记，不算'相同'", !WebShotSampler.sameContent(0L, 0L))
+        assertFalse(WebShotSampler.sameContent(0L, 999L))
+        assertFalse(WebShotSampler.sameContent(999L, 0L))
+    }
+
+    @Test
+    fun `第一屏不会因为上一屏还没记就被误判成没滚`() {
+        // prevPrint 初始就是 0。第一屏必须**不被**当成"和上一屏一样"，
+        // 否则每次整页截图都在第 1 屏就报错。
+        val first = WebShotSampler.fingerprint(100, 100) { x, y -> x + y }
+        assertTrue("0 与非 0 不算相同", !WebShotSampler.sameContent(0L, first))
+    }
+
+    @Test
+    fun `退化尺寸的指纹是零`() {
+        assertEquals(0L, WebShotSampler.fingerprint(0, 100) { _, _ -> 1 })
+        assertEquals(0L, WebShotSampler.fingerprint(100, 0) { _, _ -> 1 })
+        assertEquals(0L, WebShotSampler.fingerprint(-1, -1) { _, _ -> 1 })
+    }
 }
