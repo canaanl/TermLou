@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
-import android.os.Build
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -24,27 +23,24 @@ import android.widget.TextView
  * ```
  *  WindowManager.LayoutParams   1/3屏宽 · 屏幕比例 · 右上角
  *  └ DragFrameLayout           dispatchTouchEvent 吃掉全部 touch（整窗拖动）
- *     ├ ScaleFrameLayout       scaleX/Y = 0.39   ← 显示缩放挂在**这里**（5.9.36 请回来）
+ *     ├ ScaleFrameLayout       scaleX/Y ≈ 0.39   ← 显示缩放挂在**这里**
  *     │  └ WebView             layout 1236×2676 · scale 1  ← 常驻，永不改
  *     └ hint TextView          空窗提示
  * ```
  *
- * ## 5.9.34 我误删了缩放，5.9.36 请回来
+ * ## 缩放为什么要挂容器，不挂 WebView（这条永真）
  *
- * 5.9.34 的理由是"缩放导致安卓只画屏幕上那一小块，所以第 2 屏空白"。
- * **那个理由是错的** —— 5.9.34/5.9.35 都没有缩放，第 2 屏照样失败。
- * 缩放从来不是原因，而删掉它的代价是画质：视口跟着窗口变小，
- * 字从 48px 掉到 19px，发虚。用户要的是**清楚**。
+ * 挂 WebView 自己身上，会让"1:1 取像素"变成一件**要靠补救**的事
+ * （临时归 1、画完在 finally 还原），而每屏来回切两次视图变换又会把合成器搞乱
+ * （真机：画面不跟随滚动）。挂到容器上之后，WebView 的 scale 恒为 1，
+ * 祖先变换由父视图的 `drawChild` 施加 —— 谁都不用去动 WebView 的变换。
  *
- * 5.9.36 真正的根因是"取像素的那一行"（`wv.draw(canvas)` 在硬件加速下
- * 拿不到未光栅化的区域），已由 `setLayerType(LAYER_TYPE_SOFTWARE)` 解决。
+ * ## 视口是 412×892dp，不是窗口尺寸（5.9.38 更正）
  *
- * ## 缩放为什么不许挂在 WebView 自己身上（5.9.31 的结论，至今有效）
- *
- * 缩放挂在 WebView 上会让截图必须"临时归 1、画完在 finally 还原"，
- * 而每屏来回切两次视图变换又会把合成器搞乱。
- * 挂到容器上之后：WebView 的 scale 恒为 1，`wv.draw(canvas)` **看不见祖先的变换**
- * （祖先变换由父视图的 drawChild 施加），截图 1:1 **结构上就成立**。
+ * 5.9.34 曾把"视口 = 窗口（屏宽÷3）"当成结论写进注释，理由写着"缩放会导致
+ * 第 2 屏空白"。**那个理由是错的**：5.9.34/5.9.35 都没有缩放，第 2 屏照样失败。
+ * 5.9.36 起视口是 **412×892dp**（跟正常手机一致），由 [ScaleFrameLayout] 缩进小窗。
+ * 5.9.37 把那条路（整页截图）整个删了，这个取舍只剩"画质"这一面。
  *
  * ## 触摸：整窗拖动，一个 touch 都不给 WebView
  *
@@ -53,11 +49,11 @@ import android.widget.TextView
  *
  * 5.9.27 第一版用 `onInterceptTouchEvent` + `onTouchEvent` 那套，**真机上拖不动**。
  *
- * ## 与系统小窗共存
+ * ## ⚠ 5.9.38：删掉了"多窗口共存"那行反射
  *
- * Android 12 起，App 进入分屏/自由窗口时系统会藏掉自己的 `TYPE_APPLICATION_OVERLAY`。
- * 想共存得显式声明，那是个 `@hide` 字段（公开 SDK 里没有），只能反射设置 ——
- * 而**它到底存不存在、语义是不是这样，必须真机验**，所以见 [multiWindowOptOut]。
+ * 它反射 `WindowManager.LayoutParams.hideOverlayWindows`（一个 `@hide` 字段），
+ * 真机上必然 `NoSuchFieldException`，而且**就算成功也什么都不影响** ——
+ * 它唯一的作用是在 `diag` 里印一句吓人的警告。删掉反射、字段与那一栏 diag。
  */
 class WebFloatWindowHost(
     private val service: WebAutomationService,
@@ -70,10 +66,6 @@ class WebFloatWindowHost(
         /** 空窗时的提示文字。 */
         private const val HINT_TEXT = "等待 agent 打开页面…"
     }
-
-    /** 多窗口共存那行反射的**实测结果** —— `diag` 原样报出来，不猜。 */
-    @Volatile var multiWindowReport: String = "还没建窗"
-        private set
 
     /**
      * 最近一次建窗失败的原因。
@@ -150,7 +142,6 @@ class WebFloatWindowHost(
             x = initX
             y = initY
         }
-        multiWindowOptOut(p)
 
         val host = DragFrameLayout(service).apply {
             layoutParams = ViewGroup.LayoutParams(winW, winH)
@@ -226,22 +217,25 @@ class WebFloatWindowHost(
     // ---------- 内容 ----------
 
     /**
-     * 把 WebView 装进窗口，缩放挂在 [ScaleFrameLayout] 上（5.9.36 请回来）。
-     *
-     * 5.9.34 删掉缩放的理由是"安卓只画屏幕上那一小块"——**那个理由是错的**
-     * （5.9.34/5.9.35 没有缩放，第 2 屏照样失败），代价却是画质发虚。
+     * 把 WebView 装进窗口，缩放挂在 [ScaleFrameLayout] 上。
      *
      * ## 这里**不许**碰 WebView 的 scale
      *
      * 缩放加在容器上。WebView 的 `scaleX/scaleY` 是**常量 1**，
-     * 全工程没有任何代码会去改它 —— 改了就会把"截图 1:1"这件结构上成立的事，
-     * 退回到"临时归 1 再还原"的补救状态（5.9.27–5.9.30 的错）。
+     * 全工程没有任何代码会去改它。
+     *
+     * ## ⚠ 5.9.38：装不进去必须**说出来**，不许一声不响
+     *
+     * 原来这个函数返回 `Unit`，`root`/`scaledLayer` 为空时直接 `return` ——
+     * 页面照常加载、但**你看不见它**，而没有任何一处会说这件事。
+     * 现在返回失败原因（成功返回 `null`），由调用方记进 `float_error` 并让 `diag` 报出来。
      *
      * @param viewW/viewH agent 视口（设备像素），**原样**作为布局尺寸
+     * @return 装不进去时给出人话（`null` = 成功）
      */
-    fun attachWebView(wv: WebView, viewW: Int, viewH: Int, winW: Int, winH: Int) {
-        val host = root ?: return
-        val layer = scaledLayer ?: return
+    fun attachWebView(wv: WebView, viewW: Int, viewH: Int, winW: Int, winH: Int): String? {
+        val host = root ?: return "the floating window is not up (rebuild it with show())"
+        val layer = scaledLayer ?: return "the floating window has no scaling layer (rebuild it)"
         val (sx, sy) = WebFloatWindow.scaleFactors(winW, winH, viewW, viewH)
         onMain {
             if (host !== root) return@onMain
@@ -257,6 +251,7 @@ class WebFloatWindowHost(
             attached = wv
             hint?.visibility = View.GONE
         }
+        return null
     }
 
     /** 把 WebView 从窗口里摘下来（页面会话销毁时）。窗口留着，空窗提示回来。 */
@@ -328,31 +323,6 @@ class WebFloatWindowHost(
         val h = android.os.Handler(service.mainLooper)
         if (android.os.Looper.myLooper() == service.mainLooper) block() else h.post(block)
     }
-
-    /**
-     * 声明"我进系统小窗也别藏我的悬浮窗"。
-     *
-     * ## 为什么用反射
-     *
-     * 那个开关是 `WindowManager.LayoutParams` 上的 `@hide` 字段
-     * （公开 SDK 里查不到，`javap` 确认过 android-34 没有）。
-     *
-     * ## 为什么返回值要如实报出来
-     *
-     * **我不能靠记忆断言它的字段名与语义** —— 这轮已经猜错太多次。
-     * 所以反射不到就照常工作，反射到了就报出来，让 `diag` 里有据可查。
-     */
-    private fun multiWindowOptOut(p: WindowManager.LayoutParams) {
-        multiWindowReport = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            "android 11 及以下无此规则"
-        } else {
-            runCatching {
-                val f = WindowManager.LayoutParams::class.java.getField("hideOverlayWindows")
-                f.setBoolean(p, false)
-                "hideOverlayWindows=false"
-            }.getOrElse { "hideOverlayWindows 字段不存在（${it.javaClass.simpleName}）" }
-        }
-    }
 }
 
 /**
@@ -371,17 +341,12 @@ class WebFloatWindowHost(
  * 第一版在 `onInterceptTouchEvent` 里写的是 `(rawX - lastX).toInt()` ——
  * density 3.0 的屏上，一次 MOVE 位移不足 1px 时截断成 0，
  * 累加下来窗口几乎不动。这里改成 Float，由上层一次算完落点。
+ *
+ * ⚠ 5.9.38：`@SuppressLint("ClickableViewAccessibility")` 必须贴在**这个类**上。
+ * 它原来被卡在 [ScaleFrameLayout] 上面（中间还夹着一段属于本类的注释），
+ * 注解因此落到了错的那个类上 —— 真正覆写触摸分发的这个类反而没有豁免。
  */
 @SuppressLint("ClickableViewAccessibility")
-/**
- * **显示缩放挂在这里**：容器负责把视口缩进小窗，WebView 自己永远是 1:1。
- *
- * 5.9.31：缩放原来挂在 WebView 上，导致截图必须"临时归 1、画完还原"，
- * 而每屏来回切两次视图变换又会把合成器搞乱（真机：整页截图第 3 屏起画面不跟随滚动）。
- * 挂到容器上之后这两样一起消失 —— 详见 [WebFloatWindowHost] 类注释。
- */
-private class ScaleFrameLayout(context: Context) : FrameLayout(context)
-
 private class DragFrameLayout(context: Context) : FrameLayout(context) {
 
     /** 按下（用来记锚点）。 */
@@ -410,3 +375,12 @@ private class DragFrameLayout(context: Context) : FrameLayout(context) {
         return true
     }
 }
+
+/**
+ * **显示缩放挂在这层**：容器负责把视口缩进小窗，WebView 自己永远是 1:1。
+ *
+ * 缩放挂在容器而不是 WebView 上，是 5.9.31 定下的结构（5.9.34 误删、5.9.36 请回来）：
+ * WebView 的变换恒为 1，祖先的缩放由父视图施加 —— 谁都不需要为了"取到原始像素"
+ * 去临时改它再还原。详见 [WebFloatWindowHost] 类注释。
+ */
+private class ScaleFrameLayout(context: Context) : FrameLayout(context)

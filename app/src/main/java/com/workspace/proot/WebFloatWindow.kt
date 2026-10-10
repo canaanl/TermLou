@@ -1,7 +1,8 @@
 package com.workspace.proot
 
 /**
- * 浏览器悬浮窗的几何计算（5.9.27 建立，5.9.34 重写），纯逻辑、可单测。
+ * 浏览器悬浮窗的几何计算（5.9.27 建立，5.9.34 误删缩放，5.9.36 请回来）。
+ * 纯逻辑、可单测。
  *
  * ## 需求（用户定死，不可改）
  *
@@ -9,30 +10,22 @@ package com.workspace.proot
  * 2. 位置：**每次重建回右上角**，不存。
  * 3. 按窗体**任意处**拖，不用把手。
  *
- * ## 5.9.34：视口就是窗口，没有缩放（用户定的）
- *
- * 此前是"视口锁死 412×892dp，缩到 0.39 塞进小窗"。那条做法**在真机上出不来图**：
- * 缩放挂在容器上，而安卓问网页"你要画多大"时量的是**它在屏幕上实际占多大** ——
- * 缩放一压，它就只画 480×1056，剩下 87% **从来没被画过**（不是画了看不见）。
- *
- * 整页截图于是永远停在第 2 屏：
+ * ## 视口与窗口是**两个数**，靠缩放联系（5.9.38 更正）
  *
  * ```
- * 真机 5.9.33：screen 2: nothing rendered (blank)
- * 真机 5.9.32：第 2 屏大块空白 / 错位
- * 真机 5.9.31：第 3 屏起画面不跟随滚动
+ * 视口 412×892dp × density（给网页排版用，跟正常手机一致）
+ *   ↓ scaleFactors()
+ * 窗口 屏宽÷3（显示用）
  * ```
  *
- * **缩放这件事现在整个没有了。** 网页多大，窗口就多大，一个像素对一个像素。
- * 于是安卓量到的、你眼睛看到的、我们要拍的，是同一块东西。
+ * ⚠ **别把视口改成窗口尺寸。** 5.9.34 那么做过，理由是"缩放导致第 2 屏空白"，
+ * 而**那个理由是错的** —— 5.9.34/5.9.35 都没有缩放，第 2 屏照样失败。
+ * 那次改动只有一个后果：网页跟着变窄到 160dp，字从 48px 掉到 19px，发虚。
  *
- * ## 代价（用户明确接受）
+ * 5.9.36 请回 412dp + 缩放（用户要的是**清楚**）：缩放只发生在**显示**这一层，
+ * 挂在 [WebFloatWindowHost.ScaleFrameLayout] 上，WebView 自己的 scale 恒为 1。
  *
- * 网页跟着变成 **160dp 宽**（480px ÷ density 3.0），比任何手机都窄，
- * 网站会切到最窄那套排版；小窗里的字比原来大约 2.6 倍（老人机观感，用户要的）。
- * 之前存过的选择器可能失效 —— 坐标是每次现场查的，不会错。
- *
- * ⚠ **不要再把视口改回 412×892 并加缩放。** 那条路走不通，理由见上。
+ * （5.9.37 之后"取像素"那条路整个删了 —— 所以这里不存在"缩放让取像素出错"的问题。）
  */
 object WebFloatWindow {
 
@@ -44,11 +37,11 @@ object WebFloatWindow {
     const val DEFAULT_Y = 0
 
     /**
-     * 窗口尺寸 —— **同时就是视口尺寸**，全工程只有这一个数（5.9.34）。
+     * 窗口尺寸（设备像素）。
      *
-     * 以前有两个：`WebProtocol.VIEWPORT_W_DP`（412）与这里的窗口尺寸，
-     * 中间靠一个缩放因子联系。两个数就意味着两者可能对不上 ——
-     * 而"对不上"正是整页截图拍不出来的那类问题的土壤。
+     * ⚠ **它不是视口尺寸**（5.9.34 曾把它当成视口，5.9.36 改回）。
+     * 视口是 [WebProtocol.VIEWPORT_W_DP]×[WebProtocol.VIEWPORT_H_DP] dp × density，
+     * 两者之间由 [scaleFactors] 联系。
      *
      * @param screenW 屏宽（设备像素）
      * @param screenH 屏高（设备像素）
@@ -75,8 +68,7 @@ object WebFloatWindow {
      * 两个方向**独立**算（不是 `min`）：窗口比例跟屏幕走（1:2.1），
      * 视口比例是 412:892（1:2.165），两者不等时等比缩会留边。
      */
-    fun scaleFactors(winW: Int, winH: Int, viewW: Int, viewH: Int): Pair<Float, Float> {
-        val sx = if (winW > 0 && viewW > 0) winW.toFloat() / viewW.toFloat() else 1f
+    fun scaleFactors(winW: Int, winH: Int, viewW: Int, viewH: Int): Pair<Float, Float> {        val sx = if (winW > 0 && viewW > 0) winW.toFloat() / viewW.toFloat() else 1f
         val sy = if (winH > 0 && viewH > 0) winH.toFloat() / viewH.toFloat() else 1f
         return sx.coerceAtLeast(1e-4f) to sy.coerceAtLeast(1e-4f)
     }

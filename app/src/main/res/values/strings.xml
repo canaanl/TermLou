@@ -441,7 +441,7 @@
     <string name="web_btn_clear">清除缓存</string>
     <string name="web_copy_hint">点击复制：端口 %1$d · 令牌 + 首条命令</string>
     <string name="web_copied">已复制连接信息</string>
-    <string name="web_clear_confirm">清空 /workspace/web/ 下的全部文件？\n端口与令牌、cookie 导出都会删掉（服务已停止）。</string>
+    <string name="web_clear_confirm">清空 /workspace/web/ 下的全部文件？\n主要是强杀后残留的旧端口与令牌文件（服务已停止）。</string>
     <!-- 运行中按了清除，或确认框开着时服务被启动 -->
     <string name="web_clear_busy">服务运行中，不能清除。先关闭浏览器。</string>
     <string name="web_cleared_fmt">已清除 %1$d 个文件</string>
@@ -461,10 +461,10 @@
 <!-- 浏览器 5.9.3 · Tab 说明：条目一律独立成行（换行必须用 \n，&#10; 会被 aapt2 清掉） -->
 
 <!-- 浏览器 5.9.4 · 设置项：不再放长段说明（细节在终端 Tab 说明页） -->
-    <string name="web_intro_conn_body">给 Linux 里的 AI agent 用的浏览器。内核是安卓自带的，\nagent 的每一步操作都在屏幕上的小窗里看得见，也不留任何历史。\n▸ 开启：设置 → 高级 → 浏览器\n▸ 连接：点那行「点击复制」，端口、令牌与首条命令一次带走\n● 端口固定 39080，令牌安装时生成一次\n● 只监听 127.0.0.1，同一网络下别的设备连不上\n● 每次开启都会清空 cookie 与缓存\n● 开启后会弹出一个小窗，按住窗体任意位置就能拖走，点不动它\n● 网页按正常手机宽度排版，再缩进小窗显示：版式和坐标都跟真手机一致</string>
+    <string name="web_intro_conn_body">给 Linux 里的 AI agent 用的浏览器。内核是安卓自带的，\nagent 的每一步操作都在屏幕上的小窗里看得见，也不留任何历史。\n▸ 开启：设置 → 高级 → 浏览器\n▸ 连接：点那行「点击复制」，端口、令牌与首条命令一次带走\n● 端口固定 39080，令牌安装时生成一次\n● 只监听 127.0.0.1，同一网络下别的设备连不上\n● 每次开启都会清空 cookie 与缓存，不留任何浏览痕迹\n● 开启后会弹出一个小窗，按住窗体任意位置就能拖走，点不动它\n● 网页按正常手机宽度排版，再缩进小窗显示：版式和坐标都跟真手机一致</string>
     <!-- 5.9.27：没给悬浮窗权限时用（自检与屏外兜底已删除，权限变成硬需求） -->
     <string name="web_overlay_fallback">需要悬浮窗权限才能显示浏览器小窗，请在系统设置里给 TermLou 打开「显示在其他应用上层」</string>
     <string name="web_intro_ops_body">指令清单随时可取，agent 读一次就够。\n▸ GET /help —— 全部指令、选择器写法与排错\n▸ cat /workspace/web/web.env —— 端口与令牌，可直接 source\n▸ 写进 skill：固定端口 39080 + 令牌\n● 读完它就能自己开网页、搜索、点链接、填表单\n⚠ 服务没开时连接被拒，先在上面开启</string>
-    <string name="web_intro_notes_body">▸ 一次只开一个页面，反复 open 即复用\n▸ agent 打开网页后会先 extract 一次，看清页面上有什么再动手\n● extract 能找到搜索框的输入框、按钮和全部链接，不用猜选择器\n▸ cookie 导出落在 /workspace/web/，可翻到\n● 闲置满 10 分钟，状态栏会闪一句提醒\n⚠ 个别站点会拒绝内嵌浏览器，换站即可</string>
+    <string name="web_intro_notes_body">▸ 一次只开一个页面，反复 open 即复用\n▸ agent 打开网页后会先 extract 一次，看清页面上有什么再动手\n● extract 能找到搜索框的输入框、按钮和全部链接，不用猜选择器\n▸ 不保留 cookie 也不留缓存：开了关了就干净，落盘只有 /workspace/web/ 里的端口与令牌\n● 闲置满 10 分钟，状态栏会闪一句提醒\n⚠ 个别站点会拒绝内嵌浏览器，换站即可</string>
     <string name="web_intro_settings_body">给 Linux 里的 AI agent 用的浏览器：\n在下面开启服务，屏幕上会弹出一个可以拖动的小窗，\nagent 的每一步操作你都能看见；\n点那行「点击复制」带走端口、令牌与首条命令；\n端口与全部指令见终端 Tab 的说明。</string>
 </resources>

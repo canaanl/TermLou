@@ -9,14 +9,11 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
-import android.provider.Settings
 import android.util.Log
-import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.webkit.CookieManager
@@ -27,7 +24,6 @@ import android.webkit.WebViewClient
 import java.io.BufferedInputStream
 import java.io.PushbackInputStream
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -46,27 +42,29 @@ import java.util.concurrent.locks.ReentrantLock
  * 在**回环地址**固定端口提供 HTTP/JSON 指令接口，供 Linux 侧 agent 用系统自带 WebView 驱动网页。
  *
  * 设计要点：
- *  - **只听 127.0.0.1**：绑回环地址，同一 WiFi 下别的设备连不上。令牌虽然固定，
- *    但 `GET /help` 是免令牌的，不绑回环等于把令牌公开给整个局域网；
+ *  - **只听 127.0.0.1**：绑回环地址，同一 WiFi 下别的设备连不上。`/help` 与 `/op`
+ *    **都要令牌**（5.9.9 修：此前 `/help` 免令牌，而说明书里又把真令牌印在里面，
+ *    安卓上任何 app 访问回环都不用权限 —— 令牌形同虚设）；
  *  - **可见悬浮窗**（5.9.27）：WebView 挂在屏幕右上角一个**看得见的小窗**里，
  *    agent 的每一步操作用户都能看见。窗口宽 = 屏宽 1/3、长宽比跟屏幕；
  *    按窗体任意处能拖走，点不动它。
- *    ⚠ **5.9.34：视口就是窗口，一个像素对一个像素，没有缩放。**
- *    以前视口锁死 412×892dp 再缩进小窗 —— 而安卓正是照着**屏幕上实际大小**
- *    决定网页要画多少，缩放一压它就只画 480×1056，其余 87% 从没被画过，
- *    整页截图于是永远停在第 2 屏。代价是网页跟着变窄（160dp），
- *    小窗里的字变大约 2.6 倍（用户明确接受）；
+ *    网页按 **412×892dp** 排版（跟正常手机一致），再缩进小窗显示 ——
+ *    缩放挂在容器上（[WebFloatWindowHost.ScaleFrameLayout]），WebView 自己恒为 1:1；
  *  - **懒加载**：服务常驻，WebView 只在第一条 `open` 时创建，会话结束即 destroy——
  *    闲置时只有一个空壳进程；
- *  - **无痕**：进程启动、服务启动、会话结束/关闭，三处都会清 cookie / 缓存 / localStorage /
- *    表单数据，且不保存密码；app 里没有第二个 WebView，故"清全部 WebView 数据"只影响本功能；
+ *  - **不留痕，也不留缓存**（5.9.38 修好）：进程启动、会话销毁（`close` 与**关闭服务**
+ *    都走这里）、以及网页实例刚建好那一刻，都会清 cookie / localStorage / 缓存 / 历史 / 表单。
+ *    ⚠ 5.9.37 之前那三行"清缓存"写在"销毁之后"，而那时网页已经是 null ——
+ *    **从来没执行过**。现在"清数据"是销毁会话的**第一步**，调用方不可能再漏。
+ *    加载另有一道：`cacheMode = LOAD_NO_CACHE`（不去用缓存）；
+ *  - **唯一产物是 `web.env`**（端口 + 令牌，**仅服务运行时存在**，供 agent 自发现），
+ *    落在 Linux 可见的 `/workspace/web/`。5.9.38 起不再导出 cookie、不再有任何截图 ——
+ *    这个功能**不保留 cookie**，也不往磁盘上留任何浏览痕迹；
  *  - **不占队头**：请求线程池多条线程并发；只有**碰 WebView 的指令**才抢 [pageLock] 串行，
  *    `ping` 之类的轻量指令不会被一条卡住的 `open` 堵在后面；
  *  - **断开即收手**：客户端被杀掉（超时/中断）时，等待循环每 100ms 探一次 socket，
  *    一断就立刻放弃并跳过写响应，不留一个"卡在加载态"的幽灵指令占着页面锁；
  *  - **绝不在主线程上等回调**：见 [UiEval] 的说明（5.9.0 的主线程死锁就是从这来的）；
- *  - **产物可见**：截图与 cookie 落在 Linux 可见的 `~/web/`（= filesDir/workspace/web），
- *    另有 `web.env` 写着端口与令牌（**仅服务运行时存在**），供 agent 自发现；
  *  - **令牌**：每次安装随机生成一次并固定下来（可复制进 agent skill），只存在 TermLou 私有
  *    目录，别的 app 读不到；端口固定，被占用时启动失败并如实报错。
  *
@@ -132,6 +130,25 @@ class WebAutomationService : Service() {
 
     /** 悬浮窗建不起来的原因 —— `open` 失败时原样报出去，别报成"timeout"。 */
     @Volatile private var floatWindowError: String? = null
+
+    /**
+     * 新窗口请求的计数器（5.9.38，`diag` 报）。
+     *
+     * 网页要开新窗口时：手指点的（点链接）我们**接进这一扇窗**（[newWindowsFollowed]），
+     * 页面自己弹的（弹窗广告）**丢掉并记一笔**（[newWindowsDropped]）——
+     * 不是静默丢，`diag` 里看得见。
+     */
+    @Volatile private var newWindowsFollowed = 0
+    @Volatile private var newWindowsDropped = 0
+
+    /**
+     * `web.env` 写成功了吗（5.9.38）。
+     *
+     * agent 的**自发现全靠这个文件**。写不进去（磁盘满、目录建不出来）时，
+     * 从前是 `runCatching` 一声不响 —— 表现只是"agent 连不上"，
+     * 两边都看不到原因。现在写失败会在 `diag` 的 `env_written` 里留痕。
+     */
+    @Volatile private var envWritten: Boolean? = null
 
     /** 可见悬浮窗（5.9.27）。窗口在**服务运行期间**一直存在，与页面无关。 */
     private val floatWindow: WebFloatWindowHost by lazy { WebFloatWindowHost(this, wm) }
@@ -229,7 +246,11 @@ class WebAutomationService : Service() {
     private fun startServer() {
         if (running) return
         stopping = false
-        clearWebData()                    // 服务启动即无痕
+        // 服务启动即无痕：清 cookie 与 localStorage/IndexedDB。
+        //
+        // ⚠ 这里清不了缓存 —— 网页实例是懒加载的，此刻还没有 WebView。
+        // 缓存由另外两处负责：实例刚建好的瞬间、以及会话销毁之前（见 [wipeWebViewData]）。
+        clearCookiesAndStorage()
         val port = WebProtocol.DEFAULT_PORT
         val socket = try {
             // 只听回环：别的设备/别的 app 不该能通过 WiFi 连上这台手机
@@ -262,7 +283,8 @@ class WebAutomationService : Service() {
         } else {
             winErr
         }
-        WebArtifacts.writeEnv(this, port, currentToken(this))
+        // 5.9.38：写成功没有要记下来 —— 自发现全靠它，写失败不能一声不响（见 [envWritten]）
+        envWritten = WebArtifacts.writeEnv(this, port, currentToken(this))
         refreshNotification()
     }
 
@@ -418,7 +440,6 @@ class WebAutomationService : Service() {
                 "extract" -> opExtract(request, cancelled)
                 "back" -> opBack(request, cancelled)
                 "reload" -> opReload(request, cancelled)
-                "cookies" -> opCookies()
                 "clear", "close" -> opClose()
                 else -> WebProtocol.errJson("unknown op: $op")
             }
@@ -501,6 +522,20 @@ class WebAutomationService : Service() {
             builtInZoomControls = false
             displayZoomControls = false
             cacheMode = WebSettings.LOAD_NO_CACHE
+            // ⚠ 5.9.38：**必须显式打开多窗口**，否则"开新窗口"的请求被安卓整个丢掉。
+            //
+            // 官方文档原话："默认情况下，开新窗口的请求会被忽略 —— 无论它来自 JavaScript
+            // 还是来自链接上的 target 属性。" 而默认值就是 false。
+            //
+            // 真机症状（5.9.37 用户实测）：点搜索结果里带 `target="_blank"` 的那一条，
+            // **什么都不发生** —— 不导航、不报错 —— 而 click 只看"JS 没抛异常"，
+            // 照样报 ok:true。换一条不带 _blank 的就正常，所以看起来"时好时坏"。
+            //
+            // 我们只有一扇窗，所以新窗口请求一律**接进这一扇窗**（见下面 onCreateWindow）。
+            // ⚠ 这里是 setSupportMultipleWindows(...) 而不是属性赋值：
+            // 它的 getter 叫 `supportMultipleWindows()`（不是 `getSupportMultipleWindows`），
+            // Kotlin 没把它合成属性。
+            setSupportMultipleWindows(true)
             // ⚠ 5.9.9：**显式关掉文件与内容访问**。
             // 这几项默认是 true，意味着 `{"op":"open","url":"file:///data/data/com.workspace.proot/..."}`
             // 能读到 app 私有目录（笔记、设置、令牌都在里面），
@@ -523,9 +558,47 @@ class WebAutomationService : Service() {
                 progress = newProgress
                 if (newProgress >= 100) pageReady = true
             }
+
+            /**
+             * 新窗口请求 → **接进我们这一扇窗**（5.9.38）。
+             *
+             * ## 为什么必须有这个
+             *
+             * 没有它，`target="_blank"` 的链接与 `window.open()` 的导航请求会被安卓
+             * **整个丢掉**：不导航、不报错。这是 5.9.37 真机上"点了没反应但 ok:true"
+             * 的一个真原因（另一个是 `text=` 点到了搜索框）。
+             *
+             * ## 为什么只有一条路
+             *
+             * 我们没有第二扇窗可以给它，所以不新建 WebView、不走 `WebViewTransport` 到别处 ——
+             * 把请求的结果对象指回**同一个 WebView**，它就原地加载那个地址。
+             * 相当于真人的浏览器里点了个新标签页，而我们只跟着那一个走。
+             *
+             * ## 只有"手指点的"才跟随
+             *
+             * [isUserGesture] 为 false 的是页面自己弹的（弹窗广告那一类）。
+             * 我们只有一扇预览窗，不该被页面自己弹的东西顶掉 ——
+             * 真人的浏览器也拦这种。丢掉的会记一笔，`diag` 里看得见（不是静默丢）。
+             */
+            override fun onCreateWindow(
+                view: WebView?,
+                isDialog: Boolean,
+                isUserGesture: Boolean,
+                resultMsg: android.os.Message?
+            ): Boolean {
+                if (!isUserGesture) {
+                    newWindowsDropped++
+                    return false
+                }
+                val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
+                transport.webView = view
+                resultMsg.sendToTarget()
+                newWindowsFollowed++
+                return true
+            }
         }
         // 视口尺寸必须先给足 —— 挂窗口之后 WebView 照这个尺寸排版。
-        // 5.9.34：这个尺寸**就是窗口尺寸**（屏宽 ÷ 3），网页与窗口一个像素对一个像素。
+        // ⚠ 5.9.34 曾写"这个尺寸就是窗口尺寸" —— 那是错的，见 [viewportSizePx]。
         layoutView(wv, w, h)
         // 5.9.27：挂**可见**悬浮窗。没权限就如实报错，不静默退回屏外
         val err = attachFloatWindow(wv)
@@ -536,6 +609,12 @@ class WebAutomationService : Service() {
         webView = wv
         progress = 0
         pageReady = false
+        // ⚠ 5.9.38：**实例刚建好，先清一次缓存/历史/表单**。
+        //
+        // 这是"每次开关都清空"里补的那条缝：app 被强杀时走不到正常的关闭流程，
+        // 上次留下的缓存会躺着。下一次服务开启、网页实例建出来的这一瞬间正好清掉它。
+        // 这里 WebView 还是空的（没加载过任何东西），清的是**上次残留**。
+        wipeWebViewData(wv)
         return wv
     }
 
@@ -603,30 +682,88 @@ class WebAutomationService : Service() {
             return err
         }
         floatWindowError = null
-        floatWindow.attachWebView(wv, viewWidthPx(), viewHeightPx(), winW, winH)
+        // ⚠ 5.9.38：装不进去必须**说出来**。原来这个函数不返回结果（静默 return），
+        // 页面会照常加载、但用户在小窗里根本看不见它，而没有任何一处会说这件事。
+        val attachErr = floatWindow.attachWebView(wv, viewWidthPx(), viewHeightPx(), winW, winH)
+        if (attachErr != null) {
+            floatWindowError = attachErr
+            statusText = attachErr
+            refreshNotification()
+            return attachErr
+        }
         hostBounds = runCatching {
             "float ${winW}x$winH at $floatWindowPos screen=${dm.widthPixels}x${dm.heightPixels}"
         }.getOrDefault("unknown")
         return null
     }
 
+    /**
+     * 销毁页面会话。**"清数据"是它的第一步**（5.9.38 修）。
+     *
+     * ## 为什么清数据必须在这里，而不是让调用方记得先调
+     *
+     * 5.9.37 的情形是 `opClose` 写成"先 `destroySession()`、再 `clearWebData()`"，
+     * 而 `clearWebData` 里那三行读的是 `webView?.` —— 那时它**已经是 null**，
+     * 于是"清缓存/历史/表单"从写下去那天起**一次都没执行过**。
+     *
+     * 根因不是"顺序写反了"，而是**把顺序交给调用方记着**。现在清在销毁内部，
+     * `close` 与**关闭服务**（[teardown]）两条路都不可能漏 —— 两条路都只走这一个函数。
+     *
+     * 清与销毁在**同一个主线程任务**里，顺序天然成立（不用赌 handler 的排队顺序）。
+     */
     private fun destroySession() {
         val wv = webView
         webView = null
         pageReady = false
         progress = 0
-        if (wv == null) return
-        // removeView/destroy 必须在主线程
+        // removeView/destroy 必须在主线程；清数据也必须在主线程（WebView 的方法）
         postToMain {
             runCatching {
-                wv.stopLoading()
-                // 5.9.27：先把 WebView 从**悬浮窗**里摘下来。
-                // 以前是 `wm.removeView(wv)`（WebView 直接挂在窗口根上），
-                // 现在窗口里还有一个 DragFrameLayout，摘错地方就是野指针。
-                floatWindow.detachWebView(wv)
-                wv.destroy()
-            }.onFailure { Log.w(TAG, "destroy webview failed", it) }
+                if (wv != null) {
+                    wipeWebViewData(wv)        // ← 先清
+                }
+                clearCookiesAndStorage()      // ← 不依赖 WebView 的那两样，任何时候都清
+                if (wv != null) {
+                    wv.stopLoading()
+                    // 5.9.27：先把 WebView 从**悬浮窗**里摘下来。
+                    // 以前是 `wm.removeView(wv)`（WebView 直接挂在窗口根上），
+                    // 现在窗口里还有一个 DragFrameLayout，摘错地方就是野指针。
+                    floatWindow.detachWebView(wv)
+                    wv.destroy()               // ← 后销毁
+                }
+            }.onFailure { Log.w(TAG, "destroy session failed", it) }
         }
+    }
+
+    /**
+     * 清掉与 WebView 实例绑定的那些：缓存（内存 + 磁盘）、历史、表单。
+     *
+     * ⚠ **必须在 WebView 还活着的时候调** —— 这也是 5.9.37 那个"清缓存从来没跑过"的根因。
+     * 调用点只有两个，都在实例活着的时候：实例刚建好（清上次残留）、销毁之前（清这次）。
+     */
+    private fun wipeWebViewData(wv: WebView) {
+        runCatching { wv.clearCache(true) }
+            .onFailure { Log.w(TAG, "clearCache failed", it) }
+        runCatching { wv.clearHistory() }
+            .onFailure { Log.w(TAG, "clearHistory failed", it) }
+        runCatching { wv.clearFormData() }
+            .onFailure { Log.w(TAG, "clearFormData failed", it) }
+    }
+
+    /**
+     * 清 cookie 与 localStorage/IndexedDB（**不依赖 WebView 实例**）。
+     *
+     * 这两样是"不留痕、不留缓存"里最要紧的：cookie 是登录态，localStorage 是网站
+     * 往你手机里塞的数据。它们在进程启动、服务启动、会话销毁三处都要清。
+     */
+    private fun clearCookiesAndStorage() {
+        runCatching {
+            val cm = CookieManager.getInstance()
+            cm.removeAllCookies(null)
+            cm.flush()
+        }.onFailure { Log.w(TAG, "clear cookies failed", it) }
+        runCatching { WebStorage.getInstance().deleteAllData() }
+            .onFailure { Log.w(TAG, "clear web storage failed", it) }
     }
 
     /** 投递到主线程，不等待（等待绝不能发生在主线程上——见 [UiEval]）。 */
@@ -821,48 +958,7 @@ class WebAutomationService : Service() {
     private fun WebProtocol.EvalOutcome.valueOrNull(): String? =
         (this as? WebProtocol.EvalOutcome.Value)?.value
 
-    /**
-     * 落地页**是否真的可用**（5.9.4）。
-     *
-     * 两层判：
-     *  1. [WebViewClient] 记下的 `lastErrorCode`（`ERROR_TIMEOUT` 之类）——最可靠；
-     *  2. 页面探针：`location.protocol` 是不是 `chrome-error:`、正文里有没有 `ERR_…`。
-     *
-     * 返回 null 表示可用；非 null 是给 agent 的错误说明。
-     */
-    /**
-     * 落地页能不能真的用来干活。**三态**（5.9.5）。
-     *
-     * ⚠ 必须把"探不到"和"能用"分开：此前探测一失败（超时 / 投不进主线程 / 答案不完整）
-     * 就返回 null，而 null 的含义是"可用" —— 探测自己坏了却被报成页面能用，
-     * 正是 5.9.3–5.9.4 刚清掉的那类假成功，只是搬到了探测层。
-     */
 
-    /**
-     * 页面探针：一次 eval 拿回 标题 / 正文片段 / 协议 / 当前地址。
-     *
-     * ## 必须 JSON.stringify，不能手拼分隔符（5.9.9 修的严重 bug）
-     *
-     * 此前是 `return t+'\n'+b+'\n'+protocol+'\n'+href`：
-     *
-     *  - Kotlin 里的 `'\n'` 编译后是**真实的 LF 字符**，被塞进 JS 的**单引号字符串
-     *    字面量**中间。JS 不允许字面量里裸换行 → **整段语法错** →
-     *    `evaluateJavascript` 回调 `null`。
-     *  - 本地 node 复现过：`SyntaxError: Invalid or unexpected token`，
-     *    双反斜杠（`"\\n"`）才通过。
-     *  - 真机表现：`usable` **对每一个页面**都是 `Unknown("probe returned no value")`，
-     *    `open`/`wait`/`click`/`back`/`reload` 五处都瞎。
-     *  - 而且 Kotlin 侧 `split('\n')` 也错：正文（`innerText` 截 400 字）几乎必然
-     *    自带换行，`parts[2]` 拿到的是正文第二行而不是 protocol，
-     *    **错误页检测因此失效**。
-     *
-     * 改用 `JSON.stringify` 一次干掉两处。全项目只有这一处踩了这个坑 ——
-     * `WebSelector.escape`（`:52`）写的是 `"\\n"`，那才是对的。
-     */
-    private val PROBE_JS = "(function(){var t='';try{t=document.title||''}catch(e){};" +
-        "var b='';try{b=(document.body?document.body.innerText:'').slice(0,400)}catch(e){};" +
-        "var p='',h='';try{p=location.protocol||'';h=location.href||''}catch(e){};" +
-        "return JSON.stringify({t:t,b:b,p:p,h:h})})()"
 
     /**
      * 探一次落地页。
@@ -874,7 +970,7 @@ class WebAutomationService : Service() {
         lastErrorCode?.let { code ->
             return WebUsability.Unusable("landed on an error page: ${WebPageUsable.describeErrorCode(code)}")
         }
-        val outcome = evalInPage(wv, PROBE_JS) { false }
+        val outcome = evalInPage(wv, WebOpScripts.PROBE_JS) { false }
         // ⚠ 这三条以前都掉进"可用"那一支
         outcomeError(outcome)?.let {
             // 5.9.9：把**原始回值**记下来放进 diag。eval 在真页面上不回值这件事
@@ -904,8 +1000,6 @@ class WebAutomationService : Service() {
         }
     }
 
-    /** 页面还没加载完时的统一措辞。 */
-
     /**
      * `diag`：诊断探针（5.9.4）。
      *
@@ -922,13 +1016,13 @@ class WebAutomationService : Service() {
             "rendering" to if (floatWindow.isShown) "float window (visible)" else "no window yet",
             // 窗口实际拿到哪：几何 + 拖到哪了。拖动会变，diag 一问就知
             "float_pos" to floatWindowPos,
-            // **多窗口共存那行反射到底成没成** —— `@hide` 字段，必须真机验，
-            // 不猜。原样报出来：`hideOverlayWindows=false` / `字段不存在（…）`
-            "float_multiwindow" to floatWindow.multiWindowReport,
             // **拖动诊断**：`down=0` = 触摸压根没进窗口（标志位/窗口类型那一层）；
             // `down>0` = 拦到了、问题在落地那一步（layout_error 会带原因）。
             // 5.9.27 真机上"按住拖不动"就是靠这一栏定到位置的。
             "float_touch" to floatWindow.touchReport,
+            // 5.9.38：新窗口请求的计数。`followed>0` = 有链接要开新窗口、我们接进了这一扇；
+            // `dropped>0` = 页面自己弹窗被我们挡了（不是静默挡，这里看得见）。
+            "float_newwindow" to "followed=$newWindowsFollowed dropped=$newWindowsDropped",
             // 5.9.37：**报真实缩放因子**，不再硬编码成"没有缩放"。
             // 5.9.36 把缩放请回来了，这一行却忘了改 —— diag 说的和实际做的对不上，
             // 这正是当初那个"扫源码的锁给了坏设计盖章"的同类毛病。现在如实报。
@@ -945,10 +1039,13 @@ class WebAutomationService : Service() {
             // value:… / value:null / failed:… / error:…
             "eval_raw" to lastEvalOutcome,
             "overlay" to overlay,
-            // 5.9.34：视口 = 窗口 = 屏宽 ÷ 3，两个数必须是同一个
+            // 5.9.34：视口 = 412dp × density（与窗口不是同一个数，靠缩放联系）
             "viewport" to "${viewWidthPx()}x${viewHeightPx()} px",
             "last_error" to (lastErrorCode ?: "none"),
-            "float_error" to (floatWindowError ?: "none")
+            "float_error" to (floatWindowError ?: "none"),
+            // 5.9.38：web.env 写成功了吗。agent 的自发现全靠它，
+            // 写不进去时以前**没人知道**（两边都看不到原因）。
+            "env_written" to (envWritten?.toString() ?: "not yet")
         )
         if (wv == null) {
             return WebProtocol.okJson(
@@ -957,38 +1054,42 @@ class WebAutomationService : Service() {
                 "note" to "open a page first, then call diag again to see the rendering state"
             )
         }
-        val outcome = evalInPage(
-            wv,
-            "(function(){var r={};" +
-                "try{r.protocol=location.protocol}catch(e){r.protocol='?'}" +
-                "try{r.href=location.href}catch(e){r.href='?'}" +
-                "try{r.title=document.title}catch(e){r.title='?'}" +
-                "try{r.readyState=document.readyState}catch(e){r.readyState='?'}" +
-                "try{r.docW=document.documentElement.scrollWidth}catch(e){r.docW=-1}" +
-                "try{r.docH=document.documentElement.scrollHeight}catch(e){r.docH=-1}" +
-                "try{r.bodyLen=(document.body?document.body.innerHTML.length:-1)}catch(e){r.bodyLen=-1}" +
-                "try{r.visState=document.visibilityState}catch(e){r.visState='?'}" +
-                "try{r.visCss=(document.body?getComputedStyle(document.body).visibility:'-')}catch(e){r.visCss='?'}" +
-                "try{r.imgs=document.images.length;r.doneImgs=0;" +
-                "for(var i=0;i<document.images.length;i++){if(document.images[i].complete)r.doneImgs++}}catch(e){}" +
-                "return JSON.stringify(r)})()",
-            { false }
-        )
-        val raw = (outcome as? WebProtocol.EvalOutcome.Value)?.value
+        val outcome = evalInPage(wv, WebOpScripts.DIAG_JS) { false }
+        // ⚠ 5.9.38：把"探针为什么没回值"分开报。原来四种原因（超时 / 客户端断开 /
+        // 投不进主线程 / 脚本自己报错）全塌成一句 "evaluate failed" ——
+        // 那正是这个项目到处在消灭的"失败混成一锅"。
+        val pageJson = when (outcome) {
+            is WebProtocol.EvalOutcome.Value -> outcome.value ?: "value:null"
+            is WebProtocol.EvalOutcome.Timeout -> "evaluate timeout after ${outcome.ms}ms"
+            is WebProtocol.EvalOutcome.Cancelled -> "client disconnected"
+            is WebProtocol.EvalOutcome.NotPosted -> "cannot reach main thread"
+            is WebProtocol.EvalOutcome.Failed -> "evaluate failed (${outcome.reason})"
+        }
         return WebProtocol.okJson(
             "msg" to "diag",
             *base.toTypedArray(),
-            "view" to "w=${wv.width} h=${wv.height} attached=${wv.isAttachedToWindow} vis=${wv.visibility}",
+            "view" to "w=${wv.width} h=${wv.height} attached=${wv.isAttachedToWindow} " +
+                // ⚠ 5.9.38：原文印的是安卓的原始整数，而 **0 = 可见**。
+                // 谁看都以为"不可见"，5.9.35 我就是被它带偏过一次。现在印名字。
+                "vis=${viewVisibilityName(wv.visibility)}",
             "ready" to pageReady,
             "progress" to progress,
-            "page" to (raw ?: "evaluate failed")
+            "page" to pageJson
         )
+    }
+
+    /** 安卓的可见性整数 → 人话（`0` 是**可见**，这两件事必须印明白）。 */
+    private fun viewVisibilityName(v: Int): String = when (v) {
+        View.VISIBLE -> "VISIBLE"
+        View.INVISIBLE -> "INVISIBLE"
+        View.GONE -> "GONE"
+        else -> "unknown($v)"
     }
 
     /**
      * 把页面侧带回来的哨兵翻译成**互不混淆**的错误信息（5.9.3）：
      *
-     *  - [WebSelector.NOT_FOUND] —— 元素真的不在 → `not found: <selector>`
+     *  - [WebSelector.NOT_FOUND]（以及字面量 `"null"`）—— 元素真的不在 → `not found: <selector>`
      *  - `__TERMLOU_JS_ERROR__:…` —— 选择器语法错 → `bad selector (<sel>): <JS 报错>`
      *  - `WEBERR:…` —— 找到了但操作做不了（不是 text field / 不是 select / 点击抛错）
      *
@@ -996,14 +1097,12 @@ class WebAutomationService : Service() {
      *
      * **为什么必须分开**：5.9.0–5.9.2 连续三个版本，"选择器写错"、"元素不在"、"我的脚本报错"
      * 三件事全被塌成同一个 not found / returned null，把排查方向带偏了两次。
+     *
+     * （`"null"` 那条合并进 [WebSelector.isMissing] 里了 —— 原来这里又写了一遍，
+     * 两处判断同一件事，改一处漏一处。5.9.38 去重。）
      */
     private fun pageSideError(value: String, selector: String): String? = when {
-        // 5.9.4 第二道保险：字面量 "null" 也算没找到，绝不能当成内容（见 isMissing）
         WebSelector.isMissing(value) -> "not found: $selector"
-        // 第二道保险：字面量 "null" 绝不能当成内容。5.9.4 之前 CSS 选择器查不到元素时
-        // 页面侧 `String(null)` 得到的就是字符串 "null"，于是 text/click/type/select
-        // 对不存在的元素全报 ok:true（真机实测 #ghost 返回 label:"null"）。
-        value == "null" -> "not found: $selector"
         else -> WebSelector.jsErrorOf(value)?.let { "bad selector ($selector): $it" }
             ?: WebOpScripts.webErrorOf(value)?.let { "$it [selector: $selector]" }
     }
@@ -1022,7 +1121,7 @@ class WebAutomationService : Service() {
 
     private fun opHtml(cancelled: () -> Boolean): String {
         val wv = webView ?: return WebProtocol.errJson("no page open")
-        val outcome = evalInPage(wv, "(document.documentElement||{}).outerHTML||''", cancelled)
+        val outcome = evalInPage(wv, WebOpScripts.OUTER_HTML_JS, cancelled)
         outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
         return WebProtocol.okJson("html" to outcome.valueOrNull(), "url" to (onMain { wv.url } ?: ""))
     }
@@ -1042,31 +1141,116 @@ class WebAutomationService : Service() {
         return WebProtocol.okJson("text" to value, "url" to (onMain { wv.url } ?: ""))
     }
 
-    /** `click`：真实点击（不是改状态），元素会先滚进可视区。 */
+    /**
+     * `click`：真实点击（不是改状态），元素会先滚进可视区。
+     *
+     * ## 5.9.38 修的两件事（都是"点了没反应，却报成功"）
+     *
+     * 1. **`text=` 点到了搜索框**：`text=` 原来会把"输入框里现有的字"（`value`）
+     *    当匹配依据，而搜索框在页面最前面、里面装的正是搜索词 —— 于是
+     *    `click {"selector":"text=某词"}` 会点到顶部搜索框：点一个输入框什么都不会
+     *    发生，而这里只看"JS 没抛异常"就报 `ok:true`。现在 `click` 用
+     *    [WebSelector.pickJs] 的 clickable 模式（只认人看得见的名字），
+     *    并且"文字确实在、但落在不能点的东西上"有**单独一句**（[WebSelector.NOT_CLICKABLE]）。
+     * 2. **要开新窗口的链接，导航请求被安卓整个丢掉**（`target="_blank"`、
+     *    `window.open`）：不导航、不报错。现在 [onCreateWindow] 把它接进这一扇窗。
+     *
+     * ## 返回字段（agent 看这里）
+     *
+     * | 字段 | 含义 |
+     * |---|---|
+     * | `clicked` | 点了什么：`tag` / `href` / `target` / `text` |
+     * | `navigated` | 点完之后**页面真的开始导航了吗**（翻页了没有） |
+     * | `ready` | 导航落地并加载完（没给 `wait` 时基本是 false） |
+     * | `usable` | 落地的页能不能用（错误页会明说） |
+     *
+     * ### 什么时候算失败
+     *
+     * 点的是一个**指向别的页面**的链接，而**页面一点都没动** → `ok:false` 并说清。
+     * 这正是真机上"点了没反应"的形状；报成功就等于让 agent 以为已经翻页了。
+     *
+     * 例外：链接只是**页内锚点**（`#xxx`）时不算失败 —— 它本来就不换页。
+     * 另外 `wait` 没给时会**先给它一小会儿**（[CLICK_NAV_GRACE_MS]）让导航真的开始，
+     * 不然会把"还没来得及开始"误判成"没反应"。
+     */
     private fun opClick(request: WebProtocol.Request, cancelled: () -> Boolean): String {
         val wv = webView ?: return WebProtocol.errJson("no page open")
         val raw = WebProtocol.bodyString(request, "selector")
         val kind = WebSelector.parse(raw) ?: return WebProtocol.errJson("bad selector: $raw")
         val navSeqBefore = navSeq
-        val outcome = evalInPage(wv, WebOpScripts.click(WebSelector.pickJs(kind)), cancelled)
+        val outcome = evalInPage(wv, WebOpScripts.click(WebSelector.pickJs(kind, clickable = true)), cancelled)
         outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
         val label = outcome.valueOrNull() ?: return WebProtocol.errJson(SCRIPT_FAILED)
+        // "文字在页面上、但落在不能点的东西上"（典型：搜索框里的搜索词）
+        // 与"压根找不到"分开报 —— 这两种的处置完全不同：前者要换一个像标题的文字
+        if (WebSelector.isNotClickable(label)) {
+            return WebProtocol.errJson(
+                "matched an element that cannot be clicked with \"$raw\" - the text is on the " +
+                    "page but it sits inside something a person cannot click (a text field, " +
+                    "for example). Nothing was clicked. Use the title of a link/button, " +
+                    "or a CSS selector like \"a[href=...]\""
+            )
+        }
         pageSideError(label, raw)?.let { return WebProtocol.errJson(it) }
-        val ready = waitAfterOptionalNav(
-            navSeqBefore,
-            WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS),
-            cancelled
-        )
+        val clicked = WebOpScripts.parseClicked(label)
+        val requestedWait = WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS)
+        // 没给 wait 且点的是链接时，先给它一小会儿：导航是异步开始的，
+        // 不给自己一个机会就看，会把"还没来得及开始"说成"没反应"。
+        val effectiveWait = if (requestedWait == 0 && clicked?.isLink == true) {
+            CLICK_NAV_GRACE_MS
+        } else {
+            requestedWait
+        }
+        val ready = waitAfterOptionalNav(navSeqBefore, effectiveWait, cancelled)
+        val navigated = navSeq != navSeqBefore
         val landed = onMain { wv.url } ?: ""
+        val fields = mutableListOf<Pair<String, Any?>>(
+            "msg" to "clicked",
+            "label" to (clicked?.text ?: label),
+            "navigated" to navigated,
+            "ready" to ready,
+            "url" to landed
+        )
+        if (clicked != null) {
+            fields += "clicked" to mapOf(
+                "tag" to clicked.tag,
+                "href" to clicked.href,
+                "target" to clicked.target
+            )
+        }
+        // 点了链接却一步都没走 → 如实报失败（这是"点了没反应"的形状）
+        if (clicked != null && clicked.isLink && !navigated && !isSamePageAnchor(clicked.href, landed)) {
+            val why = if (clicked.wantsNewWindow) {
+                "the link asks for a new window (target=\"_blank\")"
+            } else {
+                "the link may be intercepted by the page's own scripts"
+            }
+            return WebProtocol.errJsonWith(
+                "clicked <${clicked.tag}> ${clicked.href} but the page did not navigate at all - " +
+                    "$why. Nothing happened; try another target, or open the href directly",
+                WebProtocol.okJson(*fields.toTypedArray())
+            )
+        }
+        val u = probeUsability(wv)
         // 点击本身成功 ≠ 目的地可用：落地是错误页时如实说出来，但 ok 仍为 true
         // （点击确实发生了，agent 需要知道"点了，但没到想去的地方"）
         return WebProtocol.okJson(
-            "msg" to "clicked",
-            "label" to label,
-            "ready" to ready,
-            "url" to landed,
-            *WebUsability.fields(probeUsability(wv), ready).toTypedArray()
+            *fields.toTypedArray(),
+            *WebUsability.fields(u, ready).toTypedArray()
         )
+    }
+
+    /**
+     * 这个地址是不是"同一页里的锚点"（`#xxx`）——那种链接点完不换页，不算失败。
+     *
+     * 判据：空的、以 `#` 开头、或者去掉 `#` 之后与当前地址一致。
+     */
+    private fun isSamePageAnchor(href: String, currentUrl: String): Boolean {
+        if (href.isEmpty()) return true
+        if (href.startsWith("#")) return true
+        val h = href.substringBefore('#')
+        val c = currentUrl.substringBefore('#')
+        return h == c
     }
 
     /**
@@ -1087,6 +1271,14 @@ class WebAutomationService : Service() {
             WebSelector.pickJs(kind)
         }
         val enter = WebProtocol.bodyOptBoolean(request, "enter", false)
+        // ⚠ 5.9.38：**必须在这一步之前采样导航代数**。
+        //
+        // 5.9.37 把它写在 eval **之后**，却当成"动作之前"的值传给
+        // `waitAfterOptionalNav` —— 于是回车引起的导航被算成"本次操作之前就发生了"，
+        // 等待循环走进"先等导航开始"那一支，白等满 `wait` 才返回。
+        // 代码注释在别处反复警告过这个坑（`markNavigationStarted` 必须在 loadUrl 之前），
+        // 这里是自己又踩了一次。
+        val navSeqBefore = navSeq
         val outcome = evalInPage(wv, WebOpScripts.type(pick, value, clear, enter), cancelled)
         outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
         val result = outcome.valueOrNull() ?: return WebProtocol.errJson(SCRIPT_FAILED)
@@ -1094,19 +1286,27 @@ class WebAutomationService : Service() {
         // ⚠ 5.9.37：`enter:true` 之后**页面通常正在跳转**。
         // 不等它落定就返回，agent 紧接着读到的还是旧页面 ——
         // 真人按回车之后也是要等一下才看到结果。
+        var ready: Boolean? = null
         if (enter) {
-            waitAfterOptionalNav(
-                seqBefore = navSeq,
+            ready = waitAfterOptionalNav(
+                seqBefore = navSeqBefore,
                 waitMs = WebProtocol.bodyInt(request, "wait", 5_000).coerceIn(0, MAX_WAIT_MS),
                 cancelled = cancelled
             )
         }
-        return WebProtocol.okJson(
+        val fields = mutableListOf<Pair<String, Any?>>(
             "msg" to "typed",
             "bytes" to value.length,
             "enter" to enter,
             "url" to (onMain { wv.url } ?: "")
         )
+        if (enter) {
+            // 按回车就是为了"提交/跳转"，所以这件事必须说清楚：
+            // 没跳成的时候 agent 要能立刻看出来，而不是接着往旧页面上操作。
+            fields += "navigated" to (navSeq != navSeqBefore)
+            fields += "ready" to (ready ?: false)
+        }
+        return WebProtocol.okJson(*fields.toTypedArray())
     }
 
     /**
@@ -1154,9 +1354,18 @@ class WebAutomationService : Service() {
 
         val outcome = evalInPage(wv, WebExtract.pageJs(limit, textChars), cancelled)
         outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
-        val page = WebExtract.parse(outcome.valueOrNull())
+        // ⚠ 5.9.38：`null` 在这里**只有一个意思** —— 我们注入的脚本没跑起来。
+        //
+        // 页面脚本在每一条路径上都回一个字符串（解析不出也是回 JSON），所以它不可能
+        // "算出 null"。而 `evaluateJavascript` 会把**语法错误**一并吞成 null。
+        // 5.9.37 这里写的是"the page returned no usable answer — try wait, then retry"，
+        // 于是"我的脚本坏了"被说成"页面没答上来，等一等重试"——真机上照它做一万次都没用。
+        // 现在照实说：这是 TermLou 自己的问题，别重试。
+        val raw = outcome.valueOrNull() ?: return WebProtocol.errJson(SCRIPT_FAILED)
+        val page = WebExtract.parse(raw)
             ?: return WebProtocol.errJson(
-                "extract failed (the page returned no usable answer) — try wait, then retry"
+                "extract: the page answered but the answer could not be read " +
+                    "(${raw.take(120)}) - this is a TermLou bug"
             )
 
         val fields = mutableListOf<Pair<String, Any?>>(
@@ -1216,16 +1425,45 @@ class WebAutomationService : Service() {
      * 5.9.4 修：`goBack()` 是**异步**导航，此前紧接着读 `wv.url` 拿到的还是**跳转前**的
      * 地址，害得调用方只能自己去 eval `location.href`。现在等新页就绪后再读 url，
      * 语义与 `reload` 对齐。
+     *
+     * ## ⚠ 5.9.38 修：那句话的两个数字会打架，而且"问不到"被当成"没有"
+     *
+     * 5.9.37 真机报出来的是：
+     *
+     * ```
+     * no history to go back (history entries: 4)
+     * ```
+     *
+     * 说"没历史"，括号里又写着有 4 条 —— 因为两个数**根本不是同一样东西**：
+     *
+     * - `canGoBack()` 问的是"**我身后**有没有页"（当前位置 > 第 1 条）
+     * - `copyBackForwardList().size` 报的是"**整个清单**几条"（身后的 + 当前 + 前面的）
+     *
+     * 站在第 1 条上、清单总共 4 条，两个就同时成立。**位置是 0 时身后确实没东西**，
+     * 所以它挡得对，但报出来的数字把人引到了完全错的方向。
+     * （顺带：用户在页面里用 `eval` 查的 `history.length` **也是清单总长**，
+     * 它不会随后退变小 —— 退到底了照样是 4。那个数证明不了"身后有 4 页"。）
+     *
+     * 现在：一次问全（能不能退 / 当前位置 / 清单总长 / 身后几条 / 前面几条），
+     * 数字**互相能对上**；而且"问不到"不再冒充"没有"。
      */
     private fun opBack(request: WebProtocol.Request, cancelled: () -> Boolean): String {
         val wv = webView ?: return WebProtocol.errJson("no page open")
-        val canGoBack = onMain { wv.canGoBack() } ?: false
+        // 一次请求拿全：分开问会得到互相矛盾的答案（5.9.37 就是这么报出 4 条的）
+        val stack = onMain {
+            val list = wv.copyBackForwardList()
+            Triple(wv.canGoBack(), list.currentIndex, list.size)
+        } ?: return WebProtocol.errJson(
+            "could not read the page history (main thread did not answer) - retry, " +
+                "or use {\"op\":\"open\"} to load the page again"
+        )
+        val (canGoBack, index, size) = stack
         if (!canGoBack) {
-            // 带上历史信息：此前"导航还在途中"和"真的没历史"报同一句话，无法分辨。
-            // 导航未提交时确实还没有条目，所以这句同时也是提示：先 wait 再 back。
-            val entries = onMain { wv.copyBackForwardList().size } ?: -1
+            val behind = index             // 身后有几条 = 当前位置（0-based）
+            val ahead = (size - 1) - index
             return WebProtocol.errJson(
-                "no history to go back (history entries: $entries) - " +
+                "nothing behind to go back to: you are on entry ${index + 1} of $size " +
+                    "(behind you: $behind, ahead of you: $ahead) - " +
                     "if a navigation is still in flight, wait for it first: {\"op\":\"wait\"}"
             )
         }
@@ -1234,10 +1472,16 @@ class WebAutomationService : Service() {
         val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS), cancelled)
         val u = probeUsability(wv)
         if (u is WebUsability.Unusable) return WebProtocol.errJson(u.reason)
+        val now = onMain {
+            val list = wv.copyBackForwardList()
+            list.currentIndex to list.size
+        }
         return WebProtocol.okJson(
             "msg" to "back",
             "ready" to ready,
             "url" to (onMain { wv.url } ?: ""),
+            "entry" to ((now?.first ?: -1) + 1),
+            "entries" to (now?.second ?: -1),
             *WebUsability.fields(u, ready).toTypedArray()
         )
     }
@@ -1258,51 +1502,9 @@ class WebAutomationService : Service() {
         )
     }
 
-    /**
-     * 导出 cookie 到 `~/web/cookies.txt|json` 供人查看。
-     * Android 不提供"枚举全部 cookie"的 API（[CookieManager] 只能按 URL 取），
-     * 因此这里导出**当前页面**可见的 Cookie 头。响应里的 `scope` 字段明说这件事，
-     * 免得 agent 把"没导出"当成"没有 cookie"。
-     */
-    private fun opCookies(): String {
-        val wv = webView
-        val url = onMain { wv?.url } ?: ""
-        val header = onMain {
-            runCatching { CookieManager.getInstance().getCookie(url) }.getOrDefault("")
-        } ?: ""
-        val pairs = header.split(";").mapNotNull { part ->
-            val kv = part.trim()
-            val i = kv.indexOf('=')
-            if (i <= 0) null else kv.substring(0, i).trim() to kv.substring(i + 1).trim()
-        }
-        WebArtifacts.writeCookies(this, url, pairs)
-        return WebProtocol.okJson(
-            "file" to WebArtifacts.linuxPath(this, File(WebArtifacts.webRoot(this), "cookies.txt")),
-            "url" to url,
-            "count" to pairs.size,
-            "scope" to "current page only (Android exposes no enumerate-all API)"
-        )
-    }
-
     private fun opClose(): String {
         destroySession()
-        clearWebData()
         return WebProtocol.okJson("msg" to "closed")
-    }
-
-    /** 无痕：cookie / 缓存 / localStorage / 表单全清。 */
-    private fun clearWebData() {
-        runCatching {
-            onMain {
-                val cm = CookieManager.getInstance()
-                cm.removeAllCookies(null)
-                cm.flush()
-                WebStorage.getInstance().deleteAllData()
-                webView?.clearCache(true)
-                webView?.clearHistory()
-                webView?.clearFormData()
-            }
-        }.onFailure { Log.w(TAG, "clear web data failed", it) }
     }
 
     // ---------- 通知 ----------
@@ -1379,10 +1581,6 @@ class WebAutomationService : Service() {
         }
 
         /**
-         * 页面侧"出错了"的哨兵前缀：JS 里无法直接抛异常（会被 evaluateJavascript
-         * 吞成 null），所以把错误信息编码成字符串带回来。
-         */
-        /**
          * `evaluateJavascript` 把 JS 的语法错误/运行时错误**一并吞成 null**，
          * 所以"值是 null"只能说明脚本没跑完——具体原因拿不到。
          * 这句话必须明说"是脚本的问题"，不能像 5.9.2 那样报 `click returned null`，
@@ -1390,6 +1588,15 @@ class WebAutomationService : Service() {
          */
         private const val SCRIPT_FAILED =
             "script failed to run in the page (this is a bug on the TermLou side, not a bad selector)"
+
+        /**
+         * `click` 点到链接、但 agent **没给 `wait`** 时，额外给它多久让导航真的开始。
+         *
+         * 导航是异步开始的（`onPageStarted` 由主线程晚一步派发），点完立刻看会得到
+         * "页面没动"的假象。800ms 是"够开始、又不至于让每条 click 都多等"的取中值：
+         * 真机上点链接后导航通常在几十毫秒内就开始。给了 `wait` 的走 agent 自己的值。
+         */
+        private const val CLICK_NAV_GRACE_MS = 800
 
         private val CONTENT_LENGTH = Regex("(?i)content-length:\\s*(\\d+)")
 
@@ -1438,7 +1645,12 @@ class WebAutomationService : Service() {
             }
         }
 
-        /** 进程启动即无痕（app 里没有第二个 WebView，故清全部 WebView 数据只影响本功能）。 */
+        /**
+         * 进程启动即无痕：清 cookie 与 localStorage/IndexedDB。
+         *
+         * （app 里没有第二个 WebView，故"清全部 WebView 数据"只影响浏览器。
+         * 缓存清不了 —— 那需要 WebView 实例，由服务开启时、实例刚建好那一刻负责。）
+         */
         fun wipeOnProcessStart(context: Context) {
             runCatching {
                 CookieManager.getInstance().removeAllCookies(null)

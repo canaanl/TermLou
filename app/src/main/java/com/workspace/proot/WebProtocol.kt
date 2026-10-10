@@ -5,8 +5,12 @@ import org.json.JSONObject
 /**
  * 浏览器的 HTTP/JSON 指令协议（5.9.0，纯逻辑、不依赖安卓，可单测）。
  *
- * 传输：**仅回环地址**的固定端口 + 每次安装固定的令牌（`X-Token` 头）；`GET /help` 免令牌
- * （纯说明书，供"skill 写丢了"时自发现），其余一律要令牌。
+ * 传输：**仅回环地址**的固定端口 + 每次安装固定的令牌（`X-Token` 头）。
+ *
+ * ⚠ **`GET /help` 也要令牌**（5.9.9 改）。此前它免令牌，而说明书里又把真令牌
+ * 印在 `X-Token: xxx` 那一行 —— 安卓上任何 app 访问 127.0.0.1 都不需要任何权限，
+ * 于是任何装在手机上的应用一条 `curl http://127.0.0.1:<端口>/help` 就拿到完整凭据。
+ * 自发现的正路是 `web.env`（在 app 私有目录里，别的 app 读不到）。
  *
  * 指令：`POST /op`，体为 `{"op":"…"}`，统一返回 `{"ok":true, …}` 或 `{"ok":false,"error":"…"}`。
  */
@@ -28,11 +32,16 @@ object WebProtocol {
      */
     const val WORKSPACE_MOUNT = "/workspace"
 
-    /** 产物目录在 Linux 侧的路径（端口、令牌、截图、cookie 都在底下）。 */
+    /**
+     * 产物目录在 Linux 侧的路径。
+     *
+     * 5.9.38 起这个目录里**只有 `web.env`**（端口 + 令牌，仅服务运行时存在）——
+     * 不再导出 cookie、不再有截图。设置里的「清除缓存」清的就是它。
+     */
     const val WEB_DIR = "$WORKSPACE_MOUNT/web"
 
     /**
-     * 视口尺寸（dp）：页面按手机竖屏渲染，截图与取文本都基于它。
+     * 视口尺寸（dp）：页面按手机竖屏排版，跟正常手机一致。
      *
      * 5.9.34 我把它删掉、改成"视口 = 窗口"（160dp），理由是"缩放是第 2 屏的原因"。
      * **那个理由是错的** —— 5.9.34/5.9.35 都没有缩放，第 2 屏照样失败。
@@ -129,27 +138,30 @@ object WebProtocol {
         JSONObject().put("ok", false).put("error", message).toString()
 
     /**
-     * 失败，但**带上已经拿到的数据**（5.9.31 整页截图）。
+     * 失败，但**带上已经拿到的数据**。
      *
      * ## 为什么需要它
      *
-     * 整页截图滚着拍，第 3 屏没跟上时，前两屏是**真的拍到了**的。
+     * 有些操作是"做到了大部分、但有一步没成"（历史上是整页截图的第 3 屏）。
      * 两种做法都有代价：
      *
-     * - 全扔 → agent 什么都拿不到，而那两张明明是好的；
+     * - 全扔 → agent 什么都拿不到，而那些已经拿到的明明是好的；
      * - 报 `ok:true` → **5.9.9 的教训**：半张图报成功比修不好更糟，
-     *   agent 会拿残缺的整页做判断。
+     *   agent 会拿残缺的东西做判断。
      *
-     * 所以：仍然 `ok:false`，但把那几张**一起返回**，并说明缺了哪几屏。
+     * 所以：仍然 `ok:false`，但把已经拿到的那部分**一起返回**并说明缺了什么。
      *
-     * @param message 说清哪一屏、为什么
-     * @param okBody 之前 [WebAutomationService.finishShot] 拼好的成功体
+     * 5.9.38 起 `click` 也用它：点了链接、页面一点没动时，
+     * `ok:false` + 把"点了什么"原样交回去，agent 就不用重问一次。
+     *
+     * @param message 说清缺了什么、为什么
+     * @param okBody 拼好的成功体（会被改成 ok:false + error，并标上 partial）
      */
     fun errJsonWith(message: String, okBody: String): String {
         val o = runCatching { JSONObject(okBody) }.getOrElse { JSONObject() }
         o.put("ok", false)
         o.put("error", message)
-        // 明确标出来：这些是**部分**结果，不是完整整页
+        // 明确标出来：这些是**部分**结果，不是完整的
         o.put("partial", true)
         return o.toString()
     }
@@ -246,11 +258,13 @@ object WebProtocol {
         appendLine("                                          可带 \"text_chars\":0~${WebExtract.MAX_TEXT_CHARS}（正文字数，默认 ${WebExtract.DEFAULT_TEXT_CHARS}）")
         appendLine("  {\"op\":\"text\",\"selector\":\"…\"}         取可见文字（不给 selector = 整页正文）")
         appendLine("  {\"op\":\"click\",\"selector\":\"…\"}       真实点击（可带 wait 等新页）")
+        appendLine("                                          返回 clicked{tag,href,target} + navigated")
+        appendLine("                                          ⚠ 点的是链接而页面一步没走 → ok:false")
         appendLine("  {\"op\":\"type\",\"selector\":\"…\",\"text\":\"…\"}   填输入框（clear=false 追加）")
         appendLine("                                          加 \"enter\":true 就**填完按回车**（可带 wait 等跳转）")
+        appendLine("                                          回车后返回 navigated/ready，别当成没跳")
         appendLine("  {\"op\":\"select\",\"selector\":\"…\",\"value\":\"…\"}   选 <select> 的一项")
         appendLine("  {\"op\":\"back\"} / {\"op\":\"reload\"}      后退 / 重载")
-        appendLine("  {\"op\":\"cookies\"}                     导出 cookie 到 $WEB_DIR/cookies.txt|json")
         appendLine("  {\"op\":\"clear\"} / {\"op\":\"close\"}      清 cookie/缓存/localStorage 并结束会话")
         appendLine("  {\"op\":\"ping\"}                        探活")
         appendLine("  {\"op\":\"diag\"}                        诊断：窗口几何 / 缩放 / 页面可见性 / 最近错误码")
@@ -303,10 +317,16 @@ object WebProtocol {
         appendLine("    所以别做人类不会做的事（疯狂刷新、无意义的滚动）。")
         appendLine("  · open 的 wait 到点没加载完不报错，只回 ready:false 与 progress，可再 wait 重试。")
         appendLine("  · type 的 enter:true 是**填完立刻按回车**，然后按 wait 等新页落地；")
-        appendLine("    返回里带 url 与 enter，可以确认到底跳到哪了。")
-        appendLine("  · back 需要历史里有条目：点完链接先 wait 落地，再 back；导航还在途中时报错")
-        appendLine("    并附上历史条目数，可照此判断是没历史还是没等完。")
-        appendLine("  · cookies 只导出当前页面可见的 cookie：安卓没有枚举全部的 API。")
+        appendLine("    返回里带 url / navigated / ready，可以确认到底跳到哪了。")
+        appendLine("  · click 报回来的是\"点了什么\"：clicked{tag,href,target}。")
+        appendLine("    ⚠ **点的是链接、而页面一步都没走（navigated:false）时是 ok:false** ——")
+        appendLine("    那意味着这次点击没起作用（链接被页面脚本拦了之类），换个目标或直接 open href。")
+        appendLine("    点的是页内锚点（#xxx）不算失败（本来就不换页）。")
+        appendLine("    ⚠ selector=\"text=…\" 点时找的是**人看得见的名字**：输入框里现有的字不算，")
+        appendLine("    所以 text=<搜索词> 不会点到顶部搜索框（点它什么都不会发生）。")
+        appendLine("    文字确实在页面上、却落在不能点的东西上时，报的是 not clickable 而不是 not found。")
+        appendLine("  · back 需要历史里有条目：点完链接先 wait 落地，再 back；")
+        appendLine("    退不了时报的是\"你在第几条 / 身后几条 / 前面几条\"，数字互相能对上。")
         appendLine("  · clear 与 close 完全等价：都是清数据 + 结束当前页面会话。")
         appendLine("  · 只监听 127.0.0.1（同一 WiFi 下别的设备连不上）。")
         appendLine("  · 元素找不到一律 ok:false，绝不会报成功 —— ok:true 表示事情真的发生了。")
@@ -314,10 +334,11 @@ object WebProtocol {
         appendLine("    bad selector (...) = 选择器本身写错了（照抄报错里的原因）；")
         appendLine("    not a text field / not a <select> = 元素找对了但类型不对。")
         appendLine("    元素在 iframe 里的话这里查不到 —— 换个直接含它的页面。")
-        appendLine("  · 三个字段各管一件事，别混：")
-        appendLine("    ok:false = 这次操作本身失败（选择器错、没有历史、落地是错误页）。")
-        appendLine("    ready    = 页面事件走完。")
-        appendLine("    usable   = 落地页真的能用来干活。")
+        appendLine("  · 四个字段各管一件事，别混：")
+        appendLine("    ok:false    = 这次操作本身失败（选择器错、没有历史、点了没反应、落地是错误页）。")
+        appendLine("    ready       = 页面事件走完。")
+        appendLine("    navigated   = 页面真的开始换页了吗。")
+        appendLine("    usable      = 落地页真的能用来干活。")
         appendLine("  · 加载失败时 WebView 会加载它自己的错误页，而那个错误页同样会触发页面事件，")
         appendLine("    所以只看 ready 会把失败当成功。以 usable 为准。")
         appendLine("  · open 不带 wait 时 usable 一定是 false（还没渲染完），那不代表打开失败 ——")
@@ -328,22 +349,29 @@ object WebProtocol {
         appendLine("  · 客户端中途断开（命令被超时杀掉）时，服务端立刻放弃等待，不会留下卡住的会话。")
         appendLine("  · 推荐节奏：open → wait → extract → 再动手。单条 wait 上限 30 秒。")
         appendLine("  · 不带 wait 的 click 若已点出新导航，一律报 ready:false（不会拿上一页冒充）。")
-        appendLine("  · 无历史/无痕：每次打开 app 与每次服务启动都会清 cookie 与缓存；不保存密码与表单。")
+        appendLine("  · **本浏览器不保留 cookie、不留缓存**（用户要求）：")
+        appendLine("    没有导出 cookie 的指令；cookie 与 localStorage 在 app 启动、服务启动、")
+        appendLine("    会话结束三处都会清掉；缓存由加载时绕开 + 每次开关清空两道保证。")
+        appendLine("    所以换个站点就得重新登录 —— 这是设计，不是故障。")
         appendLine("  · Open a page, then extract it - that is how you see what is on it without guessing.")
         appendLine("    inputs and buttons are never truncated, so the search box is always there.")
         appendLine("    Truncated links say so (links_truncated / links_total / note); they are not hidden.")
         appendLine("  · One page at a time; if open's wait runs out it does not error, it returns ready:false.")
         appendLine("  · ok:false = the operation itself failed; ready = page events finished;")
+        appendLine("    navigated = the page really started changing;")
         appendLine("    usable = the landed page can actually be worked with.")
+        appendLine("  · A click on a link that does not navigate at all comes back ok:false - nothing happened.")
+        appendLine("    With text= selectors, click only matches names a person can see: text already in a")
+        appendLine("    text field does not count, so a search term will not hit the search box itself.")
         appendLine("  · The page lays out at ${WebProtocol.VIEWPORT_W_DP}×${WebProtocol.VIEWPORT_H_DP}dp (a normal phone width),")
         appendLine("    then is scaled down into the small floating window - so the layout is a normal one.")
         appendLine("  · The user watches the same window: opening, typing, Enter, clicking and loading are")
         appendLine("    all visible. Do what a person would do, not what is cheapest to automate.")
-        appendLine("  · Cookies cover the current page only; Android has no enumerate-all API.")
-        appendLine("  · No history: cookies and cache are wiped on every app start and every service start;")
-        appendLine("    passwords and form data are never saved.")
+        appendLine("  · This browser keeps no cookies and no cache at all: cookies and localStorage are wiped")
+        appendLine("    on app start, on service start and when the session ends, and caching is off.")
+        appendLine("    Logging in again for a different site is by design, not a failure.")
         appendLine("  · back needs a committed history entry: wait for the navigation to land first.")
-        appendLine("    If it cannot go back the error carries the history entry count.")
+        appendLine("    When it cannot go back the error says which entry you are on and how many are ahead.")
         appendLine("  · A missing element always returns ok:false; ok:true means it really happened.")
         appendLine("  · A click with no wait reports ready:false once it started a new navigation.")
         appendLine()

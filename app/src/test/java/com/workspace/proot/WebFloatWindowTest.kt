@@ -1,7 +1,6 @@
 package com.workspace.proot
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -127,17 +126,4 @@ class WebFloatWindowTest {
         val (x, y) = WebFloatWindow.clampToScreen(50, 50, 2000, 4000, screenW, screenH)
         assertTrue("得是合法坐标：$x,$y", x >= 0 && y >= 0)
     }
-}
-
-/** 从测试的工作目录往上找 `app/src/main/...` —— 单测的工作目录不是仓库根。 */
-private fun readMain(name: String): String {
-    var d: File? = File("").absoluteFile
-    var hops = 0
-    while (d != null && hops < 6) {
-        val f = File(d, "app/src/main/java/com/workspace/proot/$name")
-        if (f.isFile) return f.readText()
-        d = d.parentFile
-        hops++
-    }
-    throw AssertionError("找不到 $name，这条检查等于没跑")
 }

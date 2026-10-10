@@ -28,7 +28,7 @@ import org.json.JSONObject
  * <a href="https://…">某条结果标题</a>                → 链接
  * ```
  *
- * 所以它不需要"理解"什么���搜索框 —— 网站自己写了 `id="kw"`，抄下来告诉 agent，
+ * 所以它不需要"理解"什么是搜索框 —— 网站自己写了 `id="kw"`，抄下来告诉 agent，
  * agent 就知道往那儿填。
  *
  * ## 体积
@@ -42,6 +42,16 @@ import org.json.JSONObject
  *
  * 无尽滚动每滚一下往页面塞一批内容，所以链接可能上千条；那才需要上限，
  * 而且截了要**明说**（`links_truncated` / `links_total`），不瞒着。
+ *
+ * ## ⚠ 5.9.38：脚本从"几十段碎片拼"改成**一整块**
+ *
+ * 5.9.37 的写法是几十个 `append("…")` 首尾相接。`idf()` 里因此多出一个 `}`，
+ * 而**括号总数配平、只有 `try` 配不上 `catch`**，字符串层面的检查全都没抓到 ——
+ * 那一个字符让 `extract` 在真机上**全挂**（整段脚本编译不过，
+ * `evaluateJavascript` 把语法错误吞成 `null`，最后报成"页面没给出可用答案"）。
+ *
+ * 现在脚本是一整块（Kotlin 原始字符串），括号在一处、看得见、能缩进，
+ * 三个数字用 `$` 插值。**不要再拆回碎片拼。**
  */
 object WebExtract {
 
@@ -65,7 +75,7 @@ object WebExtract {
      * 负数与超上限都要如实告诉调用方。
      *
      * @return `夹好的值`
-     * @throws IllegalArgumentException 参数不是个数（负数、缺值）
+     * @throws IllegalArgumentException 参数不是个数（负数）
      */
     fun clampLimit(raw: Int): Int = when {
         raw < 0 -> throw IllegalArgumentException("limit must be >= 0 (got $raw)")
@@ -86,7 +96,7 @@ object WebExtract {
     fun textCharsCapped(raw: Int): Boolean = raw > MAX_TEXT_CHARS
 
     /**
-     * 页面侧脚本。
+     * 页面侧脚本。**一整块，不要拆**（见类注释里 5.9.38 那段）。
      *
      * ## 它做四件事
      *
@@ -95,11 +105,18 @@ object WebExtract {
      * 3. 抄所有链接：文字 + 完整网址（`a.href` 由浏览器自动转绝对地址）
      * 4. 抄标题、简介、可见正文
      *
-     * ## 为什么不用 innerHTML 取文字
+     * ## 正文为什么直接取活页面的 `innerText`（5.9.38 改）
      *
-     * `innerText` 是**人眼看到的**文字：`display:none` 的不出现、`<br>` 变成换行、
-     * `<script>` / `<style>` 的内容不出现。这正是我们要的 —— agent 要看的是页面，
-     * 不是源码。
+     * 5.9.37 是"把 body **复制**一份、在复制品上删掉 script/style、再取文字"。
+     * 那一步**有害无益**：
+     *
+     * - `innerText` 是"人眼看到的字"，**需要排版才可能算出来**；
+     *   而复制品不在文档里、没有排版 → 它退化成"所有文字都算"，
+     *   `display:none` 藏起来的字**也会进来**。
+     * - 而真 `innerText` **本来就不含** `<script>` / `<style>`（它们不参与渲染，
+     *   默认就是 `display:none`），所以"删 script/style"这一步是多余的。
+     *
+     * 现在直接取活页面：更简单，也真的只给看得见的字。
      *
      * ## 为什么链接要滤掉没文字的
      *
@@ -109,54 +126,104 @@ object WebExtract {
      * @param limit 链接条数上限（0 = 不列链接）
      * @param textChars 正文字数上限（0 = 不取正文）
      */
-    fun pageJs(limit: Int, textChars: Int): String = buildString {
-        append("(function(){try{")
-        append("var L=").append(limit).append(",T=").append(textChars).append(",TC=")
-        append(LINK_TEXT_CHARS).append(";")
-        // 一段纯文本：去掉 script/style，innerText 只给人看的
-        append("function txt(e){try{var s=(e.innerText||e.textContent||'')")
-        append(".replace(/\\s+/g,' ').trim();return s.length>TC?s.slice(0,TC):s}catch(_){return ''}}")
-        // 元素标识：优先 id（最稳），其次 name，其次 class —— agent 拿去当选择器
-        append("function idf(e){try{return e.id||e.getAttribute('name')||")
-        append("(e.className&&typeof e.className==='string'?String(e.className).split(' ')[0]:'')||''}")
-        append("}catch(_){return ''}}")
-        append("var r={},i,e;")
-        // ---- 能填的地方：永不截断（搜索框就在这里，且总在页面顶部）----
-        append("r.inputs=[];")
-        append("var f=document.querySelectorAll('input,textarea,select');")
-        append("for(i=0;i<f.length;i++){e=f[i];var t=String(e.tagName).toLowerCase();")
-        append("var o={tag:t,type:(e.type||'')};var id=idf(e);if(id)o.id=id;")
-        append("var nm=e.getAttribute('name');if(nm)o.name=nm;")
-        append("var ph=e.getAttribute('placeholder')||e.getAttribute('aria-label');if(ph)o.hint=txt({innerText:ph});")
-        append("var vt=txt(e);if(vt&&t!=='input')o.value=vt;r.inputs.push(o)}")
-        // ---- 能点的按钮：永不截断 ----
-        append("r.buttons=[];")
-        append("var b=document.querySelectorAll('button,input[type=submit],input[type=button]');")
-        append("for(i=0;i<b.length;i++){e=b[i];var tx=txt(e)||e.value||'';")
-        append("var o={text:tx||'(无文字)'};var id=idf(e);if(id)o.id=id;")
-        append("var ty=e.getAttribute('type');if(ty)o.type=ty;r.buttons.push(o)}")
-        // ---- 链接：只列有文字的，href 由浏览器转绝对地址 ----
-        append("r.links=[];var tot=0;")
-        append("if(L>0){var a=document.querySelectorAll('a[href]');")
-        append("for(i=0;i<a.length;i++){e=a[i];var h=e.href;")
-        append("if(!h||h.charAt(0)==='j')continue;")
-        append("var tx=txt(e);if(!tx)continue;")
-        append("tot++;")
-        append("if(r.links.length<L)r.links.push({text:tx,href:h})}}")
-        append("r.links_total=tot;r.links_truncated=tot>L;")
-        // ---- 标题、简介、正文 ----
-        append("r.title=(document.title||'');")
-        append("r.url=(location.href||'');")
-        append("var md=document.querySelector('meta[name=description],meta[property=\"og:description\"]');")
-        append("r.description=md?(md.getAttribute('content')||''):'';")
-        append("r.text='';if(T>0){try{")
-        append("var body=document.body;var c=body?body.cloneNode(true):null;")
-        append("if(c){var junk=c.querySelectorAll('script,style,noscript,template,svg');")
-        append("for(i=0;i<junk.length;i++){try{junk[i].remove()}catch(_){}}")
-        append("var s=c.innerText||'';s=s.replace(/\\s+/g,' ').trim();")
-        append("r.text=s.length>T?s.slice(0,T):s}}catch(_){}}")
-        append("return JSON.stringify(r)}catch(e){return JSON.stringify({error:String(e)})}})()")
-    }
+    fun pageJs(limit: Int, textChars: Int): String = """
+        (function(){
+          try{
+            var L=$limit, T=$textChars, TC=$LINK_TEXT_CHARS;
+            var r={}, i, e, o, f, b, a;
+
+            function txt(el){
+              try{
+                var s=(el.innerText||el.textContent||'').replace(/\s+/g,' ').trim();
+                return s.length>TC?s.slice(0,TC):s;
+              }catch(_){
+                return '';
+              }
+            }
+
+            function idf(el){
+              try{
+                var s=el.id||el.getAttribute('name');
+                if(s)return s;
+                if(el.className&&typeof el.className==='string')return String(el.className).split(' ')[0];
+                return '';
+              }catch(_){
+                return '';
+              }
+            }
+
+            /* ---- 能填的地方：永不截断（搜索框就在这里，且总在页面顶部） ---- */
+            r.inputs=[];
+            f=document.querySelectorAll('input,textarea,select');
+            for(i=0;i<f.length;i++){
+              e=f[i];
+              var tag=String(e.tagName).toLowerCase();
+              o={tag:tag,type:(e.type||'')};
+              var id=idf(e);
+              if(id)o.id=id;
+              var nm=e.getAttribute('name');
+              if(nm)o.name=nm;
+              var ph=e.getAttribute('placeholder')||e.getAttribute('aria-label');
+              if(ph)o.hint=txt({innerText:ph});
+              var vt=txt(e);
+              if(vt&&tag!=='input')o.value=vt;
+              r.inputs.push(o);
+            }
+
+            /* ---- 能点的按钮：永不截断 ---- */
+            r.buttons=[];
+            b=document.querySelectorAll('button,input[type=submit],input[type=button]');
+            for(i=0;i<b.length;i++){
+              e=b[i];
+              var tx=txt(e)||e.value||'';
+              o={text:tx||'(no text)'};
+              var bid=idf(e);
+              if(bid)o.id=bid;
+              var ty=e.getAttribute('type');
+              if(ty)o.type=ty;
+              r.buttons.push(o);
+            }
+
+            /* ---- 链接：只列有文字的，href 由浏览器转绝对地址 ---- */
+            r.links=[];
+            var tot=0;
+            if(L>0){
+              a=document.querySelectorAll('a[href]');
+              for(i=0;i<a.length;i++){
+                e=a[i];
+                var h=e.href;
+                if(!h||h.charAt(0)==='j')continue;
+                var ltx=txt(e);
+                if(!ltx)continue;
+                tot++;
+                if(r.links.length<L)r.links.push({text:ltx,href:h});
+              }
+            }
+            r.links_total=tot;
+            r.links_truncated=tot>L;
+
+            /* ---- 标题、简介、正文 ---- */
+            r.title=(document.title||'');
+            r.url=(location.href||'');
+            var md=document.querySelector('meta[name=description],meta[property="og:description"]');
+            r.description=md?(md.getAttribute('content')||''):'';
+            r.text='';
+            if(T>0){
+              try{
+                var body=document.body;
+                var s=body?(body.innerText||''):'';
+                s=String(s).replace(/\s+/g,' ').trim();
+                r.text=s.length>T?s.slice(0,T):s;
+              }catch(_){
+              }
+            }
+
+            return JSON.stringify(r);
+          }catch(e){
+            return JSON.stringify({error:String(e)});
+          }
+        })()
+    """.trimIndent()
 
     /**
      * 解析脚本回值。**解析不出来必须返回 null** —— 调用方要能把
@@ -180,7 +247,7 @@ object WebExtract {
         )
     }
 
-    private fun org.json.JSONArray?.mapObjects(): List<Map<String, String>> {
+    private fun JSONArray?.mapObjects(): List<Map<String, String>> {
         if (this == null) return emptyList()
         return (0 until length()).mapNotNull { i ->
             optJSONObject(i)?.let { obj ->

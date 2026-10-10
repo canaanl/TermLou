@@ -98,13 +98,20 @@ class RegressionScanTest {
 
     @Test
     fun `页面探针不许把真实换行塞进JS字符串`() {
-        val c = code("WebAutomationService.kt")
+        // ⚠ 5.9.38：探针脚本从服务里搬到了 [WebOpScripts]（搬出来才过得了结构检查），
+        // 所以这两条断言跟着改到新家 —— 判据本身没变。
+        val c = code("WebOpScripts.kt")
         assertFalse(
             "Kotlin 里的 '\\n' 编译成真实 LF，塞进 JS 单引号字面量就是语法错。" +
-                "要分隔符请用 JSON.stringify —— 见 WebAutomationService.PROBE_JS 的 KDoc",
+                "要分隔符请用 JSON.stringify —— 见 WebOpScripts.PROBE_JS 的 KDoc",
             c.contains("""+'\n'+""")
         )
         assertTrue("探针脚本应当改用 JSON.stringify", c.contains("JSON.stringify({t:t,b:b,p:p,h:h})"))
+        // 而且服务里不许再留一份就地拼的副本（两份会各自漂移）
+        assertFalse(
+            "服务里不许再有一份就地拼的探针脚本",
+            code("WebAutomationService.kt").contains("JSON.stringify({t:t,b:b,p:p,h:h})")
+        )
     }
 
     @Test
@@ -615,6 +622,171 @@ class RegressionScanTest {
         assertTrue("截了必须明说：$js", js.contains("r.links_truncated=tot>L"))
     }
 
+    // ---------- 5.9.38：真机上坏过的，一个一个钉住 ----------
+
+    @Test
+    fun `服务里不许再就地拼页面脚本`() {
+        // 5.9.38 的两处语法错都是"就地拼字符串"拼出来的。现在每一段脚本都在
+        // WebOpScripts / WebExtract 里有名字，服务只许引用它们。
+        val svc = code("WebAutomationService.kt")
+        assertFalse(
+            "服务里不许再出现就地拼的页面脚本（先放进 WebOpScripts 再引用）：\n$svc",
+            svc.contains("return JSON.stringify(") || svc.contains("document.querySelector")
+        )
+    }
+
+    @Test
+    fun `清数据必须是销毁会话的第一步`() {
+        // 5.9.37 的病：opClose 写成"先销毁、再清数据"，而清数据读的是 webView?. ——
+        // 那时它已经是 null，于是"清缓存"从来没执行过。
+        // 根因不是顺序写反，而是**把顺序交给调用方记着**。现在清在销毁内部。
+        val src = source("WebAutomationService.kt")
+        val svc = code("WebAutomationService.kt")
+        assertFalse(
+            "不许再出现 `webView?.clearCache(...)` —— 那行的执行时机永远不对：\n$svc",
+            svc.contains("webView?.clearCache")
+        )
+        assertTrue(
+            "清缓存/历史/表单必须在 WebView 还活着的时候调：\n$svc",
+            svc.contains("private fun wipeWebViewData(")
+        )
+        // destroySession 里必须先清后销毁
+        val ds = svc.substringAfter("private fun destroySession()")
+            .substringBefore("private fun wipeWebViewData(")
+        assertTrue("没抓到 destroySession 的函数体", ds.length > 200)
+        val clearAt = ds.indexOf("wipeWebViewData(wv)")
+        val destroyAt = ds.indexOf("wv.destroy()")
+        assertTrue("destroySession 里必须先清数据", clearAt in 0 until destroyAt)
+        assertTrue(
+            "不依赖 WebView 的那两样（cookie / localStorage）也要在这里清：\n$ds",
+            ds.contains("clearCookiesAndStorage()")
+        )
+    }
+
+    @Test
+    fun `关掉服务也要清数据`() {
+        // 用户要求：服务"每次开关都要清空"。关闭走 teardown → destroySession，
+        // 所以清数据必须是 destroySession 的一部分（上一条锁着），
+        // 而 teardown 必须真的调它。
+        val svc = code("WebAutomationService.kt")
+        val td = svc.substringAfter("private fun teardown()").substringBefore("// ---------- HTTP 分发")
+        assertTrue("没抓到 teardown 的函数体", td.length > 100)
+        assertTrue("关闭服务必须销毁会话（清数据在里面）：\n$td", td.contains("destroySession()"))
+        assertTrue("陈旧令牌文件也要删：\n$td", td.contains("clearEnv(this)"))
+    }
+
+    @Test
+    fun `新窗口请求必须接进这一扇窗`() {
+        // 安卓默认把"开新窗口"的请求整个丢掉（target=_blank / window.open），
+        // 表现就是"点了链接没反应、却报 ok:true"。只有显式打开 + 实现回调才行。
+        val svc = code("WebAutomationService.kt")
+        assertTrue(
+            "必须显式打开多窗口，否则请求被丢掉：\n$svc",
+            svc.contains("setSupportMultipleWindows(true)")
+        )
+        assertTrue("必须实现 onCreateWindow：\n$svc", svc.contains("override fun onCreateWindow("))
+        assertTrue(
+            "新窗口要指回**同一个** WebView（我们只有一扇窗）：\n$svc",
+            svc.contains("transport.webView = view")
+        )
+        assertTrue("页面自己弹的窗要记一笔（不是静默丢）：\n$svc", svc.contains("newWindowsDropped++"))
+    }
+
+    @Test
+    fun `click 必须报出点了什么且不许拿搜索框顶替`() {
+        val svc = code("WebAutomationService.kt")
+        val sel = code("WebSelector.kt")
+        assertTrue(
+            "click 必须用 clickable 模式找目标：\n$svc",
+            svc.contains("pickJs(kind, clickable = true)")
+        )
+        assertTrue("必须报出点了什么：\n$svc", svc.contains("parseClicked(label)"))
+        assertTrue("必须报出页面有没有真的动：\n$svc", svc.contains("\"navigated\" to navigated"))
+        assertTrue(
+            "点了链接却一步没走要如实报失败：\n$svc",
+            svc.contains("isSamePageAnchor(")
+        )
+        // clickable 分支里，value 只许在提交类按钮上算
+        assertTrue(
+            "clickable 分支必须只认\"人看得见的名字\"：\n$sel",
+            sel.contains("if(!v&&t.tagName==='INPUT')") && sel.contains("ty==='submit'")
+        )
+        assertTrue(
+            "\"找到但不能点\"要有单独的哨兵：\n$sel",
+            sel.contains("const val NOT_CLICKABLE")
+        )
+    }
+
+    @Test
+    fun `back 的数字必须一次问全`() {
+        // 5.9.37 报出过 `no history to go back (history entries: 4)` ——
+        // 说没历史，括号里又写着有 4 条。因为报的是"清单总长"、判的是"当前位置"。
+        val svc = code("WebAutomationService.kt")
+        assertFalse(
+            "那句自相矛盾的话不许回来：\n$svc",
+            svc.contains("no history to go back")
+        )
+        assertTrue(
+            "必须一次问全（能不能退 / 当前位置 / 总长）：\n$svc",
+            svc.contains("wv.canGoBack(), list.currentIndex, list.size")
+        )
+        assertTrue(
+            "\"问不到\"不许冒充\"没有历史\"：\n$svc",
+            svc.contains("could not read the page history")
+        )
+        assertFalse(
+            "`?: false` 把问不到当成没有 —— 不许再用：\n$svc",
+            svc.contains("canGoBack() } ?: false")
+        )
+    }
+
+    @Test
+    fun `cookie 不许再有任何出口`() {
+        // 用户决定：cookie 全删、不保留。清 cookie 的动作保留（那是无痕），
+        // 但不许再有"读出来 / 存成文件"的路。
+        for (f in listOf(
+            "WebAutomationService.kt", "WebArtifacts.kt", "WebProtocol.kt",
+            "WebOpScripts.kt", "WebSelector.kt", "WebExtract.kt",
+            "WebFloatWindow.kt", "WebFloatWindowHost.kt"
+        )) {
+            val c = code(f)
+            for (banned in listOf("opCookies", "writeCookies", "linuxPath", "cookies.txt", "cookies.json")) {
+                assertFalse("$f 里还有 cookie 出口 `$banned`：\n$c", c.contains(banned))
+            }
+        }
+        val h = WebProtocol.help(39080)
+        assertFalse("说明书里不许再有 cookies 指令", h.contains("\"cookies\""))
+        // 但"清 cookie"必须留着（这是无痕，不是保留）
+        assertTrue(
+            "清 cookie 的动作必须还在",
+            code("WebAutomationService.kt").contains("removeAllCookies(null)")
+        )
+    }
+
+    @Test
+    fun `过时的那行反射与死代码不许回来`() {
+        val host = code("WebFloatWindowHost.kt")
+        assertFalse("hideOverlayWindows 反射是死的（真机必失败、成功也没用）：\n$host",
+            host.contains("hideOverlayWindows"))
+        assertFalse("multiWindowReport 跟着一起删：\n$host", host.contains("multiWindowReport"))
+        val svc = code("WebAutomationService.kt")
+        assertFalse("diag 里不许再有 float_multiwindow：\n$svc", svc.contains("float_multiwindow"))
+        assertFalse(
+            "vis 不许再印安卓的原始整数（0 其实是可见）：\n$svc",
+            svc.contains("vis=\${wv.visibility}")
+        )
+        assertTrue("vis 要印名字：\n$svc", svc.contains("viewVisibilityName("))
+        val ready = code("WebReady.kt")
+        assertFalse(
+            "readyUnwaitedAfterNavigation 是没有调用方的死函数：\n$ready",
+            ready.contains("readyUnwaitedAfterNavigation")
+        )
+        val ops = code("WebOpScripts.kt")
+        assertFalse("WebOpScripts 里那三个转发没人用：\n$ops", ops.contains("fun isNotFound("))
+        assertFalse("同上：NOT_FOUND 转发", ops.contains("const val NOT_FOUND"))
+        assertFalse("同上：JS_ERROR_PREFIX 转发", ops.contains("const val JS_ERROR_PREFIX"))
+    }
+
     @Test
     fun `type的回车必须真的派发按键且默认不按`() {
         val noEnter = WebOpScripts.type("#kw", "hi", true)
@@ -622,16 +794,39 @@ class RegressionScanTest {
         val withEnter = WebOpScripts.type("#kw", "hi", true, enter = true)
         assertTrue("enter:true 必须派发 Enter 按键：$withEnter", withEnter.contains("KeyboardEvent"))
         assertTrue("keyCode 必须是 13：$withEnter", withEnter.contains("keyCode:13"))
-        // 派发不了要退回提交表单 —— 网站常常只认 keypress，不认 requestSubmit
+        // 网站常常只认 keypress、不认 requestSubmit，所以两道都要有
         assertTrue(
-            "Enter 派发不了必须退回提交表单，不能什么都不做：$withEnter",
-            withEnter.contains("requestSubmit") || withEnter.contains("form.submit()")
+            "必须退回提交表单：$withEnter",
+            withEnter.contains("requestSubmit") && withEnter.contains("form.submit()")
         )
         val c = code("WebAutomationService.kt")
         assertTrue(
             "opType 必须把 enter 读出来：\n$c",
             c.contains("bodyOptBoolean(request, \"enter\"")
         )
+    }
+
+    @Test
+    fun `type 带回车时必须先采样导航代数再动手`() {
+        // 5.9.37 把它采样在 eval 之后、却当成"动作之前"用 ——
+        // 正是代码注释里反复警告过的那个坑（markNavigationStarted 必须在 loadUrl 之前）。
+        val svc = code("WebAutomationService.kt")
+        val type = svc.substringAfter("private fun opType(").substringBefore("private fun opExtract(")
+        assertTrue("没抓到 opType 的函数体", type.length > 400)
+        val sampleAt = type.indexOf("val navSeqBefore = navSeq")
+        val evalAt = type.indexOf("WebOpScripts.type(")
+        assertTrue("opType 必须采样导航代数", sampleAt >= 0)
+        assertTrue("采样必须在 eval 之前（否则回车引起的导航会被算成\"之前就有\"）", sampleAt < evalAt)
+    }
+
+    @Test
+    fun `extract 的脚本必须是一整块而不是碎片拼的`() {
+        // 5.9.38 改法：一整块 Kotlin 原始字符串（括号在一处、能缩进），
+        // 三个数字用插值。再拆回 append 碎片拼就会重演"多一个 }"。
+        val ext = code("WebExtract.kt")
+        assertTrue("脚本必须写成整块原始字符串：\n$ext", ext.contains("\"\"\""))
+        assertFalse("不许再一段段 append 拼脚本：\n$ext", ext.contains("append(\"(function()"))
+        assertTrue("三个数字要用插值带进去：\n$ext", ext.contains("var L=\$limit, T=\$textChars, TC=\$LINK_TEXT_CHARS;"))
     }
 }
 

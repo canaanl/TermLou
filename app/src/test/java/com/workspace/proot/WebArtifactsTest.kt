@@ -11,7 +11,8 @@ import org.junit.Test
  * 产物目录规则锁定测试（5.9.0 建立；5.9.37 删掉截图后只剩"清空产物"与"绝不删目录自己"）。
  *
  * ⚠ 5.9.37 删掉的部分：截图文件名补零、整页截图的屏号、保留最近 N 张的清理规则。
- * 那些函数随 `shot` 一起从 [WebArtifacts] 里删了，测试也一并删 —— **不留孤儿测试**。
+ * 那些函数随 `shot` 一起从 [WebArtifacts] 里删了；cookie 导出的部分随 5.9.38 一起删 ——
+ * **不留孤儿测试**。
  *
  * 剩下的这两组是"删错东西的后果是丢文件"，只断言字符串形状守不住
  * （5.9.0–5.9.5 连续六版的教训），所以真的建临时目录来测。
@@ -39,12 +40,10 @@ class WebArtifactsTest {
 
     // ---------- 清除产物（5.9.6）：清空 web 目录，目录本身留着 ----------
 
-    /** 摆一个"用过的" web 目录：env + cookie + 嵌套目录 + 用户自己放的文件。 */
+    /** 摆一个"用过的" web 目录：env + 嵌套目录 + 用户自己放的文件。 */
     private fun seedWebDir(root: File) {
         root.mkdirs()
         File(root, "web.env").writeText("PORT=39080\nTOKEN=abc\n")
-        File(root, "cookies.txt").writeText("a=b\n")
-        File(root, "cookies.json").writeText("{}")
         File(root, "notes.md").writeText("agent 自己放的文件")
         File(root, "sub").mkdirs()
         File(root, "sub/one.bin").writeBytes(byteArrayOf(1, 2, 3))
@@ -54,7 +53,7 @@ class WebArtifactsTest {
     }
 
     /** 摆出来的文件数（`sub/` 与 `sub/nested/` 两个目录不计入）。 */
-    private val SEEDED_FILES = 7
+    private val SEEDED_FILES = 5
 
     @Test
     fun `清空之后 web 目录里什么都不剩`() {
@@ -66,7 +65,7 @@ class WebArtifactsTest {
         assertTrue("端口令牌文件也该删（服务已停，没有活令牌要保）", !File(root, "web.env").exists())
         assertTrue("agent 自己放的文件按新规则也删", !File(root, "notes.md").exists())
         assertTrue("嵌套目录里的文件也要删", !File(root, "sub/nested/deep.txt").exists())
-        assertEquals("删了 $SEEDED_FILES 个文件（env + 2 个 cookie + notes + 2 个 bin + nested/deep）",
+        assertEquals("删了 $SEEDED_FILES 个文件（env + notes + 2 个 bin + nested/deep）",
             SEEDED_FILES, removed)
     }
 
@@ -83,7 +82,7 @@ class WebArtifactsTest {
         val root = webTempDir("clear-rewrite")
         seedWebDir(root)
         WebArtifacts.deleteContents(root)
-        // 服务下次写 cookie 是 mkdirs + 写文件，清空后这条路径必须还能走通
+        // 服务下次写 web.env 是 mkdirs + 写文件，清空后这条路径必须还能走通
         File(root, "sub").mkdirs()
         File(root, "sub/new.txt").writeBytes(byteArrayOf(9))
         assertTrue(File(root, "sub/new.txt").length() == 1L)
@@ -94,8 +93,8 @@ class WebArtifactsTest {
         val root = webTempDir("clear-count")
         seedWebDir(root)
         val removed = WebArtifacts.deleteContents(root)
-        // 7 个文件 + sub/ 与 sub/nested/ 两个目录 = 9 个条目；目录不计入
-        assertEquals("$SEEDED_FILES 个文件；目录若被计入会是 9", SEEDED_FILES, removed)
+        // 5 个文件 + sub/ 与 sub/nested/ 两个目录 = 7 个条目；目录不计入
+        assertEquals("$SEEDED_FILES 个文件；目录若被计入会是 7", SEEDED_FILES, removed)
     }
 
     @Test

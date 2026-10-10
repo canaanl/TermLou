@@ -166,7 +166,7 @@ class WebAutomationController(
         status.showTempStatus(activity.getString(R.string.web_copied))
     }
 
-    /** 清除缓存要二次确认：删的是截图与 cookie 文件，误删就没了。 */
+    /** 清除缓存要二次确认：删的是工作区里的文件（主要是强杀后残留的旧 web.env），误删就没了。 */
     private fun confirmClear() {
         AlertDialog.Builder(activity)
             .setMessage(activity.getString(R.string.web_clear_confirm))

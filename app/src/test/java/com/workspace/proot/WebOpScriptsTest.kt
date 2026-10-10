@@ -198,9 +198,21 @@ class WebOpScriptsTest {
 
     @Test
     fun `识别元素没找到`() {
-        assertTrue(WebOpScripts.isNotFound(WebOpScripts.NOT_FOUND))
-        assertFalse(WebOpScripts.isNotFound(null))
-        assertFalse(WebOpScripts.isNotFound("ok"))
+        // ⚠ 5.9.38：这三个转发（WebOpScripts.isNotFound / NOT_FOUND / JS_ERROR_PREFIX）
+        // 从生产代码里**没有调用方**，删掉了；判据本身在 WebSelector 上，仍然锁着。
+        assertTrue(WebSelector.isNotFound(WebSelector.NOT_FOUND))
+        assertFalse(WebSelector.isNotFound(null))
+        assertFalse(WebSelector.isNotFound("ok"))
+    }
+
+    @Test
+    fun `识别点到不能点的东西`() {
+        // 5.9.38 新增的哨兵：文字在页面上、但落在点不动的东西上（典型：搜索框里的搜索词）
+        assertTrue(WebSelector.isNotClickable(WebSelector.NOT_CLICKABLE))
+        assertFalse("没找到不等于不能点 —— 两者的处置完全不同",
+            WebSelector.isNotClickable(WebSelector.NOT_FOUND))
+        assertFalse(WebSelector.isNotClickable("ok"))
+        assertFalse(WebSelector.isNotClickable(null))
     }
 
     @Test
@@ -210,24 +222,73 @@ class WebOpScriptsTest {
             WebOpScripts.webErrorOf("${WebOpScripts.WEB_ERR_PREFIX}not a text field (got <select>)")
         )
         assertNull(WebOpScripts.webErrorOf("ok"))
-        assertNull(WebOpScripts.webErrorOf(WebOpScripts.NOT_FOUND))
+        assertNull(WebOpScripts.webErrorOf(WebSelector.NOT_FOUND))
         assertNull(WebOpScripts.webErrorOf(null))
     }
 
     @Test
     fun `三类结果互不混淆`() {
-        val notFound = WebOpScripts.NOT_FOUND
+        val notFound = WebSelector.NOT_FOUND
         val webErr = "${WebOpScripts.WEB_ERR_PREFIX}boom"
-        val jsErr = "${WebOpScripts.JS_ERROR_PREFIX}SyntaxError"
+        val jsErr = "${WebSelector.JS_ERROR_PREFIX}SyntaxError"
         val normal = "元素文字"
         // 每个哨兵只被自己的解析器认领
-        assertTrue(WebOpScripts.isNotFound(notFound))
-        assertFalse(WebOpScripts.isNotFound(webErr))
-        assertFalse(WebOpScripts.isNotFound(normal))
+        assertTrue(WebSelector.isNotFound(notFound))
+        assertFalse(WebSelector.isNotFound(webErr))
+        assertFalse(WebSelector.isNotFound(normal))
         assertNotNull(WebOpScripts.webErrorOf(webErr))
         assertNull(WebOpScripts.webErrorOf(notFound))
         assertNotNull(WebOpScripts.jsErrorOf(jsErr))
         assertNull(WebOpScripts.jsErrorOf(webErr))
         assertNull(WebOpScripts.webErrorOf(normal))
+    }
+
+    // ---------- 5.9.38：click 报回来的"点了什么" ----------
+
+    @Test
+    fun `拆得出点了什么`() {
+        val c = WebOpScripts.parseClicked(
+            """{"tag":"a","href":"https://x.example/1","target":"_blank","text":"某条标题"}"""
+        )
+        assertNotNull(c)
+        c!!
+        assertEquals("a", c.tag)
+        assertEquals("https://x.example/1", c.href)
+        assertTrue("要认出这是链接", c.isLink)
+        assertTrue("要认出它要开新窗口", c.wantsNewWindow)
+        assertEquals("某条标题", c.text)
+    }
+
+    @Test
+    fun `不是链接时也要能拆出来`() {
+        val c = WebOpScripts.parseClicked(
+            """{"tag":"button","href":"","target":"","text":"展开"}"""
+        )
+        assertNotNull(c)
+        c!!
+        assertFalse("没有 href 就不是链接", c.isLink)
+        assertFalse(c.wantsNewWindow)
+    }
+
+    @Test
+    fun `拆不出来的东西不许编成点了什么`() {
+        // 哨兵、老格式、随便一段文字：一律 null，由调用方按老路处理
+        assertNull(WebOpScripts.parseClicked(WebSelector.NOT_FOUND))
+        assertNull(WebOpScripts.parseClicked("clicked|a|https://x|_blank|lbl"))
+        assertNull(WebOpScripts.parseClicked("ok"))
+        assertNull(WebOpScripts.parseClicked(null))
+    }
+
+    @Test
+    fun `填字失败时回的是空串而不是错误句子`() {
+        // 5.9.38 修：原来失败时返回 WEB_ERR+'not a text field…' —— 那是**真值**，
+        // 调用方 `if(!WEB_FILL(...))` 永远不成立，于是"往 div 里填字"被当成成功了。
+        // 现在返回空串（假值），由调用方自己补上"是什么标签"。
+        val js = WebOpScripts.type(WebSelector.pickJs(WebSelector.Kind.Css("div")), "x", clear = true)
+        assertTrue("失败分支必须返回空串：$js", js.contains("return ''};"))
+        assertTrue(
+            "调用方要自己报出标签名：$js",
+            js.contains("not a text field (got <'+String(e.tagName).toLowerCase()+'>)")
+        )
     }
 }

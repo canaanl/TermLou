@@ -1,25 +1,31 @@
 package com.workspace.proot
 
 import android.content.Context
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 
 /**
- * 浏览器的工作区产物（5.9.0 建立；5.9.37 删掉截图后只剩自发现与 cookie）。
+ * 浏览器的产物目录（5.9.0 建立；5.9.38 起**只有自发现这一个文件**）。
  *
  * ```
- * /workspace/web/web.env        端口 + 令牌（**仅服务运行时存在**，供 agent 自发现）
- * /workspace/web/cookies.txt    人可读 cookie 清单
- * /workspace/web/cookies.json   给 agent 的结构化版
+ * /workspace/web/web.env    端口 + 令牌（**仅服务运行时存在**，供 agent 自发现）
  * ```
  *
  * 物理位置 = `filesDir/workspace/web`；Linux 侧是 `/workspace/web/...`（不是 `~`，见 WORKSPACE_MOUNT）。
  * 纯文件操作，不碰安卓 UI，可单测。
  *
- * ⚠ **自发现（`web.env`）是这个功能的地基，不许动。** 5.9.37 删截图时，
- * 截图落盘与它同在这个文件里（见下面的历史），一并删掉时手滑就会把令牌也删了 ——
- * agent 连不上，什么都做不了。
+ * ## 这个功能不保留 cookie、不留缓存（5.9.38）
+ *
+ * - **不再导出 cookie**：cookie 是登录态，用户明确要求"都删，不保留"，
+ *   于是 `cookies` 指令、导出函数、以及只服务于它的 [linuxPath] 全部删掉。
+ * - 网页自己的存储（cookie 库 / localStorage / 缓存）在 `app_webview/`（app 私有目录），
+ *   **安卓不允许把它指定到工作区** —— 那一块靠"每次开关都清空"来保证不留痕，
+ *   见 `WebAutomationService.destroySession`。
+ * - 所以这个目录在服务运行时**只有 `web.env` 一个文件**，关闭服务时被删掉；
+ *   设置里的「清除缓存」按钮清的是这个目录（主要用来清强杀后残留的旧 `web.env`）。
+ *
+ * ⚠ **`web.env` 是这个功能的地基，不许动。** 5.9.37 删截图、5.9.38 删 cookie 时，
+ * 它们都跟它写在同一个文件里，一并删掉时手滑就会把令牌也删了 ——
+ * 那样 agent 连不上，什么都做不了。
  */
 object WebArtifacts {
 
@@ -31,61 +37,30 @@ object WebArtifacts {
     fun envFile(context: Context): File = File(webRoot(context), "web.env")
 
     /**
-     * 把物理路径翻译成 Linux 侧**真正能打开**的路径。
+     * 服务启动时写 env（agent 自发现用）；关闭时删掉（服务不在就别留陈端口）。
      *
-     * ⚠ 5.9.5 修：此前返回 `$WEB_DIR/shots/a.png`，但 Linux 的 `~` 是 rootfs 里的
-     * `/root`，**不是**工作区 —— agent 拿这个路径去 cat 必然失败。
-     * 工作区挂在 [WebProtocol.WORKSPACE_MOUNT]，所以正确答案是 `/workspace/web/...`。
+     * @return **真写进去了吗**（5.9.38 起上报）。从前是 `runCatching` 一声不响，
+     *   而 agent 的自发现全靠这个文件 —— 写失败的表现只是"agent 连不上"，
+     *   两边都看不到原因。现在失败会在 `diag` 的 `env_written` 里留痕。
      */
-    fun linuxPath(context: Context, file: File): String {
-        val root = File(context.filesDir, "workspace").absolutePath
-        val rel = file.absolutePath.removePrefix(root).trimStart('/', '\\')
-        return WebProtocol.WORKSPACE_MOUNT + "/" + rel
-    }
-
-    /** 服务启动时写 env（agent 自发现用）；关闭时删掉（服务不在就别留陈端口）。 */
-    fun writeEnv(context: Context, port: Int, token: String) {
-        runCatching {
-            webRoot(context).mkdirs()
-            envFile(context).writeText(
-                buildString {
-                    appendLine("# TermLou 浏览器 · browser")
-                    appendLine("PORT=$port")
-                    appendLine("TOKEN=$token")
-                    appendLine("# 用法 usage:")
-                    appendLine("#   source ${WebProtocol.WEB_DIR}/web.env")
-                    appendLine("#   curl -s -H \"X-Token: \$TOKEN\" -d '{\"op\":\"ping\"}' http://127.0.0.1:\$PORT/op")
-                },
-                Charsets.UTF_8
-            )
-        }
-    }
+    fun writeEnv(context: Context, port: Int, token: String): Boolean = runCatching {
+        webRoot(context).mkdirs()
+        envFile(context).writeText(
+            buildString {
+                appendLine("# TermLou 浏览器 · browser")
+                appendLine("PORT=$port")
+                appendLine("TOKEN=$token")
+                appendLine("# 用法 usage:")
+                appendLine("#   source ${WebProtocol.WEB_DIR}/web.env")
+                appendLine("#   curl -s -H \"X-Token: \$TOKEN\" -d '{\"op\":\"ping\"}' http://127.0.0.1:\$PORT/op")
+            },
+            Charsets.UTF_8
+        )
+        true
+    }.getOrDefault(false)
 
     fun clearEnv(context: Context) {
         runCatching { envFile(context).delete() }
-    }
-
-    /** cookie 导出：人可读 txt + 结构化 json。 */
-    fun writeCookies(context: Context, url: String, pairs: List<Pair<String, String>>) {
-        runCatching {
-            val root = webRoot(context)
-            root.mkdirs()
-            File(root, "cookies.txt").writeText(
-                buildString {
-                    appendLine("# TermLou 浏览器 · cookie 导出")
-                    appendLine("# url: $url")
-                    appendLine("# 生成时刻的会话 cookie；会话结束即失效（无痕）")
-                    for ((k, v) in pairs) appendLine("$k=$v")
-                },
-                Charsets.UTF_8
-            )
-            val arr = JSONArray()
-            for ((k, v) in pairs) arr.put(JSONObject().put("name", k).put("value", v))
-            File(root, "cookies.json").writeText(
-                JSONObject().put("url", url).put("cookies", arr).toString(),
-                Charsets.UTF_8
-            )
-        }
     }
 
     /**

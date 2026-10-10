@@ -43,27 +43,22 @@ class WebReadyTest {
     }
 
     @Test
-    fun `open 这类确定要导航的操作按当前状态报`() {
-        // 发起导航前已同步清过状态（markNavigationStarted），所以这里只看 WebView 报的值
-        assertTrue(WebReady.readyUnwaitedAfterNavigation(pageReady = true, progress = 100))
-        assertFalse(WebReady.readyUnwaitedAfterNavigation(pageReady = false, progress = 100))
+    fun `确定要导航的操作在没等待时 不拿上一页冒充`() {
+        // ⚠ 5.9.38：原来这里测的是 `readyUnwaitedAfterNavigation`，而那个函数
+        // **从写下来那天起没有任何调用方**（open/reload/back 直接调 waitForPage，
+        // 语义一样），却带着好几条测试 —— 锁着一个没人用的东西。函数已删。
+        //
+        // 它锁的那条不变式还在，而且**就在下面这两行里**：
+        // `navStarted = false` 时 readyUnwaited 就是 `pageReady && progress >= 100`，
+        // 与那个被删的函数是同一个表达式。所以不变式没丢，只是不用再锁一个死函数。
+        assertTrue(WebReady.readyUnwaited(navStarted = false, pageReady = true, progress = 100))
         assertFalse(
             "ready:true 与 progress:10 不能并存（5.9.4 真机指出的自相矛盾）",
-            WebReady.readyUnwaitedAfterNavigation(pageReady = true, progress = 10)
+            WebReady.readyUnwaited(navStarted = false, pageReady = true, progress = 10)
         )
-    }
-
-    @Test
-    fun `自检：拿旧状态冒充就绪的那组输入必须判成未就绪`() {
-        // 复刻 5.9.4 的现场：click 点了链接，导航刚开始，pageReady 仍是上一页的 true
-        val readyBefore = WebReady.readyUnwaited(navStarted = true, pageReady = true, progress = 100)
-        assertFalse("自检失败：这组正是假就绪的现场，检查没抓住", readyBefore)
-    }
-
-    @Test
-    fun `自检：判定式不依赖 progress 单独为真`() {
-        // progress=100 但 pageReady=false 是常见中间态，不能当就绪
-        assertFalse(WebReady.readyUnwaitedAfterNavigation(pageReady = false, progress = 100))
-        assertFalse(WebReady.readyUnwaited(navStarted = false, pageReady = false, progress = 100))
+        assertFalse(
+            "pageReady 没置位时，progress 单独到 100 也不算就绪",
+            WebReady.readyUnwaited(navStarted = false, pageReady = false, progress = 100)
+        )
     }
 }

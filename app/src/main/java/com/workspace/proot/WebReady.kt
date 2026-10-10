@@ -5,6 +5,10 @@ package com.workspace.proot
  *
  * 单独拆出来是因为这里的判断错了不会编译失败、测试也不会红，只在真机上表现成
  * 「明明没加载好，却报 ready:true」——5.9.0 到 5.9.4 连续四个版本都是这样挂的。
+ *
+ * ⚠ 5.9.38 删掉了 `readyUnwaitedAfterNavigation`：它从写下来那天起**没有任何调用方**
+ * （`open`/`reload`/`back` 是直接调 `waitForPage`，语义等价），却带着 4 条测试 ——
+ * **锁着一个没人用的函数**。死代码不留（这次不删，下次就会有人以为它在生效）。
  */
 object WebReady {
 
@@ -23,13 +27,4 @@ object WebReady {
      */
     fun readyUnwaited(navStarted: Boolean, pageReady: Boolean, progress: Int): Boolean =
         if (navStarted) false else pageReady && progress >= 100
-
-    /**
-     * 「确定要导航的操作」（`open`/`reload`/`back`）在**没有等待**时怎么报 ready。
-     *
-     * 发起导航前已经同步清过状态（见 `markNavigationStarted`），所以这里只看
-     * WebView 当前报的值：还没收到完成事件就是 false，不拿上一页冒充。
-     */
-    fun readyUnwaitedAfterNavigation(pageReady: Boolean, progress: Int): Boolean =
-        pageReady && progress >= 100
 }

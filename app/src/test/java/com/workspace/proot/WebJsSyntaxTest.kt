@@ -18,6 +18,12 @@ import org.junit.Test
  *
  * （曾想用 Nashorn 真跑一遍语法，但构建用 JDK 17、已无内置引擎；改为检查
  *  "实参形状"——那才是真正区分对错的那条。）
+ *
+ * ⚠ 5.9.38：这里**只**查"实参形状"这一类；**整段脚本的结构**与**真引擎解析**
+ * 另外有两条锁，别把这一份当成全部：
+ *  - [WebJsStructureTest]：括号配平 / `try` 配对 / 裸换行 / `WEB_ERR` 作用域
+ *    （5.9.37 那两处真机 bug 就是它这一类漏掉的 —— 当时的锁只验了字样）
+ *  - [WebJsRealEngineTest]：交给真 JS 引擎编译（机器上有 node 就跑）
  */
 class WebJsSyntaxTest {
 

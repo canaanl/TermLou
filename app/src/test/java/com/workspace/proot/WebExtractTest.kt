@@ -88,7 +88,9 @@ class WebExtractTest {
         // 参数是**编进脚本**的（evaluateJavascript 只能传字符串）。
         // 这里锁住它真的带上了，且页面侧没有第二份数字可以作祟。
         val js = WebExtract.pageJs(limit = 42, textChars = 7)
-        assertTrue("链接上限必须编进脚本：$js", js.contains("var L=42,T=7"))
+        assertTrue("链接上限必须编进脚本：$js", js.contains("var L=42"))
+        assertTrue("正文字数上限必须编进脚本：$js", js.contains("T=7"))
+        assertTrue("单条文字上限也要编进去：$js", js.contains("TC=100"))
     }
 
     @Test
@@ -99,27 +101,37 @@ class WebExtractTest {
             "button,input[type=submit]", // 能点的
             "a[href]",                   // 链接
             "document.title",            // 标题
-            "meta[name=description]",    // 简介
-            "script,style,noscript,template,svg"  // 正文里要剔掉的垃圾
+            "meta[name=description]"     // 简介
         )) {
             assertTrue("脚本没问 $must：$js", js.contains(must))
         }
+        // ⚠ 5.9.38：**不再**在页面里踢 script/style。
+        // 5.9.37 是"复制一份 body、删掉 script/style、取复制品的 innerText" ——
+        // 而复制品不在文档里、没有排版，innerText 会退化成"所有文字都算"，
+        // `display:none` 藏起来的字也会进来。真 innerText 本来就不含 script/style，
+        // 那一步纯属多余而且有害。现在直接取活页面的 innerText。
+        assertFalse("不许再复制一份 body（那会让 innerText 失效）", js.contains("cloneNode"))
+        assertFalse("不许再手动踢 script/style（innerText 本来就不含）", js.contains("noscript,template"))
     }
 
     @Test
     fun `链接不列纯图标的那类`() {
         // 图标链接（导航、社交）在结果页能占几百条，全是噪声，而且 agent 没用
         val js = WebExtract.pageJs(300, 8_000)
-        assertTrue("没文字的链接必须跳过：$js", js.contains("if(!tx)continue;"))
+        assertTrue(
+            "没文字的链接必须跳过：$js",
+            Regex("""if\(!\w+\)continue;""").containsMatchIn(js)
+        )
     }
 
     @Test
-    fun `正文用innerText而不是innerHTML`() {
-        // innerText 是**人眼看到的**文字：display:none 不出现、script 不出现。
+    fun `正文用活页面的innerText`() {
+        // `innerText` 是**人眼看到的**文字：display:none 不出现、script/style 不出现。
         // agent 要看的是页面，不是源码。
         val js = WebExtract.pageJs(300, 8_000)
-        assertTrue("正文必须用 innerText：$js", js.contains("c.innerText"))
-        assertFalse("正文不许用 innerHTML：$js", js.contains("c.innerHTML"))
+        assertTrue("正文必须用活页面的 innerText：$js", js.contains("body.innerText"))
+        assertFalse("正文不许用 innerHTML：$js", js.contains("body.innerHTML"))
+        assertFalse("正文不许取复制品：$js", js.contains("cloneNode"))
     }
 
     // ---------- 解析：真结果丢进来 ----------

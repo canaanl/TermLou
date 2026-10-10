@@ -182,7 +182,7 @@ class WebProtocolTest {
         assertTrue("得说清令牌从哪儿来", help.contains("web.env"))
         for (op in listOf(
             "open", "wait", "eval", "html", "extract", "text", "click", "type", "select",
-            "back", "reload", "cookies", "clear", "close", "ping", "diag"
+            "back", "reload", "clear", "close", "ping", "diag"
         )) {
             assertTrue("说明书缺少 $op", help.contains("\"$op\""))
         }
@@ -190,6 +190,10 @@ class WebProtocolTest {
         // agent 会照着说明书调一条根本不存在的指令，然后拿到 "unknown op"。
         assertFalse("说明书不该再有 shot 指令", help.contains("\"shot\""))
         assertFalse("说明书不该再有 shots 目录", help.contains("shots/"))
+        // 5.9.38 删掉 cookie 导出（用户要求：cookie 全删、不保留）。
+        assertFalse("说明书不该再有 cookies 指令", help.contains("\"cookies\""))
+        assertFalse("说明书不该再提 cookie 文件路径", help.contains("cookies.txt"))
+        assertTrue("但要说清这个浏览器不留 cookie/缓存", help.contains("不保留 cookie"))
         // 5.9.5：此前这里断言的是 `~/web/web.env` —— 把错路径锁住了。Linux 里工作区挂在
         // /workspace，`~` 是 rootfs 里的 /root，所以那条路径 agent 根本打不开。
         assertTrue(help.contains("${WebProtocol.WEB_DIR}/web.env"))
@@ -202,7 +206,8 @@ class WebProtocolTest {
         val help = WebProtocol.help(39080)
         assertTrue("中文名要同步：$help", help.contains("TermLou 浏览器"))
         assertTrue("英文名要同步：$help", help.contains("TermLou Browser"))
-        assertTrue(help.contains("No history"))
+        // 5.9.38：原来看的是 "No history"（那句在讲无痕），现在无痕的说法改过了
+        assertTrue("英文那段也要留下：$help", help.contains("keeps no cookies and no cache at all"))
     }
 
     @Test
@@ -223,13 +228,19 @@ class WebProtocolTest {
         assertTrue(WebProtocol.VIEWPORT_H_DP in 700..1000)
     }
     @Test
-    fun `说明书写明只监听回环与 cookie 的范围`() {
+    fun `说明书写明只监听回环与不留 cookie`() {
         val help = WebProtocol.help(39080)
         assertTrue("应说明只听 127.0.0.1", help.contains("127.0.0.1"))
-        assertTrue("应说明 cookie 只覆盖当前页", help.contains("current page"))
-        // 5.9.37：原来这里断言"应说明截图不会给白图"，截图功能整个删了。
-        // 换成 extract 的对应承诺 —— 扫不到东西时**直说**，不装作扫到了。
-        assertTrue("应说明 extract 扫不到时会直说", help.contains("扫不到东西时 note 会直说"))
+        // 5.9.37 断言过"截图不会给白图"；5.9.38 断言过 cookie 只覆盖当前页 ——
+        // 截图与 cookie 都没了，换成对应的两条现在成立的话。
+        assertTrue(
+            "应说明 extract 扫不到时会直说",
+            help.contains("扫不到东西时 note 会直说")
+        )
+        assertTrue(
+            "应说明这个浏览器不留 cookie / 缓存（换个站点要重新登录是设计）",
+            help.contains("不保留 cookie") && help.contains("这是设计，不是故障")
+        )
     }
 
     @Test
