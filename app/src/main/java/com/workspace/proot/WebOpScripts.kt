@@ -106,14 +106,30 @@ internal object WebOpScripts {
             "return e.innerText?e.innerText:(e.value!=null?e.value:'ok');"
     )
 
-    /** 填输入框。[pick] 为空表示填到当前焦点元素上。 */
-    fun type(pick: String?, value: String, clear: Boolean): String {
+    /**
+     * 填输入框。[pick] 为空表示填到当前焦点元素上。
+     *
+     * @param enter **填完按回车**（5.9.37）。真人搜索是打完字按回车，不是去点那个
+     *   又小又难找的提交按钮 —— 而且很多搜索框的按钮选择器根本猜不出来。
+     *   默认 `false`：不改变既有行为，agent 想要回车才显式传。
+     */
+    fun type(pick: String?, value: String, clear: Boolean, enter: Boolean = false): String {
         val literal = WebSelector.jsLiteral(value)     // ← 必须带引号
         val source = pick ?: "(document.activeElement)"
+        // 回车：优先派发真实按键事件（网站自己监听的就是它），
+        // 派发不了再退回"提交最近的表单"。
+        val enterJs = if (!enter) "" else
+            "try{var ev=k=>e.dispatchEvent(new KeyboardEvent(k,{key:'Enter',code:'Enter'," +
+                "keyCode:13,which:13,bubbles:true,cancelable:true}));" +
+                "try{ev('keydown');ev('keypress');ev('keyup')}catch(_){}" +
+                "try{if(e.form&&typeof e.form.requestSubmit==='function')e.form.requestSubmit();" +
+                "else if(e.form)e.form.submit();else ev('keydown')}catch(_){}}"
         return FILL_HELPER + wrap(
             source,
             "try{e.focus()}catch(_){}" +
-                "return WEB_FILL(e," + literal + "," + clear + ")?'ok':null;"
+                "if(!WEB_FILL(e," + literal + "," + clear + "))return null;" +
+                enterJs +
+                "return 'ok';"
         )
     }
 

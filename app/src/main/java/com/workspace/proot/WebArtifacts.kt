@@ -1,50 +1,41 @@
 package com.workspace.proot
 
 import android.content.Context
-import android.graphics.Bitmap
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
 /**
- * 无头浏览器的产物目录（5.9.0）：落在 Linux 可见的工作区里，用户用 app 的文件页就能翻到。
+ * 浏览器的工作区产物（5.9.0 建立；5.9.37 删掉截图后只剩自发现与 cookie）。
  *
  * ```
  * /workspace/web/web.env        端口 + 令牌（**仅服务运行时存在**，供 agent 自发现）
- * /workspace/web/shots/         截图目录（shot-0001.png 这样递增，保留最近 [MAX_SHOTS] 张）
  * /workspace/web/cookies.txt    人可读 cookie 清单
  * /workspace/web/cookies.json   给 agent 的结构化版
  * ```
  *
  * 物理位置 = `filesDir/workspace/web`；Linux 侧是 `/workspace/web/...`（不是 `~`，见 WORKSPACE_MOUNT）。
- * 纯文件操作 + 序号逻辑，不碰安卓 UI，可单测。
+ * 纯文件操作，不碰安卓 UI，可单测。
+ *
+ * ⚠ **自发现（`web.env`）是这个功能的地基，不许动。** 5.9.37 删截图时，
+ * 截图落盘与它同在这个文件里（见下面的历史），一并删掉时手滑就会把令牌也删了 ——
+ * agent 连不上，什么都做不了。
  */
 object WebArtifacts {
 
-    /** 截图保留张数上限：避免长期使用把工作区撑大。 */
-    const val MAX_SHOTS = 50
-
     private const val PREFS = "term-lou-web"
-    private const val SHOT_PREFIX = "shot-"
-    private const val SHOT_SUFFIX = ".png"
-    private const val SHOT_SEQ_RESET_MS = 1_000L
-    private val shotLock = Any()
-
-    @Volatile private var lastShotSeq = 0
-    @Volatile private var lastShotAt = 0L
 
     /** 产物目录的物理位置（Android 侧；Linux 侧见 [WebProtocol.WEB_DIR]）。 */
     fun webRoot(context: Context): File = File(context.filesDir, "workspace/web")
-
-    fun shotsDir(context: Context): File = File(webRoot(context), "shots")
 
     fun envFile(context: Context): File = File(webRoot(context), "web.env")
 
     /**
      * 把物理路径翻译成 Linux 侧**真正能打开**的路径。
+     *
      * ⚠ 5.9.5 修：此前返回 `$WEB_DIR/shots/a.png`，但 Linux 的 `~` 是 rootfs 里的
      * `/root`，**不是**工作区 —— agent 拿这个路径去 cat 必然失败。
-     * 工作区挂在 [WebProtocol.WORKSPACE_MOUNT]，所以正确答案是 `/workspace/web/shots/a.png`。
+     * 工作区挂在 [WebProtocol.WORKSPACE_MOUNT]，所以正确答案是 `/workspace/web/...`。
      */
     fun linuxPath(context: Context, file: File): String {
         val root = File(context.filesDir, "workspace").absolutePath
@@ -58,7 +49,7 @@ object WebArtifacts {
             webRoot(context).mkdirs()
             envFile(context).writeText(
                 buildString {
-                    appendLine("# TermLou 无头浏览器 · headless browser")
+                    appendLine("# TermLou 浏览器 · browser")
                     appendLine("PORT=$port")
                     appendLine("TOKEN=$token")
                     appendLine("# 用法 usage:")
@@ -74,161 +65,6 @@ object WebArtifacts {
         runCatching { envFile(context).delete() }
     }
 
-    /**
-     * 截图落盘（`shot-0001.png` 递增），超过上限删最旧的。
-     *
-     * 序号**从目录里已有的文件续**，不靠进程内计数器——否则进程一重启就又从 1 开始，
-     * 新截图会把上次的旧图直接覆盖掉。
-     */
-    fun saveShot(context: Context, bitmap: Bitmap): File? = runCatching {
-        val dir = shotsDir(context)
-        dir.mkdirs()
-        val existing = dir.listFiles { f -> f.name.startsWith(SHOT_PREFIX) && f.name.endsWith(SHOT_SUFFIX) }
-            ?.map { it.name }
-            ?: emptyList()
-        val seq = nextShotSeq(highestShotSeq(existing) + 1)
-        val file = File(dir, shotFileName(seq))
-        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        trimShots(dir)
-        file
-    }.getOrNull()
-
-    /** 进程内序号：跨并发指令递增（同时刻也不会撞名）。 */
-    private fun nextShotSeq(candidate: Int): Int = synchronized(shotLock) {
-        val now = System.currentTimeMillis()
-        if (now - lastShotAt > SHOT_SEQ_RESET_MS) {
-            lastShotSeq = candidate
-        } else {
-            lastShotSeq = maxOf(lastShotSeq + 1, candidate)
-        }
-        lastShotAt = now
-        lastShotSeq
-    }
-
-    /** 已有文件名里最大的序号；没有就 0。 */
-    fun highestShotSeq(names: List<String>): Int = names.maxOfOrNull { name ->
-        // ⚠ 5.9.30：**只取前导数字**，不能整串解析。
-        // 整页截图一屏一张，名字带屏号：`shot-0007-2.png`。
-        // 去掉前缀后缀剩 `0007-2`，`toIntOrNull()` 直接 null → 序号永远算成 0 →
-        // 新截图会覆盖旧截图。那是**静默丢数据**，所以这里改成取前导数字。
-        name.removePrefix(SHOT_PREFIX).takeWhile { it.isDigit() }.toIntOrNull() ?: 0
-    } ?: 0
-
-    /** 截图文件名（4 位序号，可排序 = 可按时间排序）。 */
-    fun shotFileName(seq: Int): String = "$SHOT_PREFIX%04d$SHOT_SUFFIX".format(seq)
-
-    /** 整页截图里第 `index` 屏（1 起）的文件名：`shot-0007-1.png`、`-2.png`… */
-    fun shotScreenFileName(seq: Int, index: Int): String =
-        "$SHOT_PREFIX%04d-%d$SHOT_SUFFIX".format(seq, index.coerceAtLeast(1))
-
-    /**
-     * 一次落盘多屏（5.9.30 整页截图）。
-     *
-     * ⚠ **5.9.34 起生产代码不再走这里** —— 见 [ShotWriter]。
-     * 这个函数要求**所有位图同时在手**，那是 5.9.30–5.9.33 的做法：
-     * 每屏 480×1056 约 2 MB，一篇长文章十几屏就是三十几 MB 全压在内存里。
-     * 现在改成拍一张写一张（[ShotWriter.write]），位图立刻回收。
-     *
-     * 保留是因为它是纯逻辑、好测；**新代码别调它**。
-     *
-     * @param bitmaps 顺序必须是从上到下
-     * @return 成功落盘的文件；**长度必须等于入参**（半落盘视为失败，由调用方回收）
-     */
-    fun saveShotScreens(context: Context, bitmaps: List<Bitmap>): List<File> {
-        if (bitmaps.isEmpty()) return emptyList()
-        val w = ShotWriter(context)
-        if (!w.open()) return emptyList()
-        for ((i, bmp) in bitmaps.withIndex()) {
-            if (w.write(i + 1, bmp) == null) {
-                w.abort()
-                return emptyList()
-            }
-        }
-        return w.close()
-    }
-
-    /**
-     * 一次整页截图的落盘器（5.9.34）：**拍一张写一张**。
-     *
-     * ## 为什么拆出来
-     *
-     * 旧做法 [saveShotScreens] 要**所有位图同时在手**才写。5.9.34 视口变成 480×1056，
-     * 一屏 2 MB；一篇长文章十几屏 → 三十几 MB 全压在内存里，长页面能把它撑爆。
-     *
-     * 现在：拍一屏 → 立刻写盘 → 位图立刻回收。内存里最多只有一屏。
-     *
-     * ## 名字
-     *
-     * **共用一个基准序号**，屏号跟在后面 —— 于是 `shot-0007-1/2/3.png`
-     * 一眼就是同一次整页截图的第三屏，而不是三次无关的截图。
-     */
-    class ShotWriter(private val context: Context) {
-
-        private var dir: File? = null
-        private var base: Int = 0
-        private val files = mutableListOf<File>()
-
-        /** 分配基准序号并建目录。`false` = 目录建不出来。 */
-        fun open(): Boolean {
-            val d = shotsDir(context)
-            if (!d.exists() && !d.mkdirs()) return false
-            val existing = d.listFiles { f ->
-                f.name.startsWith(SHOT_PREFIX) && f.name.endsWith(SHOT_SUFFIX)
-            }?.map { it.name } ?: emptyList()
-            dir = d
-            base = nextShotSeq(highestShotSeq(existing) + 1)
-            return true
-        }
-
-        /** 写第 `index` 屏（1 起）。返回文件；`null` = 写失败。 */
-        fun write(index: Int, bitmap: Bitmap): File? {
-            val d = dir ?: return null
-            val f = File(d, shotScreenFileName(base, index))
-            val ok = runCatching {
-                f.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                true
-            }.getOrDefault(false)
-            if (!ok) return null
-            files.add(f)
-            return f
-        }
-
-        /** 收尾：清理旧图并交出结果。**调完就不能再 [write] 了。** */
-        fun close(): List<File> {
-            val d = dir
-            if (d != null) trimShots(d)
-            val out = files.toList()
-            files.clear()
-            return out
-        }
-
-        /**
-         * 写不下去时把已经写出去的删掉。
-         *
-         * **留下半套比全失败更难解释** —— agent 会以为那就是全部。
-         */
-        fun abort() {
-            files.forEach { runCatching { it.delete() } }
-            files.clear()
-        }
-    }
-
-    /**
-     * 纯逻辑：给定已有的截图文件名，返回**要删掉的最旧的那些**（超出 [max] 时）。
-     * 抽出来是为了能单测"只保留最近 N 张"这条规则。
-     */
-    fun oldestToDelete(names: List<String>, max: Int = MAX_SHOTS): List<String> {
-        val keep = max.coerceAtLeast(0)
-        return names.sorted().take((names.size - keep).coerceAtLeast(0))
-    }
-
-    /** 只保留最近 [MAX_SHOTS] 张（按文件名排序 = 按时间排序）。 */
-    private fun trimShots(dir: File) {
-        val files = dir.listFiles { f -> f.name.startsWith("shot-") && f.name.endsWith(".png") }
-            ?: return
-        oldestToDelete(files.map { it.name }).forEach { File(dir, it).delete() }
-    }
-
     /** cookie 导出：人可读 txt + 结构化 json。 */
     fun writeCookies(context: Context, url: String, pairs: List<Pair<String, String>>) {
         runCatching {
@@ -236,7 +72,7 @@ object WebArtifacts {
             root.mkdirs()
             File(root, "cookies.txt").writeText(
                 buildString {
-                    appendLine("# TermLou 无头浏览器 · cookie 导出")
+                    appendLine("# TermLou 浏览器 · cookie 导出")
                     appendLine("# url: $url")
                     appendLine("# 生成时刻的会话 cookie；会话结束即失效（无痕）")
                     for ((k, v) in pairs) appendLine("$k=$v")
@@ -255,13 +91,12 @@ object WebArtifacts {
     /**
      * 「清除缓存」按钮：**清空 [webRoot] 下的全部内容**，递归删，目录本身保留。
      *
-     * 5.9.6 改：此前只删 `shots/` + `cookies.txt` + `cookies.json` 三样白名单 ——
-     * 以后多写一种产物忘了加进来就永远删不掉，而且强杀进程后残留的 `web.env`
-     * （陈旧端口与令牌）这个按钮够不着。现在是"除目录本身外全删"。
+     * 5.9.6 改：此前只删三样白名单 —— 以后多写一种产物忘了加进来就永远删不掉，
+     * 而且强杀进程后残留的 `web.env`（陈旧端口与令牌）这个按钮够不着。
+     * 现在是"除目录本身外全删"。
      *
      * **能删的前提是服务已停**：按钮在运行中是置灰的（见
-     * [WebAutomationController.refreshRow]），所以这里不需要为在跑的会话保留任何东西，
-     * 也不会和正在写的 `shot` 撞上。
+     * [WebAutomationController.refreshRow]），所以这里不需要为在跑的会话保留任何东西。
      *
      * 返回删掉的**文件**数（目录不计入），用于状态提示。
      */
@@ -270,8 +105,7 @@ object WebArtifacts {
         if (!root.isDirectory) return 0
         var removed = 0
         runCatching { removed = deleteContents(root) }
-        // shots/ 留着空目录：文件页里少一次目录闪烁，服务下次写截图时也少一次 mkdirs
-        runCatching { shotsDir(context).mkdirs() }
+        runCatching { root.mkdirs() }
         return removed
     }
 
@@ -300,7 +134,7 @@ object WebArtifacts {
     /**
      * 这个相对路径要不要删。
      *
-     * ⚠ `.` 与 `..` 是 `File.relativeTo` 在路径没落在 [dir] 里时可能给出的结果，
+     * ⚠ `.` 与 `..` 是 [File.relativeTo] 在路径没落在 [dir] 里时可能给出的结果，
      * 拿它们去删就是把目录自己删了 —— 所以显式挡掉。
      */
     fun isDisposable(relPath: String): Boolean {

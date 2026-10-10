@@ -51,6 +51,49 @@ class RegressionScanTest {
         .map { it.trimStart().let { t -> if (t.startsWith("*") || t.startsWith("/*")) "" else it } }
         .joinToString("\n")
 
+    /** 文件在不在（用来锁"整个删掉的文件不许被重新建出来"）。 */
+    private fun fileExists(name: String): Boolean {
+        var d: File? = File("").absoluteFile
+        var hops = 0
+        while (d != null && hops < 6) {
+            if (File(d, "app/src/main/java/com/workspace/proot/$name").isFile) return true
+            d = d.parentFile
+            hops++
+        }
+        return false
+    }
+
+    /**
+     * 只看**真正在跑的代码**：`//` 行注释与 KDoc 整块都去掉。
+     *
+     * ## 为什么要有这么一把而不是直接用 [code]
+     *
+     * 删掉的功能要在原地留注释讲"为什么删"，那段注释里**必然出现被删的 API 名**
+     * （比如 `LAYER_TYPE_SOFTWARE`、`wv.draw(`）。用 [code] 扫，这些警告会被当成
+     * "代码还在" —— 于是这条锁就变成了"不许提这个词"，谁也没法在那里写文档。
+     *
+     * [code] 只去掉 KDoc 是有历史的（5.9.9 那批探针锁靠它读代码行），
+     * 所以不改它的行为，**另起一把更严的**给 5.9.37 这组用。
+     */
+    private fun codeOnly(name: String): String {
+        var inBlock = false
+        return source(name).lines().mapNotNull { line ->
+            val t = line.trimStart()
+            if (inBlock) {
+                if (t.startsWith("*/")) inBlock = false
+                return@mapNotNull null
+            }
+            when {
+                t.startsWith("/*") -> {
+                    if (!t.contains("*/")) inBlock = true
+                    null
+                }
+                t.startsWith("//") -> null
+                else -> t
+            }
+        }.joinToString("\n")
+    }
+
     // ---------- 1 + 2：探针脚本不许手拼分隔符 ----------
 
     @Test
@@ -405,215 +448,6 @@ class RegressionScanTest {
         )
     }
 
-    @Test
-    fun `拍摄只有一条路`() {
-        // 两条路的坏处不是"多写了一份代码"，而是**一条不行时另一条会静默顶替**，
-        // 交出看起来正常、其实错的图。5.9.33 那条"取整页图再切块"切出来的是
-        // 1 像素高的白条（capturePicture 给的不是整页，是当前那一屏）。
-        val c = code("WebAutomationService.kt")
-        val cap = c.substringAfter("private fun captureScreen(")
-            .substringBefore("private fun probeScreen(")
-        assertTrue("没抓到 captureScreen 的函数体", cap.length > 200)
-        assertTrue(
-            "只有把视图原尺寸画下来这一条：\n$cap",
-            cap.contains("wv.draw(canvas)")
-        )
-        assertFalse(
-            "不许再取整页图（它给的不是整页）：\n$cap",
-            cap.contains("capturePicture")
-        )
-        assertFalse(
-            "不许缩放或平移 —— 原尺寸画下来就是 1:1：\n$cap",
-            cap.contains("canvas.scale(") || cap.contains("canvas.translate(")
-        )
-    }
-
-    @Test
-    fun `判据不许用截图`() {
-        // ⚠ **5.9.34 最重要的一条。**
-        //
-        // 5.9.33 的 awaitScreenStable 是"拍一张 → 白吗 → 再拍一张 → 一样吗"：
-        // 判"画面画完没有"用的就是"截图"这个动作。判据和被测对象是同一件事，
-        // 于是截图这条路一瞎，循环只剩一个结局 —— 一直白、报一句 nothing rendered。
-        // 真机三个版本都卡在同一句上，而它什么都没说清。
-        //
-        // 现在判空与判稳都必须走**探针**（缩到 48 见方的小图），
-        // 与整屏拍摄是两个调用、两个函数。
-        val c = code("WebAutomationService.kt")
-        val await = c.substringAfter("private fun awaitScreenStable(")
-            .substringBefore("private fun awaitFrameCommit(")
-        assertTrue("没抓到 awaitScreenStable 的函数体", await.length > 400)
-        assertTrue(
-            "判据必须用探针：\n$await",
-            await.contains("probeScreen(wv, vw, vh)")
-        )
-        assertTrue(
-            "判空也必须用探针（不是整屏那张）：\n$await",
-            Regex("""looksBlank\(probe\.width""").containsMatchIn(await)
-        )
-        assertTrue(
-            "指纹必须取自探针：\n$await",
-            Regex("""fingerprint\(probe\.width""").containsMatchIn(await)
-        )
-        assertTrue(
-            "连续两次指纹相同才算画完：\n$await",
-            await.contains("if (print == lastPrint)")
-        )
-        assertTrue(
-            "探针与整屏拍摄必须是两个函数，不许合成一个：\n$await",
-            c.contains("private fun probeScreen(")
-        )
-    }
-
-    @Test
-    fun `失败必须说清卡在第几步`() {
-        // 真机 5.9.31/5.9.32/5.9.33 连续三版都报同一句 nothing rendered，
-        // 害我只能靠反推才猜出"整页图其实只有一屏高"。三步失败必须分开说。
-        val c = code("WebAutomationService.kt")
-        val walk = c.substringAfter("private fun walkScreens(")
-            .substringBefore("private class Screens(")
-        assertTrue("没抓到 walkScreens 的函数体", walk.length > 600)
-        for (step in listOf(1, 2, 4)) {
-            assertTrue(
-                "第 $step 步的失败必须报出来：\n$walk",
-                walk.contains("ShotRunner.failure($step,")
-            )
-        }
-        assertFalse(
-            "不许再报那句糊在一起的话：\n$walk",
-            walk.contains("nothing rendered")
-        )
-    }
-
-    @Test
-    fun `拍一张写一张不许把位图攒在内存里`() {
-        // 旧做法：所有屏的位图攒在一个 List 里，最后一起写盘。
-        // 视口 480×1056 时每屏 2 MB，一篇长文章十几屏就是三十几 MB —— 会撑爆。
-        val c = code("WebAutomationService.kt")
-        // ⚠ 必须用 source() 而不是 code()：code() 剥掉 KDoc，
-        // Screens 的字段全是 KDoc 注释，剥完只剩 170 字符 —— 那会把判据卡在边界上。
-        val screens = source("WebAutomationService.kt")
-            .substringAfter("private class Screens(")
-            .substringBefore("private class ScreenReady(")
-        assertTrue("没抓到 Screens 的类体", screens.length > 400)
-        assertFalse(
-            "过程记录里不许再持有位图：\n$screens",
-            screens.contains("List<Bitmap>")
-        )
-        assertTrue(
-            "落盘必须走 ShotWriter（拍一张写一张）：\n$c",
-            c.contains("WebArtifacts.ShotWriter(this)")
-        )
-        assertTrue(
-            "写完必须立刻回收位图：\n$c",
-            c.contains("writer.write(screenNo, shot)") && c.contains("shot.recycle()")
-        )
-    }
-
-    @Test
-    fun `不许预先算好段数`() {
-        // 真机数据：两次 shot 的 page_height 是 6621 → 7443 —— 页面在拍摄途中还在长高。
-        // 按开拍前那个数算好"拍几屏、每屏滚到哪"，那份计划**从一开始就是过期的**。
-        val svc = source("WebAutomationService.kt")
-        val walk = svc.substringAfter("private fun walkScreens(")
-            .substringBefore("private class Screens(")
-        assertTrue("没抓到 walkScreens 的函数体", walk.length > 600)
-        assertFalse(
-            "编排里不许再按 segments 循环 —— 屏数必须是走出来的：\n$walk",
-            walk.contains("segments")
-        )
-        assertTrue(
-            "必须用 while 走到实测的底：\n$walk",
-            walk.contains("while (true)")
-        )
-        assertTrue(
-            "到底了必须靠 nextScreenTop 返回 null：\n$walk",
-            Regex("""nextScreenTop\([\s\S]{0,120}?\?: break""").containsMatchIn(walk)
-        )
-    }
-
-    @Test
-    fun `maxScroll必须每屏重读不许缓存`() {
-        // 这是"过期计划"的直接解药：页面长了多少，下一屏就自动读到多少。
-        val svc = source("WebAutomationService.kt")
-        val walk = svc.substringAfter("private fun walkScreens(")
-            .substringBefore("private class Screens(")
-        val readAt = walk.indexOf("readMetrics(wv, cancelled)")
-        assertTrue("必须每屏读一次页面度量", readAt >= 0)
-        assertTrue(
-            "读度量必须在循环体内（在 while 之后）：\n$walk",
-            readAt > walk.indexOf("while (true)")
-        )
-        assertTrue(
-            "下一屏落点必须用刚读到的 maxScroll：\n$walk",
-            walk.contains("m.maxScrollCss * density")
-        )
-    }
-
-    @Test
-    fun `开拍前必须等页面静止且只用公开API`() {
-        // ⚠ `WebChromeClient.onLoadingFinished` 与 `View.postVisualStateCallback`
-        // 都是 `@hide` —— `javap` 查过 android-34 的公开 SDK 里**根本没有**。
-        // 我按记忆写了，编译器当场打回来。公开可用的是 `WebViewClient.onPageFinished`
-        // 与 document.readyState = complete。
-        val svc = code("WebAutomationService.kt")
-        assertFalse(
-            "不许 override 不存在的 onLoadingFinished（编译就过不了）：\n$svc",
-            svc.contains("override fun onLoadingFinished")
-        )
-        assertFalse(
-            "不许用 @hide 的 postVisualStateCallback：\n$svc",
-            svc.contains("postVisualStateCallback")
-        )
-        assertTrue(
-            "必须用 onPageFinished 置位（公开 API）：\n$svc",
-            svc.contains("pageLoadFinished = true")
-        )
-        assertTrue(
-            "开拍前必须先等页面静止：\n$svc",
-            svc.contains("awaitPageSettled(wv, cancelled)")
-        )
-        assertTrue(
-            "静止判据要用 readyState（JS 侧同一件事）：\n$svc",
-            svc.contains("ShotRunner.READY_STATE_JS")
-        )
-    }
-
-    @Test
-    fun `page_height必须报走完之后实测的值`() {
-        // ⚠ 光查"出现过 measuredPageHeight"是**空跑**：绕开它、直接用开拍前那个数，
-        // 那个字样仍然在函数体里，锁照样绿。所以要查**它真的被用上了**。
-        val svc = code("WebAutomationService.kt")
-        val fin = svc.substringAfter("private fun finishShot(")
-            .substringBefore("截不出内容时的说法")
-        assertTrue("没抓到 finishShot 的函数体", fin.length > 400)
-        assertTrue(
-            "必须先把实测值取出来：\n$fin",
-            Regex("""val pageHeightPx = if \(walk\.measuredPageHeight > 0\)""").containsMatchIn(fin)
-        )
-        assertTrue(
-            "page_height 必须真的用上那个实测值 —— 绕开它就等于还在报开拍前的旧数：\n$fin",
-            Regex(""""page_height" to \(if \(isLong\) pageHeightPx""").containsMatchIn(fin)
-        )
-    }
-
-    @Test
-    fun `没渲染完的那几屏必须在note里说清`() {
-        // 降级收下是允许的，但**必须说** —— 静默糊过去就是 5.9.9 的老错误。
-        val fin = code("WebAutomationService.kt")
-            .substringAfter("private fun finishShot(")
-            .substringBefore("截不出内容时的说法")
-        assertTrue("没抓到 finishShot 的函数体", fin.length > 400)
-        assertTrue(
-            "必须报出有几屏还在加载：\n$fin",
-            fin.contains("were still loading")
-        )
-        assertTrue(
-            "开拍时页面就没加载完也必须说：\n$fin",
-            fin.contains("had not finished loading")
-        )
-    }
-
 // ---------- 5.9.31/5.9.34：结构不变义（正向设计，不是补丁） ----------
 
     @Test
@@ -643,14 +477,20 @@ class RegressionScanTest {
             c.contains("WebProtocol.VIEWPORT_W_DP * d") &&
                 c.contains("WebProtocol.VIEWPORT_H_DP * d")
         )
-        // ⚠ 5.9.36 的根因改动：WebView 必须换软件渲染层。
-        // 硬件加速时 Chromium 只把**已光栅化**的区域交给 wv.draw(canvas)；
-        // 滚动后新位置的光栅化还没完成 → draw() 拿回空白 → 第 2 屏永远拍不出来。
-        // 真机 5.9.31 第 3 屏 / 5.9.32 第 2 屏 / 5.9.33 第 2 屏 / 5.9.34 第 2 屏 / 5.9.35 第 2 屏，
-        // 五个版本同一个症状 —— 因为取像素的那一行（wv.draw）从来没换过，全在改"等多久"。
-        assertTrue(
-            "WebView 必须换软件渲染层（LAYER_TYPE_SOFTWARE）—— 这是第 2 屏拍不出来的根因：\n$c",
-            c.contains("setLayerType(View.LAYER_TYPE_SOFTWARE, null)")
+        // ⚠ 5.9.36 我在这里锁了"WebView 必须换软件渲染层"，
+        // 理由是"硬件加速时 Chromium 只把已光栅化的区域交给 wv.draw(canvas)"。
+        // **那条锁本身通过了，而它是错的** —— 又一次"扫源码的锁给坏设计盖章"。
+        //
+        // 真机结果：软件图层要自己分配一张视口大小的位图（1236×2676 的 ARGB_8888
+        // = 13.2 MB），分配失败时系统直接杀服务 → teardown → 悬浮窗消失。
+        // 症状是"小窗没了 + 第 2 屏照样空白"，一个问题都没解决，代价是两个都坏。
+        //
+        // 5.9.37 把整页截图功能整个删掉，`wv.draw(canvas)` 这条调用点**不存在了**，
+        // 硬件加速照原样保留（小窗正常、不卡）。这条锁现在反过来锁：
+        // **不许再有人为了截图去动渲染层类型。**
+        assertFalse(
+            "不许再为了截图把 WebView 换成软件渲染层 —— 真机上它会杀掉服务、悬浮窗直接消失：\n$c",
+            codeOnly("WebAutomationService.kt").contains("LAYER_TYPE_SOFTWARE")
         )
         // ⚠ 只查 viewportSizePx 的函数体：attachFloatWindow 里**也要**算窗口尺寸
         // （那是小窗自己的宽高，不是视口），全文件搜会误伤。
@@ -664,406 +504,134 @@ class RegressionScanTest {
     }
 
     /**
-     * ⚠ **5.9.35 退役**：原来那条 `I2_每屏必须等渲染跟上` 断言的是
-     * "源码里出现过 `observer.registerFrameCommitCallback(`"。
+     * ⚠ **5.9.35 退役的锁，留着当教训**（5.9.37 整理）
      *
-     * 它**通过了** —— 而那行代码被包在一个把主线程锁死的循环里，回调永远等不到。
+     * 原来那条 `I2_每屏必须等渲染跟上` 断言的是"源码里出现过
+     * `observer.registerFrameCommitCallback(`"。它**通过了** —— 而那行代码被包在
+     * 一个把主线程锁死的循环里，回调永远等不到。
      * 这条锁不是在保护我，是在**给一个坏设计盖章**；我拿它当证据说
      * "帧提交机制已就位"，实际是反的。
      *
-     * **扫源码的锁只能验字样，验不了"它有没有用"。**
-     * 下面这组锁换了个角度：锁**调用位置**（谁在哪根线程上跑），
-     * 那才是这条 bug 真正所在的地方。
+     * 5.9.36 我又犯了一次同样的错（锁"必须换软件渲染层"，锁通过了，真机上服务被杀、
+     * 悬浮窗消失，见 [I1_视口是412dp不是一个跟着窗口走的数]）。
+     *
+     * **教训：扫源码的锁只能验字样，验不了"它有没有用"。**
+     * 所以下面 5.9.37 那组锁刻意避开"某行代码在不在"，改成锁**取舍**：
+     * 删掉的东西不许复活、新加的东西必须真的接上。
      */
 
-    @Test
-    fun `等画面期间不许占住主线程`() {
-        // **5.9.35 修的真 bug。** awaitScreenStable 一旦被 `onMain { }` 包住，
-        // 循环里的 Thread.sleep 就全在主线程上睡；
-        // 而网页要把新画面交给主线程画 —— 主线程在睡，它永远画不出来。
-        // 真机症状：第 1 屏正常（内容早就画好），第 2 屏起整片空白 4 秒。
-        val svc = code("WebAutomationService.kt")
-        assertFalse(
-            "等待画面的循环不许被整个丢进主线程：\n$svc",
-            svc.contains("onMain { awaitScreenStable(")
-        )
-        assertFalse(
-            "等待画面的循环不许被整个丢进主线程：\n$svc",
-            Regex("""onMain\s*\{\s*awaitScreenStable""").containsMatchIn(svc)
-        )
-    }
+    // ---------- 5.9.37：删截图 + 换 extract + type 回车 ----------
 
     @Test
-    fun `等待循环里的sleep只能发生在工作线程`() {
-        // onMain 是"进去就出来"的短调用；awaitScreenStable 里却有好几个 sleep。
-        // 只要它整体在主线程上跑，主线程就是被连续按住。
-        val svc = code("WebAutomationService.kt")
-        val body = svc.substringAfter("private fun awaitScreenStable(")
-            .substringBefore("private fun armFrameCommit(")
-        assertTrue("没抓到 awaitScreenStable 的函数体", body.length > 800)
-        assertTrue(
-            "里面必须真的有 sleep（等待发生在这一层）：\n$body",
-            body.contains("Thread.sleep(SHOT_FRAME_POLL_MS)")
-        )
-        // 关键判据：**sleep 不能出现在任何 onMain 调用内部**
-        for (m in Regex("""onMain\s*\{[^}]*\}""").findAll(body)) {
+    fun `截图功能必须真的删干净`() {
+        // 十条版本（5.9.27–5.9.36）全卡在"第 2 屏空白"，取像素的那一行是 `wv.draw(canvas)`。
+        // 5.9.37 决定不让 agent 看截图了，于是这条路**整个拿掉** ——
+        // 如果哪天它悄悄回来，agent 又会拿到一片空白，而且没人知道为什么。
+        for (f in listOf(
+            "WebAutomationService.kt", "WebProtocol.kt", "WebArtifacts.kt",
+            "WebOpScripts.kt", "WebFloatWindow.kt", "WebFloatWindowHost.kt",
+            "WebExtract.kt", "WebSelector.kt"
+        )) {
+            val c = codeOnly(f)
             assertFalse(
-                "主线程调用里不许 sleep —— 那是把主线程按住：\n${m.value}",
-                m.value.contains("Thread.sleep")
+                "$f 里还有截图的残留：\n$c",
+                Regex("""\bopShot\b|\bcaptureScreen\b|\bprobeScreen\b|\bawaitScreenStable\b""" +
+                    """|\bwalkScreens\b|\bfinishShot\b|\bShotRunner\b|\bWebShotSampler\b""" +
+                    """|\bShotWriter\b|\bshotFileName\b|\bhighestShotSeq\b|\boldestToDelete\b""" +
+                    """|\bMAX_SHOTS\b|\bregisterFrameCommitCallback\b|\bwv\.draw\(""").containsMatchIn(c)
             )
         }
-    }
-
-    @Test
-    fun `等帧的地方不许阻塞`() {
-        // 帧回调是**主线程派发**的。调用它的时候已经在主线程上了，
-        // latch.await 就是在堵着主线程等主线程 —— 注定等不到，只会白占满超时。
-        // 5.9.31–5.9.34 就是这么写的：每轮白堵 200ms。
-        val svc = code("WebAutomationService.kt")
-        val arm = svc.substringAfter("private fun armFrameCommit(")
-            .substringBefore("private fun disarmFrameCommit(")
-        assertTrue("没抓到 armFrameCommit 的函数体", arm.length > 150)
         assertFalse(
-            "注册帧回调的函数里不许 await/join/sleep：\n$arm",
-            Regex("""\.(await|join)\(|\bThread\.sleep""").containsMatchIn(arm)
-        )
-        assertFalse(
-            "旧那个阻塞式等帧函数不许再存在：\n$svc",
-            svc.contains("private fun awaitFrameCommit(")
+            "ShotRunner.kt 与 WebShotSampler.kt 必须整个删掉，不是掏空",
+            fileExists("ShotRunner.kt") || fileExists("WebShotSampler.kt")
         )
     }
 
     @Test
-    fun `这屏不许和上一屏一样`() {
-        // 5.9.34 把这条删了。画面卡住不更新时探针拍到的是**旧内容**，
-        // "连两次相同"会误判成"画完了"，于是交出一张和上一屏一模一样的图 ——
-        // 那张图"有内容"，判空查不出来，agent 会以为翻页成功了。
-        val svc = code("WebAutomationService.kt")
-        val walk = svc.substringAfter("private fun walkScreens(")
-            .substringBefore("private class Screens(")
-        assertTrue("没抓到 walkScreens 的函数体", walk.length > 600)
-        assertTrue(
-            "必须拿上一屏的指纹做比对：\n$walk",
-            walk.contains("WebShotSampler.sameContent(prevPrint, ready.print)")
-        )
-        assertTrue(
-            "必须在写盘**之前**挡下来：\n$walk",
-            walk.indexOf("sameContent(prevPrint") in 1 until walk.indexOf("writer.write(screenNo"),
-        )
-    }
-
-    @Test
-    fun `报错必须对应真正失败的那一步`() {
-        // 5.9.34 的错：探针白 → 返回 hasContent=false → 报第 3 步
-        // "the capture came back blank"。可第 3 步**根本没被调用**，
-        // 白的是第 2 步的探针。标签贴错，我只能靠反推才猜出原因。
-        val walk = code("WebAutomationService.kt")
-            .substringAfter("private fun walkScreens(")
-            .substringBefore("private class Screens(")
-        assertTrue("没抓到 walkScreens 的函数体", walk.length > 600)
-        assertFalse(
-            "一直是白的那条路径不许报第 3 步（capture 压根没被调用）：\n$walk",
-            Regex("""!\w+\.hasContent[\s\S]{0,400}?ShotRunner\.failure\(3,""").containsMatchIn(walk)
-        )
-        assertTrue(
-            "它必须报第 2 步：\n$walk",
-            Regex("""!\w+\.hasContent[\s\S]{0,400}?ShotRunner\.failure\(2,""").containsMatchIn(walk)
-        )
-    }
-
-    @Test
-    fun `报给agent的尺寸必须是真实位图尺寸`() {
-        // captureScreen 里是 vw.coerceAtMost(wv.width) —— 视图没量好时位图比参数小，
-        // 报参数就等于告诉 agent 一个对不上的尺寸。
-        val fin = code("WebAutomationService.kt")
-            .substringAfter("private fun finishShot(")
-            .substringBefore("截不出内容时的说法")
-        assertTrue("没抓到 finishShot 的函数体", fin.length > 400)
-        assertTrue(
-            "width 必须来自真实位图：\n$fin",
-            fin.contains("val shotW = if (walk.shotW > 0)")
-        )
-        assertTrue(
-            "height 必须来自真实位图：\n$fin",
-            fin.contains("val shotH = if (walk.shotH > 0)")
-        )
-        assertFalse(
-            "不许再直接把视口参数报出去：\n$fin",
-            Regex(""""width" to vw,""").containsMatchIn(fin)
-        )
-    }
-
-    @Test
-    fun `长页面不许因为失败而被报成一屏`() {
-        // 5.9.34 的 isLong = files.size > 1 || walk.measuredPageHeight > vh，
-        // 而**第 1 屏就失败时 measuredPageHeight 还是 0** ——
-        // 明明是 2025px 的长页面，却报 page_height: 756, full_page: false。
-        val fin = code("WebAutomationService.kt")
-            .substringAfter("private fun finishShot(")
-            .substringBefore("截不出内容时的说法")
-        assertTrue("没抓到 finishShot 的函数体", fin.length > 400)
-        assertTrue(
-            "页高必须取两个来源里大的那个：\n$fin",
-            fin.contains("val knownPageHeight = maxOf(walk.measuredPageHeight, measuredPageHeightPx)"),
-        )
-        assertFalse(
-            "isLong 不许只看拍到的张数：\n$fin",
-            fin.contains("val isLong = files.size > 1 || walk.measuredPageHeight > vh"),
-        )
-    }
-
-    @Test
-    fun `诊断值必须来自本趟而不是上一次`() {
-        // 5.9.34：lastScreenWaits 只在"走完"那行赋值，所有失败路径直接 return，
-        // 于是 diag 里显示的是上一次跑出来的旧数 —— 越看越误导。
-        val svc = code("WebAutomationService.kt")
-        val walk = svc.substringAfter("private fun walkScreens(")
-            .substringBefore("private class Screens(")
-        assertTrue(
-            "必须有一个收尾函数给每条返回路径赋值：\n$walk",
-            walk.contains("fun done(s: Screens)")
-        )
-        val returns = Regex("""return Screens\(""").findAll(walk).count()
-        val viaDone = Regex("""return done\(Screens\(""").findAll(walk).count()
-        assertEquals("不许有绕过 done() 的裸 return —— 那条路上 lastScreenWaits 是上一次的旧值", 0, returns)
-        assertTrue("至少要有一条 return 走 done()（自检：判据没写错）", viaDone > 0)
-    }
-
-    @Test
-    fun `I2_帧回调必须用同一个lambda注销`() {
-        // 新建一个 lambda 去注销是注销不掉的 —— 每次截图往 ViewTreeObserver 上
-        // 多挂一个回调，越用越多，最后回调列表被系统拒绝添加。
-        val c = code("WebAutomationService.kt")
-        assertTrue(
-            "必须把 listener 存成变量再传：\n$c",
-            c.contains("val l = Runnable {")
-        )
-        assertTrue(
-            "注册与注销必须用同一个变量：\n$c",
-            c.contains("observer.registerFrameCommitCallback(l)") &&
-                c.contains("observer.unregisterFrameCommitCallback(l)")
-        )
-    }
-
-    @Test
-    fun `I3_失败时报屏号且保留已拍好的屏`() {
-        // 5.9.9 的教训：半张图报 ok:true 比修不好更糟 —— 所以必须仍是 ok:false。
-        // 但把真的拍到的那几张扔掉同样是浪费。
-        val svc = code("WebAutomationService.kt")
-        assertTrue(
-            "部分成功必须走 errJsonWith（ok:false + 带上已有文件）：\n$svc",
-            svc.contains("WebProtocol.errJsonWith(it, body)")
-        )
-        val proto = code("WebProtocol.kt")
-        assertTrue(
-            "errJsonWith 必须标 partial：\n$proto",
-            proto.contains("o.put(\"partial\", true)")
-        )
-        assertTrue(
-            "errJsonWith 必须仍然 ok:false —— 绝不能改成成功：\n$proto",
-            proto.contains("o.put(\"ok\", false)")
-        )
-    }
-
-// ---------- 5.9.30：整页截图一屏一张，不许再拼 ----------
-
-    @Test
-    fun `整页截图不许再拼成一张长图`() {
-        // 拼接是我自己加的、用户没要求的。两样纯负担：
-        // 一堆 src/dst 矩形换算（真机"首页缩小版+大片空白"就出在那儿），
-        // 以及一张 1236×11440 的巨位图（56MB）。
-        val svc = code("WebAutomationService.kt")
-        assertFalse(
-            "不许再往大位图上 drawBitmap 拼：\n$svc",
-            svc.contains("canvas.drawBitmap(piece")
-        )
-        assertFalse(
-            "不许再建整页那么大的位图：\n$svc",
-            Regex("""Bitmap\.createBitmap\(outW, outH""").containsMatchIn(svc)
-        )
-        assertTrue(
-            "每屏存一张，走 ShotWriter（5.9.34 拍一张写一张）：\n$svc",
-            svc.contains("WebArtifacts.ShotWriter(this)")
-        )
-    }
-
-    @Test
-    fun `这屏和上一屏一样必须报错并报出是第几屏`() {
-        // 真机 5.9.29：第二屏拍出来是第一屏的缩小版。两张都"有内容"，
-        // 判空查不出来，于是一张首页的复制品被当成整页交出去了。
-        // 现在靠**探针指纹**抓住，并且**报出第几屏**。
-        val svc = source("WebAutomationService.kt")
-        // 指纹比较在 awaitScreenStable 里（"等到画面稳定为止"那个循环）；
-        // walkScreens 只负责滚动、调用、报屏号。所以判据分两处查。
-        val loop = svc.substringAfter("private fun walkScreens(")
-            .substringBefore("private class Screens(")
-        assertTrue("没抓到 walkScreens 的函数体", loop.length > 600)
-        val await = svc.substringAfter("private fun awaitScreenStable(")
-            .substringBefore("private fun awaitFrameCommit(")
-        assertTrue("没抓到 awaitScreenStable 的函数体", await.length > 400)
-        assertTrue("必须比指纹：\n$await", await.contains("WebShotSampler.fingerprint(probe.width"))
-        assertTrue(
-            "walkScreens 必须调用 awaitScreenStable（等画面画完）：\n$loop",
-            loop.contains("awaitScreenStable(wv, vw, vh)")
-        )
-        // 报错必须带**动态**屏号，不能写死数字 —— 写死的话 agent 不知道是哪一屏坏的
-        val dollar = '$'
-        val placeholder = "screen ${dollar}screenNo"
-        assertTrue(
-            "报错文案必须用动态屏号占位符：\n$loop",
-            loop.contains(placeholder)
-        )
-        assertTrue(
-            "屏号必须逐屏递增：\n$loop",
-            loop.contains("screenNo++")
-        )
-    }
-
-    @Test
-    fun `shot返回必须带files和screens`() {
-        // agent 靠 files 逐屏看整页；靠 screens 知道有几屏
-        val body = code("WebAutomationService.kt")
-            .substringAfter("private fun finishShot(")
-            .substringBefore("截不出内容时的说法")
-        assertTrue("没抓到 finishShot 的函数体", body.length > 400)
-        assertTrue("必须返回 files：\n$body", body.contains("\"files\" to"))
-        assertTrue("必须返回 screens：\n$body", body.contains("\"screens\" to"))
-        // height 不再是整页高 —— 必须补 page_height，否则老 agent 会算错页面长度
-        assertTrue("必须返回 page_height：\n$body", body.contains("\"page_height\" to"))
-    }
-
-    @Test
-    fun `help里必须讲清整页是拆成多张`() {
-        // agent 自发现全靠 help。字段变了不说，agent 就会当没变化。
+    fun `help不许再教截图也不许漏掉extract`() {
         val h = WebProtocol.help(39080)
-        assertTrue("help 必须提到 files：$h", h.contains("files/screens/file/width/height/"))
-        assertTrue("help 必须说明按顺序看：$h", h.contains("从上到下"))
-        assertTrue(
-            "help 不许再说'自动截整页（长图）'—— 那已经不成立了：$h",
-            !h.contains("自动截**整页**")
-        )
-    }
-
-// ---------- 5.9.29：整页截图必须滚文档，不能滚视图 ----------
-
-    @Test
-    fun `整页截图不许用View的scrollTo`() {
-        // 5.9.28 的根因：`wv.scrollTo(0, y)` 改的是**视图**的滚动偏移，
-        // WebView 的**文档滚动**它根本不管 —— 文档压根没滚。
-        // 于是第一段画的还是首屏（对的），后面每段都只是把同一个视图往上挪，
-        // 露出来的是渲染内容之下的空白 → 真机上"只有第一屏，后面全白"。
-        //
-        // 佐证：`:probe` v8 扫过 11 种"踢一帧"的办法，**`View.scrollTo` 就在里面、
-        // 22 次全灭** —— 这条路对 WebView 不通，当时已经验过了。
-        val c = code("WebAutomationService.kt")
-        assertFalse(
-            "整页分段不许用 View.scrollTo（那是视图偏移，不是文档滚动）：\n$c",
-            c.contains("wv.scrollTo(")
-        )
-        assertFalse(
-            "也不许拿 wv.scrollY 当文档滚动位置：\n$c",
-            Regex("""wv\.scrollY""").containsMatchIn(c)
-        )
-    }
-
-    @Test
-    fun `整页分段必须用JS滚文档并回读确认`() {
-        // `window.scrollTo` 是个**请求**：页面可以 scroll-snap 改掉、可以 JS 拦掉、
-        // 可以在平滑滚动动画里还没到位。只看"JS 有没有回值"不算数，
-        // 必须**回读 window.pageYOffset** 才知道真到没到。
-        val c = code("WebAutomationService.kt")
-        assertTrue(
-            "必须走 JS 滚动：\n$c",
-            c.contains("ShotRunner.scrollToJs(")
-        )
-        assertTrue(
-            "必须回读滚动位置：\n$c",
-            c.contains("ShotRunner.SCROLL_Y_JS")
-        )
-        assertTrue(
-            "必须拿回读值判到位（scrollLanded），不能只看 JS 回过值：\n$c",
-            c.contains("ShotRunner.scrollLanded(")
-        )
-    }
-
-    @Test
-    fun `scrollDocumentTo里的每个return true都必须由scrollLanded把门`() {
-        // 这条锁的是"回读校验"本身。
-        // 5.9.29 第一版只锁了"文件里出现过 scrollLanded"——
-        // 注入一行 `if (nowCss >= 0) return true`（回读到任意值就当成功）照样全绿，
-        // 那是**空跑**：判据存在，但它不再把门。
-        //
-        // 精确判据：`scrollDocumentTo` 里**每一处 `return true` 所在行**
-        // 都必须同时出现 `scrollLanded`。
-        val c = code("WebAutomationService.kt")
-        val body = c.substringAfter("private fun scrollDocumentTo(")
-            .substringBefore("private fun readScrollCss(")
-        assertTrue("没找到 scrollDocumentTo 的函数体", body.length > 300)
-
-        val trueLines = body.lines().filter { it.contains("return true") }
-        assertTrue(
-            "scrollDocumentTo 里一处 return true 都没有 —— 判据写错了：\n$body",
-            trueLines.isNotEmpty()
-        )
-        for (line in trueLines) {
-            assertTrue(
-                "这一行 return true 没有由 scrollLanded 把门 —— 页面滚不动也会被当成功：" +
-                    "\n  ${line.trim()}",
-                line.contains("scrollLanded")
-            )
+        assertFalse("help 不许再提 shot 指令：\n$h", h.contains("\"op\":\"shot\""))
+        assertFalse("help 不许再提 shots 目录", h.contains("shots/"))
+        assertFalse("help 不许再教一屏一张/拼接那套", h.contains("shot-0007"))
+        // extract 的字段与两个上限必须写进去 —— agent 是照着 help 用的
+        for (must in listOf(
+            "\"op\":\"extract\"", "inputs", "buttons", "links_truncated", "links_total",
+            "\"limit\"", "\"text_chars\"", "enter\":true"
+        )) {
+            assertTrue("help 漏了 $must：\n$h", h.contains(must))
         }
+        // 默认值与封顶必须和 WebExtract 里的常量一致，不能各写一份
+        assertTrue(
+            "help 里的链接默认值必须等于 WebExtract.DEFAULT_LIMIT=${WebExtract.DEFAULT_LIMIT}",
+            h.contains("默认 ${WebExtract.DEFAULT_LIMIT}")
+        )
+        assertTrue(
+            "help 里的正文字数默认值必须等于 WebExtract.DEFAULT_TEXT_CHARS=${WebExtract.DEFAULT_TEXT_CHARS}",
+            h.contains("默认 ${WebExtract.DEFAULT_TEXT_CHARS}")
+        )
     }
 
     @Test
-    fun `每滚一段都必须等一帧而不是紧接着画`() {
-        // `scrollTo` 只改值，内容是合成器**异步**画的。紧接着画拿到的还是上一段
-        // —— 真机上就是一片底色。5.9.9 那次"下半截白"就是没等帧。
+    fun `extract必须真的接在handle上且参数能夹`() {
         val c = code("WebAutomationService.kt")
-        assertTrue("必须等帧提交", c.contains("observer.registerFrameCommitCallback("))
         assertTrue(
-            "等帧必须在截图循环里，且轮询到画面稳定为止",
-            c.contains("private fun awaitScreenStable(") &&
-                c.contains("private fun probeScreen(")
+            "handle 必须分发 extract：\n$c",
+            c.contains("\"extract\" -> opExtract(")
+        )
+        assertTrue(
+            "extract 必须走 evalInPage 拿页面脚本回值：\n$c",
+            c.contains("WebExtract.pageJs(") && c.contains("WebExtract.parse(")
+        )
+        // 参数是从请求里读的、夹过的，不是写死的 —— 否则 help 里说的 limit 是假的
+        assertTrue(
+            "limit 必须从请求里读再夹：\n$c",
+            c.contains("bodyIntOrNull(request, \"limit\"") && c.contains("WebExtract.clampLimit(")
+        )
+        assertTrue(
+            "text_chars 必须从请求里读再夹：\n$c",
+            c.contains("bodyIntOrNull(request, \"text_chars\"") && c.contains("WebExtract.clampTextChars(")
         )
     }
 
     @Test
-    fun `某屏画不出来不许交半张图`() {
-        // 5.9.9：那次半空白图是 ok:true + full_page:true 出去的 —— agent 会以为那就是整页。
-        // 这比修不好更糟：修不好 agent 知道，能骗过去 agent 就信了。
-        // 5.9.30 改成多屏之后更明显：**不能把已经拍好的那几屏照交**，那等于交一套残缺整页。
-        val body = source("WebAutomationService.kt")
-            .substringAfter("private fun walkScreens(")
-            .substringBefore("private class Screens(")
-        assertTrue("没找到 walkScreens 的函数体", body.length > 600)
-        assertTrue(
-            "某屏画不出来必须带屏号报错（不能悄悄跳过继续）：\n$body",
-            body.contains("ShotRunner.failure(2, screenNo, yDevice")
-        )
-        assertFalse(
-            "空图那一屏不许再报那句糊在一起的话：\n$body",
-            body.contains("nothing rendered (blank)")
-        )
+    fun `extract的输入框和按钮不许设上限`() {
+        // 用户明说怕"加了上限会漏掉搜索框"。搜索框在 inputs/buttons 里，
+        // 而且总在页面顶部 —— 所以这两张表**一个都不许截**，
+        // 只有 links 能给上限（并且要明说截了）。
+        val js = WebExtract.pageJs(limit = 7, textChars = 11)
+        val inputsAt = js.indexOf("querySelectorAll('input,textarea,select')")
+        val buttonsAt = js.indexOf("querySelectorAll('button,input[type=submit]")
+        assertTrue("没抓到输入框的扫描：$js", inputsAt > 0)
+        assertTrue("没抓到按钮的扫描：$js", buttonsAt > 0)
+        // 两段循环里都不许出现 L（链接上限）作为停止条件
+        val inputLoop = js.substring(inputsAt, buttonsAt)
+        assertFalse("输入框不许受 limit 限制：$inputLoop", inputLoop.contains("i<L"))
+        val linkStart = buttonsAt
+        val linkLoop = js.substring(linkStart, js.indexOf("r.title="))
+        assertFalse("按钮不许受 limit 限制：$linkLoop", linkLoop.contains("i<L"))
+        // 但链接**必须**受 limit 限制，而且要报总数与是否截断
+        assertTrue("链接必须受 limit 限制：$js", linkLoop.contains("r.links.length<L"))
+        assertTrue("链接总数必须一起报：$js", js.contains("r.links_total=tot"))
+        assertTrue("截了必须明说：$js", js.contains("r.links_truncated=tot>L"))
     }
 
     @Test
-    fun `滚不到位不许交残缺的屏`() {
-        // 页面劫持滚动、滚动中高度变了 —— 这时候拍到的屏是不该有的。
-        // 5.9.30 改成多屏之后更明显：**不能把已经拍好的那几屏照交**，
-        // 那等于交一套残缺整页，agent 会当成完整的看。
-        val body = source("WebAutomationService.kt")
-            .substringAfter("private fun walkScreens(")
-            .substringBefore("private class Screens(")
-        assertTrue("没找到 walkScreens 的函数体", body.length > 600)
+    fun `type的回车必须真的派发按键且默认不按`() {
+        val noEnter = WebOpScripts.type("#kw", "hi", true)
+        assertFalse("默认不许按回车：$noEnter", noEnter.contains("KeyboardEvent"))
+        val withEnter = WebOpScripts.type("#kw", "hi", true, enter = true)
+        assertTrue("enter:true 必须派发 Enter 按键：$withEnter", withEnter.contains("KeyboardEvent"))
+        assertTrue("keyCode 必须是 13：$withEnter", withEnter.contains("keyCode:13"))
+        // 派发不了要退回提交表单 —— 网站常常只认 keypress，不认 requestSubmit
         assertTrue(
-            "滚不到位必须带屏号报错，不能接着往下拍：\n$body",
-            body.contains("ShotRunner.failure(1, screenNo, yDevice)")
+            "Enter 派发不了必须退回提交表单，不能什么都不做：$withEnter",
+            withEnter.contains("requestSubmit") || withEnter.contains("form.submit()")
         )
+        val c = code("WebAutomationService.kt")
         assertTrue(
-            "文案要说清是页面不让滚（agent 才知道该换站还是该等）：\n$body",
-            body.contains("ShotRunner.failure(") && code("ShotRunner.kt").contains("would not scroll")
+            "opType 必须把 enter 读出来：\n$c",
+            c.contains("bodyOptBoolean(request, \"enter\"")
         )
     }
-
 }
 

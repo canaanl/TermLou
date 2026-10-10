@@ -180,9 +180,16 @@ class WebProtocolTest {
         // Android 上任何 app 访问 127.0.0.1 都不用权限，一条 curl 就拿到完整凭据。
         assertFalse("说明书绝不许印令牌", help.contains("deadbeef"))
         assertTrue("得说清令牌从哪儿来", help.contains("web.env"))
-        for (op in listOf("open", "wait", "eval", "html", "text", "click", "type", "select", "shot", "back", "reload", "cookies", "clear", "close", "ping")) {
+        for (op in listOf(
+            "open", "wait", "eval", "html", "extract", "text", "click", "type", "select",
+            "back", "reload", "cookies", "clear", "close", "ping", "diag"
+        )) {
             assertTrue("说明书缺少 $op", help.contains("\"$op\""))
         }
+        // 5.9.37 删掉整页截图。说明书里不许还留着它 ——
+        // agent 会照着说明书调一条根本不存在的指令，然后拿到 "unknown op"。
+        assertFalse("说明书不该再有 shot 指令", help.contains("\"shot\""))
+        assertFalse("说明书不该再有 shots 目录", help.contains("shots/"))
         // 5.9.5：此前这里断言的是 `~/web/web.env` —— 把错路径锁住了。Linux 里工作区挂在
         // /workspace，`~` 是 rootfs 里的 /root，所以那条路径 agent 根本打不开。
         assertTrue(help.contains("${WebProtocol.WEB_DIR}/web.env"))
@@ -220,7 +227,9 @@ class WebProtocolTest {
         val help = WebProtocol.help(39080)
         assertTrue("应说明只听 127.0.0.1", help.contains("127.0.0.1"))
         assertTrue("应说明 cookie 只覆盖当前页", help.contains("current page"))
-        assertTrue("应说明截图不会给白图", help.contains("blank"))
+        // 5.9.37：原来这里断言"应说明截图不会给白图"，截图功能整个删了。
+        // 换成 extract 的对应承诺 —— 扫不到东西时**直说**，不装作扫到了。
+        assertTrue("应说明 extract 扫不到时会直说", help.contains("扫不到东西时 note 会直说"))
     }
 
     @Test
@@ -263,60 +272,108 @@ class WebProtocolTest {
         val help = WebProtocol.help(39080)
         assertFalse("不该再出现 More information", help.contains("More information"))
         assertTrue(help.contains("document.title"))
+        // 5.9.37：搜索流程示例里的选择器是**示意图**（#kw 之类）。
+        // 说明书必须把它写成"照着 extract 的结果替换"，而不是让 agent 照抄一个假选择器。
+        assertTrue(
+            "搜索示例必须写清按 extract 报出来的 id 替换选择器：\n$help",
+            help.contains("像真人那样用这个浏览器") && help.contains("不靠猜")
+        )
     }
 
-    // ---------- 5.9.33：说明书跟着实际行为走 ----------
+    // ---------- 5.9.37：说明书跟着实际行为走 ----------
 
     @Test
     fun `说明书里不许再提1_5倍门槛`() {
-        // 门槛 5.9.33 已删。说明书还写"比视口高 1.5 倍"的话，agent 会以为
-        // 一屏半高的页面只有一张图 —— 而实际是比一屏高就分屏。
+        // 门槛 5.9.33 已删，整页截图 5.9.37 也整个删了。
+        // 说明书不许留任何"按屏数算"的旧说法 —— 那是已经不存在的世界。
         val help = WebProtocol.help(39080)
         assertFalse("门槛已删，说明书不该再提 1.5 倍：\n$help", help.contains("1.5 倍"))
+        assertFalse("不该再提屏数：\n$help", help.contains("一屏拍一张"))
+        assertFalse("不该再提不拼接：\n$help", help.contains("不拼接"))
+        assertFalse("不该再提 pages/screens 那套字段：\n$help", help.contains("full_page"))
     }
 
     @Test
-    fun `说明书说清一屏一张不拼接`() {
-        // 用户明说：不许拼接整页长图。agent 拿到 files 就该知道要按顺序读几张，
-        // 而不是去找一张 tall image。
+    fun `说明书说清extract的返回字段`() {
+        // agent 完全靠说明书知道 extract 回什么 —— 漏一个字段它就不知道去哪儿找。
         val help = WebProtocol.help(39080)
-        assertTrue("要写明一屏一张：\n$help", help.contains("一屏拍一张"))
-        assertTrue("要写明不拼接：\n$help", help.contains("不拼接"))
-        assertTrue("英文也要说一句：\n$help", help.contains("never stitched"))
-    }
-
-    @Test
-    fun `说明书说清shot不带参数且报哪些字段`() {
-        // 接口一个字都不许加参数 —— 说明书里的示例必须还是裸的 {"op":"shot"}
-        val help = WebProtocol.help(39080)
-        assertTrue("示例必须是裸 shot：\n$help", help.contains("{\"op\":\"shot\"}"))
-        assertFalse(
-            "shot 不带参数，说明书里不许出现 shot 跟参数同行：\n$help",
-            Regex("\\{\"op\":\"shot\"\\s*,").containsMatchIn(help)
-        )
-        for (f in listOf("files", "screens", "page_height", "full_page")) {
-            assertTrue("字段 $f 要写进说明书", help.contains(f))
+        for (f in listOf(
+            "url", "title", "description", "text",
+            "inputs", "buttons", "links", "links_total", "links_truncated"
+        )) {
+            assertTrue("extract 字段 $f 要写进说明书：\n$help", help.contains(f))
         }
     }
 
     @Test
-    fun `说明书说清width是一屏page_height才是整页`() {
-        // 这两个最容易用错：width/height 是**一屏**的尺寸。
-        // agent 拿 width/height 当整页尺寸去算缩放就会错。
+    fun `说明书说清extract的两个上限与默认值`() {
+        // 用户明说：上限要能被大模型自己改。所以默认值、封顶、越界怎么办都得写进去。
         val help = WebProtocol.help(39080)
+        assertTrue("要写 limit：\n$help", help.contains("\"limit\""))
+        assertTrue("要写 text_chars：\n$help", help.contains("\"text_chars\""))
+        // 默认值/封顶必须**引用常量**，不许在说明书里另抄一份数字（抄两份就会对不上）
+        assertTrue("默认链接数：\n$help", help.contains("默认 ${WebExtract.DEFAULT_LIMIT}"))
+        assertTrue("封顶链接数：\n$help", help.contains("${WebExtract.MAX_LIMIT}"))
+        assertTrue("默认正文字数：\n$help", help.contains("默认 ${WebExtract.DEFAULT_TEXT_CHARS}"))
         assertTrue(
-            "要写明 width/height 是一屏的尺寸：\n$help",
-            help.contains("width/height 是**一屏**的尺寸")
+            "越界要说明会夹住并标记：\n$help",
+            help.contains("limit_capped") && help.contains("limit_requested")
+        )
+        // 截断要明说 —— 瞒着会让 agent 以为那就是全部
+        assertTrue("要说明截了会明说：\n$help", help.contains("截了会明说"))
+    }
+
+    @Test
+    fun `说明书说清输入框和按钮永不截断`() {
+        // 这是用户最担心的一条：怕加了上限会漏掉搜索框。
+        // 说明书必须讲明白它为什么不会漏，否则 agent 会不敢用 extract。
+        val help = WebProtocol.help(39080)
+        assertTrue("要写明 inputs/buttons 永不截断：\n$help", help.contains("永不截断"))
+        assertTrue(
+            "要写明搜索框在哪张表里：\n$help",
+            help.contains("搜索框就在这里")
         )
     }
 
     @Test
-    fun `说明书说清部分失败是ok_false加partial`() {
-        // 半张图报成功比修不好更糟 —— 说明书必须让 agent 知道
-        // partial:true 时 files 只是已经拍好的那几屏，不是全的。
+    fun `说明书说清type的回车用法`() {
+        // 用户明说要加回车：真人搜索是打完字按回车，不是去找那个又小又难找的提交按钮。
         val help = WebProtocol.help(39080)
-        assertTrue("要写明 partial：\n$help", help.contains("partial:true"))
-        assertTrue("要写明照交已拍好的屏：\n$help", help.contains("照交"))
+        assertTrue("要写 enter:true：\n$help", help.contains("\"enter\":true"))
+        assertTrue("要说明填完立刻按回车：\n$help", help.contains("填完按回车"))
+        // 回车之后页面会跳转，必须等落地再回 url —— 不然 agent 拿到的是跳转前的地址
+        assertTrue("要说明回车后要等新页：\n$help", help.contains("type 的 enter:true 是**填完立刻按回车**"))
+    }
+
+    @Test
+    fun `说明书给出一条完整的搜索流程`() {
+        // 这个功能的全部意义就是"让 agent 像真人一样搜索"。
+        // 说明书只列指令、不给顺序，agent 还是会乱来 —— 所以顺序必须写死一条范例。
+        val help = WebProtocol.help(39080)
+        val start = help.indexOf("搜索 ——")
+        assertTrue("说明书里没有搜索那一节：\n$help", start > 0)
+        val section = help.substring(start, help.indexOf("selector 选择器:", start))
+        val open = section.indexOf("\"op\":\"open\"")
+        val ext = section.indexOf("\"op\":\"extract\"")
+        val type = section.indexOf("\"op\":\"type\"")
+        val click = section.indexOf("\"op\":\"click\"")
+        assertTrue("搜索那一节缺步骤：\n$section",
+            open > 0 && ext > 0 && type > 0 && click > 0)
+        assertTrue("顺序必须是 open → extract → type → click：\n$section",
+            open < ext && ext < type && type < click)
+    }
+
+    @Test
+    fun `说明书说清视口是手机宽度且缩放只在显示层`() {
+        // 5.9.34 的旧说法是"视口 = 窗口（屏宽÷3）、不缩放"，5.9.36/5.9.37 已经不成立。
+        // 说明书再那么写，agent 会按 160dp 去挑选择器，然后全落空。
+        val help = WebProtocol.help(39080)
+        assertTrue(
+            "要写明按手机宽度排版：\n$help",
+            help.contains("${WebProtocol.VIEWPORT_W_DP}×${WebProtocol.VIEWPORT_H_DP}dp")
+        )
+        assertFalse("不该再说 160dp 那种窄排版：\n$help", help.contains("160dp"))
+        assertFalse("不该再说'不缩放'：\n$help", help.contains("**不缩放**"))
     }
 }
 
