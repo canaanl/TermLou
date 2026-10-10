@@ -718,26 +718,28 @@ class RegressionScanTest {
     }
 
     @Test
-    fun `back 的数字必须一次问全`() {
-        // 5.9.37 报出过 `no history to go back (history entries: 4)` ——
-        // 说没历史，括号里又写着有 4 条。因为报的是"清单总长"、判的是"当前位置"。
+    fun `back 必须整个删掉不许回来`() {
+        // 5.9.37 它报过 `no history to go back (history entries: 4)`（自相矛盾）；
+        // 5.9.38 把数字修对了，真机却报出更刺眼的一句：
+        // `you are on entry 4 of 4 (behind you: 3)` 却依然拒绝退。
+        //
+        // 真因是平台侧的：安卓 WebView 的后退在**从没被手指点过**的网页里会一直装死
+        // （canGoBack() 说没得退、goBack() 不动，而历史是好的）。我们的窗口按两条硬需求
+        // 永远不可能被点（不吃焦点、不吃触摸），所以这个功能**永久站在那块暗礁上**。
+        //
+        // 既然不是必需的（要回上一页就 open 上一条网址），5.9.39 整个删掉 ——
+        // 这一类问题连存在的机会都没有了。这条锁就是防止它再长回来。
         val svc = code("WebAutomationService.kt")
-        assertFalse(
-            "那句自相矛盾的话不许回来：\n$svc",
-            svc.contains("no history to go back")
-        )
-        assertTrue(
-            "必须一次问全（能不能退 / 当前位置 / 总长）：\n$svc",
-            svc.contains("wv.canGoBack(), list.currentIndex, list.size")
-        )
-        assertTrue(
-            "\"问不到\"不许冒充\"没有历史\"：\n$svc",
-            svc.contains("could not read the page history")
-        )
-        assertFalse(
-            "`?: false` 把问不到当成没有 —— 不许再用：\n$svc",
-            svc.contains("canGoBack() } ?: false")
-        )
+        assertFalse("back 指令不许回来：\n$svc", svc.contains("\"back\" -> opBack"))
+        assertFalse("opBack 不许回来：\n$svc", svc.contains("private fun opBack("))
+        assertFalse("canGoBack() 是会装死的那个 —— 全项目不许再用：\n$svc", svc.contains("canGoBack("))
+        assertFalse("goBack() 同理：\n$svc", svc.contains("goBack("))
+        assertFalse("那句自相矛盾的话不许回来：\n$svc", svc.contains("no history to go back"))
+        // help 里也不许再有它，但要**说清为什么没有**（免得 agent 以为是漏了）
+        val h = WebProtocol.help(39080)
+        assertFalse("说明书里不许再有 back 指令：\n$h", h.contains("\"back\""))
+        assertTrue("说明书要讲清\"没有后退，用 open 上一条网址\"：\n$h", h.contains("没有后退指令"))
+        assertTrue("英文也要说一句：\n$h", h.contains("There is no back command"))
     }
 
     @Test

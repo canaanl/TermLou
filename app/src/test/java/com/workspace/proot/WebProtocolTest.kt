@@ -182,10 +182,12 @@ class WebProtocolTest {
         assertTrue("得说清令牌从哪儿来", help.contains("web.env"))
         for (op in listOf(
             "open", "wait", "eval", "html", "extract", "text", "click", "type", "select",
-            "back", "reload", "clear", "close", "ping", "diag"
+            "reload", "clear", "close", "ping", "diag"
         )) {
             assertTrue("说明书缺少 $op", help.contains("\"$op\""))
         }
+        // 5.9.39：back 整个删掉（平台侧的后退在"从没被点过"的窗口里装死，见 RegressionScanTest）
+        assertFalse("说明书不该再有 back 指令", help.contains("\"back\""))
         // 5.9.37 删掉整页截图。说明书里不许还留着它 ——
         // agent 会照着说明书调一条根本不存在的指令，然后拿到 "unknown op"。
         assertFalse("说明书不该再有 shot 指令", help.contains("\"shot\""))

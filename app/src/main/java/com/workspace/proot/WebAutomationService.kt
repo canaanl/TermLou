@@ -438,7 +438,6 @@ class WebAutomationService : Service() {
                 "type" -> opType(request, cancelled)
                 "select" -> opSelect(request, cancelled)
                 "extract" -> opExtract(request, cancelled)
-                "back" -> opBack(request, cancelled)
                 "reload" -> opReload(request, cancelled)
                 "clear", "close" -> opClose()
                 else -> WebProtocol.errJson("unknown op: $op")
@@ -1420,73 +1419,25 @@ class WebAutomationService : Service() {
     }
 
     /**
-     * `back`：后退（可带 `wait`）。
+     * `reload`：重载当前页（可带 `wait`）。
      *
-     * 5.9.4 修：`goBack()` 是**异步**导航，此前紧接着读 `wv.url` 拿到的还是**跳转前**的
-     * 地址，害得调用方只能自己去 eval `location.href`。现在等新页就绪后再读 url，
-     * 语义与 `reload` 对齐。
+     * ## 这里没有 `back`（5.9.39 删掉）
      *
-     * ## ⚠ 5.9.38 修：那句话的两个数字会打架，而且"问不到"被当成"没有"
+     * 安卓 WebView 的"后退"在一个**从没被手指点过的网页**里会一直说"没得退"：
+     * `canGoBack()` 返回 false、`goBack()` 不动 —— 而历史其实是好的
+     * （`history.length` 与原生列表都数得出条目）。这是平台侧的坑，
+     * 有 Tauri 项目与 Chromium 官方 issue 的同类复现记录（"在 WebView 上点一下，
+     * 返回就正常了"）。
      *
-     * 5.9.37 真机报出来的是：
+     * 而我们的窗口**永远不可能被点**，这是两条硬需求决定的、不会变：
+     *  - `FLAG_NOT_FOCUSABLE`：不吃输入法焦点，否则 agent 的 `type` 会失灵
+     *  - `DragFrameLayout` 吃掉全部触摸：点小窗唯一的行为是拖动
      *
-     * ```
-     * no history to go back (history entries: 4)
-     * ```
-     *
-     * 说"没历史"，括号里又写着有 4 条 —— 因为两个数**根本不是同一样东西**：
-     *
-     * - `canGoBack()` 问的是"**我身后**有没有页"（当前位置 > 第 1 条）
-     * - `copyBackForwardList().size` 报的是"**整个清单**几条"（身后的 + 当前 + 前面的）
-     *
-     * 站在第 1 条上、清单总共 4 条，两个就同时成立。**位置是 0 时身后确实没东西**，
-     * 所以它挡得对，但报出来的数字把人引到了完全错的方向。
-     * （顺带：用户在页面里用 `eval` 查的 `history.length` **也是清单总长**，
-     * 它不会随后退变小 —— 退到底了照样是 4。那个数证明不了"身后有 4 页"。）
-     *
-     * 现在：一次问全（能不能退 / 当前位置 / 清单总长 / 身后几条 / 前面几条），
-     * 数字**互相能对上**；而且"问不到"不再冒充"没有"。
+     * 所以这个功能**永久站在那块暗礁上**。既然不是必需的
+     * （要回上一页，`open <上一条网址>` 就行，而那个网址 agent 手上一直有：
+     * `extract` / `type` 回车 / `open` 的返回里都带着 `url`），
+     * 就把它整个删掉 —— 这一类问题连存在的机会都没有了。
      */
-    private fun opBack(request: WebProtocol.Request, cancelled: () -> Boolean): String {
-        val wv = webView ?: return WebProtocol.errJson("no page open")
-        // 一次请求拿全：分开问会得到互相矛盾的答案（5.9.37 就是这么报出 4 条的）
-        val stack = onMain {
-            val list = wv.copyBackForwardList()
-            Triple(wv.canGoBack(), list.currentIndex, list.size)
-        } ?: return WebProtocol.errJson(
-            "could not read the page history (main thread did not answer) - retry, " +
-                "or use {\"op\":\"open\"} to load the page again"
-        )
-        val (canGoBack, index, size) = stack
-        if (!canGoBack) {
-            val behind = index             // 身后有几条 = 当前位置（0-based）
-            val ahead = (size - 1) - index
-            return WebProtocol.errJson(
-                "nothing behind to go back to: you are on entry ${index + 1} of $size " +
-                    "(behind you: $behind, ahead of you: $ahead) - " +
-                    "if a navigation is still in flight, wait for it first: {\"op\":\"wait\"}"
-            )
-        }
-        markNavigationStarted()
-        onMain { wv.goBack() } ?: return WebProtocol.errJson("back failed")
-        val ready = waitForPage(WebProtocol.bodyInt(request, "wait", 0).coerceIn(0, MAX_WAIT_MS), cancelled)
-        val u = probeUsability(wv)
-        if (u is WebUsability.Unusable) return WebProtocol.errJson(u.reason)
-        val now = onMain {
-            val list = wv.copyBackForwardList()
-            list.currentIndex to list.size
-        }
-        return WebProtocol.okJson(
-            "msg" to "back",
-            "ready" to ready,
-            "url" to (onMain { wv.url } ?: ""),
-            "entry" to ((now?.first ?: -1) + 1),
-            "entries" to (now?.second ?: -1),
-            *WebUsability.fields(u, ready).toTypedArray()
-        )
-    }
-
-    /** `reload`：重载当前页（可带 `wait`）。 */
     private fun opReload(request: WebProtocol.Request, cancelled: () -> Boolean): String {
         val wv = webView ?: return WebProtocol.errJson("no page open")
         markNavigationStarted()

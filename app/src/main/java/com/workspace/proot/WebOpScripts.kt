@@ -251,7 +251,7 @@ internal object WebOpScripts {
      *  - 本地 node 复现过：`SyntaxError: Invalid or unexpected token`，
      *    双反斜杠（`"\\n"`）才通过。
      *  - 真机表现：`usable` **对每一个页面**都是 `Unknown("probe returned no value")`，
-     *    `open`/`wait`/`click`/`back`/`reload` 五处都瞎。
+     *    `open`/`wait`/`click`/`type`/`reload` 五处都瞎。
      *  - 而且 Kotlin 侧 `split('\n')` 也错：正文（`innerText` 截 400 字）几乎必然
      *    自带换行，`parts[2]` 拿到的是正文第二行而不是 protocol，
      *    **错误页检测因此失效**。

@@ -7,7 +7,7 @@ package com.workspace.proot
  * 「明明没加载好，却报 ready:true」——5.9.0 到 5.9.4 连续四个版本都是这样挂的。
  *
  * ⚠ 5.9.38 删掉了 `readyUnwaitedAfterNavigation`：它从写下来那天起**没有任何调用方**
- * （`open`/`reload`/`back` 是直接调 `waitForPage`，语义等价），却带着 4 条测试 ——
+ * （`open`/`reload` 是直接调 `waitForPage`，语义等价），却带着 4 条测试 ——
  * **锁着一个没人用的函数**。死代码不留（这次不删，下次就会有人以为它在生效）。
  */
 object WebReady {
