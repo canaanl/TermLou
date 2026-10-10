@@ -63,6 +63,25 @@ object WebFloatWindow {
     }
 
     /**
+     * 把 agent 视口（412×892dp）缩进窗口所需的 **x/y 独立因子**。
+     *
+     * 5.9.36 请回来（5.9.34 误删）。**缩放不是第 2 屏失败的原因** ——
+     * 没有缩放时第 2 屏照样失败 —— 但删掉它的代价是画质：视口跟着窗口变小，
+     * 字从 48px 掉到 19px，发虚。用户要的是清楚。
+     *
+     * 缩放只发生在**显示**这一层：WebView 的 `scaleX/scaleY` 恒为 1，
+     * 缩放加在 `ScaleFrameLayout` 容器上（见 [WebFloatWindowHost]）。
+     *
+     * 两个方向**独立**算（不是 `min`）：窗口比例跟屏幕走（1:2.1），
+     * 视口比例是 412:892（1:2.165），两者不等时等比缩会留边。
+     */
+    fun scaleFactors(winW: Int, winH: Int, viewW: Int, viewH: Int): Pair<Float, Float> {
+        val sx = if (winW > 0 && viewW > 0) winW.toFloat() / viewW.toFloat() else 1f
+        val sy = if (winH > 0 && viewH > 0) winH.toFloat() / viewH.toFloat() else 1f
+        return sx.coerceAtLeast(1e-4f) to sy.coerceAtLeast(1e-4f)
+    }
+
+    /**
      * 拖动后把窗口夹回屏内。
      *
      * 不夹的话用户能把它拖到屏幕外，然后"找不回来了" —— 悬浮窗没有系统级的

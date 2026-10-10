@@ -355,48 +355,54 @@ class RegressionScanTest {
     // ---------- 5.9.34：视口就是窗口，没有缩放；判据与动作分开 ----------
 
     @Test
-    fun `视口就是窗口不许有第二个数`() {
-        // 以前有两个数：412dp 的视口 + 屏宽1/3 的窗口，中间靠缩放因子联系。
-        // 两个数就意味着两者可能对不上 —— 而"对不上"正是整页截图拍不出来的土壤。
-        // 全工程只该剩 WebFloatWindow.windowSize 一个数。
+    fun `视口是412dp缩放只发生在显示层`() {
+        // 5.9.34 我删掉视口常数、理由是"缩放是第 2 屏失败的原因"。
+        // **那个理由是错的** —— 5.9.34/5.9.35 都没有缩放，第 2 屏照样失败。
+        // 缩放从来不是原因；删掉它的代价只有画质（360px 视口里字 19px，发虚）。
+        //
+        // 5.9.36 请回来：视口 412×892dp，缩放只发生在显示那一层，
+        // agent 的版式与坐标一个像素都不变。
         val proto = source("WebProtocol.kt")
-        assertFalse(
-            "视口常数必须删掉：它和窗口是两个数，中间那层缩放正是坏图的来源：\n$proto",
-            proto.contains("VIEWPORT_W_DP")
+        assertTrue(
+            "视口常数必须回来（用户要的是清楚，不是老人机小字）：\n$proto",
+            proto.contains("const val VIEWPORT_W_DP = 412") &&
+                proto.contains("const val VIEWPORT_H_DP = 892")
         )
         val win = source("WebFloatWindow.kt")
-        assertFalse(
-            "窗口几何里不许再有缩放因子：\n$win",
+        assertTrue(
+            "缩放因子必须回来：\n$win",
             win.contains("fun scaleFactors(")
         )
         val svc = source("WebAutomationService.kt")
         assertTrue(
-            "视口必须就是窗口尺寸：\n$svc",
-            svc.contains("WebFloatWindow.windowSize(dm.widthPixels, dm.heightPixels)")
+            "视口必须由 412dp × density 算出来：\n$svc",
+            svc.contains("WebProtocol.VIEWPORT_W_DP * d")
         )
     }
 
     @Test
-    fun `全工程不许再有任何显示缩放`() {
-        // 这是 5.9.34 的根：安卓是照着**屏幕上实际大小**决定网页要画多少的，
-        // 缩放一压它就只画那一小块，其余部分**从来没被画过**（不是画了看不见）。
-        // 真机 5.9.31 第 3 屏、5.9.32 第 2 屏、5.9.33 第 2 屏，全是它。
+    fun `显示缩放必须挂在容器上不许挂WebView`() {
+        // 这条 5.9.31 就立对了，至今有效：缩放挂 WebView 自己身上会让截图
+        // 必须"临时归 1、画完 finally 还原"，每屏来回切两次视图变换搅乱合成器。
         //
-        // ⚠ 查的是**赋值语句**，不是那个词出现在哪：注释里可以写"以前缩放挂在…"
-        val files = listOf("WebFloatWindowHost.kt", "WebAutomationService.kt", "WebFloatWindow.kt")
-        for (f in files) {
-            val c = code(f)
-            for (m in Regex("""\.(scaleX|scaleY)\s*=[^=]""").findAll(c)) {
-                throw AssertionError(
-                    "$f 里出现了显示缩放赋值 `${m.value}` —— 那会让安卓只画屏幕上那一小块：" +
-                        "\n${c.substring(maxOf(0, m.range.first - 200), m.range.last + 100)}"
-                )
-            }
-            assertFalse(
-                "$f 里不许再有缩放容器那个类：\n$c",
-                c.contains("private class Scale" + "FrameLayout")
-            )
-        }
+        // 5.9.34 曾把整个缩放删掉（理由是错的），5.9.36 请回来 —— 但**位置不能变**。
+        val c = code("WebFloatWindowHost.kt")
+        assertTrue(
+            "必须有独立的缩放容器：\n$c",
+            c.contains("private class Scale" + "FrameLayout")
+        )
+        assertTrue(
+            "缩放必须加在容器上：\n$c",
+            c.contains("layer.scaleX = sx") && c.contains("layer.scaleY = sy")
+        )
+        assertTrue(
+            "容器必须夹在窗口与 WebView 之间：\n$c",
+            c.contains("host.addView(scaled,") && c.contains("layer.addView(wv)")
+        )
+        assertFalse(
+            "WebView 自己的 scaleX/scaleY 是常量 1，任何人都不许去动：\n$c",
+            Regex("""wv\.scale[XY]\s*=""").containsMatchIn(c)
+        )
     }
 
     @Test
@@ -616,28 +622,44 @@ class RegressionScanTest {
         // 1. 截图绕不开它 → 只能"临时归 1、画完 finally 还原"（事后补救）；
         // 2. 每屏来回切两次视图变换去搅合成器
         //    → 真机症状：整页截图前两屏正常，**第 3 屏起画面不跟随滚动**。
-        //
-        // 5.9.34 干脆**把缩放整个删掉**：视口就是窗口。
-        // 这条锁还在：WebView 的 scale 是常量 1，任何人都不许去动。
+        // 5.9.34 曾把缩放整个删掉，5.9.36 请回来（理由见「视口是412dp缩放只发生在显示层」）。
+        // 这条锁不变：WebView 的 scale 是常量 1，任何人都不许去动。
         for (f in listOf("WebAutomationService.kt", "WebFloatWindowHost.kt")) {
             val c = code(f)
             assertFalse(
-                "$f 里不许改 WebView 的 scale —— 缩放会让安卓只画屏幕上那一小块：\n$c",
+                "$f 里不许改 WebView 的 scale —— 截图 1:1 结构上就成立，别去破坏它：\n$c",
                 c.contains("wv.scaleX =") || c.contains("wv.scaleY =")
             )
         }
     }
 
     @Test
-    fun `I1_WebView直接挂在窗口根下尺寸就是窗口尺寸`() {
-        val c = code("WebFloatWindowHost.kt")
+    fun `I1_视口是412dp不是一个跟着窗口走的数`() {
+        // 视口必须锁死 412×892dp，靠缩放塞进小窗 —— 这样 agent 的版式与坐标
+        // 一个像素都不变，且小窗里的字是 48px 而不是 19px。
+        val c = code("WebAutomationService.kt")
         assertTrue(
-            "WebView 必须直接 addView 到 host（中间不许再有别的层）：\n$c",
-            c.contains("host.addView(wv)")
+            "视口尺寸必须由 VIEWPORT_W_DP/H_DP × density 算：\n$c",
+            c.contains("WebProtocol.VIEWPORT_W_DP * d") &&
+                c.contains("WebProtocol.VIEWPORT_H_DP * d")
         )
+        // ⚠ 5.9.36 的根因改动：WebView 必须换软件渲染层。
+        // 硬件加速时 Chromium 只把**已光栅化**的区域交给 wv.draw(canvas)；
+        // 滚动后新位置的光栅化还没完成 → draw() 拿回空白 → 第 2 屏永远拍不出来。
+        // 真机 5.9.31 第 3 屏 / 5.9.32 第 2 屏 / 5.9.33 第 2 屏 / 5.9.34 第 2 屏 / 5.9.35 第 2 屏，
+        // 五个版本同一个症状 —— 因为取像素的那一行（wv.draw）从来没换过，全在改"等多久"。
+        assertTrue(
+            "WebView 必须换软件渲染层（LAYER_TYPE_SOFTWARE）—— 这是第 2 屏拍不出来的根因：\n$c",
+            c.contains("setLayerType(View.LAYER_TYPE_SOFTWARE, null)")
+        )
+        // ⚠ 只查 viewportSizePx 的函数体：attachFloatWindow 里**也要**算窗口尺寸
+        // （那是小窗自己的宽高，不是视口），全文件搜会误伤。
+        val vp = c.substringAfter("private fun viewportSizePx(")
+            .substringBefore("private fun viewWidthPx(")
+        assertTrue("没抓到 viewportSizePx 的函数体", vp.length > 80)
         assertFalse(
-            "attachWebView 里不许再设 pivot 或缩放：\n$c",
-            c.contains("pivotX =") || c.contains("pivotY =")
+            "viewportSizePx 里不许拿窗口尺寸当视口 —— 那会让字缩到 19px：\n$vp",
+            vp.contains("WebFloatWindow.windowSize(")
         )
     }
 

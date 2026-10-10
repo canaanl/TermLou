@@ -31,14 +31,18 @@ object WebProtocol {
     /** 产物目录在 Linux 侧的路径（端口、令牌、截图、cookie 都在底下）。 */
     const val WEB_DIR = "$WORKSPACE_MOUNT/web"
 
-    // 5.9.34：**视口不再是常数。**
-    //
-    // 以前这里锁死着一个 412（dp），靠一个缩放因子把它塞进 1/3 屏宽的小窗 ——
-    // 而安卓正是照着那个被压过的大小决定"网页要画多少"，
-    // 于是 1236×2676 里只有 480×1056 被画过，整页截图永远停在第 2 屏。
-    //
-    // 现在视口 = 窗口尺寸 = 屏宽 ÷ 3（见 [WebFloatWindow.windowSize]），
-    // 全工程只有这一个数。代价是网页跟着变窄（160dp），用户明确接受。
+    /**
+     * 视口尺寸（dp）：页面按手机竖屏渲染，截图与取文本都基于它。
+     *
+     * 5.9.34 我把它删掉、改成"视口 = 窗口"（160dp），理由是"缩放是第 2 屏的原因"。
+     * **那个理由是错的** —— 5.9.34/5.9.35 都没有缩放，第 2 屏照样失败。
+     * 缩放从来不是原因，而为它付出的代价是画质（360px 视口里字只有 19px，发虚）。
+     *
+     * 5.9.36 请回来：用户要的是**清楚**。缩放只发生在**显示**那一层
+     * （见 [WebFloatWindow.scaleFactors]），agent 的版式与坐标一个像素都不变。
+     */
+    const val VIEWPORT_W_DP = 412
+    const val VIEWPORT_H_DP = 892
 
     data class Request(val method: String, val path: String, val token: String, val body: String)
 

@@ -493,6 +493,14 @@ class WebAutomationService : Service() {
         val h = viewHeightPx()
         val wv = WebView(this)
         wv.setBackgroundColor(Color.WHITE)
+        // 5.9.36：WebView 换成**软件渲染**。这是公开 API（View.setLayerType，公开）。
+        //
+        // 为什么：硬件加速时 Chromium 只把"已经光栅化过的那块"交给 draw()，
+        // 滚动后新位置的光栅化还没完成，draw() 拿回空白。
+        // 软件渲染时 WebView 每次 draw() 重新渲染整页，不依赖光栅化缓存。
+        // 代价：CPU 占用略高（大页面），但截图正确率大幅提升。
+        @Suppress("DEPRECATION")
+        runCatching { wv.setLayerType(View.LAYER_TYPE_SOFTWARE, null) }
         wv.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -540,18 +548,30 @@ class WebAutomationService : Service() {
     }
 
     /**
-     * 视口尺寸 —— **就是窗口尺寸**（5.9.34）。
+     * 视口尺寸 —— **412×892dp × density**（5.9.36 把缩放请回来了）。
      *
-     * 以前是 `VIEWPORT_W_DP(412) × density`，靠一个缩放因子塞进 1/3 屏宽的小窗。
-     * 而安卓正是照着那个被压过的大小决定"网页要画多少"，
-     * 于是 1236×2676 里只有 480×1056 被画过 —— 整页截图永远停在第 2 屏。
+     * ## 为什么请回来
      *
-     * 现在全工程只有这一个数：网页多大，窗口就多大，一个像素对一个像素。
-     * 代价是网页变成 160dp 宽（用户明确接受：字大、像老人机）。
+     * 5.9.34 我把它改成"视口 = 窗口"（160dp 宽），理由是"缩放是第 2 屏的原因"。
+     * **那个理由是错的** —— 5.9.34/5.9.35 都没有缩放，第 2 屏照样失败。
+     * 缩放从来不是原因，而我为它付出了画质：360px 视口里字只有 19px，发虚。
+     *
+     * 用户要的是**清楚**。所以视口改回 412dp（1236×2676），靠
+     * [WebFloatWindow.scaleFactors] 缩进小窗显示。
+     *
+     * ## 真正的根因是别的（5.9.36）
+     *
+     * 取像素的那一行是 `wv.draw(canvas)`。硬件加速时 Chromium 只把**已光栅化**
+     * 的区域交给 `draw()`；滚动后新位置的光栅化还没完成，于是 `draw()` 拿回空白。
+     * `setLayerType(LAYER_TYPE_SOFTWARE)` 让 WebView 每次 `draw()` 重新渲染，
+     * 不依赖光栅化缓存 —— 这才是根治，见 [ensureWebView]。
+     *
+     * ⚠ 缩放挂在**容器**上（5.9.31 的结论），WebView 自己的 scale 恒为 1。
      */
     private fun viewportSizePx(): Pair<Int, Int> {
-        val dm = resources.displayMetrics
-        return WebFloatWindow.windowSize(dm.widthPixels, dm.heightPixels)
+        val d = resources.displayMetrics.density
+        return (WebProtocol.VIEWPORT_W_DP * d).toInt().coerceAtLeast(1) to
+            (WebProtocol.VIEWPORT_H_DP * d).toInt().coerceAtLeast(1)
     }
 
     private fun viewWidthPx(): Int = viewportSizePx().first
@@ -1251,13 +1271,6 @@ class WebAutomationService : Service() {
                     measuredPageHeight, unsettled
                 ))
             }
-            if (!scrollDocumentTo(wv, ShotRunner.toCss(yDevice, density), cancelled)) {
-                return done(Screens(
-                    worstWaits, settledUpFront,
-                    ShotRunner.failure(1, screenNo, yDevice),
-                    measuredPageHeight, unsettled
-                ))
-            }
 
             // 2. 等这一屏**画面画完**。
             //
@@ -1268,12 +1281,21 @@ class WebAutomationService : Service() {
             // 这里直接在**工作线程**上等它。
             frameCommitsThisRun = 0
             val ready = awaitScreenStable(wv, vw, vh)
+            if (ready == null) {
+                // 探针连图都画不出来 —— 卡在**第 3 步**（5.9.36 与"画面是白的"分开）。
+                // 第 3 步压根没走到：探针就空了，说明"印的手伸不进去"。
+                return done(Screens(
+                    worstWaits, settledUpFront,
+                    ShotRunner.failure(3, screenNo, yDevice, "probe could not be drawn at all"),
+                    measuredPageHeight, unsettled
+                ))
+            }
             if (!ready.hasContent || ready.bitmap == null) {
+                // 一直是白的 —— 卡在**第 2 步**（画面没画出来），
+                // 不是第 3 步。5.9.34 这里贴错了标签，害我只能靠反推。
                 ready.bitmap?.recycle()
                 return done(Screens(
                     worstWaits, settledUpFront,
-                    // 一直是白的 —— 卡在**第 2 步**（画面没画出来），
-                    // 不是第 3 步。5.9.34 这里贴错了标签，害我只能靠反推。
                     ShotRunner.failure(2, screenNo, yDevice, "within ${SHOT_FRAME_BUDGET_MS}ms"),
                     measuredPageHeight, unsettled
                 ))
@@ -1369,59 +1391,37 @@ class WebAutomationService : Service() {
     )
 
     /**
-     * 等到"这一屏**画面画完**"为止。**探针**，不拍整屏。
-     *
-     * ## 判据：连续两次探针指纹相同
-     *
-     * 探针是 [ShotRunner.PROBE_SIZE] 见方的一张小图（把整个视口缩进去）。
-     * 它只回答"画面变了没有"，**不拿去交差** —— 交出去的那一屏是下面原尺寸画的。
-     *
-     * 为什么要分开：5.9.33 把这两步合成了一步，于是截图这条路一瞎，
-     * 循环只剩"一直白 → 报 blank"一个结局。分开之后卡在哪一步能直接说。
-     *
-     * 三种结局：
-     *
-     * - 连两次相同 → 画完了，才去拍整屏（`settled = true`）
-     * - 变了但一直没稳 → 照收，但 `settled = false`，note 里明写这一屏可能还在加载
-     * - 一直是同一张 / 一直是白的 → 返回 null，调用方报出卡在第几步
-     */
-    /**
      * 等到"这一屏**画面画完**"为止。
      *
      * ## ⚠ 这个方法**跑在工作线程上，绝不能整体丢进主线程**（5.9.35）
      *
- * 5.9.31–5.9.34 它是被主线程整个包住的，
-     * 于是循环里的 `Thread.sleep` 全在主线程上睡：
-     *
-     * ```
-     * 工作线程                      主线程
-     * onMain{ awaitScreenStable } -> [探针 sleep sleep sleep …] 4 秒
-     *                                  ↑ 堵着
-     *                          网页要把新画面交给主线程画 → 永远画不出来
-     * ```
+     * 5.9.31–5.9.34 它是被主线程整个包住的，于是循环里的 Thread.sleep
+     * 全在主线程上睡；而网页要把新画面交给主线程画，主线程在睡就永远画不出来。
      *
      * 真机症状：第 1 屏正常（内容早就画好了，不需要画新的），
      * 第 2 屏开始整片空白 4 秒 —— `screen 2: nothing rendered`。
      *
-     * 现在：**等待在��作线程**做，主线程只在两个瞬间被借用，
-     * 且都是**立刻返回**的短操作 —— 注册帧回调、画那张 48 见方的探针。
+     * 现在：等待在工作线程做，主线程只在两个瞬间被借用，进去就出来：
+     * 注册帧回调、画那张 48 见方的探针。
      *
      * ## 判据：连续两次探针指纹相同
      *
      * 探针只回答"画面变了没有"，**不拿去交差** —— 交出去的是原尺寸那一屏。
      *
-     * ## 三种结局
+     * ## 四种结局（5.9.36：探针画不出来和画面一直是白的是两回事，分开）
      *
-     * - 连两次相同 → 画完了，才去拍整屏（`settled = true`）
-     * - 变了但一直没稳 → 照收，但 `settled = false`，note 里明写这屏可能还在加载
-     * - 一直是白的 → 返回 `hasContent = false`，调用方报**第 2 步**（不是第 3 步）
+     * - 连两次相同 → 画完了，才去拍整屏（settled = true）
+     * - 变了但一直没稳 → 照收，但 settled = false，note 里明写这屏可能还在加载
+     * - 一直是白的 → 返回 hasContent = false，调用方报**第 2 步**
+     * - 探针连图都画不出来 → 返回 null，调用方报**第 3 步**
      *
-     * @return 画好了就带位图；一直是白的返回 `hasContent=false`；拍不出来返回 null
+     * @return 画好了就带位图；一直是白的返回 hasContent=false；探针都画不出来返回 null
      */
-    private fun awaitScreenStable(wv: WebView, vw: Int, vh: Int): ScreenReady {
+    private fun awaitScreenStable(wv: WebView, vw: Int, vh: Int): ScreenReady? {
         val deadline = System.currentTimeMillis() + SHOT_FRAME_BUDGET_MS
         var waits = 0
         var lastPrint = 0L
+        var probeFailed = false      // 探针连图都画不出来（区别于"画面一直是白的"）
         while (true) {
             // 主线程：注册帧回调（立刻返回）。信号由主线程派发，所以只能记标志位，
             // 绝不能在这里等 —— 堵着主线程等主线程，注定等不到。
@@ -1434,10 +1434,11 @@ class WebAutomationService : Service() {
             if (observedFrame) frameCommitsThisRun++
 
             if (probe == null) {
+                // ⚠ 探针都画不出来 —— 这是"印的手伸不进去"，不是"画面是白的"（5.9.36 分开）。
+                // 立刻放弃：再等下去结果一样，只会白白浪费 4 秒。
+                probeFailed = true
                 waits++
-                if (System.currentTimeMillis() >= deadline) {
-                    return ScreenReady(null, 0L, false, waits, false)
-                }
+                if (System.currentTimeMillis() >= deadline) return null
                 runCatching { Thread.sleep(SHOT_FRAME_POLL_MS) }   // ← 工作线程
                 continue
             }
@@ -1453,7 +1454,7 @@ class WebAutomationService : Service() {
                 // 窗口里一个像素都没画出来 —— 照实说，别等满预算再报一句含糊的 blank
                 waits++
                 if (System.currentTimeMillis() >= deadline) {
-                    return ScreenReady(null, 0L, false, waits, false)
+                    return if (probeFailed) null else ScreenReady(null, 0L, false, waits, false)
                 }
                 runCatching { Thread.sleep(SHOT_FRAME_POLL_MS) }   // ← 工作线程
                 continue
@@ -1464,7 +1465,7 @@ class WebAutomationService : Service() {
                 val bmp = onMain { captureScreen(wv, vw, vh) }
                 if (bmp == null || !hasContent(bmp)) {
                     bmp?.recycle()
-                    return ScreenReady(null, 0L, false, waits, false)
+                    return null
                 }
                 return ScreenReady(bmp, WebShotSampler.fingerprint(bmp.width, bmp.height) { x, y ->
                     bmp.getPixel(x, y)
@@ -1477,7 +1478,7 @@ class WebAutomationService : Service() {
                 val final = onMain { captureScreen(wv, vw, vh) }
                 if (final == null || !hasContent(final)) {
                     final?.recycle()
-                    return ScreenReady(null, 0L, false, waits, false)
+                    return null
                 }
                 val finalPrint = WebShotSampler.fingerprint(final.width, final.height) { x, y ->
                     final.getPixel(x, y)

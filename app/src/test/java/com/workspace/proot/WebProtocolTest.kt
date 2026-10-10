@@ -205,15 +205,15 @@ class WebProtocolTest {
     }
 
     @Test
-    fun `视口不再是常数而是窗口尺寸`() {
-        // 5.9.34：以前是 VIEWPORT_W_DP=412 锁死、再缩进小窗 ——
-        // 而安卓是照着屏幕上实际大小决定网页要画多少的，缩放一压就只画那一小块，
-        // 整页截图于是永远停在第 2 屏。现在视口 = 窗口 = 屏宽 ÷ 3。
-        val src = readMain("WebProtocol.kt")
-        assertFalse(
-            "视口常数必须删掉：它和窗口是两个数，中间那层缩放正是坏图的来源\n$src",
-            src.contains("VIEWPORT_W_DP")
-        )
+    fun `视口是手机竖屏尺寸`() {
+        // 5.9.34 我把这个常数删了、改成"视口 = 窗口"（160dp），理由是"缩放是第 2 屏失败的原因"。
+        // **那个理由是错的** —— 5.9.34/5.9.35 都没有缩放，第 2 屏照样失败。
+        // 删掉它的代价只有画质：360px 视口里字 19px，发虚。
+        //
+        // 5.9.36 请回来。锁死 412dp 的意义：网页按正常手机版式排版，
+        // agent 的坐标与版式一个像素都不变，且小窗里字是 48px。
+        assertTrue(WebProtocol.VIEWPORT_W_DP in 360..440)
+        assertTrue(WebProtocol.VIEWPORT_H_DP in 700..1000)
     }
     @Test
     fun `说明书写明只监听回环与 cookie 的范围`() {

@@ -59,18 +59,26 @@ class WebFloatWindowTest {
         }
     }
 
-    // ---------- 视口就是窗口（5.9.34：缩放整个删掉了）----------
+    // ---------- 视口 412dp，缩放只在显示层（5.9.36 请回来）----------
 
     @Test
-    fun `窗口尺寸就是视口尺寸没有第二个数`() {
-        // 全工程只该有一个数。以前有两个（412dp 的视口 + 窗口尺寸），
-        // 中间靠缩放因子联系 —— 两个数就意味着两者可能对不上，
-        // 而"对不上"正是整页截图拍不出来的那类问题的土壤。
-        val src = readMain("WebFloatWindow.kt")
-        assertFalse(
-            "WebFloatWindow 里不许再有缩放因子：\n$src",
-            src.contains("fun scaleFactors(")
-        )
+    fun `缩放因子把412dp视口正好铺满窗口`() {
+        // 视口 1236×2676 塞进窗口 360×756：两个方向各自铺满，不留边。
+        val (sx, sy) = WebFloatWindow.scaleFactors(360, 756, 1236, 2676)
+        assertEquals("横向必须正好铺满", 1f, (sx * 1236) / 360f, 0.001f)
+        assertEquals("纵向必须正好铺满", 1f, (sy * 2676) / 756f, 0.001f)
+        assertTrue("窗口比视口小，缩放必须 < 1：sx=$sx", sx < 1f)
+        assertTrue("sy=$sy", sy < 1f)
+    }
+
+    @Test
+    fun `视口尺寸为零或负时缩放兜到极小正数不崩`() {
+        for (vw in listOf(0, -1)) {
+            for (vh in listOf(0, -1)) {
+                val (sx, sy) = WebFloatWindow.scaleFactors(360, 756, vw, vh)
+                assertTrue("必须是正数：vw=$vw vh=$vh -> $sx,$sy", sx > 0f && sy > 0f)
+            }
+        }
     }
 
     @Test
