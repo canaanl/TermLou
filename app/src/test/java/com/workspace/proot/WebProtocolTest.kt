@@ -7,6 +7,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 /**
  * 浏览器的 HTTP/JSON 协议锁定测试（5.9.0）。
@@ -204,10 +205,15 @@ class WebProtocolTest {
     }
 
     @Test
-    fun `视口是手机竖屏尺寸`() {
-        assertTrue(WebProtocol.VIEWPORT_W_DP in 360..440)
-        assertTrue(WebProtocol.VIEWPORT_H_DP in 700..1000)
-        assertNotNull(WebProtocol.VIEWPORT_W_DP)
+    fun `视口不再是常数而是窗口尺寸`() {
+        // 5.9.34：以前是 VIEWPORT_W_DP=412 锁死、再缩进小窗 ——
+        // 而安卓是照着屏幕上实际大小决定网页要画多少的，缩放一压就只画那一小块，
+        // 整页截图于是永远停在第 2 屏。现在视口 = 窗口 = 屏宽 ÷ 3。
+        val src = readMain("WebProtocol.kt")
+        assertFalse(
+            "视口常数必须删掉：它和窗口是两个数，中间那层缩放正是坏图的来源\n$src",
+            src.contains("VIEWPORT_W_DP")
+        )
     }
     @Test
     fun `说明书写明只监听回环与 cookie 的范围`() {
@@ -312,4 +318,17 @@ class WebProtocolTest {
         assertTrue("要写明 partial：\n$help", help.contains("partial:true"))
         assertTrue("要写明照交已拍好的屏：\n$help", help.contains("照交"))
     }
+}
+
+/** 从测试的工作目录往上找 `app/src/main/...` —— 单测的工作目录不是仓库根。 */
+private fun readMain(name: String): String {
+    var d: File? = File("").absoluteFile
+    var hops = 0
+    while (d != null && hops < 6) {
+        val f = File(d, "app/src/main/java/com/workspace/proot/$name")
+        if (f.isFile) return f.readText()
+        d = d.parentFile
+        hops++
+    }
+    throw AssertionError("找不到 $name，这条检查等于没跑")
 }

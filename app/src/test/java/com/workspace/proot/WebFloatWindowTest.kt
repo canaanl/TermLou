@@ -1,8 +1,10 @@
 package com.workspace.proot
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 /**
  * 悬浮窗几何的锁。
@@ -57,31 +59,26 @@ class WebFloatWindowTest {
         }
     }
 
-    // ---------- 视口缩放 ----------
+    // ---------- 视口就是窗口（5.9.34：缩放整个删掉了）----------
 
     @Test
-    fun `缩放因子把视口正好铺满窗口`() {
-        // 视口 1236×2676 塞进窗口 480×1056
-        val (sx, sy) = WebFloatWindow.scaleFactors(480, 1056, 1236, 2676)
-        assertEquals("横向必须正好铺满", 1f, (sx * 1236) / 480f, 0.001f)
-        assertEquals("纵向必须正好铺满", 1f, (sy * 2676) / 1056f, 0.001f)
+    fun `窗口尺寸就是视口尺寸没有第二个数`() {
+        // 全工程只该有一个数。以前有两个（412dp 的视口 + 窗口尺寸），
+        // 中间靠缩放因子联系 —— 两个数就意味着两者可能对不上，
+        // 而"对不上"正是整页截图拍不出来的那类问题的土壤。
+        val src = readMain("WebFloatWindow.kt")
+        assertFalse(
+            "WebFloatWindow 里不许再有缩放因子：\n$src",
+            src.contains("fun scaleFactors(")
+        )
     }
 
     @Test
-    fun `缩放是缩小不是放大`() {
-        val (sx, sy) = WebFloatWindow.scaleFactors(480, 1056, 1236, 2676)
-        assertTrue("窗口比视口小，缩放必须 < 1：sx=$sx", sx < 1f)
-        assertTrue("sy=$sy", sy < 1f)
-    }
-
-    @Test
-    fun `视口尺寸为零或负时缩放兜到极小正数不崩`() {
-        for (vw in listOf(0, -1)) {
-            for (vh in listOf(0, -1)) {
-                val (sx, sy) = WebFloatWindow.scaleFactors(480, 1056, vw, vh)
-                assertTrue("必须是正数：vw=$vw vh=$vh -> $sx,$sy", sx > 0f && sy > 0f)
-            }
-        }
+    fun `本机口径下窗口是480x1056`() {
+        // 屏 1440×3168：宽 = 1440/3 = 480，高按屏幕比例 = 480*3168/1440 = 1056
+        val (w, h) = WebFloatWindow.windowSize(1440, 3168)
+        assertEquals(480, w)
+        assertEquals(1056, h)
     }
 
     // ---------- 位置 ----------
@@ -122,4 +119,17 @@ class WebFloatWindowTest {
         val (x, y) = WebFloatWindow.clampToScreen(50, 50, 2000, 4000, screenW, screenH)
         assertTrue("得是合法坐标：$x,$y", x >= 0 && y >= 0)
     }
+}
+
+/** 从测试的工作目录往上找 `app/src/main/...` —— 单测的工作目录不是仓库根。 */
+private fun readMain(name: String): String {
+    var d: File? = File("").absoluteFile
+    var hops = 0
+    while (d != null && hops < 6) {
+        val f = File(d, "app/src/main/java/com/workspace/proot/$name")
+        if (f.isFile) return f.readText()
+        d = d.parentFile
+        hops++
+    }
+    throw AssertionError("找不到 $name，这条检查等于没跑")
 }

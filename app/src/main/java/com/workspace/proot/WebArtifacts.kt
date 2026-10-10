@@ -124,36 +124,93 @@ object WebArtifacts {
     /**
      * 一次落盘多屏（5.9.30 整页截图）。
      *
-     * **共用一个基准序号**，屏号跟在后面 —— 于是 `shot-0007-1/2/3.png`
-     * 一眼就是同一次整页截图的第三屏，而不是三次无关的截图。
+     * ⚠ **5.9.34 起生产代码不再走这里** —— 见 [ShotWriter]。
+     * 这个函数要求**所有位图同时在手**，那是 5.9.30–5.9.33 的做法：
+     * 每屏 480×1056 约 2 MB，一篇长文章十几屏就是三十几 MB 全压在内存里。
+     * 现在改成拍一张写一张（[ShotWriter.write]），位图立刻回收。
+     *
+     * 保留是因为它是纯逻辑、好测；**新代码别调它**。
      *
      * @param bitmaps 顺序必须是从上到下
      * @return 成功落盘的文件；**长度必须等于入参**（半落盘视为失败，由调用方回收）
      */
     fun saveShotScreens(context: Context, bitmaps: List<Bitmap>): List<File> {
         if (bitmaps.isEmpty()) return emptyList()
-        val dir = shotsDir(context)
-        dir.mkdirs()
-        val existing = dir.listFiles { f -> f.name.startsWith(SHOT_PREFIX) && f.name.endsWith(SHOT_SUFFIX) }
-            ?.map { it.name }
-            ?: emptyList()
-        val base = nextShotSeq(highestShotSeq(existing) + 1)
-        val files = mutableListOf<File>()
-        bitmaps.forEachIndexed { i, bmp ->
-            val f = File(dir, shotScreenFileName(base, i + 1))
-            val ok = runCatching {
-                f.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                true
-            }.getOrDefault(false)
-            if (!ok) {
-                // 已经写出去的那几张要删掉 —— 留下半套比全失败更难解释
-                files.forEach { runCatching { it.delete() } }
+        val w = ShotWriter(context)
+        if (!w.open()) return emptyList()
+        for ((i, bmp) in bitmaps.withIndex()) {
+            if (w.write(i + 1, bmp) == null) {
+                w.abort()
                 return emptyList()
             }
-            files.add(f)
         }
-        trimShots(dir)
-        return files
+        return w.close()
+    }
+
+    /**
+     * 一次整页截图的落盘器（5.9.34）：**拍一张写一张**。
+     *
+     * ## 为什么拆出来
+     *
+     * 旧做法 [saveShotScreens] 要**所有位图同时在手**才写。5.9.34 视口变成 480×1056，
+     * 一屏 2 MB；一篇长文章十几屏 → 三十几 MB 全压在内存里，长页面能把它撑爆。
+     *
+     * 现在：拍一屏 → 立刻写盘 → 位图立刻回收。内存里最多只有一屏。
+     *
+     * ## 名字
+     *
+     * **共用一个基准序号**，屏号跟在后面 —— 于是 `shot-0007-1/2/3.png`
+     * 一眼就是同一次整页截图的第三屏，而不是三次无关的截图。
+     */
+    class ShotWriter(private val context: Context) {
+
+        private var dir: File? = null
+        private var base: Int = 0
+        private val files = mutableListOf<File>()
+
+        /** 分配基准序号并建目录。`false` = 目录建不出来。 */
+        fun open(): Boolean {
+            val d = shotsDir(context)
+            if (!d.exists() && !d.mkdirs()) return false
+            val existing = d.listFiles { f ->
+                f.name.startsWith(SHOT_PREFIX) && f.name.endsWith(SHOT_SUFFIX)
+            }?.map { it.name } ?: emptyList()
+            dir = d
+            base = nextShotSeq(highestShotSeq(existing) + 1)
+            return true
+        }
+
+        /** 写第 `index` 屏（1 起）。返回文件；`null` = 写失败。 */
+        fun write(index: Int, bitmap: Bitmap): File? {
+            val d = dir ?: return null
+            val f = File(d, shotScreenFileName(base, index))
+            val ok = runCatching {
+                f.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                true
+            }.getOrDefault(false)
+            if (!ok) return null
+            files.add(f)
+            return f
+        }
+
+        /** 收尾：清理旧图并交出结果。**调完就不能再 [write] 了。** */
+        fun close(): List<File> {
+            val d = dir
+            if (d != null) trimShots(d)
+            val out = files.toList()
+            files.clear()
+            return out
+        }
+
+        /**
+         * 写不下去时把已经写出去的删掉。
+         *
+         * **留下半套比全失败更难解释** —— agent 会以为那就是全部。
+         */
+        fun abort() {
+            files.forEach { runCatching { it.delete() } }
+            files.clear()
+        }
     }
 
     /**

@@ -31,14 +31,14 @@ object WebProtocol {
     /** 产物目录在 Linux 侧的路径（端口、令牌、截图、cookie 都在底下）。 */
     const val WEB_DIR = "$WORKSPACE_MOUNT/web"
 
-    /**
-     * 视口尺寸（dp）：页面按手机竖屏渲染，截图与取文本都基于它。
-     *
-     * 5.9.27：**这不跟悬浮窗大小走**。窗口只有屏宽 1/3，但视口锁死在这里 ——
-     * 缩放只发生在显示那一层，agent 的版式与坐标一个像素都不变。
-     */
-    const val VIEWPORT_W_DP = 412
-    const val VIEWPORT_H_DP = 892
+    // 5.9.34：**视口不再是常数。**
+    //
+    // 以前这里锁死着一个 412（dp），靠一个缩放因子把它塞进 1/3 屏宽的小窗 ——
+    // 而安卓正是照着那个被压过的大小决定"网页要画多少"，
+    // 于是 1236×2676 里只有 480×1056 被画过，整页截图永远停在第 2 屏。
+    //
+    // 现在视口 = 窗口尺寸 = 屏宽 ÷ 3（见 [WebFloatWindow.windowSize]），
+    // 全工程只有这一个数。代价是网页跟着变窄（160dp），用户明确接受。
 
     data class Request(val method: String, val path: String, val token: String, val body: String)
 
@@ -251,6 +251,10 @@ object WebProtocol {
         appendLine()
         appendLine("须知 notes:")
         appendLine("  · 一次只开一个页面；同一页面反复 open 即复用。")
+        appendLine("  · 视口 = 屏幕右上角那个小窗的大小（屏宽 ÷ 3），**不缩放**，")
+        appendLine("    所见即所得。⚠ 它比手机窄很多（160dp），网站会切到最窄的排版：")
+        appendLine("    每行字少、页面更长、屏数更多，之前在宽屏上选过的选择器可能失效。")
+        appendLine("    坐标随时可以 eval 现查（不要缓存），文字样式建议重新看一遍。")
         appendLine("  · open 的 wait 到点没加载完不报错，只回 ready:false 与 progress，可再 wait 重试。")
         appendLine("  · 截图只在页面已渲染时成功；白图会如实报错，不会给你一张空图。")
         appendLine("  · 长页面**一屏一张、顺序编号，不会拼成一张长图** —— 按 files 的顺序往下读。")
