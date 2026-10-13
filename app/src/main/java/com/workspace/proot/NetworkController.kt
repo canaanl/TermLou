@@ -84,7 +84,7 @@ class NetworkController(
         )
         networkInner = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(32, 8, 32, 32)
+            setPaddingMd(UiTokens.SPACE_6, UiTokens.SPACE_2, UiTokens.SPACE_6, UiTokens.SPACE_6)
         }
         networkScroll.addView(networkInner)
         // 看板高度=内容，连接列表占剩余空间
@@ -124,7 +124,7 @@ class NetworkController(
         netBraceMenu = BraceMenu(activity)
         netFlowList = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, (6 * activity.resources.displayMetrics.density).toInt(), 0, 0)
+            setPaddingMd(0, 6, 0, 0)
         }
         networkInner.addView(netFlowList)
     }
@@ -138,10 +138,10 @@ class NetworkController(
             hint = activity.getString(R.string.net_search_hint)
             setHintTextColor(dim)
             setTextColor(scope.cOnSurface)
-            textSize = UiTokens.TEXT_COMPACT
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
             setSingleLine(true)
             setBackgroundColor(if (scope.theme.night) UiTokens.searchBg else scope.theme.surfaceContainerHighest)
-            setPadding((10 * density).toInt(), (6 * density).toInt(), (10 * density).toInt(), (6 * density).toInt())
+            setPaddingMd(10, 6, 10, 6)
             addTextChangedListener(object : android.text.TextWatcher {
                 override fun afterTextChanged(s: android.text.Editable?) = scheduleNetFlows()
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -166,9 +166,9 @@ class NetworkController(
                 shape = GradientDrawable.RECTANGLE
                 setColor(scope.cSurface)
                 setStroke((density).toInt(), 0x33FFFFFF)
-                cornerRadius = 12 * density
+                cornerRadius = snapCorner(UiTokens.CORNER_MD) * density
             }
-            setPadding((16 * density).toInt(), (8 * density).toInt(), (16 * density).toInt(), (8 * density).toInt())
+            setPaddingMd(16, 8, 16, 8)
             addView(netSearch)
             addView(body, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
@@ -179,7 +179,7 @@ class NetworkController(
     private fun statValue(): TextView {
         val out = TextView(activity)
         out.setTextColor(scope.cOnSurface)
-        out.textSize = UiTokens.TEXT_COMPACT
+        out.textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
         out.typeface = Typeface.MONOSPACE
         out.maxLines = 2
         return out
@@ -188,7 +188,8 @@ class NetworkController(
     private fun statLabel(text: String, dim: Int): TextView = TextView(activity).apply {
         this.text = text
         setTextColor(dim)
-        textSize = 11f
+        // 5.9.40：原 11sp 裸字面量，按 MD3 并入 meta 档（12sp）
+        textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
     }
 
     private fun dashboardStatColumn(dim: Int): LinearLayout {
@@ -279,7 +280,7 @@ class NetworkController(
             netLegend.addView(TextView(activity).apply {
                 text = activity.getString(R.string.net_dash_idle)
                 setTextColor(scope.cOnSurfaceVariant)
-                textSize = UiTokens.TEXT_COMPACT
+                textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
             })
             return
         }
@@ -297,7 +298,7 @@ class NetworkController(
         LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, (2 * density).toInt(), 0, (2 * density).toInt())
+            setPaddingMd(0, 2, 0, 2)
             addView(View(activity).apply {
                 layoutParams = LinearLayout.LayoutParams((8 * density).toInt(), (8 * density).toInt())
                 setBackgroundColor(color)
@@ -305,18 +306,18 @@ class NetworkController(
             addView(TextView(activity).apply {
                 text = label
                 setTextColor(scope.cOnSurface)
-                textSize = UiTokens.TEXT_META
+                textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
                 typeface = Typeface.MONOSPACE
                 maxLines = 2
-                setPadding((6 * density).toInt(), 0, 0, 0)
+                setPaddingMd(6, 0, 0, 0)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(TextView(activity).apply {
                 text = "${formatBytes(bytes)} ${pct(bytes, total)}%"
                 setTextColor(scope.cOnSurfaceVariant)
-                textSize = UiTokens.TEXT_META
+                textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
                 typeface = Typeface.MONOSPACE
-                setPadding((6 * density).toInt(), 0, 0, 0)
+                setPaddingMd(6, 0, 0, 0)
             })
         }
 
@@ -335,13 +336,14 @@ class NetworkController(
             isAllCaps = true
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding(3, 0, 3, 0)
+            // 5.9.40：原 3dp 不在 4dp 网格上，按 MD3 上调到 4dp（SPACE_1）
+            setPaddingMd(UiTokens.SPACE_1, 0, UiTokens.SPACE_1, 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener { onClick() }
         }
         fun gridRow(vararg buttons: Button): LinearLayout = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 0)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0)
             for (b in buttons) addView(b)
         }
         netToggleBtn = barButton(activity.getString(R.string.net_capture_start)) {
@@ -431,8 +433,8 @@ class NetworkController(
                 listBox.addView(TextView(activity).apply {
                     text = activity.getString(R.string.net_rank_empty)
                     setTextColor(scope.cOnSurfaceVariant)
-                    textSize = UiTokens.TEXT_COMPACT
-                    setPadding(0, (8 * density).toInt(), 0, 0)
+                    textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
+                    setPaddingMd(0, 8, 0, 0)
                 })
                 return
             }
@@ -440,18 +442,18 @@ class NetworkController(
                 listBox.addView(TextView(activity).apply {
                     text = "${index + 1}. ${bucket.first}  ${formatBytes(bucket.second)}"
                     setTextColor(scope.theme.onSurface)
-                    textSize = UiTokens.TEXT_COMPACT
+                    textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
                     typeface = Typeface.MONOSPACE
                     maxLines = 1
                     ellipsize = android.text.TextUtils.TruncateAt.END
-                    setPadding(0, (6 * density).toInt(), 0, 0)
+                    setPaddingMd(0, 6, 0, 0)
                 })
             }
         }
         fun modeButton(text: String, onClick: () -> Unit): Button = Button(activity).apply {
             this.text = text
             setTextColor(scope.theme.primaryVisible)
-            textSize = UiTokens.TEXT_BODY
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             isAllCaps = true
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
@@ -461,7 +463,7 @@ class NetworkController(
         }
         val modeRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(4, 4, 4, 4)
+            setPaddingMd(UiTokens.SPACE_1, UiTokens.SPACE_1, UiTokens.SPACE_1, UiTokens.SPACE_1)
             addView(modeButton(activity.getString(R.string.net_rank_domain)) { refresh(false) })
             addView(modeButton(activity.getString(R.string.net_rank_port)) { refresh(true) })
         }
@@ -542,8 +544,8 @@ class NetworkController(
             netFlowList.addView(TextView(activity).apply {
                 text = activity.getString(R.string.net_empty)
                 setTextColor(scope.cOnSurfaceVariant)
-                textSize = UiTokens.TEXT_COMPACT
-                setPadding(0, 8, 0, 8)
+                textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
+                setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_2, UiTokens.SPACE_0, UiTokens.SPACE_2)
             })
             return
         }
@@ -575,7 +577,7 @@ class NetworkController(
         }
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((16 * density).toInt(), (8 * density).toInt(), (16 * density).toInt(), (8 * density).toInt())
+            setPaddingMd(16, 8, 16, 8)
             setBackgroundColor(if (blocked) UiTokens.dirRowBg else Color.TRANSPARENT)
             setOnClickListener { toggleFlowExpand(f.id) }
             setOnLongClickListener {
@@ -589,7 +591,7 @@ class NetworkController(
             addView(TextView(activity).apply {
                 text = main
                 setTextColor(mainColor)
-                textSize = UiTokens.TEXT_BODY
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
                 typeface = Typeface.MONOSPACE
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
@@ -599,9 +601,9 @@ class NetworkController(
                 addView(TextView(activity).apply {
                     text = activity.getString(R.string.flow_blocked)
                     setTextColor(Color.parseColor("#FF5252"))
-                    textSize = UiTokens.TEXT_META
+                    textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
                     typeface = Typeface.MONOSPACE
-                    setPadding((4 * density).toInt(), (2 * density).toInt(), (4 * density).toInt(), (2 * density).toInt())
+                    setPaddingMd(4, 2, 4, 2)
                     setBackgroundColor(Color.parseColor("#26FF5252"))
                 })
             } else {
@@ -617,17 +619,17 @@ class NetworkController(
         row.addView(TextView(activity).apply {
             text = buildFlowInfo(f)
             setTextColor(scope.cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_META
+            textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
             typeface = Typeface.MONOSPACE
-            setPadding(0, (2 * density).toInt(), 0, 0)
+            setPaddingMd(0, 2, 0, 0)
         })
         if (f.id in netExpandedIds) {
             row.addView(TextView(activity).apply {
                 text = buildFlowDetail(f, domain)
                 setTextColor(scope.cOnSurfaceVariant)
-                textSize = UiTokens.TEXT_META
+                textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
                 typeface = Typeface.MONOSPACE
-                setPadding(0, (2 * density).toInt(), 0, 0)
+                setPaddingMd(0, 2, 0, 0)
             })
         }
         return row
@@ -644,9 +646,9 @@ class NetworkController(
         return TextView(activity).apply {
             text = label
             setTextColor(scope.cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_META
+            textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
             typeface = Typeface.MONOSPACE
-            setPadding((4 * density).toInt(), (2 * density).toInt(), (4 * density).toInt(), (2 * density).toInt())
+            setPaddingMd(4, 2, 4, 2)
             setBackgroundColor(UiTokens.searchBg)
         }
     }

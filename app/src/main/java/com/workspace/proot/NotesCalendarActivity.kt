@@ -91,11 +91,11 @@ class NotesCalendarActivity : NotesPageActivity() {
 
         monthTitle = TextView(this).apply {
             gravity = Gravity.CENTER
-            textSize = UiTokens.TEXT_TITLE
+            textMd(UiTokens.TEXT_TITLE, UiTokens.LINE_TITLE)
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(theme.onSurface)
             contentDescription = getString(R.string.notes_cal_back_now)
-            setPadding(0, (10 * d).toInt(), 0, (4 * d).toInt())
+            setPaddingMd(0, 10, 0, 4)
             setOnClickListener { jumpMonth(YearMonth.now()) }
         }
         body.addView(monthTitle, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -339,11 +339,11 @@ class NotesCalendarActivity : NotesPageActivity() {
         val d = density()
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, (4 * d).toInt())
+            setPaddingMd(0, 0, 0, 4)
             for (res in weekdayRes) {
                 addView(TextView(this@NotesCalendarActivity).apply {
                     text = getString(res)
-                    textSize = UiTokens.TEXT_META
+                    textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
                     gravity = Gravity.CENTER
                     maxLines = 1
                     setTextColor(theme.onSurfaceVariant)
@@ -368,13 +368,13 @@ class NotesCalendarActivity : NotesPageActivity() {
         val cell = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding((4 * d).toInt(), (4 * d).toInt(), (4 * d).toInt(), (4 * d).toInt())
+            setPaddingMd(4, 4, 4, 4)
             background = GradientDrawable().apply {
                 setColor(
                     if (st?.hasNote == true) CalendarColors.noteFill(theme.night)
                     else Color.TRANSPARENT
                 )
-                cornerRadius = 8 * d
+                cornerRadius = snapCorner(UiTokens.CORNER_SM) * d
                 if (isToday) setStroke((1.5 * d).toInt().coerceAtLeast(1), theme.primaryVisible)
             }
             layoutParams = LinearLayout.LayoutParams(
@@ -388,7 +388,7 @@ class NotesCalendarActivity : NotesPageActivity() {
         }
         val num = TextView(this).apply {
             text = date.dayOfMonth.toString()
-            textSize = UiTokens.TEXT_COMPACT
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
             gravity = Gravity.CENTER
             maxLines = 1
             when {
@@ -406,7 +406,7 @@ class NotesCalendarActivity : NotesPageActivity() {
         val icons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(0, (2 * d).toInt(), 0, 0)
+            setPaddingMd(0, 2, 0, 0)
         }
         if (inMonth) {
             // 有笔记不画图标（由格子填充表达），这里只剩待办三态与标签价签
@@ -449,7 +449,7 @@ class NotesCalendarActivity : NotesPageActivity() {
 
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((20 * d).toInt(), (4 * d).toInt(), (20 * d).toInt(), 0)
+            setPaddingMd(20, 4, 20, 0)
         }
 
         box.addView(sectionLabel(getString(R.string.notes_tags_tab)))
@@ -468,7 +468,7 @@ class NotesCalendarActivity : NotesPageActivity() {
             box.addView(TextView(this).apply {
                 text = getString(R.string.notes_cal_todo_fmt, st.todoTotal, st.todoDone)
                 setTextColor(theme.onSurface)
-                textSize = UiTokens.TEXT_BODY
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             })
         }
 
@@ -524,16 +524,16 @@ class NotesCalendarActivity : NotesPageActivity() {
         this.text = text
         setTextColor(theme.primaryVisible)
         typeface = Typeface.DEFAULT_BOLD
-        textSize = UiTokens.TEXT_COMPACT
-        setPadding(0, (12 * density()).toInt(), 0, (4 * density()).toInt())
+        textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
+        setPaddingMd(0, 12, 0, 4)
     }
 
     /** 弹窗里的空态行。 */
     private fun emptyLine(text: String): TextView = TextView(this).apply {
         this.text = text
         setTextColor(theme.onSurfaceVariant)
-        textSize = UiTokens.TEXT_META
-        setPadding(0, 0, 0, (4 * density()).toInt())
+        textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
+        setPaddingMd(0, 0, 0, 4)
     }
 
     /** 只展示、不响应点击的标签胶囊（外观与 tagCapsule 一致）。 */
@@ -542,12 +542,12 @@ class NotesCalendarActivity : NotesPageActivity() {
         val (fill, edge) = tagCapsuleColors(tag)
         text = tag
         setTextColor(TAG_TEXT_COLOR)
-        textSize = UiTokens.TEXT_COMPACT
+        textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
         maxLines = 1
         ellipsize = TextUtils.TruncateAt.END
-        setPadding((12 * d).toInt(), (4 * d).toInt(), (12 * d).toInt(), (4 * d).toInt())
+        setPaddingMd(12, 4, 12, 4)
         background = GradientDrawable().apply {
-            cornerRadius = 12 * d
+            cornerRadius = snapCorner(UiTokens.CORNER_MD) * d
             setStroke((1 * d).toInt().coerceAtLeast(1), edge)
             setColor(fill)
         }

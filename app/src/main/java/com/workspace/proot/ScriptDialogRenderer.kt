@@ -101,7 +101,7 @@ class ScriptDialogRenderer(private val ctx: Context) {
             if (row.row.def && row.row.filter.isNotEmpty()) adapter.addFilteredTag(row.row.filter)
         }
         // 高度：WRAP_CONTENT，由 Recycler 测量；外层 card WRAP_CONTENT 会随之撑开
-        recycler.setPadding((16 * d).toInt(), (8 * d).toInt(), (16 * d).toInt(), (8 * d).toInt())
+        recycler.setPaddingMd(16, 8, 16, 8)
         card.addView(recycler, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         submitList(adapter, request)
         // 按钮栏
@@ -301,12 +301,12 @@ class ScriptDialogRenderer(private val ctx: Context) {
             val wrap = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT)
-                setPadding((4 * density).toInt(), 0, (4 * density).toInt(), 0)
+                setPaddingMd(4, 0, 4, 0)
             }
             val tv = TextView(context).apply {
                 typeface = Typeface.MONOSPACE
                 setTextColor(palette.onSurface)
-                textSize = 12f
+                textSize = UiTokens.TEXT_META
             }
             wrap.addView(tv, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             return wrap
@@ -316,14 +316,14 @@ class ScriptDialogRenderer(private val ctx: Context) {
             val container = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT)
-                setPadding(0, 0, 0, (8 * density).toInt())
+                setPaddingMd(0, 0, 0, 8)
             }
-            val label = TextView(context).apply { typeface = Typeface.MONOSPACE; setTextColor(palette.onSurfaceVariant); textSize = 11f }
+            val label = TextView(context).apply { typeface = Typeface.MONOSPACE; setTextColor(palette.onSurfaceVariant); textMd(UiTokens.TEXT_META, UiTokens.LINE_META) }
             val edit = EditText(context).apply {
                 setTextColor(palette.onSurface)
-                textSize = 13f
-                background = GradientDrawable().apply { setColor(palette.inputBg); cornerRadius = (6 * density).toFloat() }
-                setPadding((10 * density).toInt(), (6 * density).toInt(), (10 * density).toInt(), (6 * density).toInt())
+                textSize = UiTokens.TEXT_COMPACT
+                background = GradientDrawable().apply { setColor(palette.inputBg); cornerRadius = snapCorner(UiTokens.CORNER_SM) * density }
+                setPaddingMd(10, 6, 10, 6)
             }
             container.addView(label)
             container.addView(edit, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -334,9 +334,9 @@ class ScriptDialogRenderer(private val ctx: Context) {
             val container = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT)
-                setPadding(0, 0, 0, (8 * density).toInt())
+                setPaddingMd(0, 0, 0, 8)
             }
-            val label = TextView(context).apply { typeface = Typeface.MONOSPACE; setTextColor(palette.onSurfaceVariant); textSize = 11f }
+            val label = TextView(context).apply { typeface = Typeface.MONOSPACE; setTextColor(palette.onSurfaceVariant); textMd(UiTokens.TEXT_META, UiTokens.LINE_META) }
             val options = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
             container.addView(label)
             container.addView(options)
@@ -344,12 +344,12 @@ class ScriptDialogRenderer(private val ctx: Context) {
         }
 
         private fun toggleRowView(parent: ViewGroup): View {
-            val container = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutParams = RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT); setPadding(0, 0, 0, (8 * density).toInt()) }
-            val label = TextView(context).apply { typeface = Typeface.MONOSPACE; setTextColor(palette.onSurfaceVariant); textSize = 11f; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+            val container = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutParams = RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT); setPaddingMd(0, 0, 0, 8) }
+            val label = TextView(context).apply { typeface = Typeface.MONOSPACE; setTextColor(palette.onSurfaceVariant); textMd(UiTokens.TEXT_META, UiTokens.LINE_META); layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
             val pill = TextView(context).apply {
-                typeface = Typeface.MONOSPACE; textSize = 12f
-                setPadding((10 * density).toInt(), (4 * density).toInt(), (10 * density).toInt(), (4 * density).toInt())
-                background = GradientDrawable().apply { setColor(palette.inputBg); cornerRadius = (6 * density).toFloat() }
+                typeface = Typeface.MONOSPACE; textSize = UiTokens.TEXT_META
+                setPaddingMd(10, 4, 10, 4)
+                background = GradientDrawable().apply { setColor(palette.inputBg); cornerRadius = snapCorner(UiTokens.CORNER_SM) * density }
             }
             container.addView(label)
             container.addView(pill)
@@ -428,8 +428,8 @@ class ScriptDialogRenderer(private val ctx: Context) {
                         text = if (row.multi) { if (checked) "[x] ${m.label}" else "[ ] ${m.label}" } else { if (checked) "● ${m.label}" else "○ ${m.label}" }
                         typeface = Typeface.MONOSPACE
                         setTextColor(if (checked) palette.accent else palette.onSurface)
-                        textSize = 12f
-                        setPadding((10 * density).toInt(), (6 * density).toInt(), (10 * density).toInt(), (6 * density).toInt())
+                        textSize = UiTokens.TEXT_META
+                        setPaddingMd(10, 6, 10, 6)
                         setOnClickListener {
                             if (row.multi) {
                                 if (sel.contains(m.label)) sel.remove(m.label) else sel.add(m.label)
@@ -443,7 +443,7 @@ class ScriptDialogRenderer(private val ctx: Context) {
                             }
                         }
                     }
-                    val wrap = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding((8 * density).toInt(), (2 * density).toInt(), (8 * density).toInt(), (2 * density).toInt()); addView(tv) }
+                    val wrap = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPaddingMd(8, 2, 8, 2); addView(tv) }
                     options.addView(wrap)
                 }
             }
@@ -460,7 +460,7 @@ class ScriptDialogRenderer(private val ctx: Context) {
                 state.toggle[row.key] = cur
                 pill.text = if (cur) "[ON]" else "[OFF]"
                 pill.setTextColor(if (cur) palette.accent else palette.onSurfaceVariant)
-                pill.background = GradientDrawable().apply { setColor(palette.inputBg); cornerRadius = (6 * density).toFloat() }
+                pill.background = GradientDrawable().apply { setColor(palette.inputBg); cornerRadius = snapCorner(UiTokens.CORNER_SM) * density }
                 pill.setOnClickListener {
                     val next = !(state.toggle[row.key] ?: false)
                     state.toggle[row.key] = next
@@ -522,15 +522,15 @@ class ScriptDialogRenderer(private val ctx: Context) {
             textSize = titleSize
             gravity = Gravity.CENTER_HORIZONTAL
             isSingleLine = true
-            setPadding((8 * d).toInt(), (10 * d).toInt(), (8 * d).toInt(), (6 * d).toInt())
+            setPaddingMd(8, 10, 8, 6)
         }
     }
 
     private fun textBlock(text: String, palette: Palette): TextView = TextView(ctx).apply {
         this.text = text
         setTextColor(palette.onSurface)
-        textSize = 13f
-        setPadding(0, 0, 0, (8 * d).toInt())
+        textSize = UiTokens.TEXT_COMPACT
+        setPaddingMd(0, 0, 0, 8)
     }
 
     private fun textOutputView(text: String, palette: Palette): View {
@@ -538,11 +538,11 @@ class ScriptDialogRenderer(private val ctx: Context) {
             this.text = if (text.contains('\u001b')) ansiSpannable(text, palette.onSurface) else text
             typeface = Typeface.MONOSPACE
             setTextColor(palette.onSurface)
-            textSize = 12f
+            textSize = UiTokens.TEXT_META
         }
         val wrap = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((4 * d).toInt(), 0, (4 * d).toInt(), 0)
+            setPaddingMd(4, 0, 4, 0)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
         wrap.addView(tv, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -550,16 +550,16 @@ class ScriptDialogRenderer(private val ctx: Context) {
     }
 
     private fun inputRow(row: ScriptDialogSpec.InputRow, views: MutableMap<String, EditText>, palette: Palette): View {
-        val container = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 0, 0, (8 * d).toInt()) }
-        container.addView(TextView(ctx).apply { text = row.label; typeface = Typeface.MONOSPACE; setTextColor(palette.onSurfaceVariant); textSize = 11f })
+        val container = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPaddingMd(0, 0, 0, 8) }
+        container.addView(TextView(ctx).apply { text = row.label; typeface = Typeface.MONOSPACE; setTextColor(palette.onSurfaceVariant); textMd(UiTokens.TEXT_META, UiTokens.LINE_META) })
         val edit = EditText(ctx).apply {
             hint = row.default
             isSingleLine = !row.multiline
             if (row.password) inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             setTextColor(palette.onSurface)
-            textSize = 13f
-            background = GradientDrawable().apply { setColor(palette.inputBg); cornerRadius = (6 * d).toFloat() }
-            setPadding((10 * d).toInt(), (6 * d).toInt(), (10 * d).toInt(), (6 * d).toInt())
+            textSize = UiTokens.TEXT_COMPACT
+            background = GradientDrawable().apply { setColor(palette.inputBg); cornerRadius = snapCorner(UiTokens.CORNER_SM) * d }
+            setPaddingMd(10, 6, 10, 6)
             if (row.default.isNotEmpty()) setText(row.default)
         }
         container.addView(edit, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -568,8 +568,8 @@ class ScriptDialogRenderer(private val ctx: Context) {
     }
 
     private fun selectRow(row: ScriptDialogSpec.SelectRow, values: MutableMap<String, MutableList<String>>, palette: Palette, hasFilter: Boolean): View {
-        val container = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 0, 0, (8 * d).toInt()) }
-        container.addView(TextView(ctx).apply { text = row.label; typeface = Typeface.MONOSPACE; setTextColor(palette.onSurfaceVariant); textSize = 11f })
+        val container = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPaddingMd(0, 0, 0, 8) }
+        container.addView(TextView(ctx).apply { text = row.label; typeface = Typeface.MONOSPACE; setTextColor(palette.onSurfaceVariant); textMd(UiTokens.TEXT_META, UiTokens.LINE_META) })
         val selected = mutableListOf<String>()
         values[row.key] = selected
         val meta = row.options.map { if (hasFilter) splitTag(it) else OptionMeta(it, null) }
@@ -589,15 +589,15 @@ class ScriptDialogRenderer(private val ctx: Context) {
 
     private fun toggleRow(row: ScriptDialogSpec.ToggleRow, values: MutableMap<String, Boolean>, palette: Palette): View {
         values[row.key] = row.def
-        val container = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 0, 0, (8 * d).toInt()) }
-        container.addView(TextView(ctx).apply { text = row.label; typeface = Typeface.MONOSPACE; setTextColor(palette.onSurfaceVariant); textSize = 11f; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) })
+        val container = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPaddingMd(0, 0, 0, 8) }
+        container.addView(TextView(ctx).apply { text = row.label; typeface = Typeface.MONOSPACE; setTextColor(palette.onSurfaceVariant); textMd(UiTokens.TEXT_META, UiTokens.LINE_META); layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) })
         val toggle = TextView(ctx).apply {
             text = if (row.def) "[ON]" else "[OFF]"
             typeface = Typeface.MONOSPACE
             setTextColor(if (row.def) palette.accent else palette.onSurfaceVariant)
-            textSize = 12f
-            setPadding((10 * d).toInt(), (4 * d).toInt(), (10 * d).toInt(), (4 * d).toInt())
-            background = GradientDrawable().apply { setColor(palette.inputBg); cornerRadius = (6 * d).toFloat() }
+            textSize = UiTokens.TEXT_META
+            setPaddingMd(10, 4, 10, 4)
+            background = GradientDrawable().apply { setColor(palette.inputBg); cornerRadius = snapCorner(UiTokens.CORNER_SM) * d }
         }
         container.addView(toggle)
         return container
@@ -605,14 +605,14 @@ class ScriptDialogRenderer(private val ctx: Context) {
 
     private fun buttonBar(buttons: List<ScriptDialogSpec.Button>?, palette: Palette, onClick: (String) -> Unit): View {
         val list = if (buttons.isNullOrEmpty()) listOf(ScriptDialogSpec.Button(ctx.getString(R.string.close), ScriptDialogSpec.RESULT_ID_DISMISS)) else buttons
-        val bar = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (12 * d).toInt()) }
+        val bar = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; setPaddingMd(12, 10, 12, 12) }
         for (b in list) {
             val bg = when (b.kind) { ScriptDialogSpec.BTN_DANGER -> palette.danger; ScriptDialogSpec.BTN_PRIMARY -> palette.accent; else -> palette.buttonNormal }
             val btn = Button(ctx).apply {
-                text = b.text; isAllCaps = true; setTextColor(palette.onButton); textSize = 13f
-                setPadding((8 * d).toInt(), (6 * d).toInt(), (8 * d).toInt(), (6 * d).toInt())
+                text = b.text; isAllCaps = true; setTextColor(palette.onButton); textSize = UiTokens.TEXT_COMPACT
+                setPaddingMd(8, 6, 8, 6)
                 setOnClickListener { onClick(b.id) }
-                background = GradientDrawable().apply { setColor(bg); cornerRadius = (8 * d).toFloat() }
+                background = GradientDrawable().apply { setColor(bg); cornerRadius = snapCorner(UiTokens.CORNER_SM) * d }
             }
             bar.addView(btn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = (6 * d).toInt(); marginEnd = (6 * d).toInt() })
         }

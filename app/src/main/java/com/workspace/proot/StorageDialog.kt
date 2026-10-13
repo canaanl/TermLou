@@ -58,14 +58,15 @@ class SystemInfoCardView(
         val contentView = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(pad, pad, pad, pad)
+            // 5.9.40：原 pad = 24dp 裸值，改走 MD3 间距档（SPACE_5）
+            setPaddingMd(UiTokens.SPACE_5, UiTokens.SPACE_5, UiTokens.SPACE_5, UiTokens.SPACE_5)
         }
 
         contentView.addView(TextView(ctx).apply {
             text = ctx.getString(R.string.storage_title)
             setTextColor(theme.onSurface)
-            textSize = UiTokens.TEXT_TITLE
-            typeface = Typeface.DEFAULT_BOLD
+            // 5.9.40：字号走规范档并补行高（bold 由 textMd 一并设置）
+            textMd(UiTokens.TEXT_TITLE, UiTokens.LINE_TITLE, bold = true)
         })
 
         // 双列：左系统信息 / 右饼图+图例
@@ -104,27 +105,25 @@ class SystemInfoCardView(
 
         fileLabel = TextView(ctx).apply {
             setTextColor(colorFile)
-            textSize = UiTokens.TEXT_BODY
-            setPadding(0, 20, 0, 4)
-            typeface = Typeface.DEFAULT_BOLD
+            // 5.9.40：原 20dp 上调到 MD3 的 24dp（SPACE_5）；字号补行高
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY, bold = true)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_5, UiTokens.SPACE_0, UiTokens.SPACE_1)
             gravity = Gravity.START
         }
         legend.addView(fileLabel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         sysLabel = TextView(ctx).apply {
             setTextColor(colorSys)
-            textSize = UiTokens.TEXT_BODY
-            setPadding(0, 4, 0, 4)
-            typeface = Typeface.DEFAULT_BOLD
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY, bold = true)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_1, UiTokens.SPACE_0, UiTokens.SPACE_1)
             gravity = Gravity.START
         }
         legend.addView(sysLabel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         totalLabel = TextView(ctx).apply {
             setTextColor(if (theme.night) UiTokens.totalText else theme.onSurface)
-            textSize = UiTokens.TEXT_BODY
-            typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, 12, 0, 0)
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY, bold = true)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_3, UiTokens.SPACE_0, UiTokens.SPACE_0)
             gravity = Gravity.START
         }
         legend.addView(totalLabel, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -145,14 +144,16 @@ class SystemInfoCardView(
         parent.addView(TextView(ctx).apply {
             text = key
             setTextColor(keyColor)
-            textSize = UiTokens.TEXT_META
-            setPadding(0, (12 * density).toInt(), 0, 0)
+            textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_3, UiTokens.SPACE_0, UiTokens.SPACE_0)
+            // 5.9.40：键名做成 MD3 小标签（xs 圆角），替代此前无背景的裸文字，
+            // 左右两列扫视时能靠色块区分"键"与"值"。
+            roundedBg(keyColor and 0x33FFFFFF, UiTokens.CORNER_XS)
         })
         val valueView = TextView(ctx).apply {
             setTextColor(theme.onSurface)
-            textSize = UiTokens.TEXT_BODY
-            typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, 0, 0, 0)
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY, bold = true)
+            setPaddingMdAll(UiTokens.SPACE_0)
         }
         parent.addView(valueView)
         return valueView

@@ -74,12 +74,12 @@ class DialogMakerActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(theme.surfaceVariant)
-            setPadding((16 * d).toInt(), (12 * d).toInt(), (16 * d).toInt(), (12 * d).toInt())
+            setPaddingMd(16, 12, 16, 12)
         }
         titleBar.addView(TextView(this).apply {
             text = getString(R.string.dm_title)
             setTextColor(theme.onSurface)
-            textSize = UiTokens.TEXT_TITLE
+            textMd(UiTokens.TEXT_TITLE, UiTokens.LINE_TITLE)
             typeface = Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
@@ -93,7 +93,7 @@ class DialogMakerActivity : Activity() {
         }
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((16 * d).toInt(), (8 * d).toInt(), (16 * d).toInt(), (8 * d).toInt())
+            setPaddingMd(16, 8, 16, 8)
         }
         scroll.addView(form)
         root.addView(scroll)
@@ -104,10 +104,10 @@ class DialogMakerActivity : Activity() {
         messageEdit = EditText(this).apply {
             setTextColor(theme.onSurface)
             setBackgroundColor(theme.primaryContainer)
-            textSize = UiTokens.TEXT_BODY
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             setHint(getString(R.string.dm_msg_hint))
             setHintTextColor(theme.onSurfaceVariant)
-            setPadding((10 * d).toInt(), (8 * d).toInt(), (10 * d).toInt(), (8 * d).toInt())
+            setPaddingMd(10, 8, 10, 8)
             gravity = Gravity.TOP
             minLines = 2
         }
@@ -124,7 +124,7 @@ class DialogMakerActivity : Activity() {
         form.addView(sectionLabel(getString(R.string.dm_accent_hint)))
         accentSwatches = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, (8 * d).toInt())
+            setPaddingMd(0, 0, 0, 8)
         }
         form.addView(accentSwatches)
         rebuildSwatches()
@@ -140,9 +140,9 @@ class DialogMakerActivity : Activity() {
         radiusLabel = TextView(this).apply {
             text = "${radiusSeek.progress}dp"
             setTextColor(theme.onSurface)
-            textSize = UiTokens.TEXT_COMPACT
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
             gravity = Gravity.CENTER_VERTICAL
-            setPadding((10 * d).toInt(), 0, 0, 0)
+            setPaddingMd(10, 0, 0, 0)
         }
         radiusSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar, p: Int, fromUser: Boolean) {
@@ -176,8 +176,8 @@ class DialogMakerActivity : Activity() {
             text = getString(R.string.dm_preview)
             setTextColor(theme.onSurface)
             typeface = Typeface.DEFAULT_BOLD
-            textSize = UiTokens.TEXT_TITLE
-            setPadding(0, 0, 0, (8 * d).toInt())
+            textMd(UiTokens.TEXT_TITLE, UiTokens.LINE_TITLE)
+            setPaddingMd(0, 0, 0, 8)
         })
         previewHost = FrameLayout(this).apply {
             setBackgroundColor(0xFF000000.toInt())
@@ -190,7 +190,7 @@ class DialogMakerActivity : Activity() {
         // ===== 底部按钮（品字：真机测试满行；导出命令+退出在下一行）=====
         val bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((12 * d).toInt(), (8 * d).toInt(), (12 * d).toInt(), (12 * d).toInt())
+            setPaddingMd(12, 8, 12, 12)
             setBackgroundColor(theme.surfaceVariant)
         }
 val testRow = LinearLayout(this).apply {
@@ -266,8 +266,8 @@ val testRow = LinearLayout(this).apply {
         this.text = text
         setTextColor(theme.onSurface)
         typeface = Typeface.DEFAULT_BOLD
-        textSize = UiTokens.TEXT_BODY
-        setPadding(0, (10 * d()).toInt(), 0, (4 * d()).toInt())
+        textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
+        setPaddingMd(0, 10, 0, 4)
     }
 
     private fun sectionEdit(container: LinearLayout, label: String, hint: String): EditText {
@@ -275,10 +275,10 @@ val testRow = LinearLayout(this).apply {
         val e = EditText(this).apply {
             setTextColor(theme.onSurface)
             setBackgroundColor(theme.primaryContainer)
-            textSize = UiTokens.TEXT_BODY
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             setHint(hint)
             setHintTextColor(theme.onSurfaceVariant)
-            setPadding((10 * d()).toInt(), (8 * d()).toInt(), (10 * d()).toInt(), (8 * d()).toInt())
+            setPaddingMd(10, 8, 10, 8)
         }
         container.addView(e)
         return e
@@ -299,7 +299,7 @@ val testRow = LinearLayout(this).apply {
                 id = View.generateViewId()
                 text = options[i]
                 setTextColor(theme.onSurface)
-                textSize = UiTokens.TEXT_COMPACT
+                textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
                 androidx.core.widget.CompoundButtonCompat.setButtonTintList(
                     this,
                     ColorStateList(
@@ -311,7 +311,7 @@ val testRow = LinearLayout(this).apply {
                     )
                 )
                 isChecked = options[i] == default
-                setPadding((6 * d()).toInt(), 0, (10 * d()).toInt(), 0)
+                setPaddingMd(6, 0, 10, 0)
                 setOnClickListener { refreshPreview() }
             }
             rg.addView(rb)
@@ -337,7 +337,7 @@ val testRow = LinearLayout(this).apply {
             val sw = View(this).apply {
                 background = android.graphics.drawable.GradientDrawable().apply {
                     setColor(c)
-                    cornerRadius = (8 * dd).toFloat()
+                    cornerRadius = snapCorner(UiTokens.CORNER_SM) * dd
                     if (selected) setStroke((2 * dd).toInt(), Color.WHITE)
                 }
                 layoutParams = LinearLayout.LayoutParams((44 * dd).toInt(), (32 * dd).toInt()).apply {
@@ -380,8 +380,8 @@ val b = Button(this).apply {
                 this.text = "+$text"
                 setTextColor(theme.primaryVisible)
                 isAllCaps = true
-                textSize = UiTokens.TEXT_COMPACT
-                setPadding((10 * dd).toInt(), (4 * dd).toInt(), (10 * dd).toInt(), (4 * dd).toInt())
+                textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
+                setPaddingMd(10, 4, 10, 4)
                 ButtonStyle.outlined(this, theme.primaryVisible)
                 setOnClickListener { action() }
             }
@@ -466,15 +466,15 @@ val b = Button(this).apply {
         val d = d()
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((20 * d).toInt(), 0, (20 * d).toInt(), 0)
+            setPaddingMd(20, 0, 20, 0)
         }
         val edits = mutableMapOf<String, EditText>()
         for ((label, def) in fields) {
             container.addView(TextView(this).apply {
                 text = label
                 setTextColor(theme.onSurface)
-                textSize = UiTokens.TEXT_COMPACT
-                setPadding(0, (8 * d).toInt(), 0, (2 * d).toInt())
+                textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
+                setPaddingMd(0, 8, 0, 2)
             })
             val e = EditText(this).apply {
                 setText(def)
@@ -510,7 +510,7 @@ val b = Button(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setBackgroundColor(theme.primaryContainer)
-                setPadding((10 * dd).toInt(), (8 * dd).toInt(), (10 * dd).toInt(), (8 * dd).toInt())
+                setPaddingMd(10, 8, 10, 8)
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = (6 * dd).toInt() }
@@ -518,7 +518,7 @@ val b = Button(this).apply {
             row.addView(TextView(this).apply {
                 text = label
                 setTextColor(theme.onSurface)
-                textSize = UiTokens.TEXT_COMPACT
+                textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
                 typeface = Typeface.MONOSPACE
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
@@ -526,8 +526,8 @@ val b = Button(this).apply {
                 text = "×"
                 setTextColor(theme.onSurface)
                 isAllCaps = true
-                textSize = UiTokens.TEXT_COMPACT
-                setPadding((8 * dd).toInt(), 0, (8 * dd).toInt(), 0)
+                textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
+                setPaddingMd(8, 0, 8, 0)
                 setOnClickListener {
                     controls.removeAt(i)
                     renderCtrlList()

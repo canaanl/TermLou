@@ -62,13 +62,13 @@ class ShortcutSettingsActivity : ComponentActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(theme.surfaceVariant)
-            setPadding((16 * d).toInt(), (12 * d).toInt(), (16 * d).toInt(), (12 * d).toInt())
+            setPaddingMd(16, 12, 16, 12)
         }
 
         val titleTv = TextView(this).apply {
             text = getString(R.string.sc_manage_title)
             setTextColor(theme.onSurface)
-            textSize = UiTokens.TEXT_TITLE
+            textMd(UiTokens.TEXT_TITLE, UiTokens.LINE_TITLE)
             typeface = Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
@@ -81,13 +81,13 @@ class ShortcutSettingsActivity : ComponentActivity() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
             )
-            setPadding(0, 0, 0, (4 * d).toInt())
+            setPaddingMd(0, 0, 0, 4)
         }
         root.addView(recyclerView)
 
         val bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((12 * d).toInt(), (8 * d).toInt(), (12 * d).toInt(), (12 * d).toInt())
+            setPaddingMd(12, 8, 12, 12)
             setBackgroundColor(theme.surfaceVariant)
         }
 
@@ -98,9 +98,9 @@ class ShortcutSettingsActivity : ComponentActivity() {
         val newBtn = Button(this).apply {
             text = getString(R.string.sc_new)
             setTextColor(Color.WHITE)
-            textSize = UiTokens.TEXT_BODY
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             isAllCaps = true
-            setPadding(0, (10 * d).toInt(), 0, (10 * d).toInt())
+            setPaddingMd(0, 10, 0, 10)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginEnd = (6 * d).toInt()
             }
@@ -111,9 +111,9 @@ class ShortcutSettingsActivity : ComponentActivity() {
         val exitBtn = Button(this).apply {
             text = getString(R.string.sc_exit)
             setTextColor(Color.WHITE)
-            textSize = UiTokens.TEXT_BODY
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             isAllCaps = true
-            setPadding(0, (10 * d).toInt(), 0, (10 * d).toInt())
+            setPaddingMd(0, 10, 0, 10)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = (6 * d).toInt()
             }
@@ -143,9 +143,9 @@ class ShortcutSettingsActivity : ComponentActivity() {
         val backupBtn = Button(this).apply {
             text = getString(R.string.sc_backup)
             setTextColor(Color.WHITE)
-            textSize = UiTokens.TEXT_BODY
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             isAllCaps = true
-            setPadding(0, (10 * d).toInt(), 0, (10 * d).toInt())
+            setPaddingMd(0, 10, 0, 10)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginEnd = (6 * d).toInt()
             }
@@ -156,9 +156,9 @@ class ShortcutSettingsActivity : ComponentActivity() {
         val restoreBtn = Button(this).apply {
             text = getString(R.string.sc_restore)
             setTextColor(Color.WHITE)
-            textSize = UiTokens.TEXT_BODY
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             isAllCaps = true
-            setPadding(0, (10 * d).toInt(), 0, (10 * d).toInt())
+            setPaddingMd(0, 10, 0, 10)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = (6 * d).toInt()
             }
@@ -259,13 +259,13 @@ class ShortcutSettingsActivity : ComponentActivity() {
         val nameEdit = EditText(this).apply {
             setText(src.label.ifBlank { "" })
             hint = getString(R.string.sc_group_name_hint)
-            setPadding((8 * d).toInt(), (6 * d).toInt(), (8 * d).toInt(), (6 * d).toInt())
+            setPaddingMd(8, 6, 8, 6)
         }.also {
             FieldStyle.applyOutlined(it, theme, UiTokens.TEXT_BODY)
         }
         val body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((16 * d).toInt(), (8 * d).toInt(), (16 * d).toInt(), (8 * d).toInt())
+            setPaddingMd(16, 8, 16, 8)
             addView(nameEdit)
         }
         AlertDialog.Builder(this)
@@ -314,14 +314,14 @@ class ShortcutSettingsActivity : ComponentActivity() {
         val nameEdit = EditText(this).apply {
             setText(oldLabel)
             hint = getString(R.string.sc_name_hint)
-            setPadding((8 * d).toInt(), (6 * d).toInt(), (8 * d).toInt(), (6 * d).toInt())
+            setPaddingMd(8, 6, 8, 6)
         }.also {
             FieldStyle.applyOutlined(it, theme, UiTokens.TEXT_BODY)
         }
         val cmdEdit = EditText(this).apply {
             setText(oldCmd)
             hint = getString(R.string.sc_cmd_hint)
-            setPadding((8 * d).toInt(), (6 * d).toInt(), (8 * d).toInt(), (6 * d).toInt())
+            setPaddingMd(8, 6, 8, 6)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -331,7 +331,7 @@ class ShortcutSettingsActivity : ComponentActivity() {
         }
         val body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((16 * d).toInt(), (8 * d).toInt(), (16 * d).toInt(), (8 * d).toInt())
+            setPaddingMd(16, 8, 16, 8)
             addView(nameEdit)
             addView(cmdEdit)
         }

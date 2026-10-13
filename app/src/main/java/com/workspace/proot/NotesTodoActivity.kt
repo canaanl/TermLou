@@ -76,7 +76,7 @@ class NotesTodoActivity : NotesPageActivity() {
             setSingleLine(true)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
-            setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (10 * d).toInt())
+            setPaddingMd(12, 10, 12, 10)
         }
         watchText(input) {
             query = input.text?.toString().orEmpty()
@@ -85,7 +85,7 @@ class NotesTodoActivity : NotesPageActivity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (6 * d).toInt())
+            setPaddingMd(16, 10, 16, 6)
             addView(input)
         }
     }
@@ -141,8 +141,8 @@ class NotesTodoActivity : NotesPageActivity() {
         return TextView(this).apply {
             gravity = Gravity.CENTER
             setTextColor(theme.onSurfaceVariant)
-            textSize = UiTokens.TEXT_META
-            setPadding(0, (8 * d).toInt(), 0, (4 * d).toInt())
+            textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
+            setPaddingMd(0, 8, 0, 4)
         }
     }
 
@@ -150,7 +150,7 @@ class NotesTodoActivity : NotesPageActivity() {
         val d = density()
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((4 * d).toInt(), (4 * d).toInt(), (4 * d).toInt(), (8 * d).toInt())
+            setPaddingMd(4, 4, 4, 8)
         }
     }
 
@@ -178,10 +178,10 @@ class NotesTodoActivity : NotesPageActivity() {
             inner.addView(TextView(this).apply {
                 text = getString(R.string.notes_todo_empty_short)
                 setTextColor(theme.onSurfaceVariant)
-                textSize = UiTokens.TEXT_BODY
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
                 gravity = Gravity.CENTER
                 val d = density()
-                setPadding(0, (48 * d).toInt(), 0, 0)
+                setPaddingMd(0, 48, 0, 0)
             })
             return
         }
@@ -196,13 +196,13 @@ class NotesTodoActivity : NotesPageActivity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding((8 * d).toInt(), (8 * d).toInt(), (8 * d).toInt(), (8 * d).toInt())
+            setPaddingMd(8, 8, 8, 8)
             tag = "row:" + item.id
             addView(TextView(this@NotesTodoActivity).apply {
                 text = if (item.done) "☑" else "☐"
                 setTextColor(if (item.done) theme.primaryVisible else theme.onSurface)
-                textSize = UiTokens.TEXT_TITLE
-                setPadding(0, 0, (10 * d).toInt(), 0)
+                textMd(UiTokens.TEXT_TITLE, UiTokens.LINE_TITLE)
+                setPaddingMd(0, 0, 10, 0)
             })
             addView(LinearLayout(this@NotesTodoActivity).apply {
                 orientation = LinearLayout.VERTICAL
@@ -210,8 +210,9 @@ class NotesTodoActivity : NotesPageActivity() {
                 addView(TextView(this@NotesTodoActivity).apply {
                     text = item.text
                     setTextColor(if (item.done) theme.onSurfaceVariant else theme.onSurface)
-                    // 看板事项字号：15→14，比全局正文略小
-                    textSize = 14f
+                    // 5.9.40：原 14sp 是"比正文略小"的私有档，MD3 里没有这一档。
+                    // 14 卡在 13(compact) 与 15(body) 之间，就近并入 body，保持原观感。
+                    textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
                     if (item.done) paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
                 })
             })

@@ -30,7 +30,8 @@ class BraceMenu(context: Context) : View(context) {
 
     private val braceTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = UiTokens.braceText
-        textSize = 32f * density
+        // 5.9.40：原 32sp 裸字面量，按 MD3 并入 display 档（28sp）
+        textSize = UiTokens.TEXT_DISPLAY * density
         typeface = android.graphics.Typeface.DEFAULT_BOLD
         textAlign = Paint.Align.CENTER
     }
@@ -39,13 +40,13 @@ class BraceMenu(context: Context) : View(context) {
     }
     private val bluePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = UiTokens.braceBlue
-        textSize = 15f * density
+        textSize = UiTokens.TEXT_BODY * density
         typeface = android.graphics.Typeface.DEFAULT_BOLD
         textAlign = Paint.Align.CENTER
     }
     private val redPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = UiTokens.braceRed
-        textSize = 15f * density
+        textSize = UiTokens.TEXT_BODY * density
         typeface = android.graphics.Typeface.DEFAULT_BOLD
         textAlign = Paint.Align.CENTER
     }

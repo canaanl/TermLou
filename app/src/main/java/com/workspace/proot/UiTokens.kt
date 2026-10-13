@@ -9,11 +9,53 @@ package com.workspace.proot
  *  不引用本文件、不参与本文件的任何改动。
  */
 object UiTokens {
-    // ===== 字号档位 (sp) =====
+    // ===== 字号档位 (sp) — MD3 排版体系，5 档，唯一真值来源 =====
+    // 5.9.40 收编：此前项目里同时存在 11/12/13/14/15/16/17/18/24/32 共 10 种裸 sp 字面量，
+    // 而这里只定义了 4 档 —— 定义了却没人守，等于没有规矩。现按 MD3 收敛成 5 档：
+    //   display(28) / title(18) / body(15) / compact(13) / meta(12)
+    // 旧的 24 / 32 一律并入 display；11 并入 meta；14 / 16 / 17 一律并入 body/compact。
+    const val TEXT_DISPLAY = 28f
     const val TEXT_TITLE = 18f
     const val TEXT_BODY = 15f
     const val TEXT_COMPACT = 13f
     const val TEXT_META = 12f
+
+    // ===== 行高倍数 — MD3 排版行高 =====
+    // 5.9.40 补：全项目此前**一次都没设过行高**（setLineSpacing 出现 0 次），
+    // 于是紧凑处挤、宽松处散，同一屏的字看起来像两种排版 —— 割裂感最隐蔽的一条。
+    // 按 MD3 typography 的 line-height 比例补齐，与上面的字号档一一对应。
+    const val LINE_TITLE = 1.30f
+    const val LINE_BODY = 1.40f
+    const val LINE_COMPACT = 1.35f
+    const val LINE_META = 1.30f
+
+    // ===== 间距 (dp) — MD3 4dp 网格，只有这 7 档 =====
+    // 5.9.40 补：此前 padding 有 236 处**全部是手写字面量**（最常见的 16/6 出现 13 次、
+    // 还有 16/14、16/4 这种同族不同值），因为间距从来没有被定义过。
+    // MD3 的硬规则是所有间距取 4 的倍数，这里就是那把尺子。
+    const val SPACE_0 = 0
+    const val SPACE_1 = 4
+    const val SPACE_2 = 8
+    const val SPACE_3 = 12
+    const val SPACE_4 = 16
+    const val SPACE_5 = 24
+    const val SPACE_6 = 32
+
+    // ===== 圆角 (dp) — MD3 Shape =====
+    // 5.9.40 补：此前项目里同时存在 2 / 8 / 12 / 20 四种自定义半径，
+    // 同一层级的卡片在不同页面圆角不同，是"割裂"最直观的一处。
+    // 按 MD3 shape scale 收敛成 5 档；用户已确认不保留 20dp 大圆角，故并入 lg。
+    const val CORNER_XS = 4f
+    const val CORNER_SM = 8f
+    const val CORNER_MD = 12f
+    const val CORNER_LG = 16f
+    const val CORNER_XL = 28f
+
+    // ===== 控件高度 (dp) — MD3 触控目标 ≥ 48dp =====
+    // 5.9.40 补：此前没有任何统一的控件高度定义，按钮/列表行各量各的。
+    const val TOUCH_TARGET = 48
+    const val BUTTON_HEIGHT = 40
+    const val LIST_ROW_HEIGHT = 48
 
     // ===== 装饰色 (ARGB，逐位 = 原字面量) =====
 

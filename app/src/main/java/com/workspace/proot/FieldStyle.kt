@@ -14,7 +14,7 @@ object FieldStyle {
     fun applyOutlined(edit: EditText, theme: ThemeColors, textSizeSp: Float) {
         val d = edit.resources.displayMetrics.density
         edit.background = GradientDrawable().apply {
-            cornerRadius = RADIUS_DP * d
+            cornerRadius = snapCorner(RADIUS_DP) * d
             setStroke(
                 (STROKE_DP * d).toInt(),
                 if (theme.night) theme.onSurfaceVariant else theme.outline

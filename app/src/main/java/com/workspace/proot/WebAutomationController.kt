@@ -36,8 +36,8 @@ class WebAutomationController(
             text = activity.getString(R.string.web_settings_title)
             setTextColor(scope.cOnSurface)
             typeface = Typeface.DEFAULT_BOLD
-            textSize = UiTokens.TEXT_BODY
-            setPadding(0, 0, 0, 4)
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_1)
         })
         // 5.9.4：这里原本有一整段功能说明（"给 Linux 里的 AI agent 用的无头浏览器…"），
         // 与终端 Tab 的说明页重复。
@@ -46,8 +46,8 @@ class WebAutomationController(
         copyText = TextView(activity).apply {
             text = activity.getString(R.string.web_copy_hint, WebProtocol.DEFAULT_PORT)
             setTextColor(scope.cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_META
-            setPadding(0, 0, 0, 12)
+            textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_3)
             setOnClickListener { copyConnectionInfo() }
         }
         parent.addView(copyText)
@@ -66,8 +66,8 @@ class WebAutomationController(
             toggleBtn = Button(activity).apply {
                 text = activity.getString(R.string.web_btn_start)
                 setTextColor(Color.WHITE)
-                textSize = UiTokens.TEXT_BODY
-                setPadding(16, 6, 16, 6)
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
+                setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_2, UiTokens.SPACE_4, UiTokens.SPACE_2)
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 // 5.9.4 修：这里原本给 marginEnd/marginStart = 4dp，靠 SegmentStyle.applyRow
@@ -81,8 +81,8 @@ class WebAutomationController(
             clearBtn = Button(activity).apply {
                 text = activity.getString(R.string.web_btn_clear)
                 setTextColor(Color.WHITE)
-                textSize = UiTokens.TEXT_BODY
-                setPadding(16, 6, 16, 6)
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
+                setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_2, UiTokens.SPACE_4, UiTokens.SPACE_2)
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)

@@ -91,18 +91,18 @@ class SplashMakerActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
             setBackgroundColor(theme.surfaceVariant)
-            setPadding((16 * density()).toInt(), (12 * density()).toInt(), (16 * density()).toInt(), (12 * density()).toInt())
+            setPaddingMd(16, 12, 16, 12)
             addView(TextView(this@SplashMakerActivity).apply {
                 text = getString(R.string.sm_title)
                 setTextColor(theme.onSurface)
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
-                textSize = UiTokens.TEXT_TITLE
+                textMd(UiTokens.TEXT_TITLE, UiTokens.LINE_TITLE)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(TextView(this@SplashMakerActivity).apply {
                 text = getString(R.string.sm_invert)
                 setTextColor(theme.onSurface)
-                textSize = UiTokens.TEXT_BODY
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
@@ -150,7 +150,7 @@ class SplashMakerActivity : AppCompatActivity() {
         styleBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
-            setPadding((12 * density()).toInt(), (8 * density()).toInt(), (12 * density()).toInt(), 0)
+            setPaddingMd(12, 8, 12, 0)
             addView(TextView(this@SplashMakerActivity).apply {
                 text = getString(R.string.sm_clarity)
                 setTextColor(theme.onSurface)
@@ -183,7 +183,7 @@ class SplashMakerActivity : AppCompatActivity() {
         val bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(theme.surfaceVariant)
-            setPadding((12 * density()).toInt(), (8 * density()).toInt(), (12 * density()).toInt(), (12 * density()).toInt())
+            setPaddingMd(12, 8, 12, 12)
         }
         val row1 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -236,8 +236,8 @@ class SplashMakerActivity : AppCompatActivity() {
             this.text = text
             setTextColor(Color.WHITE)
             isAllCaps = true
-            textSize = UiTokens.TEXT_BODY
-            setPadding((16 * density()).toInt(), (6 * density()).toInt(), (16 * density()).toInt(), (6 * density()).toInt())
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
+            setPaddingMd(16, 6, 16, 6)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = (4 * density()).toInt()
                 marginEnd = (4 * density()).toInt()

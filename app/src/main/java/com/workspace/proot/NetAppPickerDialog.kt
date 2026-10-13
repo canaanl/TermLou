@@ -36,27 +36,28 @@ class NetAppPickerDialog(
 
     fun show() {
         val density = ctx.resources.displayMetrics.density
-        val pad = (20 * density).toInt()
+        // 5.9.40：原 20dp 不在 4dp 网格上，按 MD3 上调到 24dp（SPACE_5）
+        val pad = ctx.dp(UiTokens.SPACE_5)
 
         val content = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(pad, (8 * density).toInt(), pad, 0)
+            setPaddingMd(UiTokens.SPACE_5, UiTokens.SPACE_2, UiTokens.SPACE_5, UiTokens.SPACE_0)
         }
 
         content.addView(TextView(ctx).apply {
             text = ctx.getString(R.string.picker_capture_title)
             setTextColor(theme.onSurface)
-            textSize = UiTokens.TEXT_TITLE
-            setPadding(0, 0, 0, (10 * density).toInt())
+            textMd(UiTokens.TEXT_TITLE, UiTokens.LINE_TITLE)
+            setPaddingMd(0, 0, 0, 10)
         })
 
         searchInput = EditText(ctx).apply {
             hint = ctx.getString(R.string.picker_search)
             setTextColor(theme.onSurface)
             setHintTextColor(onSurfaceVariant)
-            textSize = UiTokens.TEXT_BODY
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             setSingleLine(true)
-            setPadding(pad, (8 * density).toInt(), pad, (8 * density).toInt())
+            setPaddingMd(UiTokens.SPACE_5, UiTokens.SPACE_2, UiTokens.SPACE_5, UiTokens.SPACE_2)
             setBackgroundColor(if (theme.night) UiTokens.searchBg else theme.surfaceContainerHighest)
         }
         content.addView(searchInput)
@@ -83,11 +84,11 @@ class NetAppPickerDialog(
         content.addView(LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, (6 * density).toInt(), 0, (6 * density).toInt())
+            setPaddingMd(0, 6, 0, 6)
             addView(TextView(ctx).apply {
                 text = ctx.getString(R.string.picker_system)
                 setTextColor(onSurfaceVariant)
-                textSize = UiTokens.TEXT_COMPACT
+                textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(sysSwitch)
@@ -107,7 +108,7 @@ class NetAppPickerDialog(
         val doneBtn = Button(ctx).apply {
             text = ctx.getString(R.string.done)
             setTextColor(accent)
-            textSize = UiTokens.TEXT_BODY
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             isAllCaps = true
             ButtonStyle.outlined(this, accent)
         }
@@ -149,18 +150,18 @@ class NetAppPickerDialog(
             val row = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding((12 * density).toInt(), 0, (12 * density).toInt(), 0)
+                setPaddingMd(12, 0, 12, 0)
             }
             val tick = TextView(ctx).apply {
                 text = if (isSel) ctx.getString(R.string.tick) else ""
                 setTextColor(accent)
-                textSize = UiTokens.TEXT_BODY
-                setPadding(0, 0, (6 * density).toInt(), 0)
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
+                setPaddingMd(0, 0, 6, 0)
             }
             val name = TextView(ctx).apply {
                 text = entry.label
                 setTextColor(theme.onSurface)
-                textSize = UiTokens.TEXT_BODY
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
                 setSingleLine(true)
             }
             row.addView(tick)

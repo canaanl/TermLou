@@ -60,13 +60,13 @@ class ShortcutGroupActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(theme.surfaceVariant)
-            setPadding((16 * d).toInt(), (12 * d).toInt(), (16 * d).toInt(), (12 * d).toInt())
+            setPaddingMd(16, 12, 16, 12)
         }
 
         val titleTv = TextView(this).apply {
             text = "\uD83D\uDCC1 " + groupName
             setTextColor(theme.onSurface)
-            textSize = UiTokens.TEXT_TITLE
+            textMd(UiTokens.TEXT_TITLE, UiTokens.LINE_TITLE)
             typeface = Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
@@ -79,16 +79,16 @@ class ShortcutGroupActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
             )
-            setPadding(0, 0, 0, (4 * d).toInt())
+            setPaddingMd(0, 0, 0, 4)
         }
         root.addView(recyclerView)
 
         val exitBtn = Button(this).apply {
             text = getString(R.string.sc_exit_group)
             setTextColor(theme.primaryVisible)
-            textSize = UiTokens.TEXT_BODY
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             isAllCaps = true
-            setPadding(0, (12 * d).toInt(), 0, (12 * d).toInt())
+            setPaddingMd(0, 12, 0, 12)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -146,14 +146,14 @@ class ShortcutGroupActivity : Activity() {
         val nameEdit = EditText(this).apply {
             setText(oldLabel)
             hint = getString(R.string.sc_name_hint)
-            setPadding((8 * d).toInt(), (6 * d).toInt(), (8 * d).toInt(), (6 * d).toInt())
+            setPaddingMd(8, 6, 8, 6)
         }.also {
             FieldStyle.applyOutlined(it, theme, UiTokens.TEXT_BODY)
         }
         val cmdEdit = EditText(this).apply {
             setText(oldCmd)
             hint = getString(R.string.sc_cmd_hint)
-            setPadding((8 * d).toInt(), (6 * d).toInt(), (8 * d).toInt(), (6 * d).toInt())
+            setPaddingMd(8, 6, 8, 6)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -163,7 +163,7 @@ class ShortcutGroupActivity : Activity() {
         }
         val body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((16 * d).toInt(), (8 * d).toInt(), (16 * d).toInt(), (8 * d).toInt())
+            setPaddingMd(16, 8, 16, 8)
             addView(nameEdit)
             addView(cmdEdit)
         }

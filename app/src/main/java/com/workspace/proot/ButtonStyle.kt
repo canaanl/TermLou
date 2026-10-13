@@ -8,7 +8,13 @@ import android.widget.Button
 
 /** 按钮统一外壳：纯色圆角 + M3 状态层 ripple，无立体沿、无按压缩放。 */
 object ButtonStyle {
-    internal const val CORNER_RADIUS_DP = 20f
+    /**
+     * 5.9.40：原为 20f。
+     *
+     * 全项目**所有按钮**（实心/描边）都走这一个常量，所以它就是"按钮圆角"的唯一真相来源。
+     * 用户已确认不保留大圆角，按 MD3 shape 改到 md 档（12dp）。
+     */
+    internal const val CORNER_RADIUS_DP = UiTokens.CORNER_MD
     private val rippleColor = ColorStateList.valueOf(0x1FFFFFFF.toInt())
 
     /**

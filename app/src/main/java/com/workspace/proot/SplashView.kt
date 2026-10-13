@@ -199,7 +199,7 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
             night -> UiTokens.splashText
             else -> DAY_TEXT
         }
-        textPaint.textSize = 12 * density
+        textPaint.textSize = UiTokens.TEXT_META * density
         textPaint.typeface = Typeface.MONOSPACE
         textPaint.textAlign = Paint.Align.CENTER
     }

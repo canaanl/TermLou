@@ -1,4 +1,4 @@
-﻿package com.workspace.proot
+package com.workspace.proot
 
 import android.content.Intent
 import android.graphics.Color
@@ -38,8 +38,8 @@ class WorkspaceController(
         filesHeader = TextView(activity).apply {
             text = "  /workspace/"
             setTextColor(scope.cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_COMPACT
-            setPadding(16, 4, 16, 4)
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
+            setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_1, UiTokens.SPACE_4, UiTokens.SPACE_1)
             setBackgroundColor(scope.cSurfaceVariant)
             visibility = View.GONE
         }

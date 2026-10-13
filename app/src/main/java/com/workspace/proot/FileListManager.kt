@@ -88,7 +88,7 @@ class FileListManager(
                 setTextColor(if (theme.night) UiTokens.linkCyan else theme.tertiary)
                 textSize = nameTextSize
                 typeface = Typeface.MONOSPACE
-                setPadding(16, 14, 16, 14)
+                setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_4, UiTokens.SPACE_4, UiTokens.SPACE_4)
                 setBackgroundColor(Color.TRANSPARENT)
                 setOnClickListener {
                     dir.parentFile?.let { newDir ->
@@ -119,7 +119,7 @@ class FileListManager(
                 text = context.getString(R.string.file_empty)
                 setTextColor(theme.onSurfaceVariant)
                 textSize = nameTextSize
-                setPadding(16, 24, 16, 24)
+                setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_5, UiTokens.SPACE_4, UiTokens.SPACE_5)
             })
             staggerIn()
             return
@@ -131,7 +131,7 @@ class FileListManager(
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(16, 10, 16, 10)
+                setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_3, UiTokens.SPACE_4, UiTokens.SPACE_3)
                 setBackgroundColor(if (isDir) UiTokens.dirRowBg else Color.TRANSPARENT)
             }
 
@@ -186,7 +186,7 @@ class FileListManager(
                         textSize = nameTextSize
                         typeface = Typeface.MONOSPACE
                         maxLines = 1
-                        setPadding(0, 0, 4, 0)
+                        setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_1, UiTokens.SPACE_0)
                     })
                 }
 
@@ -200,7 +200,7 @@ class FileListManager(
                     text = formatSize(f.length())
                     setTextColor(theme.onSurfaceVariant)
                     textSize = infoTextSize
-                    setPadding(0, 0, 8, 0)
+                    setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_2, UiTokens.SPACE_0)
                 })
                 row.addView(fileInfo)
 

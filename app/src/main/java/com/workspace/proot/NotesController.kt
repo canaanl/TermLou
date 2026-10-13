@@ -163,7 +163,7 @@ class NotesController(
             hint = activity.getString(R.string.notes_search_notes)
             setSingleLine(true)
             FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
-            setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (10 * d).toInt())
+            setPaddingMd(12, 10, 12, 10)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { setMargins((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (4 * d).toInt()) }
@@ -196,15 +196,15 @@ class NotesController(
         editorTitle = TextView(activity).apply {
             setTextColor(theme.onSurface)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            textSize = UiTokens.TEXT_TITLE
+            textMd(UiTokens.TEXT_TITLE, UiTokens.LINE_TITLE)
             gravity = Gravity.CENTER
-            setPadding((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (4 * d).toInt())
+            setPaddingMd(16, 10, 16, 4)
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
         }
         box.addView(editorTitle)
         tagRow = TagFlowLayout(activity).apply {
-            setPadding((12 * d).toInt(), 0, (12 * d).toInt(), (4 * d).toInt())
+            setPaddingMd(12, 0, 12, 4)
         }
         val tagScroll = MaxHeightScrollView(activity).apply {
             maxHeight = activity.resources.displayMetrics.heightPixels / TAG_AREA_DIVISOR
@@ -226,9 +226,9 @@ class NotesController(
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             setTextColor(theme.onSurface)
             setHintTextColor(theme.onSurfaceVariant)
-            textSize = UiTokens.TEXT_BODY
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             gravity = Gravity.TOP or Gravity.START
-            setPadding((16 * d).toInt(), (6 * d).toInt(), (16 * d).toInt(), (12 * d).toInt())
+            setPaddingMd(16, 6, 16, 12)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0
             ).apply { weight = 1f }
@@ -241,7 +241,7 @@ class NotesController(
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(theme.surface)
-            setPadding(4, 0, 4, 0)
+            setPaddingMd(UiTokens.SPACE_1, UiTokens.SPACE_0, UiTokens.SPACE_1, UiTokens.SPACE_0)
             addView(segButton(activity.getString(R.string.notes_todo_tab_btn)) {
                 flushPendingSave()
                 activity.startActivity(
@@ -275,7 +275,7 @@ class NotesController(
         val row = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(theme.surface)
-            setPadding(4, 0, 4, 0)
+            setPaddingMd(UiTokens.SPACE_1, UiTokens.SPACE_0, UiTokens.SPACE_1, UiTokens.SPACE_0)
             addView(segButton(activity.getString(R.string.notes_insert_todo)) {
                 showTodoDialog()
             })
@@ -421,10 +421,10 @@ class NotesController(
                     if (terms.isEmpty()) R.string.notes_empty_list else R.string.notes_search_empty
                 )
                 setTextColor(theme.onSurfaceVariant)
-                textSize = UiTokens.TEXT_BODY
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
                 gravity = Gravity.CENTER
                 val d = density()
-                setPadding(0, (48 * d).toInt(), 0, 0)
+                setPaddingMd(0, 48, 0, 0)
             })
             return
         }
@@ -442,14 +442,14 @@ class NotesController(
         val d = density()
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (10 * d).toInt())
+            setPaddingMd(16, 10, 16, 10)
             addView(LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 addView(TextView(activity).apply {
                     text = entry.name
                     setTextColor(theme.onSurface)
-                    textSize = UiTokens.TEXT_BODY
+                    textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
                     maxLines = 1
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     layoutParams = LinearLayout.LayoutParams(
@@ -459,7 +459,7 @@ class NotesController(
                 addView(TextView(activity).apply {
                     text = ROW_FMT.format(Date(entry.updatedAt))
                     setTextColor(theme.onSurfaceVariant)
-                    textSize = UiTokens.TEXT_META
+                    textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
                     maxLines = 1
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
@@ -468,7 +468,7 @@ class NotesController(
             })
             if (entry.tags.isNotEmpty()) {
                 addView(TagFlowLayout(activity).apply {
-                    setPadding(0, (4 * d).toInt(), 0, 0)
+                    setPaddingMd(0, 4, 0, 0)
                     for (tag in entry.tags) {
                         addView(tagCapsule(tag) { onClick() })
                     }
@@ -512,13 +512,13 @@ class NotesController(
         val d = density()
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((24 * d).toInt(), (8 * d).toInt(), (24 * d).toInt(), 0)
+            setPaddingMd(24, 8, 24, 0)
         }
         val input = EditText(activity).apply {
             hint = activity.getString(R.string.notes_tag_hint)
             setSingleLine(true)
             FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
-            setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (10 * d).toInt())
+            setPaddingMd(12, 10, 12, 10)
         }
         box.addView(input)
         val existing = store.allTags().map { it.first } - store.tagsOf(noteName).toSet()
@@ -526,8 +526,8 @@ class NotesController(
             box.addView(TextView(activity).apply {
                 text = activity.getString(R.string.notes_common_tags)
                 setTextColor(theme.onSurfaceVariant)
-                textSize = UiTokens.TEXT_META
-                setPadding(0, (12 * d).toInt(), 0, (4 * d).toInt())
+                textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
+                setPaddingMd(0, 12, 0, 4)
             })
             val chips = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
             for (tag in existing) {
@@ -587,18 +587,18 @@ class NotesController(
         return LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding((16 * d).toInt(), (6 * d).toInt(), (16 * d).toInt(), (6 * d).toInt())
+            setPaddingMd(16, 6, 16, 6)
             addView(TextView(activity).apply {
                 text = if (item.done) "☑" else "☐"
                 setTextColor(if (item.done) theme.primaryVisible else theme.onSurface)
-                textSize = UiTokens.TEXT_TITLE
-                setPadding(0, 0, (10 * d).toInt(), 0)
+                textMd(UiTokens.TEXT_TITLE, UiTokens.LINE_TITLE)
+                setPaddingMd(0, 0, 10, 0)
                 setOnClickListener { toggleTodo(item) }
             })
             addView(TextView(activity).apply {
                 text = item.text
                 setTextColor(if (item.done) theme.onSurfaceVariant else theme.onSurface)
-                textSize = UiTokens.TEXT_BODY
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 if (item.done) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
                 setOnClickListener { editTodoText(item) }
@@ -646,7 +646,8 @@ class NotesController(
             textSize = AppLang.bottomButtonTextSize(activity)
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding(3, 0, 3, 0)
+            // 5.9.40：原 3dp 不在 4dp 网格上，按 MD3 上调到 4dp（SPACE_1）
+            setPaddingMd(UiTokens.SPACE_1, 0, UiTokens.SPACE_1, 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener { onClick() }
         }
@@ -657,9 +658,9 @@ class NotesController(
         return TextView(activity).apply {
             text = tag
             setTextColor(TAG_TEXT_COLOR)
-            textSize = UiTokens.TEXT_COMPACT
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
             maxLines = 1
-            setPadding((12 * d).toInt(), (4 * d).toInt(), (12 * d).toInt(), (4 * d).toInt())
+            setPaddingMd(12, 4, 12, 4)
             if (tag.length > MARQUEE_CHARS) {
                 setSingleLine()
                 ellipsize = android.text.TextUtils.TruncateAt.MARQUEE
@@ -670,7 +671,7 @@ class NotesController(
                 ellipsize = android.text.TextUtils.TruncateAt.END
             }
             background = GradientDrawable().apply {
-                cornerRadius = (12 * d)
+                cornerRadius = snapCorner(UiTokens.CORNER_MD) * d
                 setStroke((1 * d).toInt().coerceAtLeast(1), edge)
                 setColor(fill)
             }
@@ -699,7 +700,7 @@ class NotesController(
         val d = density()
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((24 * d).toInt(), (8 * d).toInt(), (24 * d).toInt(), 0)
+            setPaddingMd(24, 8, 24, 0)
         }
         val input = EditText(activity).apply {
             this.hint = hint
@@ -707,7 +708,7 @@ class NotesController(
             setSelection(initial.length)
             setSingleLine(true)
             FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
-            setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (10 * d).toInt())
+            setPaddingMd(12, 10, 12, 10)
         }
         box.addView(input)
         AlertDialog.Builder(activity)

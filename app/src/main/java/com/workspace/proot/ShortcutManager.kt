@@ -249,13 +249,13 @@ class ShortcutManager(
         val nameEdit = EditText(context).apply {
             setText(oldLabel)
             hint = context.getString(R.string.sc_name_hint)
-            setPadding(8, 6, 8, 6)
+            setPaddingMd(UiTokens.SPACE_2, UiTokens.SPACE_2, UiTokens.SPACE_2, UiTokens.SPACE_2)
             FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
         }
         val cmdEdit = EditText(context).apply {
             setText(oldCmd)
             hint = context.getString(R.string.sc_cmd_hint)
-            setPadding(8, 6, 8, 6)
+            setPaddingMd(UiTokens.SPACE_2, UiTokens.SPACE_2, UiTokens.SPACE_2, UiTokens.SPACE_2)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = 8
             }
@@ -263,7 +263,7 @@ class ShortcutManager(
         }
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(16, 8, 16, 8)
+            setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_2, UiTokens.SPACE_4, UiTokens.SPACE_2)
             addView(nameEdit)
             addView(cmdEdit)
         }

@@ -34,16 +34,16 @@ class LanController(
             text = activity.getString(R.string.lan_title)
             setTextColor(scope.cOnSurface)
             typeface = Typeface.DEFAULT_BOLD
-            textSize = UiTokens.TEXT_BODY
-            setPadding(0, 0, 0, 4)
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_1)
         })
         // 5.9.4：删掉原来那行状态文本。开关状态由按钮的填充色表达；
         // "需认证"改由认证按钮自己的文字承载（见 refreshLanRow）。
         lanUrlText = TextView(activity).apply {
             text = activity.getString(R.string.lan_url_preview)
             setTextColor(scope.cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_META
-            setPadding(0, 0, 0, 12)
+            textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_3)
             setOnClickListener { copyLanUrl() }
         }
         parent.addView(lanUrlText)
@@ -63,12 +63,12 @@ class LanController(
     private fun buildLanButtons(): LinearLayout {
         return LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 0)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0)
             lanToggleBtn = Button(activity).apply {
                 text = activity.getString(R.string.lan_start)
                 setTextColor(Color.WHITE)
-                textSize = UiTokens.TEXT_BODY
-                setPadding(16, 6, 16, 6)
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
+                setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_2, UiTokens.SPACE_4, UiTokens.SPACE_2)
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
@@ -84,8 +84,8 @@ class LanController(
                     activity.getString(R.string.lan_auth_btn_short)
                 )
                 setTextColor(Color.WHITE)
-                textSize = UiTokens.TEXT_BODY
-                setPadding(16, 6, 16, 6)
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
+                setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_2, UiTokens.SPACE_4, UiTokens.SPACE_2)
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
@@ -169,7 +169,7 @@ class LanController(
             setText(scope.settingsManager.lanUser())
             hint = activity.getString(R.string.hint_lan_user)
             setSingleLine(true)
-            setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
+            setPaddingMd(12, 10, 12, 10)
         }.also {
             FieldStyle.applyOutlined(it, scope.theme, UiTokens.TEXT_BODY)
         }
@@ -178,13 +178,13 @@ class LanController(
             hint = activity.getString(R.string.hint_password)
             setSingleLine(true)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
+            setPaddingMd(12, 10, 12, 10)
         }.also {
             FieldStyle.applyOutlined(it, scope.theme, UiTokens.TEXT_BODY)
         }
         val body = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((16 * density).toInt(), (8 * density).toInt(), (16 * density).toInt(), (8 * density).toInt())
+            setPaddingMd(16, 8, 16, 8)
             addView(userEdit)
             addView(passEdit, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT

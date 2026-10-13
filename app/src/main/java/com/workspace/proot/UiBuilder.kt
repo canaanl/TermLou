@@ -22,8 +22,8 @@ class UiBuilder(
         return TextView(activity).apply {
             text = "Workspace Terminal"
             setTextColor(theme.onSurface)
-            textSize = UiTokens.TEXT_COMPACT
-            setPadding(16, 8, 16, 0)
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
+            setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_2, UiTokens.SPACE_4, UiTokens.SPACE_0)
             setBackgroundColor(theme.surfaceContainer)
         }
     }
@@ -62,7 +62,7 @@ class UiBuilder(
                 setImageResource(icon)
                 contentDescription = activity.getString(desc)
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
-                setPadding(8, 12, 8, 12)
+                setPaddingMd(UiTokens.SPACE_2, UiTokens.SPACE_3, UiTokens.SPACE_2, UiTokens.SPACE_3)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
         }
@@ -73,19 +73,19 @@ class UiBuilder(
     ): SetupAreaViews {
         val setupArea = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(32, 32, 32, 32)
+            setPaddingMd(UiTokens.SPACE_6, UiTokens.SPACE_6, UiTokens.SPACE_6, UiTokens.SPACE_6)
         }
         setupArea.addView(TextView(activity).apply {
             text = activity.getString(R.string.setup_title)
             setTextColor(theme.onSurface)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-            textSize = UiTokens.TEXT_TITLE
-            setPadding(0, 0, 0, 16)
+            textMd(UiTokens.TEXT_TITLE, UiTokens.LINE_TITLE)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_4)
         })
         val setupBtn = Button(activity).apply {
             text = activity.getString(R.string.setup_extract)
             setTextColor(theme.primaryVisible)
-            textSize = UiTokens.TEXT_BODY
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             setOnClickListener { onInstallClick(this) }
             ButtonStyle.outlined(this, theme.primaryVisible)
         }
@@ -96,7 +96,7 @@ class UiBuilder(
         val progressText = TextView(activity).apply {
             text = ""
             setTextColor(theme.onSurface)
-            textSize = UiTokens.TEXT_COMPACT
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
         }
         setupArea.addView(setupBtn)
         setupArea.addView(progressBar)
@@ -124,14 +124,15 @@ class UiBuilder(
     ): LinearLayout {
         val fileBottomBar = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(4, 0, 4, 0)
+            setPaddingMd(UiTokens.SPACE_1, UiTokens.SPACE_0, UiTokens.SPACE_1, UiTokens.SPACE_0)
             setBackgroundColor(theme.surface)
         }
         val importBtn = Button(activity).apply {
             text = activity.getString(R.string.setup_import_file)
             setTextColor(Color.WHITE)
             textSize = AppLang.bottomButtonTextSize(activity)
-            setPadding(3, 0, 3, 0)
+            // 5.9.40：原 3dp 不在 4dp 网格上，按 MD3 上调到 4dp（SPACE_1）
+            setPaddingMd(UiTokens.SPACE_1, 0, UiTokens.SPACE_1, 0)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -141,7 +142,8 @@ class UiBuilder(
             text = activity.getString(R.string.setup_import_folder)
             setTextColor(Color.WHITE)
             textSize = AppLang.bottomButtonTextSize(activity)
-            setPadding(3, 0, 3, 0)
+            // 5.9.40：原 3dp 不在 4dp 网格上，按 MD3 上调到 4dp（SPACE_1）
+            setPaddingMd(UiTokens.SPACE_1, 0, UiTokens.SPACE_1, 0)
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -173,8 +175,9 @@ class UiBuilder(
         return Button(activity).apply {
             text = label
             setTextColor(Color.WHITE)
-            textSize = UiTokens.TEXT_META
-            setPadding(3, 0, 3, 0)
+            textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
+            // 5.9.40：原 3dp 不在 4dp 网格上，按 MD3 上调到 4dp（SPACE_1）
+            setPaddingMd(UiTokens.SPACE_1, 0, UiTokens.SPACE_1, 0)
             layoutParams = if (widthPx > 0) {
                 LinearLayout.LayoutParams(widthPx, LinearLayout.LayoutParams.WRAP_CONTENT)
             } else {
@@ -191,8 +194,9 @@ class UiBuilder(
         return Button(activity).apply {
             text = "Ctrl"
             setTextColor(Color.WHITE)
-            textSize = UiTokens.TEXT_META
-            setPadding(3, 0, 3, 0)
+            textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
+            // 5.9.40：原 3dp 不在 4dp 网格上，按 MD3 上调到 4dp（SPACE_1）
+            setPaddingMd(UiTokens.SPACE_1, 0, UiTokens.SPACE_1, 0)
             layoutParams = if (widthPx > 0) {
                 LinearLayout.LayoutParams(widthPx, LinearLayout.LayoutParams.WRAP_CONTENT)
             } else {

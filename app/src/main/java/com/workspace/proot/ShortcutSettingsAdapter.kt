@@ -51,7 +51,7 @@ class ShortcutSettingsAdapter(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(theme.surfaceVariant)
-            setPadding((16 * d).toInt(), (12 * d).toInt(), (16 * d).toInt(), (12 * d).toInt())
+            setPaddingMd(16, 12, 16, 12)
             layoutParams = RecyclerView.LayoutParams(
                 RecyclerView.LayoutParams.MATCH_PARENT,
                 RecyclerView.LayoutParams.WRAP_CONTENT
@@ -73,7 +73,7 @@ class ShortcutSettingsAdapter(
             setTextSize(TypedValue.COMPLEX_UNIT_SP, UiTokens.TEXT_META)
             setSingleLine(true)
             typeface = Typeface.MONOSPACE
-            setPadding(0, (2 * d).toInt(), 0, 0)
+            setPaddingMd(0, 2, 0, 0)
         }
         textContainer.addView(labelTv)
         textContainer.addView(cmdTv)
@@ -220,7 +220,10 @@ class ShortcutSettingsAdapter(
 
                             val paint = Paint().apply {
                                 color = Color.WHITE
-                                textSize = 16f * itemView.resources.displayMetrics.density
+                                // 5.9.40：原 16sp 裸字面量，按 MD3 并入 body 档（15sp）
+                                // 注意：这里是 Paint（Canvas 直绘）不是 TextView，没有 textMd 扩展，
+                                // 且 Paint.textSize 取的是 px，所以仍需手动乘 density。
+                                textSize = UiTokens.TEXT_BODY * itemView.resources.displayMetrics.density
                                 isAntiAlias = true
                             }
                             val pos = viewHolder.bindingAdapterPosition

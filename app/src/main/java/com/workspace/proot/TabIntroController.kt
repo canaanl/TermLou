@@ -63,12 +63,13 @@ class TabIntroController(
         val headerBar = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20), dp(16), dp(20), dp(8))
+            setPaddingMd(UiTokens.SPACE_5, UiTokens.SPACE_4, UiTokens.SPACE_5, UiTokens.SPACE_2)
             addView(TextView(activity).apply {
                 text = activity.getString(p.titleRes)
                 setTextColor(theme.onSurface)
-                typeface = Typeface.DEFAULT_BOLD
-                textSize = 24f
+                // 5.9.40：原 24sp 裸字面量，按 MD3 并入 display 档（28sp），并补上行高
+                // （bold 由 textMd 一并设置，不再单独写 typeface）
+                textMd(UiTokens.TEXT_DISPLAY, UiTokens.LINE_TITLE, bold = true)
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -77,7 +78,7 @@ class TabIntroController(
 
         val col = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(4), dp(20), dp(48))
+            setPaddingMd(UiTokens.SPACE_5, UiTokens.SPACE_1, UiTokens.SPACE_5, UiTokens.SPACE_6)
         }
         // 终端页：系统信息卡片（含饼图，进入后异步加载并 sweep）。
         if (p.showSystemInfo) {
@@ -95,13 +96,13 @@ class TabIntroController(
             text = activity.getString(p.leadRes)
             setTextColor(theme.onSurface)
             textSize = UiTokens.TEXT_BODY
-            setPadding(0, dp(16), 0, 0)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_4, UiTokens.SPACE_0, UiTokens.SPACE_0)
         })
         for (s in p.sections) {
             val card = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
                 background = cardBg()
-                setPadding(dp(16), dp(14), dp(16), dp(14))
+                setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_4, UiTokens.SPACE_4, UiTokens.SPACE_4)
             }
             card.addView(TextView(activity).apply {
                 text = activity.getString(s.titleRes)
@@ -113,7 +114,7 @@ class TabIntroController(
                 text = manualText(activity.getString(s.bodyRes))
                 setTextColor(theme.onSurface)
                 textSize = UiTokens.TEXT_BODY
-                setPadding(0, dp(6), 0, 0)
+                setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_2, UiTokens.SPACE_0, UiTokens.SPACE_0)
             })
             col.addView(card, LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -221,7 +222,8 @@ class TabIntroController(
 
     private fun cardBg(): GradientDrawable = GradientDrawable().apply {
         setColor(theme.surfaceVariant)
-        cornerRadius = 20f * density
+        // 5.9.40：原 20dp 圆角。用户确认不保留大圆角，按 MD3 shape 并入 lg 档（16dp）
+        cornerRadius = snapCorner(UiTokens.CORNER_LG) * density
     }
 
     /**

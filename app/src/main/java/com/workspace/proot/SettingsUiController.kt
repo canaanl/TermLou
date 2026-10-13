@@ -50,7 +50,7 @@ class SettingsUiController(
         }
         val settingsInner = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(32, 32, 32, 32)
+            setPaddingMd(UiTokens.SPACE_6, UiTokens.SPACE_6, UiTokens.SPACE_6, UiTokens.SPACE_6)
         }
         settingsScroll.addView(settingsInner)
 
@@ -83,23 +83,23 @@ class SettingsUiController(
         val settingsFooter = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(32, 0, 32, 0)
+            setPaddingMd(UiTokens.SPACE_6, UiTokens.SPACE_0, UiTokens.SPACE_6, UiTokens.SPACE_0)
         }
         settingsFooter.addView(TextView(activity).apply {
             text = "TermLou v${try { activity.packageManager.getPackageInfo(activity.packageName, 0).versionName } catch (_: Exception) { "1.3.1" }}"
             setTextColor(scope.cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_META
+            textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
             gravity = Gravity.CENTER
-            setPadding(0, 8, 0, 4)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_2, UiTokens.SPACE_0, UiTokens.SPACE_1)
         })
         settingsFooter.addView(TextView(activity).apply {
             val ss = android.text.SpannableString("Made by Lou with ♥")
             ss.setSpan(android.text.style.ForegroundColorSpan(Color.RED), ss.indexOf("♥"), ss.length, 0)
             text = ss
             setTextColor(scope.cOnSurfaceVariant)
-            textSize = UiTokens.TEXT_META
+            textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 8)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_2)
         })
         settingsWrapper.addView(settingsFooter)
     }
@@ -116,16 +116,47 @@ private fun divider(): View = View(activity).apply {
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-            topMargin = (8 * activity.resources.displayMetrics.density).toInt()
+            topMargin = activity.dp(UiTokens.SPACE_2)
         }
+
+    /**
+     * 5.9.40 新增：成对按钮（保存/重置…）的唯一构造入口。
+     *
+     * 此前同一段"白字 + TEXT_BODY + `setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_2, UiTokens.SPACE_4, UiTokens.SPACE_2)` + 主色胶囊"的代码
+     * 在本文件里**被复制了 9 遍**。9 份拷贝意味着 9 个可以各自漂移的真相来源 ——
+     * 这就是"同一个 App 里设置项看起来参差不齐"的直接原因。
+     *
+     * 收敛到这里之后：字号、行高、内距、外距、圆角只有一处可改，
+     * 以后再想漂移都漂不动。
+     */
+    private fun actionButton(text: String, primary: Boolean, onClick: () -> Unit): Button =
+        Button(activity).apply {
+            this.text = text
+            setTextColor(if (primary) Color.WHITE else scope.cOnSurface)
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
+            // MD3 4dp 网格：原 6 上调到 8（SPACE_2）
+            setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_2, UiTokens.SPACE_4, UiTokens.SPACE_2)
+            if (primary) ButtonStyle.apply(this, scope.cPrimary, scope.cPrimaryVisible)
+            else ButtonStyle.apply(this, scope.cOutline)
+            setOnClickListener { onClick() }
+        }
+
+    /** 输入框的规范内距（此前各处 12/8 与 12/10 并存）。 */
+    private fun EditText.applyMdFieldPadding() {
+        setPaddingMd(UiTokens.SPACE_3, UiTokens.SPACE_2, UiTokens.SPACE_3, UiTokens.SPACE_2)
+    }
 
     private fun sectionTitle(parent: LinearLayout, text: String, body: Boolean = false) {
         parent.addView(TextView(activity).apply {
             this.text = text
             setTextColor(scope.cOnSurface)
-            typeface = Typeface.DEFAULT_BOLD
-            textSize = if (body) UiTokens.TEXT_BODY else UiTokens.TEXT_TITLE
-            setPadding(0, 0, 0, 4)
+            // 5.9.40：MD3 —— 字号走规范档位，行高一并设上（全项目此前 0 次设过行高）
+            textMd(
+                if (body) UiTokens.TEXT_BODY else UiTokens.TEXT_TITLE,
+                if (body) UiTokens.LINE_BODY else UiTokens.LINE_TITLE,
+                bold = true,
+            )
+            setPaddingMd(0, 0, 0, UiTokens.SPACE_1)
         })
     }
 
@@ -159,7 +190,7 @@ private fun divider(): View = View(activity).apply {
         sectionTitle(parent, activity.getString(R.string.settings_shell_title), body = true)
         val shellEdit = EditText(activity).apply {
             setText(scope.settingsManager.shellCmd)
-            setPadding(12, 8, 12, 8)
+            setPaddingMd(UiTokens.SPACE_3, UiTokens.SPACE_2, UiTokens.SPACE_3, UiTokens.SPACE_2)
             setHint(activity.getString(R.string.hint_shell_cmd))
         }.also {
             FieldStyle.applyOutlined(it, scope.theme, UiTokens.TEXT_BODY)
@@ -169,37 +200,25 @@ private fun divider(): View = View(activity).apply {
         // 含 padding 的盒子，padding 会把上沿顶到输入框描边上并造成填充错位。
         parent.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 0)
-            addView(Button(activity).apply {
-                text = activity.getString(R.string.save)
-                setTextColor(Color.WHITE)
-                textSize = UiTokens.TEXT_BODY
-                setPadding(16, 6, 16, 6)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginEnd = 4
-                }
-                ButtonStyle.apply(this, scope.cPrimary, scope.cPrimaryVisible)
-                setOnClickListener {
-                    val cmd = shellEdit.text.toString().trim()
-                    scope.settingsManager.setShellCmd(cmd)
-                    status.showTempStatus(activity.getString(R.string.shell_saved))
-                    activity.hideIme()
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0)
+            addView(actionButton(activity.getString(R.string.save), primary = true) {
+                val cmd = shellEdit.text.toString().trim()
+                scope.settingsManager.setShellCmd(cmd)
+                status.showTempStatus(activity.getString(R.string.shell_saved))
+                activity.hideIme()
+            }.also { b ->
+                b.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = activity.dp(UiTokens.SPACE_1)
                 }
             })
-            addView(Button(activity).apply {
-                text = activity.getString(R.string.reset)
-                setTextColor(Color.WHITE)
-                textSize = UiTokens.TEXT_BODY
-                setPadding(16, 6, 16, 6)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = 4
-                }
-                ButtonStyle.apply(this, scope.cOutline)
-                setOnClickListener {
-                    shellEdit.setText("")
-                    scope.settingsManager.setShellCmd("")
-                    status.showTempStatus(activity.getString(R.string.shell_inited_idle))
-                    activity.hideIme()
+            addView(actionButton(activity.getString(R.string.reset), primary = false) {
+                shellEdit.setText("")
+                scope.settingsManager.setShellCmd("")
+                status.showTempStatus(activity.getString(R.string.shell_inited_idle))
+                activity.hideIme()
+            }.also { b ->
+                b.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = activity.dp(UiTokens.SPACE_1) 
                 }
             })
             SegmentStyle.applyRow(
@@ -218,7 +237,7 @@ private fun divider(): View = View(activity).apply {
         sectionTitle(parent, activity.getString(R.string.settings_tile_title), body = true)
         val tileEdit = EditText(activity).apply {
             setText(scope.settingsManager.tileCommand)
-            setPadding(12, 8, 12, 8)
+            setPaddingMd(UiTokens.SPACE_3, UiTokens.SPACE_2, UiTokens.SPACE_3, UiTokens.SPACE_2)
             setHint(activity.getString(R.string.hint_tile_cmd))
         }.also {
             FieldStyle.applyOutlined(it, scope.theme, UiTokens.TEXT_BODY)
@@ -226,37 +245,26 @@ private fun divider(): View = View(activity).apply {
         parent.addView(tileEdit)
         parent.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 0)
-            addView(Button(activity).apply {
-                text = activity.getString(R.string.save)
-                setTextColor(Color.WHITE)
-                textSize = UiTokens.TEXT_BODY
-                setPadding(16, 6, 16, 6)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginEnd = 4
-                }
-                ButtonStyle.apply(this, scope.cPrimary, scope.cPrimaryVisible)
-                setOnClickListener {
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0)
+            addView(actionButton(activity.getString(R.string.save), primary = true) {
                     val cmd = tileEdit.text.toString().trim()
                     scope.settingsManager.setTileCommand(cmd)
                     status.showTempStatus(activity.getString(R.string.tile_cmd_saved))
                     activity.hideIme()
+
+}.also { b ->
+                b.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = activity.dp(UiTokens.SPACE_1)
                 }
             })
-            addView(Button(activity).apply {
-                text = activity.getString(R.string.reset)
-                setTextColor(Color.WHITE)
-                textSize = UiTokens.TEXT_BODY
-                setPadding(16, 6, 16, 6)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = 4
-                }
-                ButtonStyle.apply(this, scope.cOutline)
-                setOnClickListener {
-                    tileEdit.setText(scope.settingsManager.shellCmd)
-                    scope.settingsManager.setTileCommand(scope.settingsManager.shellCmd)
-                    status.showTempStatus(activity.getString(R.string.inited))
-                    activity.hideIme()
+            addView(actionButton(activity.getString(R.string.reset), primary = false) {
+                tileEdit.setText(scope.settingsManager.shellCmd)
+                scope.settingsManager.setTileCommand(scope.settingsManager.shellCmd)
+                status.showTempStatus(activity.getString(R.string.inited))
+                activity.hideIme()
+            }.also { b ->
+                b.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = activity.dp(UiTokens.SPACE_1) 
                 }
             })
             SegmentStyle.applyRow(
@@ -275,28 +283,20 @@ private fun divider(): View = View(activity).apply {
         sectionTitle(parent, activity.getString(R.string.settings_quick_title))
         parent.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 0)
-            addView(Button(activity).apply {
-                text = activity.getString(R.string.pick_app)
-                setTextColor(Color.WHITE)
-                textSize = UiTokens.TEXT_BODY
-                setPadding(16, 6, 16, 6)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginEnd = 4
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0)
+            addView(actionButton(activity.getString(R.string.pick_app), primary = true) {
+                this@SettingsUiController.overlay.showAppPicker()
+            }.also { b ->
+                b.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = activity.dp(UiTokens.SPACE_1) 
                 }
-                ButtonStyle.apply(this, scope.cPrimary, scope.cPrimaryVisible)
-                setOnClickListener { this@SettingsUiController.overlay.showAppPicker() }
             })
-            addView(Button(activity).apply {
-                text = activity.getString(R.string.reset)
-                setTextColor(Color.WHITE)
-                textSize = UiTokens.TEXT_BODY
-                setPadding(16, 6, 16, 6)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = 4
+            addView(actionButton(activity.getString(R.string.reset), primary = false) {
+                this@SettingsUiController.overlay.onQuickInitClick()
+            }.also { b ->
+                b.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = activity.dp(UiTokens.SPACE_1) 
                 }
-                ButtonStyle.apply(this, scope.cOutline)
-                setOnClickListener { this@SettingsUiController.overlay.onQuickInitClick() }
             })
             SegmentStyle.applyRow(
                 this,
@@ -322,8 +322,8 @@ private fun divider(): View = View(activity).apply {
             addView(Button(activity).apply {
                 text = activity.getString(labelRes)
                 setTextColor(scope.cPrimaryVisible)
-                textSize = UiTokens.TEXT_BODY
-                setPadding(16, 6, 16, 6)
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
+                setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_2, UiTokens.SPACE_4, UiTokens.SPACE_2)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 ButtonStyle.outlined(this, scope.cPrimaryVisible)
                 setOnClickListener { onOpen() }
@@ -338,7 +338,7 @@ private fun divider(): View = View(activity).apply {
             setText(scope.settingsManager.netUpstream())
             setHint("socks5://127.0.0.1:1080")
             setSingleLine(true)
-            setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (10 * density).toInt())
+            setPaddingMd(12, 10, 12, 10)
         }.also {
             FieldStyle.applyOutlined(it, scope.theme, UiTokens.TEXT_BODY)
         }
@@ -349,38 +349,24 @@ private fun divider(): View = View(activity).apply {
     private fun buildUpstreamButtons(upEdit: EditText, density: Float): LinearLayout =
         LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 0)
-            addView(Button(activity).apply {
-                text = activity.getString(R.string.save)
-                setTextColor(Color.WHITE)
-                textSize = UiTokens.TEXT_BODY
-                isAllCaps = true
-                setPadding(16, 6, 16, 6)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginEnd = 4
-                }
-                ButtonStyle.apply(this, scope.cPrimary, scope.cPrimaryVisible)
-                setOnClickListener {
-                    scope.settingsManager.setNetUpstream(upEdit.text.toString().trim())
-                    status.showTempStatus(activity.getString(R.string.upstream_saved))
-                    activity.hideIme()
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0)
+            addView(actionButton(activity.getString(R.string.save), primary = true) {
+                scope.settingsManager.setNetUpstream(upEdit.text.toString().trim())
+                status.showTempStatus(activity.getString(R.string.upstream_saved))
+                activity.hideIme()
+            }.also { b ->
+                b.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = activity.dp(UiTokens.SPACE_1) 
                 }
             })
-            addView(Button(activity).apply {
-                text = activity.getString(R.string.clear)
-                setTextColor(Color.WHITE)
-                textSize = UiTokens.TEXT_BODY
-                isAllCaps = true
-                setPadding(16, 6, 16, 6)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = 4
-                }
-                ButtonStyle.apply(this, scope.cOutline)
-                setOnClickListener {
-                    upEdit.setText("")
-                    scope.settingsManager.setNetUpstream("")
-                    status.showTempStatus(activity.getString(R.string.upstream_cleared))
-                    activity.hideIme()
+            addView(actionButton(activity.getString(R.string.clear), primary = false) {
+                upEdit.setText("")
+                scope.settingsManager.setNetUpstream("")
+                status.showTempStatus(activity.getString(R.string.upstream_cleared))
+                activity.hideIme()
+            }.also { b ->
+                b.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = activity.dp(UiTokens.SPACE_1) 
                 }
             })
             SegmentStyle.applyRow(
@@ -398,12 +384,12 @@ private fun divider(): View = View(activity).apply {
         parent.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, 0)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0)
             addView(TextView(activity).apply {
                 text = activity.getString(R.string.keepalive_title)
                 setTextColor(scope.cOnSurface)
                 typeface = Typeface.DEFAULT_BOLD
-                textSize = UiTokens.TEXT_BODY
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             val keepAliveSw = MaterialSwitch(ContextThemeWrapper(activity, R.style.Theme_TermLou_Switch)).apply {
@@ -458,12 +444,12 @@ private fun buildLanguageRow(parent: LinearLayout) {
         parent.addView(LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, 4)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_1)
             addView(TextView(activity).apply {
                 text = activity.getString(R.string.lang_title) + " " + if (langZh) "🇨🇳" else "🇺🇸"
                 setTextColor(scope.cOnSurface)
                 typeface = Typeface.DEFAULT_BOLD
-                textSize = UiTokens.TEXT_BODY
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(MaterialSwitch(ContextThemeWrapper(activity, R.style.Theme_TermLou_Switch)).apply {

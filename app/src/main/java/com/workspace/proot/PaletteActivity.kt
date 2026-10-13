@@ -86,7 +86,7 @@ class PaletteActivity : AppCompatActivity() {
         }
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(8), dp(16), dp(16))
+            setPaddingMd(16, 8, 16, 16)
         }
         scroll.addView(form)
         root.addView(scroll)
@@ -101,18 +101,18 @@ class PaletteActivity : AppCompatActivity() {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setBackgroundColor(base.surfaceVariant)
-        setPadding(dp(16), dp(12), dp(16), dp(12))
+        setPaddingMd(16, 12, 16, 12)
         addView(TextView(this@PaletteActivity).apply {
             text = "←"
             setTextColor(base.onSurface)
-            textSize = UiTokens.TEXT_TITLE
-            setPadding(0, 0, dp(14), 0)
+            textMd(UiTokens.TEXT_TITLE, UiTokens.LINE_TITLE)
+            setPaddingMd(0, 0, 14, 0)
             setOnClickListener { finish() }
         })
         addView(TextView(this@PaletteActivity).apply {
             text = getString(R.string.palette_title)
             setTextColor(base.onSurface)
-            textSize = UiTokens.TEXT_TITLE
+            textMd(UiTokens.TEXT_TITLE, UiTokens.LINE_TITLE)
             typeface = Typeface.DEFAULT_BOLD
         })
     }
@@ -121,7 +121,7 @@ class PaletteActivity : AppCompatActivity() {
         // ===== 编辑目标切换 =====
         val targetRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, dp(10))
+            setPaddingMd(0, 0, 0, 10)
         }
         targetBgChip = targetChip(getString(R.string.palette_target_bg))
         targetSeedChip = targetChip(getString(R.string.palette_target_seed))
@@ -135,38 +135,38 @@ class PaletteActivity : AppCompatActivity() {
         form.addView(sectionLabel(getString(R.string.palette_preview)))
         previewCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
+            setPaddingMd(14, 12, 14, 12)
         }
         previewTitle = TextView(this).apply {
             text = "标题 Aa · 字体与图标"
-            textSize = UiTokens.TEXT_BODY
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, 0, 0, dp(6))
+            setPaddingMd(0, 0, 0, 6)
         }
         previewBody = TextView(this).apply {
             text = "次要文字 Aa · 描述与辅助信息"
-            textSize = UiTokens.TEXT_COMPACT
-            setPadding(0, 0, 0, dp(10))
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
+            setPaddingMd(0, 0, 0, 10)
         }
         previewStripText = TextView(this).apply {
             text = "卡片 · 输入框 Aa"
-            textSize = UiTokens.TEXT_COMPACT
-            setPadding(dp(10), dp(8), dp(10), dp(8))
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
+            setPaddingMd(10, 8, 10, 8)
         }
-        previewStripBg = GradientDrawable().apply { cornerRadius = dpF(10) }
+        previewStripBg = GradientDrawable().apply { cornerRadius = dpf(snapCorner(UiTokens.CORNER_MD)) }
         previewStripText.background = previewStripBg
         previewBtnText = TextView(this).apply {
             text = getString(R.string.save)
-            textSize = UiTokens.TEXT_COMPACT
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setPadding(dp(18), dp(8), dp(18), dp(8))
+            setPaddingMd(18, 8, 18, 8)
         }
-        previewBtnBg = GradientDrawable().apply { cornerRadius = dpF(14) }
+        previewBtnBg = GradientDrawable().apply { cornerRadius = dpf(snapCorner(UiTokens.CORNER_LG)) }
         previewBtnText.background = previewBtnBg
         val btnWrap = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(10), 0, 0)
+            setPaddingMd(0, 10, 0, 0)
             addView(previewBtnText)
         }
         previewCard.addView(previewTitle)
@@ -198,18 +198,18 @@ class PaletteActivity : AppCompatActivity() {
         val currentRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(12), 0, 0)
+            setPaddingMd(0, 12, 0, 0)
         }
         val swatch = View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)) }
-        swatchBg = GradientDrawable().apply { cornerRadius = dpF(10) }
+        swatchBg = GradientDrawable().apply { cornerRadius = dpf(snapCorner(UiTokens.CORNER_MD)) }
         swatch.background = swatchBg
         hexText = EditText(this).apply {
-            textSize = 17f
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             typeface = Typeface.MONOSPACE
             setTextColor(base.onSurface)
             background = null
             isSingleLine = true
-            setPadding(0, 0, dp(6), 0)
+            setPaddingMd(0, 0, 6, 0)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
                 InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
             addTextChangedListener(object : TextWatcher {
@@ -232,15 +232,15 @@ class PaletteActivity : AppCompatActivity() {
         currentRow.addView(swatch)
         currentRow.addView(TextView(this).apply {
             text = "#"
-            textSize = 17f
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             typeface = Typeface.MONOSPACE
             setTextColor(base.onSurface)
-            setPadding(dp(12), 0, 0, 0)
+            setPaddingMd(12, 0, 0, 0)
         })
         currentRow.addView(hexText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         currentRow.addView(TextView(this).apply {
             text = getString(R.string.palette_current)
-            textSize = UiTokens.TEXT_COMPACT
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
             setTextColor(base.onSurfaceVariant)
         })
         form.addView(currentRow)
@@ -267,8 +267,8 @@ class PaletteActivity : AppCompatActivity() {
         val resetBtn = Button(this).apply {
             text = getString(R.string.palette_reset)
             setTextColor(base.primaryVisible)
-            textSize = UiTokens.TEXT_BODY
-            setPadding(dp(12), dp(6), dp(12), dp(6))
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
+            setPaddingMd(12, 6, 12, 6)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginEnd = dp(5)
             }
@@ -283,8 +283,8 @@ class PaletteActivity : AppCompatActivity() {
         val saveBtn = Button(this).apply {
             text = getString(R.string.palette_save)
             setTextColor(ColorMath.inkOf(base.primary))
-            textSize = UiTokens.TEXT_BODY
-            setPadding(dp(12), dp(6), dp(12), dp(6))
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
+            setPaddingMd(12, 6, 12, 6)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             ButtonStyle.apply(this, base.primary, base.primaryVisible)
             setOnClickListener {
@@ -303,10 +303,10 @@ class PaletteActivity : AppCompatActivity() {
 
     private fun targetChip(text: String): TextView = TextView(this).apply {
         this.text = text
-        textSize = UiTokens.TEXT_BODY
+        textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
         typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
-        setPadding(dp(16), dp(9), dp(16), dp(9))
+        setPaddingMd(16, 9, 16, 9)
         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
             marginEnd = dp(6)
         }
@@ -315,30 +315,30 @@ class PaletteActivity : AppCompatActivity() {
     private fun sectionLabel(text: String): TextView = TextView(this).apply {
         this.text = text
         setTextColor(base.onSurface)
-        textSize = UiTokens.TEXT_BODY
+        textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
         typeface = Typeface.DEFAULT_BOLD
-        setPadding(0, dp(12), 0, dp(6))
+        setPaddingMd(0, 12, 0, 6)
     }
 
     private fun addChip(parent: LinearLayout, labelRes: Int, pick: (ThemeColors) -> Int) {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(5), 0, dp(5))
+            setPaddingMd(0, 5, 0, 5)
         }
         val swatch = View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(26), dp(26)) }
-        swatch.background = GradientDrawable().apply { cornerRadius = dpF(7) }
+        swatch.background = GradientDrawable().apply { cornerRadius = dpf(snapCorner(UiTokens.CORNER_SM)) }
         val label = TextView(this).apply {
             text = getString(labelRes)
             setTextColor(base.onSurface)
-            textSize = UiTokens.TEXT_BODY
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = dp(10)
             }
         }
         val hex = TextView(this).apply {
             setTextColor(base.onSurfaceVariant)
-            textSize = UiTokens.TEXT_COMPACT
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
             typeface = Typeface.MONOSPACE
         }
         row.addView(swatch)
@@ -366,7 +366,8 @@ class PaletteActivity : AppCompatActivity() {
     private fun paintTargetChips() {
         fun style(chip: TextView, selected: Boolean) {
             val d = GradientDrawable().apply {
-                cornerRadius = dpF(16)
+                // 5.9.40：snapCorner 收 dp，这里要转成 px（原来是 dpF(16)）
+                cornerRadius = dpf(snapCorner(UiTokens.CORNER_LG))
                 if (selected) {
                     setColor(base.primaryContainer)
                     setStroke(dp(1).coerceAtLeast(1), base.primaryVisible)

@@ -67,9 +67,9 @@ class StatusController(
             // ⚠ 必须和正文同源：正文是 UiBuilder.createStatusBar 定的
             // （theme.surfaceContainer 底 + theme.onSurface 字 + TEXT_COMPACT + padding 16,8,16,0）。
             // 这里直接读同一个 theme 对象，换主题两边一起变，不会错开。
-            textSize = UiTokens.TEXT_COMPACT
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
             setTextColor(scope.theme.onSurface)
-            setPadding(16, 8, 16, 0)
+            setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_2, UiTokens.SPACE_4, UiTokens.SPACE_0)
             setBackgroundColor(scope.theme.surfaceContainer)
             visibility = View.GONE
             layoutParams = FrameLayout.LayoutParams(

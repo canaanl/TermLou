@@ -191,14 +191,14 @@ class TermLouApp : Application() {
         val title = TextView(this).apply {
             text = getString(R.string.crash_title)
             setTextColor(Color.WHITE)
-            textSize = 18f
+            textSize = UiTokens.TEXT_TITLE
             setPadding(0, 0, 0, px(12))
         }
         val scroll = ScrollView(this)
         val body = TextView(this).apply {
             text = report
             setTextColor(Color.WHITE)
-            textSize = 12f
+            textSize = UiTokens.TEXT_META
         }
         scroll.addView(body)
         val close = Button(this).apply {

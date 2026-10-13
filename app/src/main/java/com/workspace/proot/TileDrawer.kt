@@ -101,7 +101,7 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
             val topGlow = View(ctx).apply {
                 background = GradientDrawable().apply {
                     setColor(colors.grip)
-                    cornerRadius = 2 * density
+                    cornerRadius = snapCorner(UiTokens.CORNER_XS) * density
                 }
             }
             val handle = FrameLayout(ctx).apply {
@@ -170,7 +170,7 @@ class TileDrawer(private val ctx: Context, private val apps: List<FavoriteApp>) 
         val tv = TextView(ctx).apply {
             text = app.label
             setTextColor(colors.ink)
-            textSize = UiTokens.TEXT_BODY
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             gravity = Gravity.CENTER_VERTICAL
             // 下内边距 = 键面下方的外投影带（[RowKeyDrawable.BAND_DP]），
             // 文字因此仍精确居中在键面而非整个行

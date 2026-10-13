@@ -40,13 +40,13 @@ abstract class NotesPageActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(theme.surfaceVariant)
-            setPadding((16 * d).toInt(), (12 * d).toInt(), (16 * d).toInt(), (12 * d).toInt())
+            setPaddingMd(16, 12, 16, 12)
             if (showBack) {
                 addView(TextView(this@NotesPageActivity).apply {
                     text = getString(R.string.notes_back)
                     setTextColor(theme.onSurface)
-                    textSize = UiTokens.TEXT_TITLE
-                    setPadding(0, 0, (12 * d).toInt(), 0)
+                    textMd(UiTokens.TEXT_TITLE, UiTokens.LINE_TITLE)
+                    setPaddingMd(0, 0, 12, 0)
                     setOnClickListener { finish() }
                 })
             }
@@ -54,7 +54,7 @@ abstract class NotesPageActivity : AppCompatActivity() {
                 text = title
                 setTextColor(theme.onSurface)
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
-                textSize = UiTokens.TEXT_TITLE
+                textMd(UiTokens.TEXT_TITLE, UiTokens.LINE_TITLE)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
         }
@@ -68,7 +68,8 @@ abstract class NotesPageActivity : AppCompatActivity() {
             textSize = AppLang.bottomButtonTextSize(this@NotesPageActivity)
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding(3, 0, 3, 0)
+            // 5.9.40：原 3dp 不在 4dp 网格上，按 MD3 上调到 4dp（SPACE_1）
+            setPaddingMd(UiTokens.SPACE_1, 0, UiTokens.SPACE_1, 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             setOnClickListener { onClick() }
         }
@@ -81,9 +82,9 @@ abstract class NotesPageActivity : AppCompatActivity() {
         return TextView(this).apply {
             text = tag
             setTextColor(TAG_TEXT_COLOR)
-            textSize = UiTokens.TEXT_COMPACT
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
             maxLines = 1
-            setPadding((12 * d).toInt(), (4 * d).toInt(), (12 * d).toInt(), (4 * d).toInt())
+            setPaddingMd(12, 4, 12, 4)
             if (tag.length > MARQUEE_CHARS) {
                 setSingleLine()
                 ellipsize = android.text.TextUtils.TruncateAt.MARQUEE
@@ -94,7 +95,7 @@ abstract class NotesPageActivity : AppCompatActivity() {
                 ellipsize = android.text.TextUtils.TruncateAt.END
             }
             background = GradientDrawable().apply {
-                cornerRadius = (12 * d)
+                cornerRadius = snapCorner(UiTokens.CORNER_MD) * d
                 setStroke((1 * d).toInt().coerceAtLeast(1), edge)
                 setColor(fill)
             }
@@ -110,11 +111,11 @@ abstract class NotesPageActivity : AppCompatActivity() {
         val d = density()
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (10 * d).toInt())
+            setPaddingMd(16, 10, 16, 10)
             addView(TextView(this@NotesPageActivity).apply {
                 text = title
                 setTextColor(theme.onSurface)
-                textSize = UiTokens.TEXT_BODY
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
             })
@@ -122,7 +123,7 @@ abstract class NotesPageActivity : AppCompatActivity() {
                 addView(TextView(this@NotesPageActivity).apply {
                     text = sub
                     setTextColor(theme.onSurfaceVariant)
-                    textSize = UiTokens.TEXT_META
+                    textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
                     maxLines = 1
                     ellipsize = android.text.TextUtils.TruncateAt.END
                 })
@@ -154,14 +155,14 @@ abstract class NotesPageActivity : AppCompatActivity() {
         val d = density()
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((24 * d).toInt(), (8 * d).toInt(), (24 * d).toInt(), 0)
+            setPaddingMd(24, 8, 24, 0)
         }
         val input = EditText(this).apply {
             this.hint = hint
             setText(initial)
             setSelection(initial.length)
             FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
-            setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (10 * d).toInt())
+            setPaddingMd(12, 10, 12, 10)
         }
         box.addView(input)
         AlertDialog.Builder(this)

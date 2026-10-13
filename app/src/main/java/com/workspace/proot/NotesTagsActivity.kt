@@ -31,7 +31,7 @@ class NotesTagsActivity : NotesPageActivity() {
             hint = getString(R.string.notes_search_tag)
             setSingleLine(true)
             FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
-            setPadding((12 * d).toInt(), (10 * d).toInt(), (12 * d).toInt(), (10 * d).toInt())
+            setPaddingMd(12, 10, 12, 10)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
@@ -95,12 +95,12 @@ class NotesTagsActivity : NotesPageActivity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (10 * d).toInt())
+            setPaddingMd(16, 10, 16, 10)
             addView(tagCapsule(name) { onClick() })
             addView(TextView(this@NotesTagsActivity).apply {
                 text = getString(R.string.notes_pieces_fmt, count)
                 setTextColor(theme.onSurfaceVariant)
-                textSize = UiTokens.TEXT_COMPACT
+                textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
                 gravity = Gravity.END
                 layoutParams = LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
@@ -115,8 +115,8 @@ class NotesTagsActivity : NotesPageActivity() {
         listInner.addView(TextView(this).apply {
             text = getString(R.string.notes_back_tags)
             setTextColor(theme.primaryVisible)
-            textSize = UiTokens.TEXT_BODY
-            setPadding((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (4 * d).toInt())
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
+            setPaddingMd(16, 10, 16, 4)
             setOnClickListener {
                 filterTag = null
                 render()
@@ -126,7 +126,7 @@ class NotesTagsActivity : NotesPageActivity() {
         listInner.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding((16 * d).toInt(), (2 * d).toInt(), (16 * d).toInt(), (6 * d).toInt())
+            setPaddingMd(16, 2, 16, 6)
             addView(tagCapsule(tag) {
                 filterTag = null
                 render()
@@ -134,7 +134,7 @@ class NotesTagsActivity : NotesPageActivity() {
             addView(TextView(this@NotesTagsActivity).apply {
                 text = getString(R.string.notes_pieces_fmt, notes.size)
                 setTextColor(theme.onSurfaceVariant)
-                textSize = UiTokens.TEXT_COMPACT
+                textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
                 gravity = Gravity.END
                 layoutParams = LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
@@ -169,9 +169,9 @@ class NotesTagsActivity : NotesPageActivity() {
         return TextView(this).apply {
             this.text = text
             setTextColor(theme.onSurfaceVariant)
-            textSize = UiTokens.TEXT_BODY
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             gravity = Gravity.CENTER
-            setPadding(0, (48 * d).toInt(), 0, 0)
+            setPaddingMd(0, 48, 0, 0)
         }
     }
 }

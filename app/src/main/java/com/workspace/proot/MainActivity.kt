@@ -167,7 +167,7 @@ class MainActivity : AppCompatActivity() {
 
         val toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 4, 0, 0)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_1, UiTokens.SPACE_0, UiTokens.SPACE_0)
         }
         val tabViews = scope.uiBuilder.createTabBar()
         terminalTab = tabViews[0]
