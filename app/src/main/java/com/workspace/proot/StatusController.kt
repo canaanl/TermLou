@@ -67,9 +67,14 @@ class StatusController(
             // ⚠ 必须和正文同源：正文是 UiBuilder.createStatusBar 定的
             // （theme.surfaceContainer 底 + theme.onSurface 字 + TEXT_COMPACT + padding 16,8,16,0）。
             // 这里直接读同一个 theme 对象，换主题两边一起变，不会错开。
-            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
+            //
+            // 5.9.44：这里原本是 textMd(TEXT_COMPACT, LINE_COMPACT)（带 1.35 行高），
+            // 而正文在 5.9.41 被还原成不带行高 —— **两层错开**，用户看到"像两行"。
+            // 状态栏是**单行提示条**，不是正文：行高对它只有"平白占高度"的作用。
+            // 故两层一律不带行高，回到 5.9.39 的样子，接缝重新对齐。
+            textSize = UiTokens.TEXT_COMPACT
             setTextColor(scope.theme.onSurface)
-            setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_2, UiTokens.SPACE_4, UiTokens.SPACE_0)
+            setPadding(16, 8, 16, 0)
             setBackgroundColor(scope.theme.surfaceContainer)
             visibility = View.GONE
             layoutParams = FrameLayout.LayoutParams(

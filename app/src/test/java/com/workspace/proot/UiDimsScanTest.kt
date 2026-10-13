@@ -1,6 +1,7 @@
 package com.workspace.proot
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -322,6 +323,62 @@ class UiDimsScanTest {
                 "相对边距存在 mMarginFlags 里，setMargins 动不了它",
             code.contains("lp.marginStart = 0") && code.contains("lp.marginEnd = 0"),
         )
+    }
+
+    /**
+     * 5.9.44 加的锁：**状态栏两层（正文 + 盖板）必须同款，且都不带行高**。
+     *
+     * 用户实机报"App 的状态栏看起来像两行"。真因是一处**只改了一半**的还原：
+     * 5.9.41 按"状态栏保持原样"把正文（`UiBuilder.createStatusBar`）的行高去掉了，
+     * 却漏掉了盖板（`StatusController.statusOverlay`）—— 它还带着 1.35 行高。
+     *
+     * 两层在同一个 `FrameLayout` 里上下重叠（`statusOverlay` 是跑马灯的"定桩前缀"，
+     * 盖住正文左端）。**样式差 1px 就会在接缝处看出重影**，这是代码注释里写死的约束。
+     *
+     * 另外：状态栏是**单行提示条**，不是页面正文。行高在这里只有"平白占垂直高度"
+     * 的作用，所以两层一律不带行高。
+     *
+     * 本锁同时断言"两层都不出现 `textMd`"，防止下次再只改一半。
+     */
+    @Test
+    fun `status bar body and cover plate match and carry no line height`() {
+        val uiBuilder = File(srcDir, "UiBuilder.kt")
+        val statusCtl = File(srcDir, "StatusController.kt")
+        assertTrue("UiBuilder.kt 不见了", uiBuilder.isFile)
+        assertTrue("StatusController.kt 不见了", statusCtl.isFile)
+
+        // 1) 两层都不得用 textMd（带行高）
+        //    只看各自的构造块本身，不能用 substringAfter 拿"文件剩余部分"——
+        //    那会把同文件里别的 textMd 一并算进来（本次就踩了这个坑）。
+        val ubBody = read(uiBuilder).substringAfter("fun createStatusBar()").substringBefore("\n    }")
+            .lines().filterNot { it.trim().startsWith("//") }.joinToString("\n")
+        val ctlOverlay = read(statusCtl).substringAfter("statusOverlay = TextView(activity).apply {")
+            .substringBefore("visibility = View.GONE")
+            .lines().filterNot { it.trim().startsWith("//") }.joinToString("\n")
+        assertFalse(
+            "UiBuilder 状态栏正文不该设行高（它是单行提示条，不是正文）：\n$ubBody",
+            ubBody.contains("textMd(") || ubBody.contains("LINE_COMPACT"),
+        )
+        assertFalse(
+            "StatusController 盖板不该设行高（它只是正文的定桩前缀）：\n$ctlOverlay",
+            ctlOverlay.contains("textMd(") || ctlOverlay.contains("LINE_COMPACT"),
+        )
+
+        // 2) 两层写法必须一致：同一个字号 + 同一句内距字面量
+        val ctl = read(statusCtl)
+        assertTrue(
+            "盖板必须和正文用同一句内距字面量 setPadding(16, 8, 16, 0)：\n$ctl",
+            ctl.contains("setPadding(16, 8, 16, 0)"),
+        )
+        val ub = read(uiBuilder)
+        assertTrue(
+            "正文内距必须仍是 setPadding(16, 8, 16, 0)：\n$ub",
+            ub.contains("setPadding(16, 8, 16, 0)"),
+        )
+
+        // 3) 两层字号必须同一个档
+        assertTrue("正文字号应仍为 TEXT_COMPACT", ub.contains("textSize = UiTokens.TEXT_COMPACT"))
+        assertTrue("盖板字号应与正文同为 TEXT_COMPACT", ctl.contains("textSize = UiTokens.TEXT_COMPACT"))
     }
 
     /** 规范层必须真的被生产代码引用，而不是摆着好看。 */
