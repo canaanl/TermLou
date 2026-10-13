@@ -144,6 +144,12 @@ object StatusMarquee {
     private fun applyMarquee(view: TextView, path: String) {
         view.text = path
         view.maxLines = 1
+        // ⚠ 5.9.48：**必须显式打开横向滚动**，否则跑马灯根本不启动。
+        // 5.9.47 只写了 `maxLines = 1`，以为等价于单行模式 —— 不等价：
+        // `setSingleLine(true)` 内部还会做 `setHorizontallyScrolling(true)`，
+        // 而跑马灯依赖的正是横向滚动（文字超出时向左滑动显示，而不是换行）。
+        // 用户实机报"文件页长路径根本没有滚动了"，就是这里漏的。
+        view.setHorizontallyScrolling(true)
         view.ellipsize = android.text.TextUtils.TruncateAt.MARQUEE
         view.marqueeRepeatLimit = -1
         view.isSelected = true
@@ -161,6 +167,9 @@ object StatusMarquee {
         if (view == null) return
         view.isSelected = false
         view.ellipsize = null
+        // 与 applyMarquee 对称：横向滚动关回去，行数放开。
+        // 5.9.47 只写 maxLines 没关横向滚动，等于只还原了一半。
+        view.setHorizontallyScrolling(false)
         view.maxLines = Int.MAX_VALUE
     }
 

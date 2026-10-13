@@ -412,88 +412,45 @@ class UiDimsScanTest {
         )
     }
 
-        /**
-     * 5.9.47：状态栏两块结构的三条硬规则。
+    /**
+     * 5.9.48：状态栏**两块结构**的三条硬规则。
      *
-     * 1. **块① 固定**：特征字只放词、不要竖线、宽度取五个词里最宽的、左对齐、**永不滚动**。
-     * 2. **块② 只跟自己比宽窄**：判断"放不放得下"不能用整条状态栏的宽度
-     *    （此前正是这样，切页签时布局未完成、width=0 -> 误判"放得下" -> 不再滚）。
-     * 3. **视觉上是一整条**：背景画在父容器上，两个子块都透明，不画分隔线。
+     * 1. **块① 固定**：只放特征字、不要竖线、宽度取五个词里最宽的、**永不滚动**；
+     *    5.9.48 起它是自绘控件（[LaserTabLabelView]），为了做激光打标切换动画。
+     * 2. **视觉上是一整条**：背景画在父容器上，两个子块都透明，不画分隔线。
+     * 3. **两块的内距来源唯一且对称**：都取 `STATUS_V_PAD`，上下同值。
+     *
+     * ## 内距为什么是 2dp（不是凑整）
+     *
+     * 13sp 的字盒（ascent→descent）约 15.2dp，`g`/`y` 的下半截**已经含在里面** ——
+     * 内距只是"别贴边"的余量，不是"给下摆字母留的地方"。
+     * 用户反馈"上下 4dp 也太大"，故压到 2dp。
+     * 另：安卓默认的"字体留白"白占约 3.7dp，对 descent 毫无用处，两块都关掉。
+     * ⚠ 2dp **不在 MD3 4dp 网格上**，是有意的：它是字体度量的余量，不是间距档位。
      */
     @Test
-    fun `status bar is two blocks with no visible seam`() {
+    fun `status bar is two transparent blocks with one symmetric padding`() {
         val ctl = File(srcDir, "StatusController.kt")
         assertTrue("StatusController.kt 不见了", ctl.isFile)
         val code = read(ctl)
 
-        // 1) 块①：固定宽度 + 左对齐 + 永不开跑马灯
-        val block1 = code.substringAfter("tabLabel = TextView(activity).apply {")
-            .substringBefore("wrap.addView(tabLabel)")
-            .lines().filterNot { it.trim().startsWith("//") }.joinToString("\n")
-        assertTrue(
-            "块① 必须左对齐（Gravity.START）：\n$block1",
-            block1.contains("Gravity.START"),
-        )
-        assertTrue(
-            "块① 必须垂直居中（两块各自按内容定高，靠居中对齐而不是挤在一起）：\n$block1",
-            block1.contains("CENTER_VERTICAL"),
-        )
-        assertFalse(
-            "块① 是固定的前缀，绝不能开跑马灯（用户要求它永远不动）：\n$block1",
-            block1.contains("MARQUEE") || block1.contains("isSelected"),
-        )
-        assertFalse(
-            "块① 里不许写竖线（用户明确要求 Files 后面的竖线不要了）：\n$block1",
-            block1.contains("\"Files |\""),
-        )
-
-        // 2) 宽度取五个词里最宽的（实测，不是拍脑袋写死）
-        assertTrue(
-            "块① 宽度必须由五个特征字实测取最宽（measureTabWidth）：\n$code",
-            code.contains("measureTabWidth()"),
-        )
-
-        // 3) 背景画在父容器上 -> 两块子 View 都透明 -> 看不出分块
-        val wrapPart = code.substringAfter("val wrap = LinearLayout(activity).apply {")
-            .substringBefore("tabLabel = TextView")
-        assertTrue(
-            "背景色必须画在父容器上（否则两块各自带底色 = 看得出分块）：\n$wrapPart",
-            wrapPart.contains("setBackgroundColor(theme.surfaceContainer)"),
-        )
-        assertFalse(
-            "块① 不得自带背景（必须透明，靠父容器那一层底色）：\n$block1",
-            block1.contains("setBackgroundColor") || block1.contains("background ="),
-        )
-    }
-
-    /**
-     * 5.9.47：状态栏两块的内距必须**上下对称**。
-     *
-     * 用户实机报"字母下半截显示不出来"（`Settings` 的 g、`next key` 的 y）。
-     * 根因：块② 的内距是 `(16, 8, 16, 0)` —— **底部 0**。
-     * 单块时父容器能撑满看不出来；拆成两块后各自按内容定高 + 垂直居中，
-     * 下伸字母就超出盒子上沿被切。**一边 8 一边 0 不叫内距，叫偏心。**
-     */
-    @Test
-    fun `status bar blocks pad symmetrically so descenders are not clipped`() {
-        val ub = File(srcDir, "UiBuilder.kt")
-        assertTrue("UiBuilder.kt 不见了", ub.isFile)
-        val body = read(ub).substringAfter("fun createStatusBar()").substringBefore("\n    }")
-            .lines().filterNot { it.trim().startsWith("//") }.joinToString("\n")
-        // 找 setPadding(a, b, c, d) 的四个参数 —— 必须按括号配平切，
-        // 不能用 `[^)]+`（参数里就有括号，会被提前截断，本锁第一版就栽在这）
-        fun argsOf(code: String): List<String>? {
-            val at = code.indexOf("setPadding(")
-            if (at < 0) return null
-            var i = at + "setPadding(".length
+        // ---- 取 setPadding(...) 的四个参数：必须按括号配平切 ----
+        // 不能用 `[^)]+`：参数里就有括号（activity.dp(...)），会被提前截断。
+        // src 必须是**已经切好的片段**（就是那一块本身）。
+        // 不要再传 marker 让函数自己 indexOf 定位 —— 一个函数同时管"从哪切"和
+        // "在哪找"，两边很容易对不上（本锁第一版就栽在这）。
+        fun argsOf(src: String): List<String>? {
+            if (src.isEmpty()) return null
+            val p0 = src.indexOf("setPadding(")
+            if (p0 < 0) return null
+            var i = p0 + "setPadding(".length
             var depth = 1
             val buf = StringBuilder()
-            while (i < code.length && depth > 0) {
-                val c = code[i]
+            while (i < src.length && depth > 0) {
+                val c = src[i]
                 if (c == '(') depth++
                 if (c == ')') { depth--; if (depth == 0) break }
-                buf.append(c)
-                i++
+                buf.append(c); i++
             }
             val parts = mutableListOf<String>()
             var d2 = 0
@@ -507,25 +464,64 @@ class UiDimsScanTest {
             return if (parts.size == 4) parts else null
         }
 
-        val a2 = argsOf(body)
-        assertTrue("块② 必须显式设上下内距（不能省，否则下伸字母被切）：\n$body", a2 != null)
-        assertEquals(
-            "块② 的上下内距必须对称（top=${a2!![1]}, bottom=${a2[3]}）—— 底部为 0 会切掉 g/y 的下半截：\n$body",
-            a2[1], a2[3],
+        // ---- 1) 块① 是自绘控件（为激光动画），且永不滚动 ----
+        assertTrue(
+            "块① 必须是自绘的激光控件（普通 TextView 做不了打标动画）：\n$code",
+            code.contains("LaserTabLabelView(activity)"),
+        )
+        val laser = File(srcDir, "LaserTabLabelView.kt")
+        assertTrue("LaserTabLabelView.kt 不见了", laser.isFile)
+        val laserCode = read(laser)
+        assertTrue(
+            "两个词必须从**同一个左端**起画（用户要求左对齐、永不平移）：\n$laserCode",
+            laserCode.contains("val x = paddingLeft.toFloat()"),
+        )
+        assertFalse(
+            "块① 绝不该滚动（它是固定的前缀）：\n$laserCode",
+            laserCode.contains("MARQUEE") || laserCode.contains("ellipsize"),
         )
 
-        val ctl = File(srcDir, "StatusController.kt")
-        val block1 = read(ctl).substringAfter("tabLabel = TextView(activity).apply {")
+        // ---- 2) 背景画在父容器上 → 两块透明 → 看不出分块 ----
+        val wrapPart = code.substringAfter("val wrap = LinearLayout(activity).apply {")
+            .substringBefore("tabLabel = LaserTabLabelView")
+        assertTrue(
+            "背景色必须画在父容器上（否则两块各带底色 = 看得出分块）：\n$wrapPart",
+            wrapPart.contains("setBackgroundColor(theme.surfaceContainer)"),
+        )
+        val block1 = code.substringAfter("tabLabel = LaserTabLabelView(activity).apply {")
+            .substringBefore("createStatusBar()")
+        assertFalse(
+            "块① 不得自带背景（必须透明，靠父容器那层底色）：\n$block1",
+            block1.contains("setBackgroundColor"),
+        )
+
+        // 块② 的片段：从建块② 那一行起，到挂进父容器之前
+        val block2 = code.substringAfter("createStatusBar()")
             .substringBefore("wrap.addView(tabLabel)")
-            .lines().filterNot { it.trim().startsWith("//") }.joinToString("\n")
+
+        // ---- 3) 宽度取五个词里最宽的（实测，不是拍脑袋写死） ----
+        assertTrue(
+            "块① 宽度必须由五个特征字实测取最宽（measureTabWidth）：\n$code",
+            code.contains("measureTabWidth()"),
+        )
+
+        // ---- 4) 两块的内距来源唯一 + 上下对称 ----
+        assertTrue("必须有一个共用的垂直内距常量（STATUS_V_PAD）：\n$code", code.contains("STATUS_V_PAD"))
         val a1 = argsOf(block1)
-        assertTrue("块① 也必须显式设上下内距：\n$block1", a1 != null)
-        assertEquals(
-            "块① 的上下内距必须对称（top=${a1!![1]}, bottom=${a1[3]}）：\n$block1",
-            a1[1], a1[3],
+        assertTrue("块① 必须显式设内距：\n$block1", a1 != null)
+        assertEquals("块① 的上下内距必须相同（top=${a1!![1]}, bottom=${a1[3]}）：\n$block1", a1[1], a1[3])
+        val a2 = argsOf(block2)
+        assertTrue("块② 必须显式设内距：\n$code", a2 != null)
+        assertEquals("块② 的上下内距必须相同（top=${a2!![1]}, bottom=${a2[3]}）：\n$code", a2[1], a2[3])
+        assertEquals("两块的垂直内距必须取自同一个常量", a1[1], a2[1])
+
+        // ---- 5) 字体留白必须关掉（白占约 3.7dp，对 descent 无用） ----
+        val ub = File(srcDir, "UiBuilder.kt")
+        assertFalse(
+            "块② 必须关掉字体留白（不许 includeFontPadding = true）：\n" + read(ub),
+            read(ub).contains("includeFontPadding = true"),
         )
     }
-
     /** 块② 的宽度判断必须用自己的宽度，且宽度未就绪时不误判成"放得下"。 */
     @Test
     fun `persistent marquee judges by its own width`() {

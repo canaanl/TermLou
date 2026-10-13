@@ -54,20 +54,34 @@ class StatusController(
 
     private var statusWrap: LinearLayout? = null
 
-    /** 5.9.47：块① 特征字（Terminal/Notes/Files/Network/Settings），固定宽度 + 特征色。 */
-    private lateinit var tabLabel: TextView
+    /**
+     * 5.9.47：块① 特征字（Terminal/Notes/Files/Network/Settings），固定宽度 + 特征色。
+     *
+     * 5.9.48：从 `TextView` 换成 [LaserTabLabelView] —— 换页签时旧词被白色激光扫掉、
+     * 露出新词（激光打标效果）。两个词**都左对齐、永不平移**。
+     */
+    private lateinit var tabLabel: LaserTabLabelView
 
     /**
-     * 5.9.47：两块共用的上下内距（px，启动时算一次）。
+     * 5.9.48：两块共用的上下内距（px）。
      *
-     * 此前块② 的内距是 `(16, 8, 16, 0)` —— **底部 0**。单块时父容器是 FrameLayout
-     * 能撑满，看不出来；拆成两块后各自按内容定高 + 垂直居中，
-     * 下伸字母（`Settings` 的 g、`next key` 的 y）就超出盒子上沿被切
-     * （用户实机报"字母下半截显示不出来"）。
+     * ## 这个数是怎么来的（不是凑整）
      *
-     * 上下必须**对称**：一边 8 一边 0 不叫内距，叫偏心。
+     * 状态栏字号 13sp（`TEXT_COMPACT`）。Roboto 在此字号下 ascent+descent ≈ **15.2dp**，
+     * 而 `g`/`y` 的下半截（descent）**已经包含在那 15.2dp 里**。
+     *
+     * 所以内距**不是**"给下摆字母留的地方" —— 它只是"别让字形贴到条子边缘"的一点点余量。
+     * 2dp 足够；**4dp 就是白占高度**（用户实机反馈"上下 4dp 也太大"）。
+     *
+     * 另外安卓默认的"字体留白"还会再占约 3.7dp，那个对 descent 毫无用处，
+     * 已在两块上都关掉（`includeFontPadding = false`）。
+     *
+     * 实测条高对比：原 8+0（含字体留白）≈ 27dp → 本版 2+2（无字体留白）≈ **19dp**。
+     *
+     * ⚠ 这个值**不在 MD3 的 4dp 网格上**，是有意为之：它是从字体度量推出来的排版余量，
+     * 不是"间距档位"。网格管的是元素之间的距离，管不到字形自身的呼吸。
      */
-    private val STATUS_V_PAD: Int by lazy { activity.dp(UiTokens.SPACE_2) }
+    private val STATUS_V_PAD: Int by lazy { activity.dp(2) }
 
     /**
      * 5.9.47：**状态栏改成两块**。
@@ -111,22 +125,25 @@ class StatusController(
             )
         }
 
-        tabLabel = TextView(activity).apply {
-            setTextColor(theme.statusAccent)
-            textSize = UiTokens.TEXT_COMPACT
-            gravity = Gravity.START or Gravity.CENTER_VERTICAL
-            includeFontPadding = true
-            // 5.9.47：**上下内距必须对称**。此前底部是 0，两块在 LinearLayout 里各自
-            // 按内容定高时，下伸字母（Settings 的 g、next key 的 y）会超出盒子上沿被切 ——
-            // 用户实机报"字母下半截显示不出来"。
+        // 5.9.48：块① 从普通 TextView 换成**自绘控件**，为了做激光打标的切换动画。
+        // 它自己保证"两个词都左对齐、只有白光在动"（见 LaserTabLabelView 的 KDoc）。
+        tabLabel = LaserTabLabelView(activity).apply {
+            setAccent(theme.statusAccent)
+            // 上下内距必须**对称**（一边 8 一边 0 不叫内距，叫偏心）。
             // 左内距 16dp 让特征字离屏幕边缘有呼吸；右侧不留内距 ——
-        // 块① 的**宽度**里已经含了到块② 的间隔（见 measureTabWidth）。
-        setPadding(activity.dp(UiTokens.SPACE_4), STATUS_V_PAD, 0, STATUS_V_PAD)
+            // 块① 的**宽度**里已经含了到块② 的间隔（见 measureTabWidth）。
+            setPadding(activity.dp(UiTokens.SPACE_4), STATUS_V_PAD, 0, STATUS_V_PAD)
             // 宽度由 measureTabWidth() 定死（五个词里最宽的），换页签不跳
             layoutParams = LinearLayout.LayoutParams(measureTabWidth(), LinearLayout.LayoutParams.WRAP_CONTENT)
         }
 
         createStatusBar()
+        // 5.9.48：块② 的内距在这里下发（不在 UiBuilder 里设）——
+        // **两块必须用同一个垂直内距**，那只该有一个出处，就是组装状态栏的这里。
+        statusView.setPadding(
+            activity.dp(UiTokens.SPACE_4), STATUS_V_PAD,
+            activity.dp(UiTokens.SPACE_4), STATUS_V_PAD,
+        )
         // 5.9.47：间隔已含在块① 的宽度里，这里**不再加 marginStart**，免得翻倍。
         statusView.layoutParams = LinearLayout.LayoutParams(
             0,
@@ -222,6 +239,35 @@ class StatusController(
     }
 
     /**
+     * 5.9.48：文件页的**路径**入口 —— 与 [setStatusText] 的区别只有一个但很关键：
+     * **路径超长时立刻开横向跑马灯**。
+     *
+     * ## 为什么需要单独一个入口
+     *
+     * 此前开启跑马灯的代码只在**点过文件/文件夹之后**的收尾动作里（`StatusMarquee.show` 的
+     * onDone → `restoreStatusPath`）。于是：
+     *
+     * | 操作 | 旧行为 |
+     * |---|---|
+     * | 点进一个很深的文件夹 | ✅ 会滚（收尾动作开的） |
+     * | **切到文件页** | ❌ 不滚（没人开） |
+     * | **切走再切回来** | ❌ 不滚（没人开） |
+     *
+     * 用户明确要求"只要是路径长于显示就要一直滚动" —— 所以切到文件页这一下
+     * 就该把跑马灯开起来，不必等用户去点东西。
+     */
+    fun setFilesPath(path: String) {
+        if (!::statusView.isInitialized) return
+        tabLabel.setTabName("Files", animate = false, toLeft = tabSweepLeft)
+        if (path.isEmpty()) {
+            StatusMarquee.clearPersistent(statusView)
+            statusView.text = ""
+            return
+        }
+        StatusMarquee.showPersistent(statusView, path)
+    }
+
+    /**
      * 5.9.47：**唯一**的赋值入口 —— 把一整条文字拆进两块。
      *
      * ```
@@ -236,8 +282,27 @@ class StatusController(
      */
     private fun apply(text: String) {
         val name = StatusAccent.tabNameOf(text)
-        if (name != null) tabLabel.text = name
+        if (name != null) {
+            // 只有**真的换词**才放动画；同一页签内反复刷新（临时提示、网络状态行等）
+            // 传进来的名字一样，此时 setTabName 内部会走"不动画"分支，不会闪。
+            tabLabel.setTabName(name, animate = true, toLeft = tabSweepLeft)
+        }
         statusView.text = StatusAccent.contentOf(text)
+    }
+
+    /**
+     * 5.9.48：激光扫动方向 = 页面滑动方向。
+     *
+     * 切到**后面的**页签时内容向左滑、新页面从右边进来 → 激光也**从右往左**扫
+     * （新词先从右侧出现）；切到前面的页签反之。
+     *
+     * 由 `MainActivity.showTab` 在切换前告知 —— 它才知道 `tabIndex > displayedTab`。
+     */
+    private var tabSweepLeft = true
+
+    /** 见 [tabSweepLeft]。 */
+    fun setSweepDirection(toLeft: Boolean) {
+        tabSweepLeft = toLeft
     }
 
     // ---------- 浏览器的闪烁提示 ----------

@@ -392,6 +392,11 @@ class MainActivity : AppCompatActivity() {
         }
         animateTabIndicator(tabIndex)
         statusController.bumpGen()
+        // 5.9.48：告诉状态栏激光的扫动方向 —— 必须与页面滑动方向一致。
+        // 此刻 displayedTab 还是**旧**值，正好能算出方向：
+        // 切到后面的页签（tabIndex > displayedTab）时内容向左滑、新页从右边进来，
+        // 所以激光也从右往左扫（新词先从右侧出现）。
+        statusController.setSweepDirection(toLeft = tabIndex > displayedTab)
         refreshStatusBar()
 
         val showView = views[tabIndex]
@@ -500,26 +505,29 @@ class MainActivity : AppCompatActivity() {
         // 直接访问会抛 UninitializedPropertyAccessException → 静默杀进程 → **黑屏**。
         // 5.9.45 就是漏了这个保护，导致 App 打不开。状态栏还没建时本来就没什么可复位的。
         //
-        // 5.9.47：状态栏拆两块后，这里复位的是**块②**（内容区）的跑马灯。
-        // 块① 特征字固定不动，不受任何影响。
-        // 仍然**跳过文件页**：切到它时本方法先跑、随后 showTab 才调 refreshFileList()
-        // 重开跑马灯；若这里也复位，文件页从后台回来跑马灯就没了。文件页归 refreshFileList 独占。
+        // 5.9.47：状态栏拆两块后，这里管的是**块②**（内容区）的跑马灯状态。
+        // 块① 特征字固定不动，不受影响。
+        //
+        // 5.9.48：**文件页不再被特殊跳过**。此前它跳过是因为"跑马灯只能由点文件的
+        // 收尾动作开启"，跳过复位才不至于把刚开的动画掐掉 —— 那是本末倒置：
+        // 结果是"切到文件页 / 切走再回来都不滚"（用户实机报的核心问题）。
+        // 现在文件页走 setFilesPath()，它**自己就会开跑马灯**，所以这里照常复位即可，
+        // 顺序变成"先清干净、再由 setFilesPath 按需开启"，逻辑单向了。
         //
         // （注：本段注释刻意不写出那个建外框的函数名 —— RegressionScanTest 有条老锁用
         //  正则数它在 MainActivity 里出现几次必须恰好是 1，注释里写会被一并数进去。）
-        if (currentTab != 2) {
-            statusController.statusViewOrNull()?.let { StatusMarquee.clearPersistent(it) }
+        statusController.statusViewOrNull()?.let { StatusMarquee.clearPersistent(it) }
+        if (currentTab == 2) {
+            // 文件页：路径超长就立刻开滚（不必等用户点文件）
+            statusController.setFilesPath(workspaceController.getRelativePath())
+        } else {
+            statusController.setStatusText(when (currentTab) {
+                1 -> "Notes"
+                3 -> networkController.netStatusLine()
+                4 -> "Settings"
+                else -> statusController.terminalBaseText()
+            })
         }
-        statusController.setStatusText(when (currentTab) {
-            1 -> "Notes"
-            2 -> {
-                val p = workspaceController.getRelativePath()
-                if (p.isEmpty()) "Files" else "Files | $p"
-            }
-            3 -> networkController.netStatusLine()
-            4 -> "Settings"
-            else -> statusController.terminalBaseText()
-        })
         statusController.syncWebNotice()
     }
 

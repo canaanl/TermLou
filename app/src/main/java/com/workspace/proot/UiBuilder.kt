@@ -31,8 +31,10 @@ class UiBuilder(
             //     两块都透明才是"看不出分块"的前提。
             textSize = UiTokens.TEXT_COMPACT
             gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
-            includeFontPadding = true
-            setPadding(16, activity.dp(UiTokens.SPACE_2), 16, activity.dp(UiTokens.SPACE_2))
+            // 5.9.48：关掉"字体留白"（白占约 3.7dp，对下摆字母无用 —— descent 已含在字高里）。
+            // **内距不在这里设**：两块必须用同一个值，那个值由 StatusController 一处统一下发
+            // （它才是组装状态栏的地方）。
+            includeFontPadding = false
         }
     }
 
