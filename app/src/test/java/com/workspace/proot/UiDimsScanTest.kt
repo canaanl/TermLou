@@ -176,6 +176,84 @@ class UiDimsScanTest {
         )
     }
 
+    /**
+     * 5.9.41 加的锁：**按钮必须走统一圆角来源**。
+     *
+     * 5.9.40 的漏洞：只扫了 `cornerRadius = ...` 这个字样，把所有手写圆角都改了，
+     * 还据此写下"改一处全 App 按钮圆角统一"。
+     *
+     * 真机立刻打脸 —— **约 25 处裸 `Button(activity).apply {}` 压根没有 `cornerRadius`**，
+     * 它们用的是主 App 主题（`Theme.AppCompat`，MD2）自带的圆角，
+     * 与设置页的 `CORNER_MD` 并排就是两种圆角。
+     *
+     * 根因还是老问题：**扫源码的锁只验字样，验不了"它有没有用"**。
+     * 没有 `cornerRadius` 字样的地方，恰恰是最漏的那批。
+     *
+     * 本锁反向扫描 —— **找出创建了 Button 却没有任何统一外观的地方**。
+     * 允许的"统一外观"有两种：
+     * - `ButtonStyle.apply/outlined`：普通按钮
+     * - `SegmentStyle.applyRow`：分段控件（之后会接管外观，首末段只圆一侧）
+     */
+    @Test
+    fun `every button goes through ButtonStyle or SegmentStyle`() {
+        val offenders = mutableListOf<String>()
+        for (f in scanFiles()) {
+            val lines = read(f).lines()
+            lines.forEachIndexed { i, line ->
+                if (!line.contains(".apply {") && !line.contains("= Button(")) {
+                    if (!Regex("""Button\(\s*(activity|this|ctx|context)\s*\)""").containsMatchIn(line)) return@forEachIndexed
+                }
+                // RadioButton / CheckBox 等不是 Button，跳过
+                if (Regex("""(RadioButton|CheckBox|Switch|ToggleButton)\(""").containsMatchIn(line)) return@forEachIndexed
+                if (!Regex("""\bButton\(\s*(activity|this|ctx|context)\s*\)""").containsMatchIn(line)) return@forEachIndexed
+
+                // 从这一行往下 60 行找统一外观的来源。
+                // 窗口取 60 而不是 20：LanController 里按钮在第 69 行、
+                // SegmentStyle.applyRow 在第 111 行（隔着一个方法定义），
+                // 窗口太窄会把"已被接管"误判成漏网。
+                // 放宽窗口的代价是可能漏看"下一个按钮"——但那种情况
+                // 会让另一个真正的按钮被算成合规，方向相反，仍然可接受：
+                // 本锁是"抓漏网"，宁可多扫，不可漏扫。
+                var found = false
+                var j = i + 1
+                while (j < lines.size && j <= i + 60) {
+                    if (lines[j].contains("ButtonStyle.apply") ||
+                        lines[j].contains("ButtonStyle.outlined") ||
+                        lines[j].contains("SegmentStyle.applyRow") ||
+                        // 外部方法里调用 SegmentStyle（如 LanController.applyLanSegments）
+                        Regex("""apply[A-Za-z]*Segments\(\)""").containsMatchIn(lines[j]) ||
+                        // 自绘背景且走了 snapCorner（agent 弹窗有自己的明暗两套 palette）
+                        (lines[j].contains("cornerRadius = snapCorner(") && lines[j].contains("background ="))
+                    ) { found = true; break }
+                    j++
+                }
+                if (!found) {
+                    offenders += "${f.name}:${i + 1}  ${line.trim()}"
+                }
+            }
+        }
+        assertEquals(
+            "这些 Button 没有走 ButtonStyle / SegmentStyle（圆角会是 MD2 主题自带值，" +
+                "与设置页按钮不一致）：\n" + offenders.joinToString("\n"),
+            0, offenders.size,
+        )
+    }
+
+    /** 分段控件与 agent 弹窗的圆角也必须落在 MD3 档位上。 */
+    @Test
+    fun `segment and script dialog radii follow md3`() {
+        assertEquals(
+            "分段控件圆角应与按钮同档（CORNER_MD）",
+            UiTokens.CORNER_MD,
+            SegmentStyle.RADIUS_DP,
+        )
+        assertEquals(
+            "agent 弹窗默认圆角应与界面按钮同档（12）",
+            12,
+            ScriptDialogSpec.DEFAULT_RADIUS_DP,
+        )
+    }
+
     /** 规范层必须真的被生产代码引用，而不是摆着好看。 */
     @Test
     fun `the md3 helpers are actually used in production code`() {

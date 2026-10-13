@@ -104,6 +104,8 @@ class ShortcutSettingsActivity : ComponentActivity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginEnd = (6 * d).toInt()
             }
+            // 5.9.41：统一圆角来源（此前是 MD2 主题自带圆角）
+            ButtonStyle.apply(this, theme.primary, theme.primaryVisible)
             setOnClickListener { showEditDialog(-1, "", "") }
         }
         btnRow.addView(newBtn)
@@ -149,6 +151,8 @@ class ShortcutSettingsActivity : ComponentActivity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginEnd = (6 * d).toInt()
             }
+            // 5.9.41：统一圆角来源（此前是 MD2 主题自带圆角）
+            ButtonStyle.apply(this, theme.primary, theme.primaryVisible)
             setOnClickListener { backupWheel() }
         }
         btnRow2.addView(backupBtn)

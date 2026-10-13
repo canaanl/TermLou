@@ -18,7 +18,11 @@ import android.widget.LinearLayout
  * 只负责外观，不改变任何布局结构、点击监听与业务逻辑。
  */
 object SegmentStyle {
-    const val RADIUS_DP = 20f
+    /**
+     * 5.9.41：原 20f，与设置页按钮（ButtonStyle.CORNER_MD = 12dp）并排是两种圆角。
+     * 分段控件也是按钮类，统一到 MD3 的 md 档。
+     */
+    const val RADIUS_DP = UiTokens.CORNER_MD
     private const val STROKE_DP = 1f
     private const val DIVIDER_ALPHA = 0x66
     private const val DIVIDER_DARK = 0x73000000.toInt()

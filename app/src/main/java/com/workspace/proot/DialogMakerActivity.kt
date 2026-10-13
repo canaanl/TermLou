@@ -528,6 +528,9 @@ val b = Button(this).apply {
                 isAllCaps = true
                 textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
                 setPaddingMd(8, 0, 8, 0)
+                // 5.9.41：统一圆角来源（此前是 MD2 主题自带圆角）。
+                // 浅底按钮：填充用 surfaceVariant + outline 描边，字色沿用 onSurface。
+                ButtonStyle.outlined(this, theme.outline)
                 setOnClickListener {
                     controls.removeAt(i)
                     renderCtrlList()

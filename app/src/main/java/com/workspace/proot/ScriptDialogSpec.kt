@@ -31,7 +31,12 @@ object ScriptDialogSpec {
     const val ERROR_BUSY = "busy"
 
     const val DEFAULT_TIMEOUT_SEC = 60
-    const val DEFAULT_RADIUS_DP = 18
+
+    /**
+     * 5.9.41：原 18。agent 终端弹窗的圆角与安卓界面按钮（12）不一致，
+     * 统一到 MD3 的 md 档。agent 仍可显式传 `radius` 覆盖。
+     */
+    const val DEFAULT_RADIUS_DP = 12
     const val DEFAULT_WIDTH_PCT = 88
 
     data class Style(

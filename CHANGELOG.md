@@ -7,6 +7,71 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.42** | 5942 | **修上一版没修干净的坑：约 25 处按钮的圆角仍是 MD2 主题自带值** |
+
+## 5.9.42：按钮圆角真正统一（5.9.40 的漏洞）
+
+### 5.9.40 说过的话是错的
+
+5.9.40 我改了 `ButtonStyle.CORNER_RADIUS_DP`（20→12），并写下
+**"一处改动，全 App 按钮圆角统一"**。
+
+真机立刻打脸。**这句话是错的。**
+
+### 真因：扫的是"写了圆角的地方"，漏的是"没写圆角的地方"
+
+| 按钮来源 | 圆角 | 数量 |
+|---|---|---|
+| 走 `ButtonStyle` | 12dp（5.9.40 改的） | 设置页等 |
+| **裸 `Button(activity).apply{}`，用 MD2 主题自带圆角** | **与 12dp 不同** | **约 25 处** |
+
+主 App 用 `Theme.AppCompat.NoActionBar`（**MD2**），裸 Button 的圆角由它决定；
+而滑块和开关又单独套了 `Theme.TermLou.Slider` / `Switch`（**MD3**）——
+项目里同时存在 **MD2 与 MD3 两套圆角**。
+
+**根因还是这个项目反复栽的同一件事：扫源码的锁只验字样，验不了"它有没有用"。**
+5.9.40 扫了 `cornerRadius = ...` 这个词，把所有命中的都改了，
+**而没有 `cornerRadius` 字样的那 25 处，恰恰是最漏的**。
+
+### 本次修了什么
+
+| 位置 | 之前 | 之后 |
+|---|---|---|
+| `UiBuilder` 快捷键/Ctrl 键 | MD2 主题自带 | `ButtonStyle` |
+| `NetworkController.barButton` | MD2 主题自带 | `ButtonStyle` |
+| `NotesController.segButton` / `NotesPageActivity.segButton` | MD2 主题自带 | `ButtonStyle` |
+| `ShortcutSettingsActivity` 新建/备份 | MD2 主题自带 | `ButtonStyle` |
+| `DialogMakerActivity` "×" 删除键 | MD2 主题自带 | `ButtonStyle.outlined` |
+| `TermLouApp` 崩溃页按钮 | MD2 主题自带 | `ButtonStyle`（品牌绿常量） |
+| `SegmentStyle.RADIUS_DP` | 20f | **12**（`CORNER_MD`） |
+| `ScriptDialogSpec.DEFAULT_RADIUS_DP` | 18 | **12** |
+
+**刻意没动的**（不是不一致，是规范本来就不同）：
+
+- `DialogStyler` 的 28dp —— MD3 规定弹窗容器用 28，**它是对的**
+- `SegmentStyle` 首末段只圆一侧 —— 控件语义
+- 系统 `AlertDialog` 按钮 —— 不是我们的组件
+- 被 `SegmentStyle.applyRow` 接管的分段按钮 —— `applyRow` 会覆盖
+
+### 新锁（已注入验证会红）
+
+`every button goes through ButtonStyle or SegmentStyle` ——
+**反向扫描**：找出"创建了 Button 却没有任何统一外观"的地方。
+
+这正是 5.9.40 漏掉的那一类。已注入验证：去掉一个按钮的 `ButtonStyle`，锁立刻报红。
+
+锁的窗口取 60 行而非 20 行：`LanController` 里按钮在第 69 行、
+`SegmentStyle.applyRow` 在第 111 行（隔着一个方法定义），窗口太窄会误判。
+**放宽窗口的取舍：宁可多扫，不可漏扫** —— 本锁是"抓漏网"，方向不能反。
+
+### 验证
+
+- **732 全绿**（app 600 + probe 79 + workspace 53）
+- 新锁注入验证会红
+- 未在真机验证
+
+---
+
 | **5.9.41** | 5941 | **设置页边距回到 MD3 的 16dp · 组内文字垂直居中 · 状态栏还原** |
 
 ## 5.9.41：设置页边距 / 组内居中 / 状态栏还原

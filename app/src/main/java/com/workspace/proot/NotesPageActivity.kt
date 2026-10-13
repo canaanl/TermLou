@@ -71,6 +71,9 @@ abstract class NotesPageActivity : AppCompatActivity() {
             // 5.9.40：原 3dp 不在 4dp 网格上，按 MD3 上调到 4dp（SPACE_1）
             setPaddingMd(UiTokens.SPACE_1, 0, UiTokens.SPACE_1, 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            // 5.9.41：统一圆角来源。SegmentStyle.applyRow 之后会覆盖外观，
+            // 但裸 Button 的默认圆角（MD2 主题）不该在未被接管时漏出来。
+            ButtonStyle.apply(this, theme.primary, theme.primaryVisible)
             setOnClickListener { onClick() }
         }
 

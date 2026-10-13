@@ -203,6 +203,10 @@ class TermLouApp : Application() {
         scroll.addView(body)
         val close = Button(this).apply {
             text = getString(R.string.crash_copy_exit)
+            setTextColor(Color.WHITE)
+            // 5.9.41：统一圆角来源。本页是黑底独立界面、不走 ThemeColors，
+            // 但圆角要走同一条规范：用品牌绿常量，不另造一套。
+            ButtonStyle.apply(this, UiTokens.primaryGreen, UiTokens.primaryGreen)
             setOnClickListener {
                 runCatching {
                     val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

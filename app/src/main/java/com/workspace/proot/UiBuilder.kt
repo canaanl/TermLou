@@ -182,6 +182,8 @@ class UiBuilder(
             textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
             // 5.9.40：原 3dp 不在 4dp 网格上，按 MD3 上调到 4dp（SPACE_1）
             setPaddingMd(UiTokens.SPACE_1, 0, UiTokens.SPACE_1, 0)
+            // 5.9.41：统一圆角来源（此前是 MD2 主题自带，与设置页按钮不一致）
+            ButtonStyle.apply(this, theme.primary, theme.primaryVisible)
             layoutParams = if (widthPx > 0) {
                 LinearLayout.LayoutParams(widthPx, LinearLayout.LayoutParams.WRAP_CONTENT)
             } else {
@@ -201,6 +203,9 @@ class UiBuilder(
             textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
             // 5.9.40：原 3dp 不在 4dp 网格上，按 MD3 上调到 4dp（SPACE_1）
             setPaddingMd(UiTokens.SPACE_1, 0, UiTokens.SPACE_1, 0)
+            // 5.9.41：此前没走 ButtonStyle，用的是 MD2 主题自带圆角，
+            // 与设置页按钮（CORNER_MD）并排就是两种圆角。统一到同一来源。
+            ButtonStyle.apply(this, theme.primary, theme.primaryVisible)
             layoutParams = if (widthPx > 0) {
                 LinearLayout.LayoutParams(widthPx, LinearLayout.LayoutParams.WRAP_CONTENT)
             } else {
