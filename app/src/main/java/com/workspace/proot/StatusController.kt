@@ -34,27 +34,21 @@ class StatusController(
         return statusView
     }
 
-    /**
-     * 状态栏外框：`statusView`（正文）+ `statusOverlay`（前缀盖板）。
-     *
-     * 盖板平时是隐藏的，只有文件 tab 的常态长路径需要横向跑马灯时才出现：
-     * 它画着和正文一模一样的 `Files | ` 前缀、不透明底，盖在正文左端。
-     * 正文底下滚的是完整的一整行（含它自己的前缀），滚到盖板下面的部分被挡住 ——
-     * 看上去就是前缀定死、只有 `|` 后面在滚。
-     *
-     * 盖板的字号/颜色/背景/内边距必须和正文逐项一致，差 1px 就会看出重影，
-     * 所以两边都从同一个地方取（`UiBuilder.createStatusBar` 定正文，
-     * 这里照抄它的参数定盖板 —— 改正文样式时这里必须一起改）。
-     */
-    lateinit var statusOverlay: TextView
-        private set
-
     private var statusWrap: FrameLayout? = null
 
     /**
-     * 建过就直接返回旧外框 —— 同一个 `statusView` 只能有一个爹，
-     * 调两次（5.9.24 就是这么死的：第二处跳过创建直接 addView，当场抛
-     * `child already has a parent`，onCreate 炸 → 静默杀进程 → 黑屏 + 磁贴全死）。
+     * 状态栏外框。
+     *
+     * 5.9.45：**盖板（`statusOverlay`）整个删除**。它原本是文件 tab 长路径跑马灯的
+     * "定桩前缀"——画一份一模一样的 `Files | ` 盖在正文左端，让前缀看起来不动。
+     *
+     * 删除的三个理由：
+     * 1. **用户要求**：前缀跟着一起滚即可。
+     * 2. **它是一处会出错的耦合**：盖板必须与正文**逐项一致**（字号/行高/内距/背景），
+     *    差 1px 就在接缝露馅。5.9.43→5.9.44 为这件事返工了两轮。
+     * 3. **它带一个真 bug**：盖板显隐由 `showPersistent`/`clearPersistent` 管，
+     *    与状态文字**各管各的**，切页签时没人复位 → 切走后盖板还杵在那儿显示旧前缀。
+     *    外框现在只剩正文一层，但仍保留（外框本身有它的历史，见下）。
      */
     fun createStatusWrap(): FrameLayout {
         statusWrap?.let { return it }
@@ -63,28 +57,8 @@ class StatusController(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.WRAP_CONTENT
         )
-        statusOverlay = TextView(activity).apply {
-            // ⚠ 必须和正文同源：正文是 UiBuilder.createStatusBar 定的
-            // （theme.surfaceContainer 底 + theme.onSurface 字 + TEXT_COMPACT + padding 16,8,16,0）。
-            // 这里直接读同一个 theme 对象，换主题两边一起变，不会错开。
-            //
-            // 5.9.44：这里原本是 textMd(TEXT_COMPACT, LINE_COMPACT)（带 1.35 行高），
-            // 而正文在 5.9.41 被还原成不带行高 —— **两层错开**，用户看到"像两行"。
-            // 状态栏是**单行提示条**，不是正文：行高对它只有"平白占高度"的作用。
-            // 故两层一律不带行高，回到 5.9.39 的样子，接缝重新对齐。
-            textSize = UiTokens.TEXT_COMPACT
-            setTextColor(scope.theme.onSurface)
-            setPadding(16, 8, 16, 0)
-            setBackgroundColor(scope.theme.surfaceContainer)
-            visibility = View.GONE
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            ).apply { gravity = Gravity.TOP or Gravity.START }
-        }
         return FrameLayout(activity).apply {
             addView(statusView)
-            addView(statusOverlay)
         }.also { statusWrap = it }
     }
 
@@ -117,7 +91,7 @@ class StatusController(
         terminalTempJob = null
         terminalTempActive = false
         lastClickedInfo = ""
-        if (activity.currentTab == 0 && ::statusView.isInitialized) statusView.text = terminalBaseText()
+        if (activity.currentTab == 0 && ::statusView.isInitialized) apply(terminalBaseText())
     }
 
     fun showTerminalTemp(text: String, durationMs: Long) {
@@ -128,7 +102,7 @@ class StatusController(
             delay(durationMs)
             terminalTempActive = false
             lastClickedInfo = ""
-            if (activity.currentTab == 0 && ::statusView.isInitialized) statusView.text = terminalBaseText()
+            if (activity.currentTab == 0 && ::statusView.isInitialized) apply(terminalBaseText())
         }
     }
 
@@ -141,13 +115,26 @@ class StatusController(
         if (!::statusView.isInitialized) return
         statusView.animate().cancel()
         statusView.animate().alpha(0f).setDuration(120).withEndAction {
-            statusView.text = text
+            apply(text)
             statusView.animate().alpha(1f).setDuration(120).start()
         }.start()
     }
 
     fun setStatusText(text: String) {
-        if (::statusView.isInitialized) statusView.text = text
+        if (::statusView.isInitialized) apply(text)
+    }
+
+    /**
+     * 5.9.45：**唯一**的赋值入口。
+     *
+     * 此前 `statusView.text = ...` 在本文件里有 6 处（restoreTerminalStatus ×2、
+     * renderWebNotice、syncWebNotice、setStatusTextAnimated 等），各自绕过统一处理，
+     * 于是有的路径上色、有的不上色。全部收口到这里。
+     *
+     * 上色规则见 [StatusAccent]（调色盘预览共用同一份）。
+     */
+    private fun apply(text: String) {
+        statusView.text = StatusAccent.apply(text, scope.theme.statusAccent)
     }
 
     // ---------- 浏览器的闪烁提示 ----------
@@ -202,7 +189,7 @@ class StatusController(
                 webPhase = null
                 if (inTerminal && ::statusView.isInitialized) {
                     statusView.animate().cancel()
-                    statusView.text = terminalBaseText()
+                    apply(terminalBaseText())
                 }
             }
             // 还没闲置够：排一个到点的检查，届时若仍空闲才开始闪
@@ -229,11 +216,11 @@ class StatusController(
         if (on == webPhase) return
         webPhase = on
         statusView.animate().cancel()
-        statusView.text = if (on) {
+        apply(if (on) {
             "Terminal | " + activity.getString(R.string.web_notice_blink)
         } else {
             terminalBaseText()
-        }
+        })
     }
 
     private fun webNoticeInputs() = WebNoticeArbiter.Inputs(

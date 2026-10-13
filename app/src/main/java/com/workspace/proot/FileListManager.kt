@@ -22,7 +22,6 @@ class FileListManager(
     private var currentTab: Int = 0
     private var statusText: TextView? = null
     private var mainHandler: Handler? = null
-    private var statusOverlay: TextView? = null
     private var onExportFolder: ((File) -> Unit)? = null
     private var onExportFile: ((File) -> Unit)? = null
     private var menuHost: FrameLayout? = null
@@ -34,7 +33,6 @@ class FileListManager(
     fun setCurrentTab(tab: Int) { currentTab = tab }
     fun setStatusText(textView: TextView) { statusText = textView }
     fun setMainHandler(handler: Handler) { mainHandler = handler }
-    fun setStatusOverlay(overlay: TextView) { statusOverlay = overlay }
 
     /**
      * 回到常态路径显示（`Files | 路径`，5.9.24）。
@@ -48,11 +46,11 @@ class FileListManager(
         val tv = statusText ?: return
         val p = getRelativePath()
         if (p.isEmpty()) {
-            StatusMarquee.clearPersistent(tv, statusOverlay)
+            StatusMarquee.clearPersistent(tv)
             tv.text = "Files"
             return
         }
-        StatusMarquee.showPersistent(tv, statusOverlay, "Files | ", p)
+        StatusMarquee.showPersistent(tv, "Files | ", p)
     }
     fun setOnExportFolder(listener: (File) -> Unit) { onExportFolder = listener }
     fun setOnExportFile(listener: (File) -> Unit) { onExportFile = listener }
@@ -94,7 +92,7 @@ class FileListManager(
                     dir.parentFile?.let { newDir ->
                         currentDir = newDir
                         refreshFileList(fileList, navigateUp, onFileClick)
-                        StatusMarquee.show(statusText, newDir.name, StatusMarquee.BASE_MS, mainHandler, statusOverlay) {
+                        StatusMarquee.show(statusText, newDir.name, StatusMarquee.BASE_MS, mainHandler) {
                             restoreStatusPath()
                         }
                     }
@@ -153,7 +151,7 @@ class FileListManager(
                     row.postDelayed({
                         currentDir = f
                         refreshFileList(fileList, navigateUp, onFileClick)
-                        StatusMarquee.show(statusText, fullName, StatusMarquee.BASE_MS, mainHandler, statusOverlay) {
+                        StatusMarquee.show(statusText, fullName, StatusMarquee.BASE_MS, mainHandler) {
                             restoreStatusPath()
                         }
                     }, 140)
@@ -209,7 +207,7 @@ class FileListManager(
                     row.animate().alpha(0.5f).setDuration(60).withEndAction {
                         row.animate().alpha(1f).setDuration(120).start()
                     }.start()
-                    StatusMarquee.show(statusText, fullName, StatusMarquee.BASE_MS, mainHandler, statusOverlay) {
+                    StatusMarquee.show(statusText, fullName, StatusMarquee.BASE_MS, mainHandler) {
                         restoreStatusPath()
                     }
                     showBraceMenu(row, f, false, fileList, navigateUp, onFileClick)

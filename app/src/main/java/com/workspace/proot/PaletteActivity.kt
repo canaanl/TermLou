@@ -57,6 +57,9 @@ class PaletteActivity : AppCompatActivity() {
     private lateinit var previewBody: TextView
     private lateinit var previewStripBg: GradientDrawable
     private lateinit var previewStripText: TextView
+    /** 5.9.45：状态栏特征字预览（新增槽位，随调色盘实时变）。 */
+    private lateinit var previewStatusText: TextView
+    private lateinit var previewStatusBg: GradientDrawable
     private lateinit var previewBtnBg: GradientDrawable
     private lateinit var previewBtnText: TextView
     private lateinit var derived: ThemeColors
@@ -155,6 +158,15 @@ class PaletteActivity : AppCompatActivity() {
         }
         previewStripBg = GradientDrawable().apply { cornerRadius = dpf(snapCorner(UiTokens.CORNER_MD)) }
         previewStripText.background = previewStripBg
+        // 5.9.45：状态栏特征字预览。走 StatusController 的同一套上色规则，
+        // 所以这里看到的就是真正生效的样子，不是另画一个示意。
+        previewStatusText = TextView(this).apply {
+            text = "Files | /workspace"
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
+            setPadding(16, 8, 16, 0)
+        }
+        previewStatusBg = GradientDrawable().apply { cornerRadius = dpf(snapCorner(UiTokens.CORNER_XS)) }
+        previewStatusText.background = previewStatusBg
         previewBtnText = TextView(this).apply {
             text = getString(R.string.save)
             textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
@@ -172,6 +184,7 @@ class PaletteActivity : AppCompatActivity() {
         previewCard.addView(previewTitle)
         previewCard.addView(previewBody)
         previewCard.addView(previewStripText)
+        previewCard.addView(previewStatusText)
         previewCard.addView(btnWrap)
         form.addView(previewCard)
 
@@ -438,6 +451,10 @@ class PaletteActivity : AppCompatActivity() {
         previewBody.setTextColor(derived.onSurfaceVariant)
         previewStripBg.setColor(derived.surfaceVariant)
         previewStripText.setTextColor(derived.onSurface)
+        // 5.9.45：状态栏预览 = 状态栏自己的底色 + StatusController 的同一套特征字上色。
+        // 不在这里另画一个示意，免得"预览好看、真机不一样"。
+        previewStatusBg.setColor(derived.surfaceContainer)
+        previewStatusText.text = StatusAccent.apply("Files | /workspace", derived.statusAccent)
         previewBtnBg.setColor(derived.primary)
         // 预览按钮与真按钮同构：填充=品牌原色，描边=可见变体（此处演示的就是最终生效规则）
         previewBtnBg.setStroke(dp(1).coerceAtLeast(1), derived.primaryVisible)

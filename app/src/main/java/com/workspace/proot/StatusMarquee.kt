@@ -103,20 +103,19 @@ object StatusMarquee {
     /**
      * 常态长路径的横向跑马灯（5.9.24）。
      *
-     * `prefix`（如 `Files | `）由盖板定死盖住，滚动从 `|` 后面开始：
-     * 正文里放完整的一整行（含它自己的前缀），打开系统跑马灯让它自己滚；
-     * 盖板画着一模一样的前缀、不透明底，盖在正文左端。滚到盖板下面的部分被挡住，
-     * 看上去就是前缀不动、只有后面在滚。
+     * 5.9.45：**盖板已整个删除**。原来 `prefix` 由盖板定死盖住、滚动从 `|` 后面开始，
+     * 现在前缀跟着正文一起滚 —— 少一层绘制，也少一处"两层必须逐项一致"的脆弱约束
+     * （盖板一旦与正文差 1px 就在接缝处露馅，见 5.9.43/5.9.44 的两轮返工）。
      *
-     * 放得下就不滚不盖，和原来逐像素一致。跑马灯是循环的（到头停一下再回来），
-     * 因为它是常态显示不是临时提示 —— 滚一遍停住的话，末尾就一直是末尾了。
+     * 跑马灯本身一个字没改：放得下就不滚，放不下照样循环横滚（到头停一下再回来，
+     * 因为它是常态显示不是临时提示，滚一遍停住的话末尾就一直是末尾了）。
      */
-    fun showPersistent(view: TextView?, overlay: TextView?, prefix: String, path: String) {
+    fun showPersistent(view: TextView?, prefix: String, path: String) {
         if (view == null) return
         val full = prefix + path
         val avail = (view.width - view.paddingLeft - view.paddingRight).toFloat()
         if (avail <= 0f || view.paint.measureText(full) <= avail) {
-            clearPersistent(view, overlay)
+            clearPersistent(view)
             view.text = full
             return
         }
@@ -125,18 +124,17 @@ object StatusMarquee {
         view.ellipsize = android.text.TextUtils.TruncateAt.MARQUEE
         view.marqueeRepeatLimit = -1
         view.isSelected = true
-        if (overlay != null) {
-            overlay.text = prefix
-            overlay.visibility = android.view.View.VISIBLE
-        }
     }
 
     /**
      * 关掉常态跑马灯（临时全名展示前必须调，否则单行模式会把纵向滚动憋成一行）。
-     * 放得下的纯文字不受影响（本来就没开）。
+     *
+     * 5.9.45：**切页签时也必须调**（见 MainActivity.refreshStatusBar）。
+     * 文件页把正文设成"单行 + MARQUEE + isSelected"后，这三个属性此前无人复位，
+     * 切到别的页签仍带着 —— 短文字看不出，但那是个埋着的雷：
+     * 一旦之后要纵向滚动，单行模式会把它憋成一行。
      */
-    fun clearPersistent(view: TextView?, overlay: TextView?) {
-        overlay?.visibility = android.view.View.GONE
+    fun clearPersistent(view: TextView?) {
         if (view == null) return
         view.isSelected = false
         view.ellipsize = null
@@ -154,7 +152,6 @@ object StatusMarquee {
         text: String,
         baseMs: Long = BASE_MS,
         handler: Handler?,
-        overlay: TextView? = null,
         onDone: () -> Unit
     ) {
         if (view == null) {
@@ -162,7 +159,7 @@ object StatusMarquee {
             return
         }
         // 先关常态跑马灯：单行模式不关，纵向滚动会被憋成一行量不出行数。
-        clearPersistent(view, overlay)
+        clearPersistent(view)
         cancel(view, handler)
         // 先锁高再设文字：中间那一帧不能闪
         val oneLineH = view.lineHeight + view.paddingTop + view.paddingBottom

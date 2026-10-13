@@ -33,6 +33,18 @@ data class ThemeColors(
     /** 品牌色的可见变体（ColorMath.visibleVariant）：远处=primary 零漂移，相近时自动向反色偏移。
      *  描边/文字/图标/粒子等需在背景上可辨的场合用它；品牌填充仍用 primary。 */
     val primaryVisible: Int = primary,
+    /**
+     * 5.9.45：状态栏**特征字**专用色（Terminal/Notes/Files/Network/Settings）。
+     *
+     * 与 [primaryVisible] 的区别只有一个，但很关键 —— **拿状态栏自己的底色算**：
+     * 状态栏铺的是 `surfaceContainer`，比 `surface` 略深/略浅，"这色在页面底上看得见"
+     * 不等于"在状态栏那条上也看得见"。
+     *
+     * 用 `ColorMath.visibleVariant(seed, surfaceContainer)`：品牌色离底色远就逐位保持
+     * 品牌绿（保住品牌识别），趋于同色就连续推向反色（保证任何配色下都看得见）。
+     * 算法是调色盘已在用的那一个，没有新增数学。
+     */
+    val statusAccent: Int = primaryVisible,
     val error: Int = 0xFFC0392B.toInt(),
     val tertiary: Int = 0xFF0E639C.toInt(),
     val onPrimary: Int = 0xFFFFFFFF.toInt(),
@@ -93,12 +105,13 @@ data class ThemeColors(
             val container = if (night) TONE_CONTAINER else TONE_CONTAINER_DAY
             val high = if (night) TONE_HIGH else TONE_HIGH_DAY
             val highest = if (night) TONE_HIGHEST else TONE_HIGHEST_DAY
+            val surfaceContainer = containerTone(base.surface, container, baseTone)
             return ThemeColors(
                 night = night,
                 surface = base.surface,
                 surfaceContainerLowest = containerTone(base.surface, lowest, baseTone),
                 surfaceContainerLow = containerTone(base.surface, low, baseTone),
-                surfaceContainer = containerTone(base.surface, container, baseTone),
+                surfaceContainer = surfaceContainer,
                 surfaceContainerHigh = containerTone(base.surface, high, baseTone),
                 surfaceContainerHighest = containerTone(base.surface, highest, baseTone),
                 surfaceVariant = base.surfaceVariant,
@@ -107,6 +120,8 @@ data class ThemeColors(
                 onSurface = base.onSurface,
                 onSurfaceVariant = base.onSurfaceVariant,
                 primary = SEED,
+                // 5.9.45：拿状态栏自己的底色算，不拿页面底色
+                statusAccent = ColorMath.visibleVariant(SEED, surfaceContainer),
                 error = light.error,
                 tertiary = base.tertiary,
                 onPrimary = light.onPrimary,
@@ -156,13 +171,14 @@ data class ThemeColors(
             } else {
                 lowR = 0.02f; containerR = 0.04f; highR = 0.06f; highestR = 0.08f
             }
+            val surfaceContainer = ColorMath.mix(bg, ink, containerR)
             return ThemeColors(
                 night = dark,
                 palette = true,
                 surface = bg,
                 surfaceContainerLowest = ColorMath.mix(bg, if (dark) BLACK else WHITE, if (dark) 0.35f else 1f),
                 surfaceContainerLow = ColorMath.mix(bg, ink, lowR),
-                surfaceContainer = ColorMath.mix(bg, ink, containerR),
+                surfaceContainer = surfaceContainer,
                 surfaceContainerHigh = ColorMath.mix(bg, ink, highR),
                 surfaceContainerHighest = ColorMath.mix(bg, ink, highestR),
                 surfaceVariant = surfaceVariant,
@@ -172,6 +188,9 @@ data class ThemeColors(
                 onSurfaceVariant = ColorMath.readableMix(bg, ink),
                 primary = seed,
                 primaryVisible = primaryVisible,
+                // 5.9.45：状态栏特征字 —— 同样拿状态栏自己的底色算，
+                // 而 primaryVisible 算的是页面底色，两者可能不同。
+                statusAccent = ColorMath.visibleVariant(seed, surfaceContainer),
                 error = error,
                 tertiary = tertiary,
                 onPrimary = ColorMath.inkOf(seed),

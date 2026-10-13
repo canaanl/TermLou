@@ -325,60 +325,124 @@ class UiDimsScanTest {
         )
     }
 
-    /**
-     * 5.9.44 加的锁：**状态栏两层（正文 + 盖板）必须同款，且都不带行高**。
+        /**
+     * 5.9.44 加的锁：**状态栏不带行高**（它是单行提示条，不是页面正文）。
      *
-     * 用户实机报"App 的状态栏看起来像两行"。真因是一处**只改了一半**的还原：
-     * 5.9.41 按"状态栏保持原样"把正文（`UiBuilder.createStatusBar`）的行高去掉了，
-     * 却漏掉了盖板（`StatusController.statusOverlay`）—— 它还带着 1.35 行高。
+     * 历史：5.9.40 给全项目文字统一加行高时没区分"正文"和"提示条"，给状态栏也加了
+     * 1.35 行高 —— 纯平白占垂直高度。5.9.41 只还原了正文、漏了盖板，两层错开，
+     * 用户看到"像两行"，5.9.44 才补完。
      *
-     * 两层在同一个 `FrameLayout` 里上下重叠（`statusOverlay` 是跑马灯的"定桩前缀"，
-     * 盖住正文左端）。**样式差 1px 就会在接缝处看出重影**，这是代码注释里写死的约束。
-     *
-     * 另外：状态栏是**单行提示条**，不是页面正文。行高在这里只有"平白占垂直高度"
-     * 的作用，所以两层一律不带行高。
-     *
-     * 本锁同时断言"两层都不出现 `textMd`"，防止下次再只改一半。
+     * 5.9.45：盖板已整个删除，只剩正文一层，本锁相应收窄为"正文不带行高"。
      */
     @Test
-    fun `status bar body and cover plate match and carry no line height`() {
+    fun `the status bar carries no line height`() {
         val uiBuilder = File(srcDir, "UiBuilder.kt")
-        val statusCtl = File(srcDir, "StatusController.kt")
         assertTrue("UiBuilder.kt 不见了", uiBuilder.isFile)
-        assertTrue("StatusController.kt 不见了", statusCtl.isFile)
-
-        // 1) 两层都不得用 textMd（带行高）
-        //    只看各自的构造块本身，不能用 substringAfter 拿"文件剩余部分"——
-        //    那会把同文件里别的 textMd 一并算进来（本次就踩了这个坑）。
-        val ubBody = read(uiBuilder).substringAfter("fun createStatusBar()").substringBefore("\n    }")
-            .lines().filterNot { it.trim().startsWith("//") }.joinToString("\n")
-        val ctlOverlay = read(statusCtl).substringAfter("statusOverlay = TextView(activity).apply {")
-            .substringBefore("visibility = View.GONE")
+        // 只看构造块本身：substringAfter 拿"文件剩余部分"会把同文件别的 textMd 算进来
+        val body = read(uiBuilder).substringAfter("fun createStatusBar()").substringBefore("\n    }")
             .lines().filterNot { it.trim().startsWith("//") }.joinToString("\n")
         assertFalse(
-            "UiBuilder 状态栏正文不该设行高（它是单行提示条，不是正文）：\n$ubBody",
-            ubBody.contains("textMd(") || ubBody.contains("LINE_COMPACT"),
-        )
-        assertFalse(
-            "StatusController 盖板不该设行高（它只是正文的定桩前缀）：\n$ctlOverlay",
-            ctlOverlay.contains("textMd(") || ctlOverlay.contains("LINE_COMPACT"),
-        )
-
-        // 2) 两层写法必须一致：同一个字号 + 同一句内距字面量
-        val ctl = read(statusCtl)
-        assertTrue(
-            "盖板必须和正文用同一句内距字面量 setPadding(16, 8, 16, 0)：\n$ctl",
-            ctl.contains("setPadding(16, 8, 16, 0)"),
+            "状态栏是单行提示条，不该设行高（只会平白占高度）：\n$body",
+            body.contains("textMd(") || body.contains("LINE_COMPACT"),
         )
         val ub = read(uiBuilder)
-        assertTrue(
-            "正文内距必须仍是 setPadding(16, 8, 16, 0)：\n$ub",
-            ub.contains("setPadding(16, 8, 16, 0)"),
-        )
-
-        // 3) 两层字号必须同一个档
         assertTrue("正文字号应仍为 TEXT_COMPACT", ub.contains("textSize = UiTokens.TEXT_COMPACT"))
-        assertTrue("盖板字号应与正文同为 TEXT_COMPACT", ctl.contains("textSize = UiTokens.TEXT_COMPACT"))
+        assertTrue("正文内距应仍是 setPadding(16, 8, 16, 0)", ub.contains("setPadding(16, 8, 16, 0)"))
+    }
+
+    /**
+ * 5.9.45 加的锁：**盖板（statusOverlay）必须整个删掉，不许回来**。
+     *
+     * 盖板是文件页长路径跑马灯的"定桩前缀"（5.9.24 加的）。删除的三个理由都在
+     * StatusController.createStatusWrap 的 KDoc 里：
+     * 1. 用户要求：前缀跟着正文一起滚即可；
+     * 2. 它是"两层必须逐项一致"的耦合，差 1px 就露馅 —— 为此 5.9.43/5.9.44 返工两轮；
+     * 3. 它带一个真 bug：显隐与状态文字各管各的，切页签无人复位 → 切走后盖板还杵着。
+     */
+    @Test
+    fun `the status bar cover plate must not come back`() {
+        // 这里**不用 scanFiles()**（那份排除白名单）：StatusController.kt 因为
+        // "终端等宽字体"在白名单里，而盖板恰恰就住在那个文件里 —— 用 scanFiles()
+        // 会让这条锁永远扫不到它，等于没有锁（本次就踩了：第一次注入验证没红）。
+        // 字体豁免是"样式"层面的，与"盖板不许存在"是"结构"层面，两者不该共用一份名单。
+        val dir = srcDir
+        val files = dir.listFiles { f -> f.name.endsWith(".kt") }?.sortedBy { it.name } ?: emptyList()
+        val offenders = mutableListOf<String>()
+        for (f in files) {
+            val lines = read(f).lines()
+                .filterNot { it.trim().startsWith("//") || it.trim().startsWith("*") }
+            lines.forEachIndexed { i, line ->
+                if (line.contains("statusOverlay") || line.contains("setStatusOverlay")) {
+                    offenders += "${f.name}:${i + 1}  ${line.trim()}"
+                }
+            }
+        }
+        assertEquals(
+            "盖板已于 5.9.45 整个删除，不许回来：\n" + offenders.joinToString("\n"),
+            0, offenders.size,
+        )
+    }
+
+    /** 跑马灯本身必须保留 —— 删的是盖板，不是"字太长就横滚"这件事。 */
+    @Test
+    fun `the horizontal marquee itself stays`() {
+        val marquee = File(srcDir, "StatusMarquee.kt")
+        assertTrue("StatusMarquee.kt 不见了", marquee.isFile)
+        val code = read(marquee)
+        assertTrue("常态长路径的横向跑马灯不许被一起删掉", code.contains("fun showPersistent("))
+        assertTrue("跑马灯的 MARQUEE 省略模式不许丢", code.contains("TruncateAt.MARQUEE"))
+    }
+
+    /**
+     * 切页签必须复位跑马灯状态。
+     *
+     * 文件页把正文设成"单行 + MARQUEE + isSelected"后，这三个属性此前无人复位，
+     * 切到别的页签仍带着 —— 短文字看不出，但一旦之后要纵向滚动，单行模式会把它
+     * 憋成一行（StatusMarquee 的 KDoc 早就写过这个警告）。
+     */
+    @Test
+    fun `tab switch resets the marquee state`() {
+        val main = File(srcDir, "MainActivity.kt")
+        assertTrue("MainActivity.kt 不见了", main.isFile)
+        val code = read(main).substringAfter("internal fun refreshStatusBar()")
+        assertTrue(
+            "切页签时必须复位跑马灯（否则单行模式会污染别的页签）：\n$code",
+            code.contains("StatusMarquee.clearPersistent("),
+        )
+    }
+
+    /** 状态栏特征字必须走唯一的规则实现，且用新算出来的专用色。 */
+    @Test
+    fun `status accent uses the dedicated slot`() {
+        val ctl = File(srcDir, "StatusController.kt")
+        val accent = File(srcDir, "StatusAccent.kt")
+        assertTrue("StatusController.kt 不见了", ctl.isFile)
+        assertTrue("StatusAccent.kt 不见了", accent.isFile)
+
+        val ctlCode = read(ctl)
+        assertTrue(
+            "状态栏上色必须走 StatusAccent（调色盘预览共用同一份规则）：\n$ctlCode",
+            ctlCode.contains("StatusAccent.apply("),
+        )
+        assertTrue(
+            "必须用 statusAccent 这个专用槽，不能拿 primaryVisible 顶替",
+            ctlCode.contains("theme.statusAccent"),
+        )
+        // 不得绕过统一入口直接赋值（此前有 6 处，上色会漏）。
+        // apply() 内部那一行是唯一合法的赋值点：它带 StatusAccent.apply，不该被算进去。
+        val direct = ctlCode.lines()
+            .filterNot { it.trim().startsWith("//") || it.trim().startsWith("*") }
+            .filter { it.contains("statusView.text = ") }
+            .filterNot { it.contains("StatusAccent.apply") }
+        assertEquals(
+            "状态栏文字只能经 apply() 赋值（此前 6 处直赋，上色会漏）：\n" + direct.joinToString("\n"),
+            0, direct.size,
+        )
+        // 反过来确认统一入口真的存在，且它走了上色
+        assertTrue(
+            "统一入口 apply() 必须真的调 StatusAccent：\n$ctlCode",
+            ctlCode.contains("statusView.text = StatusAccent.apply("),
+        )
     }
 
     /** 规范层必须真的被生产代码引用，而不是摆着好看。 */
