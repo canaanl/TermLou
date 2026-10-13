@@ -271,12 +271,20 @@ class UiDimsScanTest {
          * 合法豁免（逐条给理由，不做整类沉默放行）：
          * - `Color.TRANSPARENT`：笔记正文的多行输入框，**故意透明**（无边框的整页编辑区），
          *   圆角对不可见背景没有意义。
-         * - `theme.primaryContainer`：对话框工坊里的**预览编辑框**（模拟 agent 看到的输入框
-         *   外观），它是"被预览的对象"而不是正式输入控件，直角才是它该有的样子。
-         *   注意：真正的搜索框（NetworkController / 两个 PickerDialog）**不在豁免里**，
-         *   它们已改为走 FieldStyle。
+         *
+         * 5.9.50 撤掉 `theme.primaryContainer` 这一条。原豁免理由是"对话框工坊里的预览
+         * 编辑框是**被预览的对象**，直角才是它该有的样子"。该理由**已被证伪**：
+         * 真实渲染侧 `ScriptDialogRenderer`（L325/352/463/561/600/615）的弹窗输入框
+         * 全部是 `snapCorner(CORNER_SM)` 圆角 —— 真弹窗早就是圆的，只有这个**模拟框**
+         * 还停在直角，是模拟失真而不是刻意保真。故两处（`titleEdit` / `messageEdit`）
+         * 已改走 `roundedBg(primaryContainer, CORNER_SM)`，与真实渲染对齐。
+         *
+         * ⚠ 不要再把 `theme.primaryContainer` 加回来：它现在的含义已从"刻意直角"
+         * 变成"漏了圆角"，正是本锁要抓的那一类。
+         * （`DialogMakerActivity.renderCtrlList` 里那个用 `primaryContainer` 的
+         * LinearLayout 列表行**不受本锁管辖** —— 本锁只看 EditText 块。）
          */
-        val allowed = listOf("Color.TRANSPARENT", "theme.primaryContainer")
+        val allowed = listOf("Color.TRANSPARENT")
         val offenders = mutableListOf<String>()
         for (f in scanFiles()) {
             if (f.name == "FieldStyle.kt") continue // 定义自身
@@ -304,6 +312,118 @@ class UiDimsScanTest {
                 offenders.joinToString("\n"),
             0, offenders.size,
         )
+    }
+
+    /**
+     * 5.9.50 加的锁：**调色盘预览的圆角必须等于它所模拟的那个真实控件**。
+     *
+     * 调色盘的作用就是"改色之前先看看真机长什么样"，所以预览一旦与真实控件脱节，
+     * 它就从"预览"变成了"骗人的示意图" —— 用户照着预览调完色，装机发现不一样。
+     *
+     * 本项目已经被"示意与真实不一致"坑过 7 次（5.9.42 / 5.9.43 连着两版都在补同一类洞），
+     * 所以这里把四个数值一起钉死：
+     *
+     * | 预览元素 | 必须等于 | 真实来源 |
+     * |---|---|---|
+     * | 卡片·输入框 | `FieldStyle.RADIUS_DP` (8) | 全站输入框 |
+     * | 状态栏框 | 同上 (8) | 与相邻框同档（真机是通栏直角，见下） |
+     * | 保存按钮 | `ButtonStyle.CORNER_RADIUS_DP` (12) | 全站按钮 |
+     * | 预览底板 | `CORNER_MD` (12) | 与保存按钮同档，构成层级 |
+     *
+     * 两条已知且**有意保留**的偏差，不许被当漏洞"顺手修掉"：
+     * 1. 状态栏框给了 8dp 圆角，而真机 `StatusController:121` 是通栏直角、无圆角。
+     *    预览卡有 14dp 内距，块直角会被读成"没做完"，故取"与相邻框一致"。
+     * 2. 预览底板是**圆角**的，而它模拟的背景本身在真机上是通栏的。
+     *    它是"色样板"，不是状态栏。
+     *
+     * 另：`previewCard` 的底色必须在 `renderPreview()` 里走 `previewCardBg.setColor(...)`
+     * 而不是 `setBackgroundColor(...)` —— 后者会把圆角冲掉，换一次色就退回直角。
+     */
+    @Test
+    fun `palette preview radii match the components they stand in for`() {
+        val pal = File(srcDir, "PaletteActivity.kt")
+        assertTrue("PaletteActivity.kt 不见了", pal.isFile)
+        val code = read(pal)
+
+        /** 取 `X = GradientDrawable().apply { cornerRadius = dpf(snapCorner(UiTokens.CORNER_*)) }` 的档位名。 */
+        fun tierOf(varName: String): String {
+            val anchor = "$varName = GradientDrawable().apply"
+            val at = code.indexOf(anchor)
+            assertTrue("找不到 $varName 的构造：\n$code", at >= 0)
+            val window = code.substring(at, minOf(code.length, at + 200))
+            val m = Regex("""snapCorner\(UiTokens\.(CORNER_\w+)\)""").find(window)
+            assertTrue("$varName 的 cornerRadius 没走 snapCorner(UiTokens.CORNER_*)：\n$window", m != null)
+            return m!!.groupValues[1]
+        }
+
+        // 卡片·输入框 == 全站输入框的圆角
+        assertEquals(
+            "预览的「卡片·输入框」应与真实输入框（FieldStyle）同圆角",
+            "CORNER_SM", tierOf("previewStripBg"),
+        )
+        assertEquals(
+            "真实输入框半径应落在 CORNER_SM 上，预览才有从对齐的依据",
+            "CORNER_SM", snapTierName(FieldStyle.RADIUS_DP),
+        )
+
+        // 状态栏框 == 卡片框（有意与真机的通栏直角不同，见 KDoc 偏差 1）
+        assertEquals(
+            "预览的「Files | /workspace」应与相邻的卡片框同圆角（12→8 后两者都是 8）",
+            tierOf("previewStripBg"), tierOf("previewStatusBg"),
+        )
+
+        // 保存按钮 == 全站按钮圆角
+        assertEquals(
+            "预览的「保存」按钮应与真实按钮（ButtonStyle）同圆角",
+            snapTierName(ButtonStyle.CORNER_RADIUS_DP), tierOf("previewBtnBg"),
+        )
+
+        // 底板 == 保存按钮（构成层级）
+        assertEquals(
+            "预览底板应与内部保存按钮同圆角（CORNER_MD）",
+            tierOf("previewBtnBg"), tierOf("previewCardBg"),
+        )
+
+        // 底色必须走句柄，否则调色一次圆角就没了
+        assertTrue(
+            "renderPreview() 必须用 previewCardBg.setColor(...)，用 setBackgroundColor 会冲掉圆角：\n$code",
+            code.contains("previewCardBg.setColor(derived.surface)"),
+        )
+        assertFalse(
+            "previewCard 不许再被 setBackgroundColor 上色（圆角会被冲掉）：\n$code",
+            Regex("""previewCard\.setBackgroundColor""").containsMatchIn(code),
+        )
+
+        // 两个框之间必须有间隙（原先零间距直接相接）
+        // ⚠ 不要用 substringAfter：找不到分隔符时它返回**整串**，于是断言会假绿。
+        // 先断言锚点命中，再在有界窗口里查 —— 锁必须真的验得到东西。
+        val anchorAdd = "previewCard.addView(\n            previewStatusRow,"
+        val atAdd = code.indexOf(anchorAdd)
+        assertTrue("找不到 previewStatusRow 的 addView 调用：\n$code", atAdd >= 0)
+        val addWindow = code.substring(atAdd, minOf(code.length, atAdd + 300))
+        assertTrue(
+            "状态栏框必须与卡片框留出间距（topMargin = dp(UiTokens.SPACE_2)）：\n$addWindow",
+            addWindow.contains("topMargin = dp(UiTokens.SPACE_2)"),
+        )
+    }
+
+    /** 真实半径落到哪一档 MD3 档位上（供预览比对用）。 */
+    private fun snapTierName(radiusDp: Float): String {
+        // 用 assertTrue 而不是 assertEquals(msg, Float, Float)：JUnit 4 没有无 delta 的
+        // Float 重载，只能落到 assertEquals(String, Object, Object) 走装箱比较 ——
+        // 能过，但语义不清、且 NaN 之类会静默不同。
+        assertTrue(
+            "真实半径 $radiusDp 落在档位之间（snapCorner 会把它改档）—— 先在 UiTokens 定档，再谈预览对齐",
+            radiusDp == snapCorner(radiusDp),
+        )
+        return when (radiusDp) {
+            UiTokens.CORNER_XS -> "CORNER_XS"
+            UiTokens.CORNER_SM -> "CORNER_SM"
+            UiTokens.CORNER_MD -> "CORNER_MD"
+            UiTokens.CORNER_LG -> "CORNER_LG"
+            UiTokens.CORNER_XL -> "CORNER_XL"
+            else -> throw AssertionError("未预期的半径档位：$radiusDp")
+        }
     }
 
     /**

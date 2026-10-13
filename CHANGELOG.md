@@ -7,7 +7,105 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
 | **5.9.49** | 5949 | **特征字换成立方体转动（白条方案废弃）· 修两个 tab 不显示动画 · tab 图标收高** |
+
+## 5.9.50
+
+### 1. 弹窗工坊的标题/正文输入框没有圆角
+
+用户实机报"弹窗工坊里面的标题和正文输入框没有圆角"。
+
+**真因不是漏写，是一条有记录的豁免。** `UiDimsScanTest` 里
+`edit texts use a rounded background not a flat color` 那条锁，把
+`theme.primaryContainer` 列为合法豁免，当时的理由写得清清楚楚：
+这两个框是"模拟 agent 弹窗输入框的预览框，直角才是它该有的样子"。
+
+**但那个理由早已不成立。** `ScriptDialogRenderer` 里真实渲染的弹窗输入框
+（L325/352/463/561/600/615）**全部**是 `snapCorner(CORNER_SM)` 圆角。
+也就是说：真弹窗早就是圆的，只有这个**模拟框**还停在直角 ——
+是模拟失了真，不是刻意保真。豁免保护的是一个已经不成立的假设。
+
+修法：两处改走 `roundedBg(primaryContainer, CORNER_SM)`。
+填充色保持 `primaryContainer` 不变（保留原本的配色意图），只补圆角，
+且**不加描边** —— 真实渲染那边也只有圆角没有描边，加了描边又是一次失真。
+同时撤掉豁免名单里的 `theme.primaryContainer`，并重写那段已证伪的 KDoc。
+
+> `DialogMakerActivity.renderCtrlList` 里还有一个用 `primaryContainer` 的
+> LinearLayout 列表行，同样是直角方块。它不是输入框、不在本次范围内，保持原样。
+> 但要知道它现在**只是侥幸没被扫到** —— 全靠上方 18 行内正好有个
+> `fun renderCtrlList()` 挡住回溯，再加 3 行代码就会被误判。
+> 这正是 5.9.43 说的老坑：扫的是"写了圆角的地方"，漏的是"没写圆角的地方"。
+
+### 2. 调色盘预览的圆角与真实控件对不上，两个框还黏在一起
+
+用户实机报：预览元素的 UI 要和 app 外面一致；两个框圆角不一致；
+两个框上下挨到一起没有间隙；保存按钮的圆角也不对。
+
+**预览的意义就是"改色之前先看看真机长什么样"。** 一旦与真实控件脱节，
+它就从预览变成了骗人的示意图。逐项对账后发现**四个数值全是错的**：
+
+| 预览元素 | 原来 | 真实来源 | 真实值 | 改为 |
+|---|---|---|---|---|
+| 卡片·输入框 | `CORNER_MD` 12dp | `FieldStyle.RADIUS_DP` | 8dp | **8dp** |
+| Files \| /workspace | `CORNER_XS` 4dp | 见下方取舍 | 8dp | **8dp** |
+| 保存按钮 | `CORNER_LG` 16dp | `ButtonStyle.CORNER_RADIUS_DP` | 12dp | **12dp** |
+| 预览底板 | 无圆角（直角方块） | —— | —— | **12dp** |
+
+- **卡片框 12 → 8**：真实的输入框是 8dp，预览画得比真的大一档。
+- **状态栏框 4 → 8**：与上面卡片框差了两档，一眼可见地不一致。
+- **保存按钮 16 → 12**：真实按钮走 `ButtonStyle`，预览画得大一档。
+- **底板补 12dp**：它内部三个元素全是圆角，外面的底板却是直角，
+  "外直内圆"很割裂。
+
+**两个框之间的间隙**：`previewCard` 的添加顺序里，卡片框与状态栏框之间
+**既没有 margin 也没有 padding**，两个圆角直接贴在一起黏成一块。
+`previewBody` 的下内距只在卡片框**上方**留了空当，救不了这一处。
+补 `SPACE_2`（8dp，MD3 4dp 网格）。
+
+**一处有意保留的偏差**：真机状态栏（`StatusController:121`）是**通栏直角、无圆角**，
+预览却给它加了 8dp。这是取舍 —— 预览卡有 14dp 内距，块直角会被读成"没做完"，
+故取"与相邻框一致"。已写进锁的 KDoc，不许后来的人当漏洞顺手改掉。
+
+### 3. 预览底板的圆角会在调色时被冲掉（改法上的坑）
+
+底板底色原本是 `previewCard.setBackgroundColor(derived.surface)`，每次调色都重写。
+如果顺手换成 `roundedBg()`，**圆角会在下一次调色时整个消失**
+（换一次色就退回直角方块）—— 正是本项目栽过多次的"编译通过、测试全绿、视觉却坏了"。
+
+所以必须留住 `GradientDrawable` 句柄：`previewCardBg` 存圆角，
+`renderPreview()` 里改用 `previewCardBg.setColor(...)`。
+新锁里专门有一条 `assertFalse` 反向扫 `previewCard.setBackgroundColor`，
+防止有人改回去。
+
+### 4. 撤掉一条豁免、新增一条锁
+
+- **撤掉** `edit texts use a rounded background` 里的 `theme.primaryContainer`
+  豁免（理由已证伪，见第 1 条）。留在那儿就成了项目自己反对的"沉默豁免"。
+- **新增** `palette preview radii match the components they stand in for`：
+  把上表四个数值，连同"底色必须走句柄""两框必须有间隙"一起钉死。
+  这个项目已经被"示意与真实不一致"坑过 **7 次**（5.9.42 / 5.9.43 连着两版
+  都在补同一类洞），所以这次一并锁住。
+
+写这条锁时踩到三个坑，都记进 KDoc 了：
+
+1. `FieldStyle.RADIUS_DP` 原本是 `private`，测试读不到 —— **编译直接失败**。
+   放开为 `internal`（与 `SegmentStyle.RADIUS_DP` 同一档做法）。
+2. 间隙检查原本用 `substringAfter` 找锚点，而**找不到分隔符时它返回整串**，
+   于是断言会**假绿**。改成先断言锚点命中、再在有界窗口里查。
+3. 我在注释里写了 `previewCard.setBackgroundColor` 字面量，
+   **撞红了自己刚加的那条 `assertFalse`**。措辞已改。
+
+### 5. 验证
+
+- 全量 `gradlew test`：**743 全绿**（app 611 + probe 79 + workspace 53），
+  0 失败 0 错误。
+- **注入验证**：故意把 `previewBtnBg` 改回 `CORNER_LG`，确认**恰好那一条锁变红**
+  （21 tests, 1 failed），其余 20 条不受影响；还原后恢复全绿。
+  锁确实验得到东西，不是摆设。
+
+未在真机验证视觉。`previewCard` 的 12dp 圆角配 14dp 内距，
+转角处内距可能显得偏大，必要时可减到 `SPACE_3`（12dp）。
 
 ## 5.9.49
 

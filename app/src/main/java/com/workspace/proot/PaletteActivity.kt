@@ -53,6 +53,8 @@ class PaletteActivity : AppCompatActivity() {
     private lateinit var swatchBg: GradientDrawable
     private lateinit var hexText: EditText
     private lateinit var previewCard: LinearLayout
+    /** 5.9.50：预览底板的圆角句柄。renderPreview() 每次调色都要 setColor，所以必须留住引用。 */
+    private lateinit var previewCardBg: GradientDrawable
     private lateinit var previewTitle: TextView
     private lateinit var previewBody: TextView
     private lateinit var previewStripBg: GradientDrawable
@@ -145,6 +147,13 @@ class PaletteActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPaddingMd(14, 12, 14, 12)
         }
+        // 5.9.50：预览底板原先是 setBackgroundColor(derived.surface) —— 一块直角方块，
+        // 而它内部三个元素都是圆角（卡片框/状态栏 8dp、保存按钮 12dp），外直内圆很割裂。
+        // 用 CORNER_MD(12) 与保存按钮同档，形成"大底板 → 内部元素"的层级。
+        // ⚠ 必须留住 GradientDrawable 句柄：renderPreview() 每次调色都重写底色，
+        // 若改用 setBackgroundColor / roundedBg()，圆角会在下一次调色时被冲掉。
+        previewCardBg = GradientDrawable().apply { cornerRadius = dpf(snapCorner(UiTokens.CORNER_MD)) }
+        previewCard.background = previewCardBg
         previewTitle = TextView(this).apply {
             text = "标题 Aa · 字体与图标"
             textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
@@ -161,7 +170,9 @@ class PaletteActivity : AppCompatActivity() {
             textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
             setPaddingMd(10, 8, 10, 8)
         }
-        previewStripBg = GradientDrawable().apply { cornerRadius = dpf(snapCorner(UiTokens.CORNER_MD)) }
+        // 5.9.50：原为 CORNER_MD(12)。真实的输入框是 FieldStyle.RADIUS_DP = 8dp
+        // （CORNER_SM），预览画得比真的大一档。
+        previewStripBg = GradientDrawable().apply { cornerRadius = dpf(snapCorner(UiTokens.CORNER_SM)) }
         previewStripText.background = previewStripBg
         // 5.9.45：状态栏特征字预览。走 StatusController 的同一套上色规则，
         // 所以这里看到的就是真正生效的样子，不是另画一个示意。
@@ -178,7 +189,11 @@ class PaletteActivity : AppCompatActivity() {
         }
         previewStatusRow.addView(previewStatusLabel)
         previewStatusRow.addView(previewStatusText)
-        previewStatusBg = GradientDrawable().apply { cornerRadius = dpf(snapCorner(UiTokens.CORNER_XS)) }
+        // 5.9.50：原为 CORNER_XS(4)，与上面卡片框的 12dp 差了两档，一眼可见地不一致。
+        // 统一到 CORNER_SM(8)。
+        // 注：真机状态栏（StatusController:121）是**通栏直角**、无圆角；这里给 8dp 是
+        // 有意取舍 —— 预览卡有 14dp 内距，块直角会被读成"没做完"，取"与相邻框一致"。
+        previewStatusBg = GradientDrawable().apply { cornerRadius = dpf(snapCorner(UiTokens.CORNER_SM)) }
         previewStatusRow.background = previewStatusBg
         previewStatusRow.setPadding(dp(16), dp(6), dp(16), dp(6))
         previewBtnText = TextView(this).apply {
@@ -188,7 +203,9 @@ class PaletteActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPaddingMd(18, 8, 18, 8)
         }
-        previewBtnBg = GradientDrawable().apply { cornerRadius = dpf(snapCorner(UiTokens.CORNER_LG)) }
+        // 5.9.50：原为 CORNER_LG(16)。真实保存按钮走 ButtonStyle.CORNER_RADIUS_DP
+        // = CORNER_MD(12)，预览画得大一档。这里跟真实按钮对齐。
+        previewBtnBg = GradientDrawable().apply { cornerRadius = dpf(snapCorner(UiTokens.CORNER_MD)) }
         previewBtnText.background = previewBtnBg
         val btnWrap = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -198,7 +215,14 @@ class PaletteActivity : AppCompatActivity() {
         previewCard.addView(previewTitle)
         previewCard.addView(previewBody)
         previewCard.addView(previewStripText)
-        previewCard.addView(previewStatusRow)
+        // 5.9.50：原先卡片框与状态栏框零间距直接相接，两个圆角贴在一起黏成一块。
+        // 补 8dp（MD3 4dp 网格），让两个框分开。
+        previewCard.addView(
+            previewStatusRow,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(UiTokens.SPACE_2) }
+        )
         previewCard.addView(btnWrap)
         form.addView(previewCard)
 
@@ -460,7 +484,11 @@ class PaletteActivity : AppCompatActivity() {
     /** 预览卡与派生色块全部由候选色现算（与真正生效走同一函数）。 */
     private fun renderPreview() {
         derived = ThemeColors.default(night, PaletteSpec(bg, seed))
-        previewCard.setBackgroundColor(derived.surface)
+        // 5.9.50：改走 previewCardBg 句柄。原来这里调的是 View 的 setBackgroundColor——
+        // 那会把圆角整个冲掉（换一次色就退回直角方块），这正是留住 GradientDrawable 的原因。
+        // ⚠ 别把「对象名 + 方法名」连起来写回注释：下面那条锁反向扫的正是那个组合，
+        // 注释里出现会让锁自己绊倒（这个项目已在同类坑上栽过三次）。
+        previewCardBg.setColor(derived.surface)
         previewTitle.setTextColor(derived.onSurface)
         previewBody.setTextColor(derived.onSurfaceVariant)
         previewStripBg.setColor(derived.surfaceVariant)

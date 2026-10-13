@@ -103,7 +103,13 @@ class DialogMakerActivity : Activity() {
         messageRow = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         messageEdit = EditText(this).apply {
             setTextColor(theme.onSurface)
-            setBackgroundColor(theme.primaryContainer)
+            // 5.9.50：原为 setBackgroundColor（纯色方块 = 直角）。此前这是一条**有记录的
+            // 豁免**，理由是"它是模拟 agent 弹窗输入框的预览框，直角才是它该有的样子"。
+            // 但那个理由早已不成立：真实渲染（ScriptDialogRenderer L325/352/463/561/600/615）
+            // 的弹窗输入框全部是 snapCorner(CORNER_SM) 圆角 —— 真弹窗圆了，只有这个模拟框
+            // 还留着直角，模拟反而失了真。圆角取 CORNER_SM 与真实渲染一致（真实那边只有
+            // 圆角无描边，这里同样不加描边）；填充色保持 primaryContainer 不变。
+            roundedBg(theme.primaryContainer, UiTokens.CORNER_SM)
             textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             setHint(getString(R.string.dm_msg_hint))
             setHintTextColor(theme.onSurfaceVariant)
@@ -274,7 +280,13 @@ val testRow = LinearLayout(this).apply {
         container.addView(sectionLabel(label))
         val e = EditText(this).apply {
             setTextColor(theme.onSurface)
-            setBackgroundColor(theme.primaryContainer)
+            // 5.9.50：原为 setBackgroundColor（纯色方块 = 直角）。此前这是一条**有记录的
+            // 豁免**，理由是"它是模拟 agent 弹窗输入框的预览框，直角才是它该有的样子"。
+            // 但那个理由早已不成立：真实渲染（ScriptDialogRenderer L325/352/463/561/600/615）
+            // 的弹窗输入框全部是 snapCorner(CORNER_SM) 圆角 —— 真弹窗圆了，只有这个模拟框
+            // 还留着直角，模拟反而失了真。圆角取 CORNER_SM 与真实渲染一致（真实那边只有
+            // 圆角无描边，这里同样不加描边）；填充色保持 primaryContainer 不变。
+            roundedBg(theme.primaryContainer, UiTokens.CORNER_SM)
             textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             setHint(hint)
             setHintTextColor(theme.onSurfaceVariant)
@@ -509,6 +521,9 @@ val b = Button(this).apply {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
+                // 5.9.50：这一行是 LinearLayout 列表行，不是输入框 —— 扫描锁
+                // `edit texts use a rounded background` 只看 EditText 块，所以它从来不在
+                // 5.9.43 那条豁免的范围里。属同一类缺陷（直角方块），但不在本次范围内，保持原样。
                 setBackgroundColor(theme.primaryContainer)
                 setPaddingMd(10, 8, 10, 8)
                 layoutParams = LinearLayout.LayoutParams(
