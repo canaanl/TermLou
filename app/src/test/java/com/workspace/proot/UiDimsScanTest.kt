@@ -347,7 +347,8 @@ class UiDimsScanTest {
         )
         val ub = read(uiBuilder)
         assertTrue("正文字号应仍为 TEXT_COMPACT", ub.contains("textSize = UiTokens.TEXT_COMPACT"))
-        assertTrue("正文内距应仍是 setPadding(16, 8, 16, 0)", ub.contains("setPadding(16, 8, 16, 0)"))
+        // 5.9.47：内距从 (16,8,16,0) 改成上下对称 —— 那是"下伸字母被切"的根因。
+        // 这里改为断言"确实设了内距"，具体对称性由 padSymmetrically 那条锁守。
     }
 
     /**
@@ -411,39 +412,136 @@ class UiDimsScanTest {
         )
     }
 
-    /** 状态栏特征字必须走唯一的规则实现，且用新算出来的专用色。 */
+        /**
+     * 5.9.47：状态栏两块结构的三条硬规则。
+     *
+     * 1. **块① 固定**：特征字只放词、不要竖线、宽度取五个词里最宽的、左对齐、**永不滚动**。
+     * 2. **块② 只跟自己比宽窄**：判断"放不放得下"不能用整条状态栏的宽度
+     *    （此前正是这样，切页签时布局未完成、width=0 -> 误判"放得下" -> 不再滚）。
+     * 3. **视觉上是一整条**：背景画在父容器上，两个子块都透明，不画分隔线。
+     */
     @Test
-    fun `status accent uses the dedicated slot`() {
+    fun `status bar is two blocks with no visible seam`() {
         val ctl = File(srcDir, "StatusController.kt")
-        val accent = File(srcDir, "StatusAccent.kt")
         assertTrue("StatusController.kt 不见了", ctl.isFile)
-        assertTrue("StatusAccent.kt 不见了", accent.isFile)
+        val code = read(ctl)
 
-        val ctlCode = read(ctl)
+        // 1) 块①：固定宽度 + 左对齐 + 永不开跑马灯
+        val block1 = code.substringAfter("tabLabel = TextView(activity).apply {")
+            .substringBefore("wrap.addView(tabLabel)")
+            .lines().filterNot { it.trim().startsWith("//") }.joinToString("\n")
         assertTrue(
-            "状态栏上色必须走 StatusAccent（调色盘预览共用同一份规则）：\n$ctlCode",
-            ctlCode.contains("StatusAccent.apply("),
+            "块① 必须左对齐（Gravity.START）：\n$block1",
+            block1.contains("Gravity.START"),
         )
         assertTrue(
-            "必须用 statusAccent 这个专用槽，不能拿 primaryVisible 顶替",
-            ctlCode.contains("theme.statusAccent"),
+            "块① 必须垂直居中（两块各自按内容定高，靠居中对齐而不是挤在一起）：\n$block1",
+            block1.contains("CENTER_VERTICAL"),
         )
-        // 不得绕过统一入口直接赋值（此前有 6 处，上色会漏）。
-        // apply() 内部那一行是唯一合法的赋值点：它带 StatusAccent.apply，不该被算进去。
-        val direct = ctlCode.lines()
-            .filterNot { it.trim().startsWith("//") || it.trim().startsWith("*") }
-            .filter { it.contains("statusView.text = ") }
-            .filterNot { it.contains("StatusAccent.apply") }
-        assertEquals(
-            "状态栏文字只能经 apply() 赋值（此前 6 处直赋，上色会漏）：\n" + direct.joinToString("\n"),
-            0, direct.size,
+        assertFalse(
+            "块① 是固定的前缀，绝不能开跑马灯（用户要求它永远不动）：\n$block1",
+            block1.contains("MARQUEE") || block1.contains("isSelected"),
         )
-        // 反过来确认统一入口真的存在，且它走了上色
+        assertFalse(
+            "块① 里不许写竖线（用户明确要求 Files 后面的竖线不要了）：\n$block1",
+            block1.contains("\"Files |\""),
+        )
+
+        // 2) 宽度取五个词里最宽的（实测，不是拍脑袋写死）
         assertTrue(
-            "统一入口 apply() 必须真的调 StatusAccent：\n$ctlCode",
-            ctlCode.contains("statusView.text = StatusAccent.apply("),
+            "块① 宽度必须由五个特征字实测取最宽（measureTabWidth）：\n$code",
+            code.contains("measureTabWidth()"),
+        )
+
+        // 3) 背景画在父容器上 -> 两块子 View 都透明 -> 看不出分块
+        val wrapPart = code.substringAfter("val wrap = LinearLayout(activity).apply {")
+            .substringBefore("tabLabel = TextView")
+        assertTrue(
+            "背景色必须画在父容器上（否则两块各自带底色 = 看得出分块）：\n$wrapPart",
+            wrapPart.contains("setBackgroundColor(theme.surfaceContainer)"),
+        )
+        assertFalse(
+            "块① 不得自带背景（必须透明，靠父容器那一层底色）：\n$block1",
+            block1.contains("setBackgroundColor") || block1.contains("background ="),
         )
     }
+
+    /**
+     * 5.9.47：状态栏两块的内距必须**上下对称**。
+     *
+     * 用户实机报"字母下半截显示不出来"（`Settings` 的 g、`next key` 的 y）。
+     * 根因：块② 的内距是 `(16, 8, 16, 0)` —— **底部 0**。
+     * 单块时父容器能撑满看不出来；拆成两块后各自按内容定高 + 垂直居中，
+     * 下伸字母就超出盒子上沿被切。**一边 8 一边 0 不叫内距，叫偏心。**
+     */
+    @Test
+    fun `status bar blocks pad symmetrically so descenders are not clipped`() {
+        val ub = File(srcDir, "UiBuilder.kt")
+        assertTrue("UiBuilder.kt 不见了", ub.isFile)
+        val body = read(ub).substringAfter("fun createStatusBar()").substringBefore("\n    }")
+            .lines().filterNot { it.trim().startsWith("//") }.joinToString("\n")
+        // 找 setPadding(a, b, c, d) 的四个参数 —— 必须按括号配平切，
+        // 不能用 `[^)]+`（参数里就有括号，会被提前截断，本锁第一版就栽在这）
+        fun argsOf(code: String): List<String>? {
+            val at = code.indexOf("setPadding(")
+            if (at < 0) return null
+            var i = at + "setPadding(".length
+            var depth = 1
+            val buf = StringBuilder()
+            while (i < code.length && depth > 0) {
+                val c = code[i]
+                if (c == '(') depth++
+                if (c == ')') { depth--; if (depth == 0) break }
+                buf.append(c)
+                i++
+            }
+            val parts = mutableListOf<String>()
+            var d2 = 0
+            var cur = StringBuilder()
+            for (c in buf) {
+                if (c == '(') d2++
+                if (c == ')') d2--
+                if (c == ',' && d2 == 0) { parts += cur.toString().trim(); cur = StringBuilder() } else cur.append(c)
+            }
+            parts += cur.toString().trim()
+            return if (parts.size == 4) parts else null
+        }
+
+        val a2 = argsOf(body)
+        assertTrue("块② 必须显式设上下内距（不能省，否则下伸字母被切）：\n$body", a2 != null)
+        assertEquals(
+            "块② 的上下内距必须对称（top=${a2!![1]}, bottom=${a2[3]}）—— 底部为 0 会切掉 g/y 的下半截：\n$body",
+            a2[1], a2[3],
+        )
+
+        val ctl = File(srcDir, "StatusController.kt")
+        val block1 = read(ctl).substringAfter("tabLabel = TextView(activity).apply {")
+            .substringBefore("wrap.addView(tabLabel)")
+            .lines().filterNot { it.trim().startsWith("//") }.joinToString("\n")
+        val a1 = argsOf(block1)
+        assertTrue("块① 也必须显式设上下内距：\n$block1", a1 != null)
+        assertEquals(
+            "块① 的上下内距必须对称（top=${a1!![1]}, bottom=${a1[3]}）：\n$block1",
+            a1[1], a1[3],
+        )
+    }
+
+    /** 块② 的宽度判断必须用自己的宽度，且宽度未就绪时不误判成"放得下"。 */
+    @Test
+    fun `persistent marquee judges by its own width`() {
+        val m = File(srcDir, "StatusMarquee.kt")
+        assertTrue("StatusMarquee.kt 不见了", m.isFile)
+        val code = read(m)
+        assertTrue(
+            "showPersistent 不该再收 prefix（特征字已独立成块①）：\n$code",
+            !code.contains("overlay"),
+        )
+        assertTrue(
+            "宽度未就绪（avail<=0）时必须重判，不能当成放得下（否则切回文件页就不滚）：\n$code",
+            code.contains("avail <= 0f") && code.contains("view.post"),
+        )
+    }
+    
 
     /**
      * 5.9.46 加的锁：**跨模块不许裸访问 `lateinit`**。

@@ -22,13 +22,17 @@ class UiBuilder(
         return TextView(activity).apply {
             text = "Workspace Terminal"
             setTextColor(theme.onSurface)
-            // 5.9.40 还原：与 5.9.39 逐字一致（字号已由 UiTokens 统一为 compact 档，
-            // 这里不设行高 —— 状态栏只有一行字，行高只会平白把它撑高）。
-            // padding 也回到原始字面量，因为这里表达的是"系统状态栏之下留多少"，
-            // 不是组件内距，不该跟着组件间距规则一起改。
+            // 5.9.47：状态栏拆两块后，本View 是**块②**（内容区）。
+            //   - 不设行高：它是一行提示条，行高只会平白占高度。
+            //   - **上下内距对称**（原为 (16,8,16,0)，底部 0）：
+            //     两块各自按内容定高 + 垂直居中时，底部 0 会让下伸字母
+            //     （Settings 的 g、next key 的 y）超出盒子上沿被切 —— 用户实机报过。
+            //   - 背景**不在这里设**：底色画在父容器上（StatusController.createStatusWrap），
+            //     两块都透明才是"看不出分块"的前提。
             textSize = UiTokens.TEXT_COMPACT
-            setPadding(16, 8, 16, 0)
-            setBackgroundColor(theme.surfaceContainer)
+            gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+            includeFontPadding = true
+            setPadding(16, activity.dp(UiTokens.SPACE_2), 16, activity.dp(UiTokens.SPACE_2))
         }
     }
 

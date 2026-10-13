@@ -3,7 +3,9 @@ package com.workspace.proot
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
+import android.util.TypedValue
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.Job
@@ -50,32 +52,111 @@ class StatusController(
         return statusView
     }
 
-    private var statusWrap: FrameLayout? = null
+    private var statusWrap: LinearLayout? = null
+
+    /** 5.9.47：块① 特征字（Terminal/Notes/Files/Network/Settings），固定宽度 + 特征色。 */
+    private lateinit var tabLabel: TextView
 
     /**
-     * 状态栏外框。
+     * 5.9.47：两块共用的上下内距（px，启动时算一次）。
      *
-     * 5.9.45：**盖板（`statusOverlay`）整个删除**。它原本是文件 tab 长路径跑马灯的
-     * "定桩前缀"——画一份一模一样的 `Files | ` 盖在正文左端，让前缀看起来不动。
+     * 此前块② 的内距是 `(16, 8, 16, 0)` —— **底部 0**。单块时父容器是 FrameLayout
+     * 能撑满，看不出来；拆成两块后各自按内容定高 + 垂直居中，
+     * 下伸字母（`Settings` 的 g、`next key` 的 y）就超出盒子上沿被切
+     * （用户实机报"字母下半截显示不出来"）。
      *
-     * 删除的三个理由：
-     * 1. **用户要求**：前缀跟着一起滚即可。
-     * 2. **它是一处会出错的耦合**：盖板必须与正文**逐项一致**（字号/行高/内距/背景），
-     *    差 1px 就在接缝露馅。5.9.43→5.9.44 为这件事返工了两轮。
-     * 3. **它带一个真 bug**：盖板显隐由 `showPersistent`/`clearPersistent` 管，
-     *    与状态文字**各管各的**，切页签时没人复位 → 切走后盖板还杵在那儿显示旧前缀。
-     *    外框现在只剩正文一层，但仍保留（外框本身有它的历史，见下）。
+     * 上下必须**对称**：一边 8 一边 0 不叫内距，叫偏心。
      */
-    fun createStatusWrap(): FrameLayout {
+    private val STATUS_V_PAD: Int by lazy { activity.dp(UiTokens.SPACE_2) }
+
+    /**
+     * 5.9.47：**状态栏改成两块**。
+     *
+     * ```
+     * ┌──────────────┬────────────────────────────────┐
+     * │Files         │  /workspace/notes/long/pa… ←滚 │
+     * └──────────────┴────────────────────────────────┘
+     *   块① 固定          块② 滚动
+     * ```
+     *
+     * - **视觉上是一整条**：背景色画在父容器上，两个子块都透明；无线、无缝、零分块感。
+     * - **逻辑上是两块**：块① 只放特征字，宽度固定（取五个词里最宽的），左对齐，永不滚动；
+     *   块② 放实际内容，自己跑自己的横向跑马灯。
+     *
+     * ## 为什么这么改（一次性解决三件用户实机报的事）
+     *
+     * 1. **字母下半截被切**（`Settings` 的 g、`next key` 的 y）：根因是长路径跑马灯用的
+     *    `isSingleLine = true` 从没被真正关掉（`setSingleLine(false)` 在新版本上是废的），
+     *    于是进过文件页之后**永久单行**，下伸字母一律被切。
+     *    拆成两块后，块① 块② 各自按内容定高、各自垂直居中，**根本不需要开单行模式**。
+     * 2. **滚动时 `Files |` 不是特征色**：根因是 `showPersistent` 直接 `view.text = full`
+     *    绕过了上色。块① 独立存在，永远是特征色，滚的只有块②。
+     * 3. **切走再切回来就不滚了**：根因是 `showPersistent` 拿 `view.width` 判断放不放得下，
+     *    布局未完成时 `width` 为 0 → 误判成"放得下"。块② 只跟自己比，不受整条影响。
+     *
+     * 也顺带把 5.9.43/5.9.44 返工两轮的根源（"盖板必须与正文逐项一致"）从结构上拿掉了：
+     * 盖板本来就是"用第二层假装第一层不动"，现在**真的不动**了，就不需要假装。
+     */
+    fun createStatusWrap(): LinearLayout {
         statusWrap?.let { return it }
-        if (!::statusView.isInitialized) createStatusBar()
-        statusView.layoutParams = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT
+        val theme = scope.theme
+        // 背景画在父容器上：两块子 View 全透明 → 看起来就是一条，看不出分块。
+        val wrap = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(theme.surfaceContainer)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+        }
+
+        tabLabel = TextView(activity).apply {
+            setTextColor(theme.statusAccent)
+            textSize = UiTokens.TEXT_COMPACT
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            includeFontPadding = true
+            // 5.9.47：**上下内距必须对称**。此前底部是 0，两块在 LinearLayout 里各自
+            // 按内容定高时，下伸字母（Settings 的 g、next key 的 y）会超出盒子上沿被切 ——
+            // 用户实机报"字母下半截显示不出来"。
+            // 左内距 16dp 让特征字离屏幕边缘有呼吸；右侧不留内距 ——
+        // 块① 的**宽度**里已经含了到块② 的间隔（见 measureTabWidth）。
+        setPadding(activity.dp(UiTokens.SPACE_4), STATUS_V_PAD, 0, STATUS_V_PAD)
+            // 宽度由 measureTabWidth() 定死（五个词里最宽的），换页签不跳
+            layoutParams = LinearLayout.LayoutParams(measureTabWidth(), LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+
+        createStatusBar()
+        // 5.9.47：间隔已含在块① 的宽度里，这里**不再加 marginStart**，免得翻倍。
+        statusView.layoutParams = LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1f,
         )
-        return FrameLayout(activity).apply {
-            addView(statusView)
-        }.also { statusWrap = it }
+
+        wrap.addView(tabLabel)
+        wrap.addView(statusView)
+        return wrap.also { statusWrap = it }
+    }
+
+    /**
+     * 块① 的固定宽度 = 五个特征字里最宽的那个。
+     *
+     * 用同一字号量一遍取最大值（`Settings`/`Terminal` 最宽），一次性定死，
+     * 之后换页签**宽度不变**，所以视觉上不会出现"文字跳一下"。
+     */
+    private fun measureTabWidth(): Int {
+        val p = android.text.TextPaint().apply {
+            textSize = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP,
+                UiTokens.TEXT_COMPACT,
+                activity.resources.displayMetrics,
+            )
+            typeface = android.graphics.Typeface.DEFAULT
+        }
+        var w = 0f
+        for (name in StatusAccent.TAB_NAMES) w = maxOf(w, p.measureText(name))
+        return activity.dp(UiTokens.SPACE_4) + w.toInt() + activity.dp(UiTokens.SPACE_2)
     }
 
     internal fun gen(): Int = statusGen
@@ -141,16 +222,22 @@ class StatusController(
     }
 
     /**
-     * 5.9.45：**唯一**的赋值入口。
+     * 5.9.47：**唯一**的赋值入口 —— 把一整条文字拆进两块。
      *
-     * 此前 `statusView.text = ...` 在本文件里有 6 处（restoreTerminalStatus ×2、
-     * renderWebNotice、syncWebNotice、setStatusTextAnimated 等），各自绕过统一处理，
-     * 于是有的路径上色、有的不上色。全部收口到这里。
+     * ```
+     * "Files | /workspace"  ->  块① "Files"   块② "| /workspace"
+     * "Terminal"             ->  块① "Terminal"  块② ""
+     * "已保存"（临时提示）      ->  块① 不动      块② "已保存"
+     * ```
      *
-     * 上色规则见 [StatusAccent]（调色盘预览共用同一份）。
+     * 临时提示**不动块①**：它是"事件"，不是"当前位置"。
+     * 竖线归块② —— 用户要求特征字只放词、不要竖线；竖线仍留在内容里，
+     * 作为"这是内容区"的视觉起点。
      */
     private fun apply(text: String) {
-        statusView.text = StatusAccent.apply(text, scope.theme.statusAccent)
+        val name = StatusAccent.tabNameOf(text)
+        if (name != null) tabLabel.text = name
+        statusView.text = StatusAccent.contentOf(text)
     }
 
     // ---------- 浏览器的闪烁提示 ----------

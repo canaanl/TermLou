@@ -36,11 +36,12 @@ class FileListManager(
     fun setMainHandler(handler: Handler) { mainHandler = handler }
 
     /**
-     * 回到常态路径显示（`Files | 路径`，5.9.24）。
+     * 回到常态路径显示。
      *
-     * 放得下：纯文字静止显示，和原来逐像素一致。
-     * 放不下：**不砍了，横向滚出来看** —— 正文放完整的一整行开系统跑马灯，
-     * `Files | ` 前缀由盖板定死盖住，滚动从 `|` 后面开始（见 [StatusMarquee.showPersistent]）。
+     * 5.9.47：状态栏拆两块后，本函数只管**块②**（内容区）。
+     * 特征字 `Files` 在块①，独立维护、永不滚动 —— 所以这里不再传前缀。
+     *
+     * 放得下：纯文字静止显示。放不下：横向循环滚出来看（见 [StatusMarquee.showPersistent]）。
      */
     private fun restoreStatusPath() {
         if (currentTab != 2) return
@@ -48,10 +49,10 @@ class FileListManager(
         val p = getRelativePath()
         if (p.isEmpty()) {
             StatusMarquee.clearPersistent(tv)
-            tv.text = "Files"
+            tv.text = ""
             return
         }
-        StatusMarquee.showPersistent(tv, "Files | ", p)
+        StatusMarquee.showPersistent(tv, p)
     }
     fun setOnExportFolder(listener: (File) -> Unit) { onExportFolder = listener }
     fun setOnExportFile(listener: (File) -> Unit) { onExportFile = listener }

@@ -58,7 +58,12 @@ class PaletteActivity : AppCompatActivity() {
     private lateinit var previewStripBg: GradientDrawable
     private lateinit var previewStripText: TextView
     /** 5.9.45：状态栏特征字预览（新增槽位，随调色盘实时变）。 */
+    private lateinit var previewStatusRow: LinearLayout
+    private lateinit var previewStatusLabel: TextView
     private lateinit var previewStatusText: TextView
+
+    /** 预览用的状态栏样例，走与真机同一套拆分规则。 */
+    private val PREVIEW_STATUS_TEXT = "Files | /workspace"
     private lateinit var previewStatusBg: GradientDrawable
     private lateinit var previewBtnBg: GradientDrawable
     private lateinit var previewBtnText: TextView
@@ -160,13 +165,22 @@ class PaletteActivity : AppCompatActivity() {
         previewStripText.background = previewStripBg
         // 5.9.45：状态栏特征字预览。走 StatusController 的同一套上色规则，
         // 所以这里看到的就是真正生效的样子，不是另画一个示意。
-        previewStatusText = TextView(this).apply {
-            text = "Files | /workspace"
-            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
-            setPadding(16, 8, 16, 0)
+        previewStatusRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
         }
+        previewStatusLabel = TextView(this).apply {
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
+        }
+        previewStatusText = TextView(this).apply {
+            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        previewStatusRow.addView(previewStatusLabel)
+        previewStatusRow.addView(previewStatusText)
         previewStatusBg = GradientDrawable().apply { cornerRadius = dpf(snapCorner(UiTokens.CORNER_XS)) }
-        previewStatusText.background = previewStatusBg
+        previewStatusRow.background = previewStatusBg
+        previewStatusRow.setPadding(dp(16), dp(6), dp(16), dp(6))
         previewBtnText = TextView(this).apply {
             text = getString(R.string.save)
             textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
@@ -184,7 +198,7 @@ class PaletteActivity : AppCompatActivity() {
         previewCard.addView(previewTitle)
         previewCard.addView(previewBody)
         previewCard.addView(previewStripText)
-        previewCard.addView(previewStatusText)
+        previewCard.addView(previewStatusRow)
         previewCard.addView(btnWrap)
         form.addView(previewCard)
 
@@ -451,10 +465,15 @@ class PaletteActivity : AppCompatActivity() {
         previewBody.setTextColor(derived.onSurfaceVariant)
         previewStripBg.setColor(derived.surfaceVariant)
         previewStripText.setTextColor(derived.onSurface)
-        // 5.9.45：状态栏预览 = 状态栏自己的底色 + StatusController 的同一套特征字上色。
+        // 5.9.47：状态栏预览 = 状态栏自己的底色 + StatusAccent 的同一套拆分规则。
         // 不在这里另画一个示意，免得"预览好看、真机不一样"。
         previewStatusBg.setColor(derived.surfaceContainer)
-        previewStatusText.text = StatusAccent.apply("Files | /workspace", derived.statusAccent)
+        previewStatusText.setTextColor(derived.onSurface)
+        // 5.9.47：状态栏改成两块后，预览也按两块渲染 —— 左边固定特征字（特征色），
+        // 右边内容（普通色）。走 StatusAccent 同一份拆分规则，不是另画一个示意。
+        previewStatusLabel.text = StatusAccent.tabNameOf(PREVIEW_STATUS_TEXT)
+        previewStatusText.text = StatusAccent.contentOf(PREVIEW_STATUS_TEXT)
+        previewStatusLabel.setTextColor(derived.statusAccent)
         previewBtnBg.setColor(derived.primary)
         // 预览按钮与真按钮同构：填充=品牌原色，描边=可见变体（此处演示的就是最终生效规则）
         previewBtnBg.setStroke(dp(1).coerceAtLeast(1), derived.primaryVisible)

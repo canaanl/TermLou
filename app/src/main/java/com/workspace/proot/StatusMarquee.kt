@@ -101,44 +101,67 @@ object StatusMarquee {
     }
 
     /**
-     * 常态长路径的横向跑马灯（5.9.24）。
+ * 常态长路径的横向跑马灯（5.9.24）。
      *
-     * 5.9.45：**盖板已整个删除**。原来 `prefix` 由盖板定死盖住、滚动从 `|` 后面开始，
-     * 现在前缀跟着正文一起滚 —— 少一层绘制，也少一处"两层必须逐项一致"的脆弱约束
-     * （盖板一旦与正文差 1px 就在接缝处露馅，见 5.9.43/5.9.44 的两轮返工）。
+     * 5.9.47：状态栏拆成两块后，本函数**只管块②**（内容区）。
+     * 特征字已独立成块① 并固定不动（见 `StatusController.createStatusWrap`），
+     * 所以这里不再需要 prefix，也不再需要"盖板把前缀定死"那一套。
      *
-     * 跑马灯本身一个字没改：放得下就不滚，放不下照样循环横滚（到头停一下再回来，
+     * 跑马灯本身的行为一个字没改：放得下就不滚，放不下照样循环横滚（到头停一下再回来，
      * 因为它是常态显示不是临时提示，滚一遍停住的话末尾就一直是末尾了）。
      */
-    fun showPersistent(view: TextView?, prefix: String, path: String) {
+    /**
+     * 常态长路径的横向跑马灯。
+     *
+     * 5.9.47：**prefix 参数删掉了** —— 特征字已独立成块①（见 StatusController.createStatusWrap），
+     * 本函数只管块② 的内容。滚动**从路径本身开始**，不再需要"盖板把前缀定死"那套。
+     *
+     * ## 切页签回来必须还在滚（用户实机报过）
+     *
+     * 根因：此前拿**整条状态栏**的 `width` 判断放不放得下，而切页签那一刻布局还没完成，
+     * `width` 为 0 → 误判成"放得下" → 变成静态，再也不滚。
+     *
+     * 现在：宽度为 0 时**不判定**，直接按"要滚"处理并等一帧重判。
+     * 块② 有固定权重(1f)，布局完成后宽度稳定，第二帧就能定准。
+     */
+    fun showPersistent(view: TextView?, path: String) {
         if (view == null) return
-        val full = prefix + path
         val avail = (view.width - view.paddingLeft - view.paddingRight).toFloat()
-        if (avail <= 0f || view.paint.measureText(full) <= avail) {
-            clearPersistent(view)
-            view.text = full
+        if (avail <= 0f) {
+            // 宽度未就绪：先按"要滚"摆上，布局完成后重判一次。
+            applyMarquee(view, path)
+            view.post { showPersistent(view, path) }
             return
         }
-        view.text = full
-        view.isSingleLine = true
+        if (view.paint.measureText(path) <= avail) {
+            clearPersistent(view)
+            view.text = path
+            return
+        }
+        applyMarquee(view, path)
+    }
+
+    private fun applyMarquee(view: TextView, path: String) {
+        view.text = path
+        view.maxLines = 1
         view.ellipsize = android.text.TextUtils.TruncateAt.MARQUEE
         view.marqueeRepeatLimit = -1
         view.isSelected = true
     }
 
     /**
-     * 关掉常态跑马灯（临时全名展示前必须调，否则单行模式会把纵向滚动憋成一行）。
+     * 关掉常态跑马灯。
      *
-     * 5.9.45：**切页签时也必须调**（见 MainActivity.refreshStatusBar）。
-     * 文件页把正文设成"单行 + MARQUEE + isSelected"后，这三个属性此前无人复位，
-     * 切到别的页签仍带着 —— 短文字看不出，但那是个埋着的雷：
-     * 一旦之后要纵向滚动，单行模式会把它憋成一行。
+     * 5.9.47：**`setSingleLine(false)` 已弃用**。新版本里它**不会**恢复多行 ——
+     * 于是"进过一次文件页长路径，状态栏就永久单行"，下伸字母（`Settings` 的 g、
+     * `next key` 的 y）一律被切（用户实机报"字母下半截显示不出来"）。
+     * 现在改用 `maxLines = Int.MAX_VALUE` 真正恢复。
      */
     fun clearPersistent(view: TextView?) {
         if (view == null) return
         view.isSelected = false
         view.ellipsize = null
-        view.setSingleLine(false)
+        view.maxLines = Int.MAX_VALUE
     }
 
     /**
