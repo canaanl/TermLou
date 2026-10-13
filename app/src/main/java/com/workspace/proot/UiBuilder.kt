@@ -22,8 +22,12 @@ class UiBuilder(
         return TextView(activity).apply {
             text = "Workspace Terminal"
             setTextColor(theme.onSurface)
-            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
-            setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_2, UiTokens.SPACE_4, UiTokens.SPACE_0)
+            // 5.9.40 还原：与 5.9.39 逐字一致（字号已由 UiTokens 统一为 compact 档，
+            // 这里不设行高 —— 状态栏只有一行字，行高只会平白把它撑高）。
+            // padding 也回到原始字面量，因为这里表达的是"系统状态栏之下留多少"，
+            // 不是组件内距，不该跟着组件间距规则一起改。
+            textSize = UiTokens.TEXT_COMPACT
+            setPadding(16, 8, 16, 0)
             setBackgroundColor(theme.surfaceContainer)
         }
     }

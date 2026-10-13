@@ -50,7 +50,9 @@ class SettingsUiController(
         }
         val settingsInner = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPaddingMd(UiTokens.SPACE_6, UiTokens.SPACE_6, UiTokens.SPACE_6, UiTokens.SPACE_6)
+            // 5.9.40：原 32dp。MD3 明确规定屏幕左右边距 16dp（32dp 是手机上的两倍，
+            // 内容被压窄、可读宽度白白少一半）。这里回到 MD3 的规定值。
+            setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_4, UiTokens.SPACE_4, UiTokens.SPACE_4)
         }
         settingsScroll.addView(settingsInner)
 
@@ -146,8 +148,21 @@ private fun divider(): View = View(activity).apply {
         setPaddingMd(UiTokens.SPACE_3, UiTokens.SPACE_2, UiTokens.SPACE_3, UiTokens.SPACE_2)
     }
 
+    /**
+     * 小节标题。
+     *
+     * 5.9.40 修"A1：组内文字垂直居中"：
+     *
+     * 此前每一组都是"标题 + 说明"两行小字**顶着 0 上边距**开始，而下面是一排**高按钮**，
+     * 于是文字全挤在组顶部、按钮沉在底部 —— 整组视觉重心偏上，像表格里内容靠上对齐。
+     *
+     * 做法（只动组内，**不碰组与组之间的分割线留白**）：
+     * - 小标题（body=true，组内子项）**上方**给 8dp：文字块下沉，不再贴着上一项；
+     * - 同时下方从 4dp 收到 2dp：上下匀开，文字块在组内居中；
+     * - 大标题（body=false，紧跟分割线的段首）**不加**上方留白 —— 那里本来就该贴着线。
+     */
     private fun sectionTitle(parent: LinearLayout, text: String, body: Boolean = false) {
-        parent.addView(TextView(activity).apply {
+        val tv = TextView(activity).apply {
             this.text = text
             setTextColor(scope.cOnSurface)
             // 5.9.40：MD3 —— 字号走规范档位，行高一并设上（全项目此前 0 次设过行高）
@@ -157,7 +172,18 @@ private fun divider(): View = View(activity).apply {
                 bold = true,
             )
             setPaddingMd(0, 0, 0, UiTokens.SPACE_1)
-        })
+        }
+        if (body) {
+            // 组内子项：上方留白让文字块下沉，与下面的高按钮视觉居中
+            parent.addView(tv, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = activity.dp(UiTokens.SPACE_2)
+            })
+        } else {
+            parent.addView(tv)
+        }
     }
 
     private fun buildDisplaySection(parent: LinearLayout, density: Float) {
@@ -388,8 +414,7 @@ private fun divider(): View = View(activity).apply {
             addView(TextView(activity).apply {
                 text = activity.getString(R.string.keepalive_title)
                 setTextColor(scope.cOnSurface)
-                typeface = Typeface.DEFAULT_BOLD
-                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY, bold = true)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             val keepAliveSw = MaterialSwitch(ContextThemeWrapper(activity, R.style.Theme_TermLou_Switch)).apply {
@@ -421,6 +446,13 @@ private fun divider(): View = View(activity).apply {
             }
             keepAliveSwitch = keepAliveSw
             addView(keepAliveSw)
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            // 5.9.40（A1）：这一行紧跟在浏览器按钮行之后，同样会贴太近，
+            // 给它组内子项一致的上方留白。
+            topMargin = activity.dp(UiTokens.SPACE_2)
         })
     }
 

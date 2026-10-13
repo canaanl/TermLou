@@ -31,13 +31,18 @@ class WebAutomationController(
 
     /** 由 SettingsUiController 插在 LAN 小节之后（同属"高级"区）。 */
     fun buildSettingsBlock(parent: LinearLayout) {
-        val density = activity.resources.displayMetrics.density
         parent.addView(TextView(activity).apply {
             text = activity.getString(R.string.web_settings_title)
             setTextColor(scope.cOnSurface)
-            typeface = Typeface.DEFAULT_BOLD
-            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
+            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY, bold = true)
             setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_1)
+        }, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            // 5.9.40（A1）：与 LanController 的标题同一处理 —— 组内子项上方留白，
+            // 让「标题+说明」文字块下沉，与下面的高按钮视觉居中，不再顶着上一项。
+            topMargin = activity.dp(UiTokens.SPACE_2)
         })
         // 5.9.4：这里原本有一整段功能说明（"给 Linux 里的 AI agent 用的无头浏览器…"），
         // 与终端 Tab 的说明页重复。
@@ -47,7 +52,9 @@ class WebAutomationController(
             text = activity.getString(R.string.web_copy_hint, WebProtocol.DEFAULT_PORT)
             setTextColor(scope.cOnSurfaceVariant)
             textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
-            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_3)
+            // 5.9.40：原 SPACE_3(12dp) + 按钮行 topMargin 8dp = 20dp，收到 4+4=8dp，
+            // 让文字块与它自己的按钮抱成一组（与 LanController 一致）。
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_1)
             setOnClickListener { copyConnectionInfo() }
         }
         parent.addView(copyText)
@@ -56,7 +63,7 @@ class WebAutomationController(
         parent.addView(row, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = (8 * density).toInt() })
+        ).apply { topMargin = activity.dp(UiTokens.SPACE_1) })
         refreshRow()
     }
 

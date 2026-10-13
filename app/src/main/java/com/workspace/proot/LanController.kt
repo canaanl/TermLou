@@ -43,18 +43,20 @@ class LanController(
             text = activity.getString(R.string.lan_url_preview)
             setTextColor(scope.cOnSurfaceVariant)
             textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
-            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_3)
+            // 5.9.40：原 SPACE_3(12dp) + 按钮行 topMargin 8dp = 20dp，
+            // 文字与自己的按钮之间空得比离上一项还远（视觉上"靠上"）。
+            // 收到 4dp + 4dp = 8dp，文字块与按钮抱成一组。
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_1)
             setOnClickListener { copyLanUrl() }
         }
         parent.addView(lanUrlText)
-        val density = activity.resources.displayMetrics.density
         val lanBtnRow = buildLanButtons()
         this.lanBtnRow = lanBtnRow
         parent.addView(lanBtnRow, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-            topMargin = (8 * density).toInt()
+            topMargin = activity.dp(UiTokens.SPACE_1)
         })
         applyLanSegments()
         refreshLanRow()
