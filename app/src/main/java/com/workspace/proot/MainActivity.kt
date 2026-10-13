@@ -502,7 +502,18 @@ class MainActivity : AppCompatActivity() {
         // **必须跳过文件页**：切到它时本方法先跑、随后 showTab 才调 refreshFileList()
         // 重开跑马灯；而 onResume 单独调本方法时没有那次后续调用，若这里也复位，
         // 文件页从后台回来跑马灯就没了。所以文件页的跑马灯归 refreshFileList 独占。
-        if (currentTab != 2) StatusMarquee.clearPersistent(statusController.statusView)
+        //
+        // ⚠ 5.9.46：必须走 statusViewOrNull()，不能直接摸 statusView。
+        // 它是 lateinit，要到本文件 213 行建状态栏外框时才赋值；而本方法
+        // 被 onResume 调到，**首次启动时 onResume 也跑**，那条路径上它可能还没建 ——
+        // 直接访问会抛 UninitializedPropertyAccessException → 静默杀进程 → **黑屏**。
+        // 5.9.45 就是漏了这个保护，导致 App 打不开。状态栏还没建时本来就没什么可复位的。
+        //
+        // （注：本段注释刻意不写出那个建外框的函数名 —— RegressionScanTest 有条老锁用
+        //  正则数它在 MainActivity 里出现几次必须恰好是 1，注释里写会被一并数进去。）
+        if (currentTab != 2) {
+            statusController.statusViewOrNull()?.let { StatusMarquee.clearPersistent(it) }
+        }
         statusController.setStatusText(when (currentTab) {
             1 -> "Notes"
             2 -> {

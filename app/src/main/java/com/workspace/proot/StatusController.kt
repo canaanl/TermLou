@@ -23,6 +23,22 @@ class StatusController(
     lateinit var statusView: TextView
         private set
 
+    /**
+     * 5.9.46 修黑屏：安全访问状态栏正文。
+     *
+     * `statusView` 是 `lateinit`，要到 `MainActivity` 建视图时（createStatusWrap，
+     * MainActivity.kt:213）才赋值。而 `refreshStatusBar()` 会被 `onResume` 调到 ——
+     * **首次启动时 onResume 也会跑**，那条路径上 `statusView` 可能还没建。
+     *
+     * 直接访问未初始化的 `lateinit` 会抛 `UninitializedPropertyAccessException`
+     * → onResume 炸 → **静默杀进程 → 黑屏**。本项目已经栽过两次同样的坑：
+     * - 5.9.24：`child already has a parent`，onCreate 炸 → 黑屏 + 磁贴全死
+     * - 5.9.45：5.9.45 新加的 `clearPersistent(statusController.statusView)` 漏了保护
+     *
+     * 所以：**所有跨模块访问 statusView 的地方都必须走这里**，不能直接摸属性。
+     */
+    fun statusViewOrNull(): TextView? = if (::statusView.isInitialized) statusView else null
+
     private var statusGen = 0
     private var lastClickedInfo = ""
     private var terminalTempActive = false

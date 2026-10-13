@@ -445,6 +445,64 @@ class UiDimsScanTest {
         )
     }
 
+    /**
+     * 5.9.46 加的锁：**跨模块不许裸访问 `lateinit`**。
+     *
+     * 用户报"App 打不开、黑屏"。真因：5.9.45 新加的
+     * `clearPersistent(statusController.statusView)` 直接摸了一个 `lateinit` 属性，
+     * 而 `refreshStatusBar()` 会被 `onResume` 调到 —— **首次启动时 onResume 也跑**，
+     * 那条路径上 `statusView` 还没建（要到 MainActivity:213 的 createStatusWrap）。
+     *
+     * 访问未初始化的 `lateinit` 抛 `UninitializedPropertyAccessException`
+     * → onResume 炸 → **静默杀进程 → 黑屏**。
+     *
+     * **这个项目已经栽过两次同一个坑**：
+     * - 5.9.24：`child already has a parent`，onCreate 炸 → 黑屏 + 磁贴全死
+     * - 5.9.45：本次，漏了同样的保护
+     *
+     * ## 为什么只盯 `statusView`
+     *
+     * 全项目 160+ 个 `lateinit`，**绝大多数是 `private`** —— 类内自用，
+     * 初始化与使用同在一条调用链上，不构成这个风险。
+     * `StatusController.statusView` 是**唯一跨模块可见**的一个
+     * （`lateinit var`，无 `private`），所以它是唯一的暴露面。
+     *
+     * 本锁断言：跨模块访问它必须走 `statusViewOrNull()`。
+     */
+    @Test
+    fun `cross module code never touches the status view lateinit directly`() {
+        // 全项目定位这处 lateinit 的持有文件
+        val holder = File(srcDir, "StatusController.kt")
+        assertTrue("StatusController.kt 不见了", holder.isFile)
+        assertTrue(
+            "statusView 应改为 private + 只经 statusViewOrNull() 暴露，避免跨模块裸访问",
+            read(holder).contains("lateinit var statusView: TextView"),
+        )
+        assertTrue(
+            "必须提供安全访问器 statusViewOrNull()",
+            read(holder).contains("fun statusViewOrNull()"),
+        )
+
+        // 其他文件里不许出现裸的 `.statusView`
+        val offenders = mutableListOf<String>()
+        for (f in srcDir.listFiles { f -> f.name.endsWith(".kt") }?.sortedBy { it.name } ?: emptyList()) {
+            if (f.name == "StatusController.kt") continue
+            read(f).lines().forEachIndexed { i, line ->
+                val t = line.trim()
+                if (t.startsWith("//") || t.startsWith("*")) return@forEachIndexed
+                // 裸访问：形如 xxx.statusView 且后面不是 OrNull()
+                if (Regex("""\.statusView(?!\w|OrNull)""").containsMatchIn(t)) {
+                    offenders += "${f.name}:${i + 1}  $t"
+                }
+            }
+        }
+        assertEquals(
+            "跨模块访问 statusView（lateinit，未初始化时访问 = 崩 = 黑屏），" +
+                "必须走 statusViewOrNull()：\n" + offenders.joinToString("\n"),
+            0, offenders.size,
+        )
+    }
+
     /** 规范层必须真的被生产代码引用，而不是摆着好看。 */
     @Test
     fun `the md3 helpers are actually used in production code`() {

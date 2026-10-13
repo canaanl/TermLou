@@ -31,7 +31,8 @@ class FileListManager(
     fun getCurrentDir(): File = currentDir ?: File("")
 
     fun setCurrentTab(tab: Int) { currentTab = tab }
-    fun setStatusText(textView: TextView) { statusText = textView }
+    /** 5.9.46：收可空 —— 状态栏可能还没建（lateinit，见 StatusController.statusViewOrNull）。 */
+    fun setStatusText(textView: TextView?) { statusText = textView }
     fun setMainHandler(handler: Handler) { mainHandler = handler }
 
     /**

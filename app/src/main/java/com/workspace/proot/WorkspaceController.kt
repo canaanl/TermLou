@@ -84,9 +84,12 @@ class WorkspaceController(
             scope.fileListManager.setCurrentDir(scope.wsFiles)
         }
         scope.fileListManager.setCurrentTab(activity.currentTab)
-        scope.fileListManager.setStatusText(status.statusView)
+        // 5.9.46：同上，走安全访问器。statusView 是 lateinit，
+        // 而本方法也可能早于 MainActivity 建状态栏外框（213 行）被调到。
+        scope.fileListManager.setStatusText(status.statusViewOrNull())
         scope.fileListManager.setMainHandler(scope.mainHandler)
-        // 盖板在 MainActivity.onCreate 里随状态栏外框一起建，先于这里；runCatching 防万一
+        // 状态栏外框在 MainActivity.onCreate 里随视图一起建，正常先于这里；
+        // 万一顺序变了，上面的安全访问会直接返回，不会崩。
         filesListRoot?.let { scope.fileListManager.setMenuHost(it) }
         scope.fileListManager.setOnExportFolder { shareFolder(it) }
         scope.fileListManager.setOnExportFile { shareFile(it) }
