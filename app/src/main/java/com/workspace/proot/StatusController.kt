@@ -57,10 +57,10 @@ class StatusController(
     /**
      * 5.9.47：块① 特征字（Terminal/Notes/Files/Network/Settings），固定宽度 + 特征色。
      *
-     * 5.9.48：从 `TextView` 换成 [LaserTabLabelView] —— 换页签时旧词被白色激光扫掉、
+     * 5.9.48：从 `TextView` 换成 [TabLabelCubeView] —— 换页签时旧词被白色激光扫掉、
      * 露出新词（激光打标效果）。两个词**都左对齐、永不平移**。
      */
-    private lateinit var tabLabel: LaserTabLabelView
+    private lateinit var tabLabel: TabLabelCubeView
 
     /**
      * 5.9.48：两块共用的上下内距（px）。
@@ -126,8 +126,8 @@ class StatusController(
         }
 
         // 5.9.48：块① 从普通 TextView 换成**自绘控件**，为了做激光打标的切换动画。
-        // 它自己保证"两个词都左对齐、只有白光在动"（见 LaserTabLabelView 的 KDoc）。
-        tabLabel = LaserTabLabelView(activity).apply {
+        // 它自己保证"两个词都左对齐、只有白光在动"（见 TabLabelCubeView 的 KDoc）。
+        tabLabel = TabLabelCubeView(activity).apply {
             setAccent(theme.statusAccent)
             // 上下内距必须**对称**（一边 8 一边 0 不叫内距，叫偏心）。
             // 左内距 16dp 让特征字离屏幕边缘有呼吸；右侧不留内距 ——
@@ -258,7 +258,10 @@ class StatusController(
      */
     fun setFilesPath(path: String) {
         if (!::statusView.isInitialized) return
-        tabLabel.setTabName("Files", animate = false, toLeft = tabSweepLeft)
+        // 5.9.49：**animate = true**。此前这里是 false（怕文件页内部刷新会重放动画），
+// 结果把"切到文件页"时的动画也一起关掉了 —— 用户实机报"文件 tab 不显示动画"。
+// 内部刷新不会重放：setTabName 里"名字没变就直接返回"，已经兜住了。
+        tabLabel.setTabName("Files", animate = true, toLeft = tabSweepLeft)
         if (path.isEmpty()) {
             StatusMarquee.clearPersistent(statusView)
             statusView.text = ""

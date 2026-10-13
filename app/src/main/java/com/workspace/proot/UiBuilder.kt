@@ -72,7 +72,15 @@ class UiBuilder(
                 setImageResource(icon)
                 contentDescription = activity.getString(desc)
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
-                setPaddingMd(UiTokens.SPACE_2, UiTokens.SPACE_3, UiTokens.SPACE_2, UiTokens.SPACE_3)
+                // 5.9.49：上下内距 12dp → 6dp。
+                // 图标是 24dp；原来上下各 12dp 让每格高 48dp、**图标只占一半**，
+                // 上面一半是空白（用户反馈"和状态栏的间距太大"）。
+                // 6dp = 图标尺寸的 25%，是图标按钮的常见比例，格子高 36dp、图标占 67%。
+                //
+                // ⚠ 代价：36dp 低于 MD3 "触控目标 ≥48dp" 的建议值。
+                // 但这一条在屏幕最上方（不存在单手够不着），且每格宽约屏幕的 1/5，
+                // 横向可点面积充裕，实际影响很小。用户已确认取 6dp。
+                setPaddingMd(UiTokens.SPACE_2, 6, UiTokens.SPACE_2, 6)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
         }

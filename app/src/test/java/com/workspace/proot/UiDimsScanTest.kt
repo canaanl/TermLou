@@ -416,7 +416,7 @@ class UiDimsScanTest {
      * 5.9.48：状态栏**两块结构**的三条硬规则。
      *
      * 1. **块① 固定**：只放特征字、不要竖线、宽度取五个词里最宽的、**永不滚动**；
-     *    5.9.48 起它是自绘控件（[LaserTabLabelView]），为了做激光打标切换动画。
+     *    5.9.48 起它是自绘控件（[TabLabelCubeView]），为了做激光打标切换动画。
      * 2. **视觉上是一整条**：背景画在父容器上，两个子块都透明，不画分隔线。
      * 3. **两块的内距来源唯一且对称**：都取 `STATUS_V_PAD`，上下同值。
      *
@@ -467,14 +467,16 @@ class UiDimsScanTest {
         // ---- 1) 块① 是自绘控件（为激光动画），且永不滚动 ----
         assertTrue(
             "块① 必须是自绘的激光控件（普通 TextView 做不了打标动画）：\n$code",
-            code.contains("LaserTabLabelView(activity)"),
+            code.contains("TabLabelCubeView(activity)"),
         )
-        val laser = File(srcDir, "LaserTabLabelView.kt")
-        assertTrue("LaserTabLabelView.kt 不见了", laser.isFile)
+        val laser = File(srcDir, "TabLabelCubeView.kt")
+        assertTrue("TabLabelCubeView.kt 不见了", laser.isFile)
         val laserCode = read(laser)
+        // 两个面都从**同一个左端**起画（用户要求左对齐、永不平移）——
+        // 立方体版是 canvas.concat(面矩阵) 之后仍在 paddingLeft 处落笔。
         assertTrue(
             "两个词必须从**同一个左端**起画（用户要求左对齐、永不平移）：\n$laserCode",
-            laserCode.contains("val x = paddingLeft.toFloat()"),
+            laserCode.contains("canvas.drawText(text, paddingLeft.toFloat()"),
         )
         assertFalse(
             "块① 绝不该滚动（它是固定的前缀）：\n$laserCode",
@@ -483,12 +485,12 @@ class UiDimsScanTest {
 
         // ---- 2) 背景画在父容器上 → 两块透明 → 看不出分块 ----
         val wrapPart = code.substringAfter("val wrap = LinearLayout(activity).apply {")
-            .substringBefore("tabLabel = LaserTabLabelView")
+            .substringBefore("tabLabel = TabLabelCubeView")
         assertTrue(
             "背景色必须画在父容器上（否则两块各带底色 = 看得出分块）：\n$wrapPart",
             wrapPart.contains("setBackgroundColor(theme.surfaceContainer)"),
         )
-        val block1 = code.substringAfter("tabLabel = LaserTabLabelView(activity).apply {")
+        val block1 = code.substringAfter("tabLabel = TabLabelCubeView(activity).apply {")
             .substringBefore("createStatusBar()")
         assertFalse(
             "块① 不得自带背景（必须透明，靠父容器那层底色）：\n$block1",
@@ -522,6 +524,57 @@ class UiDimsScanTest {
             read(ub).contains("includeFontPadding = true"),
         )
     }
+    /**
+     * 5.9.49：特征字切换动画的两条硬规则。
+     *
+     * ## 1. 名字没变时**绝不许取消在途动画**
+     *
+     * 用户实机报"文件 tab 和网络 tab 不显示动画"。网络页的根因就是这个：
+     * 切到网络页时 `refreshStatusBar()` 被调用**两次**（showTab 一次、
+     * 网络页自己的 `refreshNetTab()` 再一次）。第二次名字没变，
+     * 而旧写法把 `animator.cancel()` 放在"名字相同"的分支里 ——
+     * 等于把刚起步的动画当场掐死。
+     * 名字没变时的正确行为是**什么都不做**。
+     *
+     * ## 2. 文件页必须开动画
+     *
+     * 旧写法在 `setFilesPath` 里传了 `animate = false`（怕内部刷新重放），
+     * 结果把"切到文件页"时的动画也关掉了。
+     * 内部刷新不会重放 —— 规则 1 已经兜住了。
+     */
+    @Test
+    fun `tab label animation survives repeated refresh and covers files tab`() {
+        val view = File(srcDir, "TabLabelCubeView.kt")
+        assertTrue("TabLabelCubeView.kt 不见了", view.isFile)
+        val vc = read(view)
+
+        // 规则 1：名字没变 → 提前返回，且**不能**有 cancel。
+        // ⚠ 必须先滤掉注释行 —— 上面那段 KDoc 里就写着 `animator.cancel()`，
+        // 不滤的话锁会被自己的说明文字绊倒（本项目已在同一个坑里栽过三次）。
+        val head = vc.substringAfter("fun setTabName(").substringBefore("if (current.isEmpty()")
+            .lines().filterNot { it.trim().startsWith("//") }.joinToString("\n")
+        assertTrue(
+            "名字没变时必须提前 return（不许往下走到取消动画的分支）：\n$head",
+            head.contains("if (name == current) return"),
+        )
+        assertFalse(
+            "名字没变的分支里绝不许出现 cancel —— 那正是'动画被自己掐死'的根因：\n$head",
+            head.contains("cancel()"),
+        )
+
+        // 规则 2：文件页要动画
+        val ctl = read(File(srcDir, "StatusController.kt"))
+        val filesPath = ctl.substringAfter("fun setFilesPath(").substringBefore("fun ")
+        assertTrue(
+            "文件页必须开动画（animate = true）：\n$filesPath",
+            filesPath.contains("animate = true"),
+        )
+        assertFalse(
+            "文件页不许再传 animate = false：\n$filesPath",
+            filesPath.contains("animate = false"),
+        )
+    }
+
     /** 块② 的宽度判断必须用自己的宽度，且宽度未就绪时不误判成"放得下"。 */
     @Test
     fun `persistent marquee judges by its own width`() {
