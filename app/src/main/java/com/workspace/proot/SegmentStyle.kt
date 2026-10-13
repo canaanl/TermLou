@@ -102,11 +102,30 @@ object SegmentStyle {
     private fun dividerColor(onSurface: Int): Int =
         (onSurface and RGB_MASK) or (DIVIDER_ALPHA shl ALPHA_SHIFT)
 
-    /** 段间需要紧贴：清掉既有的外距（仅此一行内生效，不改所有权重/宽度）。 */
+    /**
+     * 段间需要紧贴：清掉既有的外距（仅此一行内生效，不改所有权重/宽度）。
+     *
+     * 5.9.43 修：原先只 `lp.setMargins(0, top, 0, bottom)`，**清不掉
+     * `marginStart/marginEnd`**（这两个是相对边距，存在 mMarginFlags 里，
+     * setMargins 只动绝对边距）。于是各行残留的边距不一样：
+     *
+     * | 行| 残留写法 | 实际偏移 |
+     * |---|---|---|
+     * | 上游代理 | marginEnd/marginStart = 4dp | 右移 4dp |
+     * | LAN | marginEnd/marginStart = 4（**像素**） | 右移约 1px |
+     * | 浏览器 | 无 | 0 |
+     *
+     * 结果就是**上游代理那一行的竖线比下面两行偏右**（用户实机观察到的现象）。
+     *
+     * 改成同时清相对边距，与行内的写法、调用时机都不再有关。
+     */
     private fun relayoutMargins(row: LinearLayout) {
         for (i in 0 until row.childCount) {
             val lp = row.getChildAt(i).layoutParams as? LinearLayout.LayoutParams ?: continue
             lp.setMargins(0, lp.topMargin, 0, lp.bottomMargin)
+            // setMargins 只动绝对边距，相对边距要单独清 —— 这正是竖线错位的根因
+            lp.marginStart = 0
+            lp.marginEnd = 0
         }
     }
 

@@ -254,6 +254,76 @@ class UiDimsScanTest {
         )
     }
 
+    /**
+     * 5.9.43 加的锁：**输入框不许用纯色方块背景**。
+     *
+     * 用户实机报"搜索框没有圆角"。查下来三处搜索框写的是 `setBackgroundColor(...)`
+     * —— 纯色矩形，压根没有 `cornerRadius`，所以 5.9.40 的圆角扫描完全扫不到它们。
+     * **和 5.9.42 的按钮是同一类漏洞：扫的是"写了圆角的地方"，漏的是"没写圆角的地方"。**
+     *
+     * 修法是改走 `FieldStyle.applyOutlined`（自带圆角+描边+字色），
+     * 本锁防止再有人写 `setBackgroundColor` 给输入框。
+     */
+    @Test
+    fun `edit texts use a rounded background not a flat color`() {
+        /**
+         * 合法豁免（逐条给理由，不做整类沉默放行）：
+         * - `Color.TRANSPARENT`：笔记正文的多行输入框，**故意透明**（无边框的整页编辑区），
+         *   圆角对不可见背景没有意义。
+         * - `theme.primaryContainer`：对话框工坊里的**预览编辑框**（模拟 agent 看到的输入框
+         *   外观），它是"被预览的对象"而不是正式输入控件，直角才是它该有的样子。
+         *   注意：真正的搜索框（NetworkController / 两个 PickerDialog）**不在豁免里**，
+         *   它们已改为走 FieldStyle。
+         */
+        val allowed = listOf("Color.TRANSPARENT", "theme.primaryContainer")
+        val offenders = mutableListOf<String>()
+        for (f in scanFiles()) {
+            if (f.name == "FieldStyle.kt") continue // 定义自身
+            val lines = read(f).lines()
+            lines.forEachIndexed { i, line ->
+                val t = line.trim()
+                if (t.startsWith("//") || t.startsWith("*")) return@forEachIndexed
+                if (!t.contains("setBackgroundColor")) return@forEachIndexed
+                // 合法豁免
+                if (allowed.any { t.contains(it) }) return@forEachIndexed
+                // 往上找 18 行，看这个 setBackgroundColor 是不是落在 EditText.apply{} 里
+                var inEditText = false
+                var j = i
+                val from = if (i - 18 > 0) i - 18 else 0
+                while (j >= from) {
+                    if (lines[j].contains("EditText(")) { inEditText = true; break }
+                    if (lines[j].contains("= View(") || lines[j].contains("fun ")) break
+                    j--
+                }
+                if (inEditText) offenders += "${f.name}:${i + 1}  $t"
+            }
+        }
+        assertEquals(
+            "输入框不许用 setBackgroundColor（纯色方块=直角），请走 FieldStyle.applyOutlined：\n" +
+                offenders.joinToString("\n"),
+            0, offenders.size,
+        )
+    }
+
+    /**
+     * 5.9.43 加的锁：**分段控件的相对边距必须清干净**。
+     *
+     * 用户实机报"上游代理那行的竖线比下面偏右"。真因：`relayoutMargins` 只调了
+     * `setMargins()`（清绝对边距），**清不掉 `marginStart/marginEnd`**（相对边距）。
+     * 三行残留写法不一（4dp / 4**像素** / 无），于是竖线横向位置各不相同。
+     */
+    @Test
+    fun `segment rows clear relative margins too`() {
+        val seg = File(srcDir, "SegmentStyle.kt")
+        assertTrue("SegmentStyle.kt 不见了", seg.isFile)
+        val code = read(seg)
+        assertTrue(
+            "relayoutMargins 必须同时清 marginStart/marginEnd，只清 setMargins 不够：" +
+                "相对边距存在 mMarginFlags 里，setMargins 动不了它",
+            code.contains("lp.marginStart = 0") && code.contains("lp.marginEnd = 0"),
+        )
+    }
+
     /** 规范层必须真的被生产代码引用，而不是摆着好看。 */
     @Test
     fun `the md3 helpers are actually used in production code`() {

@@ -136,11 +136,12 @@ class NetworkController(
 
         netSearch = EditText(activity).apply {
             hint = activity.getString(R.string.net_search_hint)
-            setHintTextColor(dim)
             setTextColor(scope.cOnSurface)
-            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
             setSingleLine(true)
-            setBackgroundColor(if (scope.theme.night) UiTokens.searchBg else scope.theme.surfaceContainerHighest)
+            // 5.9.43：原来用 setBackgroundColor —— 纯色方块，压根没有圆角，
+            // 与别的输入框（FieldStyle 有 4dp 圆角）并排就是直角 vs 圆角。
+            // applyOutlined 内含文字色/提示色/字号，这一处不再单独设。
+            FieldStyle.applyOutlined(this, scope.theme, UiTokens.TEXT_COMPACT)
             setPaddingMd(10, 6, 10, 6)
             addTextChangedListener(object : android.text.TextWatcher {
                 override fun afterTextChanged(s: android.text.Editable?) = scheduleNetFlows()
@@ -452,22 +453,27 @@ class NetworkController(
                 })
             }
         }
-        fun modeButton(text: String, onClick: () -> Unit): Button = Button(activity).apply {
+        fun modeButton(text: String, leading: Boolean, onClick: () -> Unit): Button = Button(activity).apply {
             this.text = text
             setTextColor(scope.theme.primaryVisible)
             textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             isAllCaps = true
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                // 5.9.43：两键原本零间距，而每键是 12dp 圆角的描边按钮 ——
+                // 两个圆角贴在一起只剩一条 1px 线，视觉上像"一个按钮"。
+                // 给第二键留 4dp，让两个圆角分开（MD3 4dp 网格）。
+                if (!leading) marginStart = activity.dp(UiTokens.SPACE_1)
+            }
             ButtonStyle.outlined(this, scope.theme.primaryVisible)
             setOnClickListener { onClick() }
         }
         val modeRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             setPaddingMd(UiTokens.SPACE_1, UiTokens.SPACE_1, UiTokens.SPACE_1, UiTokens.SPACE_1)
-            addView(modeButton(activity.getString(R.string.net_rank_domain)) { refresh(false) })
-            addView(modeButton(activity.getString(R.string.net_rank_port)) { refresh(true) })
+            addView(modeButton(activity.getString(R.string.net_rank_domain), leading = true) { refresh(false) })
+            addView(modeButton(activity.getString(R.string.net_rank_port), leading = false) { refresh(true) })
         }
         val body = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL

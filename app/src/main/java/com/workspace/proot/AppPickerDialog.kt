@@ -52,12 +52,11 @@ class AppPickerDialog(
 
         searchInput = EditText(ctx).apply {
             hint = ctx.getString(R.string.picker_search)
-            setTextColor(theme.onSurface)
-            setHintTextColor(onSurfaceVariant)
             textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             setSingleLine(true)
             setPaddingMd(UiTokens.SPACE_5, UiTokens.SPACE_2, UiTokens.SPACE_5, UiTokens.SPACE_2)
-            setBackgroundColor(if (theme.night) UiTokens.searchBg else theme.surfaceContainerHighest)
+            // 5.9.43：原 setBackgroundColor 是纯色方块（无圆角），改走 FieldStyle 统一外观
+            FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
         }
         content.addView(searchInput)
 

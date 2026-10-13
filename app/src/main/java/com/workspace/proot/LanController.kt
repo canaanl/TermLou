@@ -74,7 +74,10 @@ class LanController(
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginEnd = 4
+                    // 5.9.43：原 marginEnd = 4 是**像素**不是 dp，在高密度屏上只有约 1.3dp，
+                    // 与上游代理那行的 4dp 不一致。统一走 dp（SPACE_1 = 4dp）。
+                    // SegmentStyle.applyRow 最终会清成 0，但保持写法一致才不会复发。
+                    marginEnd = activity.dp(UiTokens.SPACE_1)
                 }
                 setOnClickListener {
                     if (LanShareService.isRunning) stopLan() else startLan()
@@ -91,7 +94,8 @@ class LanController(
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = 4
+                    // 5.9.43：同上，原为 4 像素，统一成 4dp
+                    marginStart = activity.dp(UiTokens.SPACE_1)
                 }
                 setOnClickListener { showLanAuthDialog() }
             }
