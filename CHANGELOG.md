@@ -7,11 +7,88 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.55** | 5955 | **修 5.9.53 回归：终端底部 band（快捷键+wheel）恢复独立触控，不被页签横滑抢手势** |
 | **5.9.54** | 5954 | **修 5.9.53 回归：终端页横滑完全失灵（构造期读了还没定状态的 setup 可见性）** |
 | **5.9.53** | 5953 | **页签横滑改为 ViewPager2：拖动实时跟手 + 松手按速度结算（原 50dp 死区 + 固定动画）** |
 | **5.9.52** | 5952 | **修：状态栏特征字的立方体转向与页面滑动方向相反** |
 | **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
+
+## 5.9.55
+
+### 修 5.9.53 回归：底部 band 的独立触控被页签横滑抢走
+
+用户实机报：原本快捷键区 / wheel 区是**独立触控逻辑**、不触发左右滑动，
+换成 ViewPager2 之后"wheel 既能触发，又不利索"。
+
+#### 根因：丢了一个"靠视图层级天然限定作用域"的约定
+
+```
+terminalArea
+├── terminalWrapper → terminalView    ← 5.9.53 之前切页手势只挂这里
+└── shortcutContainer (SwipeableContainer)   ← band，本是上面那个的【兄弟】
+    ├── shortcutInner                        快捷键行
+    ├── upperWheelPanel → upperWheelRecycler ← HORIZONTAL RecyclerView
+    ├── wheelPanel      → wheelRecycler      ← HORIZONTAL RecyclerView
+    ├── wheelLevelFrame / wheelGlowOverlay
+```
+
+切页手势只挂在 `terminalView` 上，而 band 是它的**兄弟**，所以 band 从来不在手势范围内 ——
+**这个"正确"是靠视图树层级偶然实现的，不是显式约定。**
+5.9.53 换成覆盖整个 `terminalArea` 的 ViewPager2 后，band 被圈进拖动范围，
+而它内部有两个横向滚动的 RecyclerView，与 ViewPager2 抢同一个横向手势。
+
+#### 修法：在 band 按下即声明所有权
+
+`SwipeableContainer.dispatchTouchEvent` 的 `ACTION_DOWN` 分支加
+`parent?.requestDisallowInterceptTouchEvent(true)` ——
+祖先（含 ViewPager2）一律不许拦截本次触摸。效果等同于 5.9.53 之前。
+
+时序上有保证：父容器处理 `ACTION_DOWN` 时会先 `resetTouchState()` 清掉该标志，
+而本方法是在那之后、事件派发给子视图的过程中被调用，所以一定来得及生效；
+下一次新手势开始时标志自动重置，不会粘住。
+
+#### 为什么绑视图而不是绑坐标
+
+band 的位置**不停变**：双击弹/收输入法 → `adjustResize` → 整窗重排 → band 上移或被压缩；
+A/B 切换时内部子视图还有 `translationY` 动画。
+
+但触摸派发按**视图树**走，从不由坐标决定命中谁 —— 只要落点在容器内，`ACTION_DOWN`
+必定先到这里。所以无论 band 此刻在屏幕底部、被键盘顶上去一半、还是正在动画中途，
+规则都成立，**移动多少次都不会错位**。
+
+反之若写成「y > 某阈值就 disallow」，键盘一弹阈值就失效。KDoc 里已写死这条，
+并配锁禁止坐标式写法。
+
+#### 影响面确认只有 wheel
+
+- Notes 那个 `HorizontalScrollView` 在 `AlertDialog` 里（独立窗口，不在 pager 内）
+- `shortcutInner` 是普通 `LinearLayout.HORIZONTAL`，不是横向滚动容器
+- `terminalArea` 只有那两个子视图，没有第三块
+- 全项目只有 `PaletteActivity` 的取色器用过 `requestDisallowInterceptTouchEvent` ——
+  wheel 这套以前根本不需要，因为它从未被切页手势覆盖
+
+#### 排除的伪嫌疑
+
+曾怀疑「termux 抢手势 / 长按选字与缩放被 ViewPager2 破坏」——**无任何代码证据，纯推测**：
+termux 那 20 个类里没有任何一个调 `requestDisallowInterceptTouchEvent`；
+长按是「按住不动」，永不超 `touchSlop`，ViewPager2 不会启动拖动；
+RecyclerView 的拖动判定只认单指 pointerId，多指不会被当成拖动。
+用户实测长按选字与横滑一切正常。**教训：抛风险前先把依赖解开查，别套通用原则。**
+
+#### 新锁
+
+`terminal bottom band is an independent horizontal touch zone` ——
+断言 band 的 `ACTION_DOWN` 确实 disallow 祖先拦截，**且**禁止出现按 y 坐标/阈值
+划分边界的写法。
+
+两处注入验证：
+1. 移除 disallow → 恰好该锁变红（25 tests, 1 failed）
+2. 改成 `if (ev.y < 400)` → 恰好该锁变红，消息点名坐标式写法
+
+747 全绿（app 615 + probe 79 + workspace 53）。
+
+⚠ 未在真机验证。装上重点看 wheel 横滚是否恢复利索、双击弹收键盘时 band 位置变了还能否正常滚。
 
 ## 5.9.54
 

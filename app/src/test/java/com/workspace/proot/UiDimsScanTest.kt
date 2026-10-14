@@ -493,6 +493,62 @@ class UiDimsScanTest {
     }
 
     /**
+     * 5.9.55 加的锁：**终端底部 band（快捷键 + wheel）是独立的横滑触控区**。
+     *
+     * 用户实机报：换了 ViewPager2 之后 wheel "既能触发，又不利索"。
+     *
+     * ## 根因
+     *
+     * 5.9.53 把切页手势从「只挂在 `terminalView` 上」换成了「覆盖整个 `terminalArea`
+     * 的 ViewPager2」，手势范围扩大到整个终端页。底部 band 因此被圈进拖动范围，
+     * 而它内部有两个**横向滚动的 RecyclerView**（`wheelRecycler` / `upperWheelRecycler`，
+     * `LinearLayoutManager.HORIZONTAL`）—— 与 ViewPager2 抢同一个横向手势。
+     *
+     * 改动前的状态其实是"天然正确"的：band 是 `terminalWrapper` 的**兄弟**，
+     * 而切页手势只挂在 `terminalView` 上，所以 band 从来不在手势范围内。
+     * 这类"靠视图层级天然限定作用域"的约定极容易被一次架构替换悄悄丢掉 ——
+     * 本锁就是把它显式钉住。
+     *
+     * ## 为什么必须绑视图、不能绑坐标
+     *
+     * band 位置不停变（双击弹收输入法 → `adjustResize` → 整窗重排 → band 上移；
+     * A/B 切换时内部子视图还有 `translationY` 动画）。
+     * 但触摸派发按**视图树**走，不由坐标决定命中谁 —— 只要落点在容器内就一定到得了这里。
+     * 若改成「y > 某阈值就 disallow」，键盘一弹阈值就失效。所以本锁同时禁止坐标式写法。
+     */
+    @Test
+    fun `terminal bottom band is an independent horizontal touch zone`() {
+        val sw = File(srcDir, "SwipeableContainer.kt")
+        assertTrue("SwipeableContainer.kt 不见了", sw.isFile)
+        val code = read(sw)
+
+        // ---- 1. 必须在 ACTION_DOWN 上 disallow 祖先拦截 ----
+        val down = code.substringAfter("override fun dispatchTouchEvent(")
+            .substringBefore("\n    }")
+        assertTrue(
+            "band 的 ACTION_DOWN 必须 requestDisallowInterceptTouchEvent(true) —— " +
+                "否则 ViewPager2 会把 wheel 的横向滚动手势抢过去：\n$down",
+            down.contains("ACTION_DOWN") &&
+                down.contains("requestDisallowInterceptTouchEvent(true)")
+        )
+
+        // ---- 2. 不许改成按坐标/阈值划分边界（键盘一弹就失效）----
+        val coord = code.lines().filter { l ->
+            val t = l.trim()
+            if (t.startsWith("//") || t.startsWith("*") || t.startsWith("/*")) return@filter false
+            // 形如 y > 400 / ev.y >= someThreshold / bottom > 300 这类"按位置切区"
+            Regex("""\b(y|bottom|top)\s*[<>=!]+\s*(activity|resources|parent\.)?\s*(\d+|[a-zA-Z_]*(height|bottom|top)Val[a-zA-Z_]*)""")
+                .containsMatchIn(t) &&
+                Regex("""ev\.|event\.""").containsMatchIn(t)
+        }
+        assertEquals(
+            "band 的独立触控规则必须绑在视图上，不许出现按 y 坐标/阈值划分边界的写法" +
+                "（键盘一弹位置就变，坐标判断必然失效）：\n" + coord.joinToString("\n"),
+            0, coord.size,
+        )
+    }
+
+    /**
      * 5.9.54 加的锁：**不许在"状态还没定"的时候读它，更不许在构造期求值依赖运行时状态的开关**。
      *
      * 5.9.53 引入的回归：`ViewPager2` 构造块里写了

@@ -9,6 +9,29 @@ import android.widget.FrameLayout
  * 快捷栏/wheel 共用底板（bandHost）：方向无关的竖向滑动检测。
  * 任意方向竖向滑动（上/下均可、可一路滑出带外）→ 触发 onVerticalSwipe 做 A/B 循环切换；
  * 轻点与横向滑动透传给子控件（按键点击 / wheel 横滚 / 灰色手势）。
+ *
+ * ## 5.9.55：本容器是**独立的横滑触控区**，不参与页签横滑
+ *
+ * 5.9.53 把切页手势从「只挂在 terminalView 上」换成「覆盖整个 terminalArea 的 ViewPager2」，
+ * 手势范围因此扩大到了整个终端页 —— 本容器和它内部那两个**横向滚动的 RecyclerView**
+ * （`wheelRecycler` / `upperWheelRecycler`）就被圈进了页签拖动的范围里，
+ * 与 ViewPager2 抢同一个横向手势。真机表现是 wheel「又能触发、又不利索」。
+ *
+ * 所以在这里按下即声明：**这次触摸归本 band，祖先不许拦截。**
+ * 效果完全等同于 5.9.53 之前——底部 band 从不触发切页，wheel 横滚 / 按键点击 /
+ * A/B 竖向切换全按原样工作。
+ *
+ * ## 为什么必须绑在**视图**上，任何时候不许改成坐标判断
+ *
+ * 本 band 的位置会不停变：双击弹/收输入法 → `adjustResize` → 整个窗口重排 →
+ * band 上移或被压缩；A/B 切换时内部三个子视图还在 `translationY` 上做动画。
+ *
+ * 但触摸派发是**按视图树**做的，从不由坐标决定命中谁。所以只要落点在本容器内，
+ * `ACTION_DOWN` 必定先到这里，无论 band 此刻在屏幕底部、被键盘顶上去一半、
+ * 还是正处在切换动画中途 —— 本规则都成立，**移动多少次都不会错位**。
+ *
+ * ⚠ 反过来：若图省事写成「y > 某阈值就 disallow」，键盘一弹阈值就失效，
+ * 这正是本条注释要防的事。任何按坐标/阈值划分边界的改法都是回归。
  */
 class SwipeableContainer(context: Context) : FrameLayout(context) {
 
@@ -28,6 +51,15 @@ private var startX = 0f
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         onDispatchTouch?.invoke(ev)
+        // 5.9.55：按下即把这次触摸的所有权锁定在本 band，祖先（含 ViewPager2）一律不许拦截。
+        //
+        // 时序保证：父容器 dispatchTouchEvent 处理 ACTION_DOWN 时会先
+        // `resetTouchState()` 清掉 disallow-intercept 标志，而本方法是在那之后、
+        // 事件派发给子视图的过程中被调用的 —— 所以这一句一定来得及生效，
+        // 且下一次新手势开始时标志会被自动重置，不会粘住。
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            parent?.requestDisallowInterceptTouchEvent(true)
+        }
         return super.dispatchTouchEvent(ev)
     }
 
