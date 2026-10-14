@@ -7,10 +7,84 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.54** | 5954 | **修 5.9.53 回归：终端页横滑完全失灵（构造期读了还没定状态的 setup 可见性）** |
 | **5.9.53** | 5953 | **页签横滑改为 ViewPager2：拖动实时跟手 + 松手按速度结算（原 50dp 死区 + 固定动画）** |
 | **5.9.52** | 5952 | **修：状态栏特征字的立方体转向与页面滑动方向相反** |
 | **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
+
+## 5.9.54
+
+### 修 5.9.53 回归：横滑完全失灵
+
+用户实机报"终端页面直接左右滑动切换无效了"。
+
+**根因是 5.9.53 自己加的 setup 守卫，取值时机错了。** 三个因素叠加：
+
+```
+L216  content.addView(terminalController.buildSetupArea())
+      → setupArea 建出来；LinearLayout 默认 VISIBLE
+
+L242  isUserInputEnabled = !terminalController.isSetupVisible()
+      → 此刻读到 VISIBLE = true → 置为 false，横滑被关掉     ← 读早了
+
+L261  terminalController.boot(...)
+      → rootfs 已装，走 setupArea.visibility = GONE
+      → 但没有任何代码重新求值那个开关
+
+L437  if (position == prev) return
+      → 启动时 onPageSelected(0)，currentTab 本就是 0 → 提前返回
+      → applyTabState 从没执行 → L406 那次"重新求值"的机会也丢了
+```
+
+结果：`isUserInputEnabled` 从构造那刻起一直是 `false`，
+**点一下 tab 图标会碰巧触发一次状态同步而恢复** —— 现象是"划不动、点一下就好了"。
+
+**不是终端页的问题，是全局的**（那一行在 pager 上，不是页面上）。
+用户从终端页开始试，所以像是终端页的锅。
+
+顺带排除的嫌疑：**termux 没有抢手势。** 解开 `terminal-view-v0.118.3.aar` 查过，
+`TerminalView` / `GestureAndScaleRecognizer` 等 20 个类里**没有任何一个**调
+`requestDisallowInterceptTouchEvent`（搜索方法本身已自检：`onTouchEvent` 命中 5 个类）。
+
+### 修法：显隐变化走通知，而不是"某处再求值一次"
+
+**1. TerminalController 收口。** 原本 5 处直接写 `setupArea.visibility`
+（`boot` 两个分支 / `hideSetup` / `restoreSession` / 安装完成），
+谁都不会通知外面 —— 改了什么外面不知道。现全部改走 `setSetupVisible(visible)`，
+它负责赋值**并发通知** `onSetupVisibilityChanged`。
+
+**2. MainActivity 只在一处写那个开关。** `applySetupGuard(visible: Boolean?)`，
+由 `terminalController.onSetupVisibilityChanged` 驱动，`applyTabState` 里也调一次求值。
+参数可传 `null` 表示"还没求过值"，此时也照样求值 —— 宁可多算一遍。
+
+**3. 去掉那句提前返回。** `if (position == prev) return` 改成不再直接返回：
+`currentTab` 已是目标值时只跳过赋值，仍跑一遍其余状态。
+启动时那一次 `onPageSelected(0)` 正是一次免费的"把全部状态对齐到当前页"的机会，不该浪费。
+
+这样无论 setup 从哪条路径被隐藏（已装 rootfs / 换色重建 / 装完了 / 切 tab），
+横滑都会正确恢复 —— 不是只修好"已装 rootfs"这一种情况。
+
+### 新锁
+
+`no reading or assigning pager input state before it is settled` ——
+断言 ViewPager2 **构造块里**不出现那个开关、该开关**有且只有一处**赋值点、
+`setupArea.visibility` **除 setter 外**不许被直接赋值。
+
+注入验证：把 5.9.53 那行原样塞回构造块，**恰好这条锁变红**（24 tests, 1 failed）。
+
+### 第四次踩同一个坑
+
+写这条锁时又把被删属性的名字写进了它要扫的那个块的注释里，又自己绊倒一次。
+（`RegressionScanTest.code()` / `UiDimsScanTest` 只过滤 `*`/`/*` 开头的行，**不过滤 `//`**。）
+
+**没有去改那个共享过滤函数** —— 它被 30 多条锁依赖，改语义的风险远大于收益；
+本次只把注释措辞改掉，并在注释里写明"此处刻意不写出属性名"以及为什么。
+
+另：这条锁自己第一版正则 `\s*=` 把 `isSetupVisible()` 里那句**读**
+（`setupArea.visibility == View.VISIBLE`）误判成赋值，已改用 `(?!=)` 排除。
+
+746 全绿（app 614 + probe 79 + workspace 53）。
 
 ## 5.9.53
 

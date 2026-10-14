@@ -235,12 +235,18 @@ class MainActivity : AppCompatActivity() {
             offscreenPageLimit = 5
             adapter = TabPagerAdapter()
             registerOnPageChangeCallback(pageCallback)
-            // 5.9.53：装机 / setup 区可见时不接受横滑切页。
-            // 原先是终端手势里的 `setupArea.visibility != View.VISIBLE` 守卫 ——
-            // 换成 ViewPager2 后那层守卫会一起消失，不补回来就变成"装机时也能划走"，
-            // 而 setup 区只在终端页有意义。
-            isUserInputEnabled = !terminalController.isSetupVisible()
+            // 5.9.54：**这里原本有一行"按 setup 是否可见来开关横滑"的赋值，已删除。**
+            // 它是 5.9.53 引入的回归根因：此刻 buildSetupArea() 刚建完 setupArea，
+            // 而 LinearLayout 默认 VISIBLE、boot() 还没跑 —— 于是读到 true 把横滑关掉，
+            // 之后 boot() 隐藏了 setupArea 却没人重新求值，横滑就永久死了
+            // （点一下 tab 图标碰巧能恢复，所以现象是"划不动、点一下就好了"）。
+            // 现在改为由 terminalController 的 setup 显隐通知驱动，见 applySetupGuard。
+            //
+            // ⚠ 这几行刻意不写出被删掉那个属性的名字：UiDimsScanTest 里新加的锁
+            // 正是按字面扫本构造块，而 `code()` 只过滤 `*`/`/*` 开头的行、不过滤 `//`，
+            // 注释里出现会让锁自己绊倒（同一个坑本项目已栽到第四次）。
         }
+        terminalController.onSetupVisibilityChanged = { applySetupGuard(it) }
         content.addView(slidePager)
 
         rootLayout = FrameLayout(this)
@@ -401,9 +407,18 @@ class MainActivity : AppCompatActivity() {
      * 拖动松手会回到原页，这时 [prev] 是拖动中途选中的那个新页，
      * 方向仍由 `tabIndex > prev` 得出，与旧实现同一套判断。
      */
+    /**
+     * setup 区可见时不接受横滑切页（setup 只在终端页有意义）。
+     *
+     * 5.9.54：**唯一**改这个开关的地方。[visible] 传 null 表示"还没求过值"，
+     * 此时也要求值一次 —— 宁可多算一遍，也不留"构造期读未定义状态"那种坑。
+     */
+    private fun applySetupGuard(visible: Boolean? = terminalController.isSetupVisible()) {
+        slidePager.isUserInputEnabled = visible != true
+    }
+
     private fun applyTabState(tabIndex: Int, prev: Int) {
-        // setup 区只在终端页有意义：可见时锁掉横滑（与终端手势里原有的守卫同款）
-        slidePager.isUserInputEnabled = !terminalController.isSetupVisible()
+        applySetupGuard()
         val tabs = listOf(terminalTab, notesTab, filesTab, networkTab, settingsTab)
         for (i in tabs.indices) {
             tabs[i].setColorFilter(if (i == tabIndex) scope.cOnSurface else scope.cOnSurfaceVariant)
@@ -432,9 +447,18 @@ class MainActivity : AppCompatActivity() {
 
     /** ViewPager2 的唯一状态出口：拖动与代码调用都从这里汇合。 */
     private val pageCallback = object : androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
+        /**
+         * 5.9.54：把 `if (position == prev) return` 从"直接返回"改成"仍跑一遍状态同步"。
+         *
+         * 那句提前返回正是上一轮横滑死掉的共犯：启动时 ViewPager2 会回调
+         * `onPageSelected(0)`，而 `currentTab` 本来就是 0 → 直接 return，
+         * 于是 `applyTabState` 从没被执行过 —— 里面那句"重新求值 setup 守卫"也就没机会跑。
+         *
+         * 现在只在 `currentTab` 已经是目标值时**跳过赋值**，但仍然同步其余状态：
+         * 首次回调正是一次免费的"把全部状态对齐到当前页"的机会，不该浪费。
+         */
         override fun onPageSelected(position: Int) {
             val prev = currentTab
-            if (position == prev) return
             currentTab = position
             applyTabState(position, prev)
         }

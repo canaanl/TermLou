@@ -493,6 +493,75 @@ class UiDimsScanTest {
     }
 
     /**
+     * 5.9.54 加的锁：**不许在"状态还没定"的时候读它，更不许在构造期求值依赖运行时状态的开关**。
+     *
+     * 5.9.53 引入的回归：`ViewPager2` 构造块里写了
+     * `isUserInputEnabled = !terminalController.isSetupVisible()`。
+     * 那一刻 `buildSetupArea()` 刚把 setupArea 建出来，而 `LinearLayout` 默认 **VISIBLE**、
+     * `boot()` 还没跑 —— 于是读到 true，把横滑关掉了。
+     * 随后 `boot()` 隐藏了 setupArea，却**没有任何代码重新求值**那个开关；
+     * 而唯一会重新求值的地方是 `applyTabState`，它又被
+     * `if (position == prev) return` 跳过了（启动时 `onPageSelected(0)`，currentTab 本就是 0）。
+     *
+     * 现象：横滑彻底失灵，点一下 tab 图标（碰巧触发一次状态同步）又好了。
+     *
+     * 修法是"显隐变化走通知"（`onSetupVisibilityChanged` → `applySetupGuard`），
+     * 而不是"某处再求值一次"。所以本锁锁两件事：
+     * 1. `ViewPager2` 的**构造块里**不许出现 `isUserInputEnabled`（构造期没有可信状态）
+     * 2. `setupArea.visibility` 不许被直接赋值 —— 只能走 `setSetupVisible`，
+     *    否则又会出现"改了但没人知道"的静默状态
+     */
+    @Test
+    fun `no reading or assigning pager input state before it is settled`() {
+        val main = File(srcDir, "MainActivity.kt")
+        assertTrue("MainActivity.kt 不见了", main.isFile)
+        val code = read(main)
+
+        val ctor = code.substringAfter("ViewPager2(this).apply {").substringBefore("\n        }")
+        assertFalse(
+            "ViewPager2 构造块里不许求值 isUserInputEnabled —— " +
+                "此刻 setupArea 刚建好、boot() 还没跑，读到的是未定义状态（5.9.53 的回归根因）：\n$ctor",
+            ctor.contains("isUserInputEnabled")
+        )
+        assertTrue(
+            "必须由 setup 显隐通知驱动该开关：\n$code",
+            code.contains("applySetupGuard") && code.contains("onSetupVisibilityChanged")
+        )
+        // 开关只允许在 applySetupGuard 里写
+        val writers = code.lines().filterIndexed { i, l ->
+            l.contains("isUserInputEnabled =") && !l.trim().startsWith("//")
+        }
+        assertEquals(
+            "isUserInputEnabled 只允许在 applySetupGuard 里被赋值（实际 $writers）：\n$code",
+            1, writers.size,
+        )
+
+        // TerminalController：显隐只能走 setSetupVisible
+        val tc = File(srcDir, "TerminalController.kt")
+        val tcode = read(tc)
+        assertTrue(
+            "显隐必须经 setSetupVisible 收口并通知宿主：\n$tcode",
+            tcode.contains("private fun setSetupVisible(visible: Boolean)")
+        )
+        // 把 setter 本身摘掉，其余任何地方都不许直接赋值。
+        // 正则用 `(?!=)` 排除 `==` —— 否则 isSetupVisible() 里那句**读**
+        // （`setupArea.visibility == View.VISIBLE`）会被误判成赋值。
+        val setter = tcode.substringAfter("private fun setSetupVisible(").substringBefore("\n    }")
+        assertTrue("没能取到 setSetupVisible 的函数体，收口可能没生效：\n$tcode", setter.isNotEmpty())
+        val outside = tcode.replace(setter, "")
+        val direct = outside.lines().filter { l ->
+            val t = l.trim()
+            if (t.startsWith("//") || t.startsWith("*") || t.startsWith("/*")) return@filter false
+            Regex("""setupArea\.visibility\s*=(?!=)""").containsMatchIn(t)
+        }
+        assertEquals(
+            "setupArea.visibility 不许在 setSetupVisible 之外被直接赋值" +
+                "（改了没人知道，横滑开关就废）：\n" + direct.joinToString("\n"),
+            0, direct.size,
+        )
+    }
+
+    /**
      * 5.9.52 加的锁：**特征字立方体的转向必须与页面进场方向一致**。
      *
      * 用户实机报"状态栏左侧特征词的滚动与标签滑动方向相反"。

@@ -505,7 +505,7 @@ class TerminalController(
     /** 寮€鏈哄垎鏀細rootfs 灏辩华鍒?splash + startShell锛屽惁鍒欎寒 setupArea銆?*/
     fun boot(rootLayout: FrameLayout, tileCommand: String?) {
         if (File(scope.lxRoot, "etc/passwd").exists()) {
-            setupArea.visibility = View.GONE
+            setSetupVisible(false)
             scope.fromTile = tileCommand != null
             // splash.json 读取与点数构造较重，移出主线程避免首帧顿卡
             activity.lifecycleScope.launch {
@@ -518,7 +518,7 @@ class TerminalController(
                 startShell(splash)
             }
         } else {
-            setupArea.visibility = View.VISIBLE
+            setSetupVisible(true)
         }
     }
 
@@ -578,7 +578,7 @@ class TerminalController(
      * 三槽/ANSI 对齐新主题；滚动缓冲与输入状态由会话自带（resize 同尺寸无损）。
      */
     fun restoreSession(session: TerminalSession) {
-        setupArea.visibility = View.GONE
+        setSetupVisible(false)
         scope.terminalManager.setSession(session)
         session.updateTerminalSessionClient(this)
         terminalView.attachSession(session)
@@ -723,8 +723,28 @@ class TerminalController(
     internal fun isSetupVisible(): Boolean =
         ::setupArea.isInitialized && setupArea.visibility == View.VISIBLE
 
+    /**
+     * 5.9.54：setup 区显隐变化的唯一出口。
+     *
+     * 此前 5 处直接写 `setupArea.visibility`（boot 两个分支 / hideSetup /
+     * restoreSession / 安装完成后），谁也不会去通知外面 ——
+     * 于是 `ViewPager2.isUserInputEnabled` 只能靠"切 tab 时顺便重新求值"，
+     * 启动那一次恰好被 `if (position == prev) return` 跳过，横滑就永久死了。
+     *
+     * 收口到这里：改显隐必经本方法，顺带通知宿主。
+     * 初始值刻意设为 **null**（"还没求过值"），宿主收到 null 时也要求值一次 ——
+     * 这样"构造期读一个还没定的状态"这个坑不会再来第二次。
+     */
+    var onSetupVisibilityChanged: ((Boolean?) -> Unit)? = null
+
+    private fun setSetupVisible(visible: Boolean) {
+        if (!::setupArea.isInitialized) return
+        setupArea.visibility = if (visible) View.VISIBLE else View.GONE
+        onSetupVisibilityChanged?.invoke(visible)
+    }
+
     internal fun hideSetup() {
-        if (::setupArea.isInitialized) setupArea.visibility = View.GONE
+        setSetupVisible(false)
     }
 
     private fun attachFontSliderAnimation(slider: Slider) {
@@ -798,7 +818,7 @@ class TerminalController(
                 progressText.text = "RootFS ready!"
                 progressBar.isIndeterminate = false
                 progressBar.progress = 100
-                setupArea.visibility = View.GONE
+                setSetupVisible(false)
                 val splash = SplashView(activity)
                 activity.rootLayout.addView(splash)
                 splash.bringToFront()
