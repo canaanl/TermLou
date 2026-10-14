@@ -549,6 +549,47 @@ class UiDimsScanTest {
     }
 
     /**
+     * 5.9.56 加的锁：**系统信息的键名不许带色块**。
+     *
+     * 用户实机反馈：终端 tab 介绍页的系统信息里，「发行版/版本/代号/架构」四个键名
+     * 各有一个奇怪的方框，"这部分不需要方框啊，系统信息部分不是有个大方框包起来了吗，
+     * 小方块很难看又没有用"。
+     *
+     * 那个方框是 5.9.40 **有意加的**（`roundedBg(keyColor and 0x33FFFFFF, CORNER_XS)`），
+     * 当时的理由是"左右两列扫视时能靠色块区分键与值"。但外面已有大方框，
+     * 里面再套四个小框属于画蛇添足 —— 键与值本来就能靠字号 + 颜色 + 粗细分开
+     * （键 12sp `onSurfaceVariant`，值 15sp 粗体 `onSurface`），色块并非必需。
+     *
+     * 所以这是**按用户要求推翻一项旧设计**，不是修 bug —— 记在这里是为了免得
+     * 将来有人看到"键名没有底色、看起来不够清楚"又把它加回来。
+     */
+    @Test
+    fun `system info keys carry no chip background`() {
+        val f = File(srcDir, "StorageDialog.kt")
+        assertTrue("StorageDialog.kt 不见了", f.isFile)
+        val code = read(f)
+
+        // addInfoRow 里不许再给键名加背景
+        val addInfoRow = code.substringAfter("private fun addInfoRow(")
+            .substringBefore("\n    }")
+        assertFalse(
+            "系统信息的键名色块已于 5.9.56 按用户要求删除，不许回来" +
+                "（外面已有大方框，里面再套小框是画蛇添足；键靠字号+颜色区分即可）：\n$addInfoRow",
+            Regex("""roundedBg\(|setBackgroundColor\(|setBackground\(""").containsMatchIn(addInfoRow)
+        )
+        // 全文件也不该再有"用半透明白给键名上底色"这种写法
+        assertFalse(
+            "键名色块那种半透明白底（keyColor and 0x33FFFFFF）不该再出现：\n$code",
+            code.contains("keyColor and 0x33FFFFFF")
+        )
+        // 值那一侧不受影响：仍然靠字号/粗体/颜色区分
+        assertTrue(
+            "值仍应是 15sp 粗体 onSurface（键与值的区分靠这三项，不靠色块）：\n$addInfoRow",
+            addInfoRow.contains("UiTokens.TEXT_BODY") && addInfoRow.contains("bold = true")
+        )
+    }
+
+    /**
      * 5.9.54 加的锁：**不许在"状态还没定"的时候读它，更不许在构造期求值依赖运行时状态的开关**。
      *
      * 5.9.53 引入的回归：`ViewPager2` 构造块里写了

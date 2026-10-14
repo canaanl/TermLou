@@ -146,9 +146,14 @@ class SystemInfoCardView(
             setTextColor(keyColor)
             textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
             setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_3, UiTokens.SPACE_0, UiTokens.SPACE_0)
-            // 5.9.40：键名做成 MD3 小标签（xs 圆角），替代此前无背景的裸文字，
-            // 左右两列扫视时能靠色块区分"键"与"值"。
-            roundedBg(keyColor and 0x33FFFFFF, UiTokens.CORNER_XS)
+            // 5.9.56：此处原有 5.9.40 加的键名色块（roundedBg + CORNER_XS），按用户要求删除。
+            //
+            // 它当初是为了"左右两列扫视时靠色块区分键与值"加的，但用户实机看着是
+            // "多余的方框"：系统信息这一整块外面已经有大方框，里面再套四个小框属于
+            // 画蛇添足。键与值本来就能靠字号+颜色+粗细分开（键 12sp onSurfaceVariant，
+            // 值 15sp 粗体 onSurface），色块并非必需。
+            //
+            // 只删背景这一项：字号、内距、颜色、文案、卡片高度一律不变。
         })
         val valueView = TextView(ctx).apply {
             setTextColor(theme.onSurface)
