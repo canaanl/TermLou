@@ -7,7 +7,65 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
+
+## 5.9.51
+
+纯重构，零功能改动。本次同时记录**哪些候选被查证后否决**，
+避免下一个人重复同一轮分析。
+
+### 1. 做掉的：AppPickerDialog 与 NetAppPickerDialog 合并
+
+两份 178 行的文件，git 一度判定为同一个文件的重命名 —— 逐行比对只有 **5 处**不同。
+同一份布局、渲染、搜索过滤、系统应用过滤被抄了两遍：
+改一处外观就得记得改两处，漏一处就是两个弹窗长得不一样。
+
+| 差异点 | 收藏夹版 | 抓包版 | 收敛方式 |
+|---|---|---|---|
+| 标题 | `R.string.pick_app` | `R.string.picker_capture_title` | 构造参数 `titleRes` |
+| 初始勾选 | `loadFavoriteApps().associateBy{pkg}.keys` | `loadCaptureApps()` | 构造参数 `selected`（子类构造实参里求值，时机不变） |
+| 勾选落盘 | **点了就存** | **只改内存**，确定时才存 | `onTogglePersist` 钩子 |
+| 确定按钮 | 只 `dismiss()` | 先存盘 + 回调，再 `dismiss()` | `onDone` 钩子（**仍在 dismiss 之前**） |
+| 构造函数 | 6 参 | 多一个 `onChanged` | 签名**逐字保留**，两个调用点零改动 |
+
+集合增删仍留在共用代码（收藏夹版那段的原结构），只把"往存储里写"抽出去 ——
+所以抓包版"只改内存"的语义没有被改成"也落盘"。
+
+`356 行 -> 273 行`，净减 83 行。
+
+### 2. 否决的三个候选（**都经过查证，不是拍脑袋**）
+
+最初的排查用一个"两文件共同行数"指标找候选，**那个指标是错的** ——
+它把 import、`private const val` 这类样板也算进去了。下面是换成 git 真实差异后的结论：
+
+| 候选 | git 差异 | 否决理由 |
+|---|---|---|
+| `ClipboardBridge` ↔ `OverlayBridge` | 186 增 / 64 删 | **不是克隆。** 骨架同名（`acquire`/`start`/`stop`/`pollOnce`/`submitParse`/`scheduleRetry`/`resolve`），但载荷完全不同：一个解析剪贴板，一个真的弹窗（带 `Entry`/`showNext`/超时）。合并会把无关领域塞进公共基类，**文件数反而变多** |
+| `LanShareService` ↔ `NetVpnService` | 232 增 / 101 删 | 两个不同的服务（LAN 文件共享 / VPN 代理）。且都带重试+超时+线程池，是最容易改坏的地方 |
+| `ShortcutSettingsActivity` ↔ `ShortcutGroupActivity` | 116 增 / 413 删 | 两个不同页面，较小那个基本是较大那个的子集 |
+| `NotesController` ↔ `NotesStandaloneActivity` | 415 增 / 247 删 | **是真重复**（约 250 行、25 个同名函数），但**两者已分叉**：Controller 独有 `segButton`/`tagCapsule`/`scrollColumn`/`inputDialog`，Standalone 独有 `handleOpenExtra`/`singleLineInputDialog`。合并要逐个函数定"哪个变体胜出"，而那正是笔记编辑/标签/待办的用户可见行为。**用户决定：standalone 是独立形态，不合** |
+| `WebAutomationService` 拆分（1616 行） | —— | **不可分离。** `startServer`/`teardown`/`acceptLoop` 同时读写 15 个字段并调 `stopSelf()`/`stopForeground()`/`destroySession()`。KDoc 里"先排空指令再拆页面""先摘 WebView 再拆窗"说明这些顺序是调试出来的 —— 搬出去是重写而非重构。全文件只有 `readRequest`（26 行纯函数）能干净搬走，1616 行拆 26 行没有意义 |
+
+结论：**这个项目唯一的重命名级克隆就是那两个 Picker**，其余"看起来像"的重复都经不起 git 差异的推敲。
+
+### 3. 这一版的保障手段
+
+为"纯重构、不改功能"专门建的三样东西（后续重构可复用）：
+
+1. **文本溯源检查**：新文件的每一行有内容的代码都必须能在原文件中找到逐字副本。
+   本次基类 125 行里 110 行是逐字副本，15 行差异全部是那 5 个抽象点本身。
+   （注意：**要先跑检查再覆盖原文件**，或从 `git show HEAD:path` 取原文 ——
+   否则检查器读到的已是改后的文件，会假失败。）
+2. **R8 mapping 前后对比**：纯提取则"可达类 + 成员集合"只应出现合成 lambda 的搬家。
+   实测：类 2629 → 2628，消失的 6 个全是两个 AppPicker 的 `$$ExternalSyntheticLambda*`
+   与 `$show$8`，新增的是它们在基类上的同名体；**无任何生产类消失**。
+   成员 37916 → 37896（净 −20），消失条目全部属于那两个类，其余是混淆名位移。
+3. **全量测试基线**：743（app 611 + probe 79 + workspace 53），重构前后一致。
+
+**已知未覆盖**：这两个弹窗的运行时行为没有单测（需要真实 Activity，项目没有 Robolectric），
+其正确性依赖上面的逐行溯源 + 人工分支核对。装机后建议点一遍：
+收藏夹弹窗（勾选即存，关掉不点确定也已保存）与抓包弹窗（点确定才存）。
 | **5.9.49** | 5949 | **特征字换成立方体转动（白条方案废弃）· 修两个 tab 不显示动画 · tab 图标收高** |
 
 ## 5.9.50
