@@ -123,8 +123,10 @@ class TerminalController(
         private set
 
     private var splashStartTime = 0L
-    private var touchStartX = 0f
-    private val swipeThreshold by lazy { (50 * activity.resources.displayMetrics.density).toInt() }
+    // 5.9.53：原先供 50dp 死区滑动用的那两个字段（按下起点与阈值）随那段逻辑一起删除 ——
+    // 死区本身正是"页面不跟手"的根因，现在由 ViewPager2 的 touchSlop + 速度判定接管。
+    // （刻意不写出它们的标识符：RegressionScanTest 的新锁按字面扫本文件，
+    //   注释里出现会让锁自己绊倒 —— 本项目已在同一个坑上栽过多次。）
 
     fun initFontFromSettings() {
         fontSizeIndex = scope.settingsManager.fontSizeIndex
@@ -166,15 +168,16 @@ class TerminalController(
             ).apply { setIsLongpressEnabled(false) }
             setOnTouchListener { _, event ->
                 tapDetector.onTouchEvent(event)
-                if (event.action == MotionEvent.ACTION_DOWN) {
-                    touchStartX = event.x
-                } else if (event.action == MotionEvent.ACTION_UP) {
-                    val dx = event.x - touchStartX
-                    if (dx < -swipeThreshold && activity.currentTab == 0 && setupArea.visibility != View.VISIBLE) {
-                        activity.showNotesView()
-                    }
-                }
-                false                    // 不消费：termux 的手势/长按选字/缩放照常
+                // 5.9.53：原先这里还判 50dp 死区并调跳笔记页的方法。
+                // 页签切换现已交给 ViewPager2，那段逻辑**必须删** ——
+                // 留着会与 ViewPager2 **双重触发**：一次左滑既走 ViewPager2 的切页，
+                // 又走这里跳到笔记，等于一次滑动跳两页。
+                // termux 的手势 / 长按选字 / 缩放照常（返回 false 不消费）。
+                //
+                // ⚠ 这几行注释刻意不写出被删掉那两个符号的名字 ——
+                // RegressionScanTest 里新加的锁是按字面扫本文件的，
+                // 注释里出现会让锁自己绊倒（同一个坑本项目栽过多次）。
+                false
             }
         }
 

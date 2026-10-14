@@ -40,10 +40,8 @@ class SettingsUiController(
 
     fun buildInto(settingsWrapper: LinearLayout) {
         val density = activity.resources.displayMetrics.density
-        val settingsScroll = TabSwipeScrollView(
-            activity,
-            onSwipeRight = { if (activity.currentTab == 4 && !activity.isSetupVisible()) activity.showTab(3) }
-        ).apply {
+        // 5.9.53：同上，页签切换交给 ViewPager2，横向回调删掉。
+        val settingsScroll = TabSwipeScrollView(activity).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply {
                 weight = 1f
             }

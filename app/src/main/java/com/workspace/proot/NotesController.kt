@@ -100,17 +100,22 @@ class NotesController(
         showList()
     }
 
-    /** 横滑切换容器：左滑去文件，右滑编辑态退列表、列表态回终端。 */
+    /**
+     * 横滑容器（5.9.53：只保留"编辑态右滑退回列表"这一个手势）。
+     *
+     * 原来这里还兼着"切页签"（左滑去文件、右滑回终端）—— 那是 50dp 死区 + 松手
+     * 播固定动画的实现，页面在拖动阶段完全不跟手。页签切换现已交给 ViewPager2
+     * （拖动实时跟手 + 松手按速度结算），所以这两个回调删掉。
+     *
+     * 保留 `onSwipeRight` 的理由：**编辑态右滑退回列表**不是页签切换，是笔记页
+     * 自己的手势，ViewPager2 不会替我们做。拖动未过半又松手时 ViewPager2 会回弹到
+     * 原页，不会触发它 —— 所以右滑退回列表这件事交给这里没有冲突。
+     */
     private fun buildSwipe(root: LinearLayout): TabSwipeLayout =
         TabSwipeLayout(
             activity,
             onSwipeRight = {
-                if (activity.currentTab == 1 && !activity.isSetupVisible()) {
-                    if (current != null) showList() else activity.showTab(0)
-                }
-            },
-            onSwipeLeft = {
-                if (activity.currentTab == 1 && !activity.isSetupVisible()) activity.showTab(2)
+                if (activity.currentTab == 1 && current != null) showList()
             }
         ).apply {
             orientation = LinearLayout.VERTICAL

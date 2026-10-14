@@ -427,6 +427,72 @@ class UiDimsScanTest {
     }
 
     /**
+     * 5.9.53 加的锁：**页签横滑必须走 ViewPager2，不许回到"死区 + 松手播动画"**。
+     *
+     * 用户实机反馈"微微滑动一点时页面没有跟着手指移动，很肉"。查下来根因不是动画帧率，
+     * 而是**拖动阶段页面根本不跟手**：手势容器在 `ACTION_UP` 时判一个固定 50dp 死区，
+     * 过了才调 `showTab()`，而 `showTab` 里是 `animateTo()` 的 250ms 固定位移动画。
+     * 那个死区是当年为"防误触"加的，但防误触其实靠 `touchSlop` + 横竖方向判定就够 ——
+     * 死区之后的行为不连贯，手感就必然发木。
+     *
+     * 本锁防止旧模型复活，并顺带钉住三件容易漏的事：
+     *
+     * 1. `slideContainer` 已换成 ViewPager2，**手写的 `animateTo` 不许回来**
+     *    （它那套 translationX + visibility + `animGen` 在途取消，是"第二套真值"，
+     *    旧实现正是在 250ms 内连点时会错位的那一处）
+     * 2. 状态更新只有一个出口：`onPageSelected` → `applyTabState`。
+     *    手指拖动与代码调用两条路径必须汇合，否则各写一份收尾必然走样
+     * 3. 终端的 OnTouchListener 里不许再出现切页调用 —— 会与 ViewPager2 双重触发
+     *    （这条更细的锁在 `RegressionScanTest.双击检测不许消费事件` 里）
+     */
+    @Test
+    fun `tab paging goes through ViewPager2 not a dead zone`() {
+        val main = File(srcDir, "MainActivity.kt")
+        assertTrue("MainActivity.kt 不见了", main.isFile)
+        val code = read(main)
+
+        assertTrue(
+            "主页面的横滑容器必须是 ViewPager2（跟手 + 速度结算）：\n$code",
+            code.contains("ViewPager2(this)") || code.contains("ViewPager2(")
+        )
+        assertFalse(
+            "手写的 animateTo 不许回来 —— 页面显隐/位移/在途取消已由 ViewPager2 负责，" +
+                "留着两份真值就是旧实现错位的来源：\n$code",
+            code.contains("private fun animateTo")
+        )
+        assertFalse(
+            "旧的显隐兜底（按 visibility 逐个设 GONE）会与 RecyclerView 的 item 管理打架，不许回来：\n$code",
+            code.contains("views[i].visibility = if (i == tabIndex)")
+        )
+
+        // 状态更新的唯一出口：onPageSelected → applyTabState
+        val cb = code.substringAfter("OnPageChangeCallback()")
+            .substringBefore("\n    }")
+        assertTrue(
+            "切页签状态必须由 ViewPager2 的 onPageSelected 驱动（唯一出口）：\n$cb",
+            cb.contains("onPageSelected") && cb.contains("applyTabState")
+        )
+        // showTab 只负责"请求切换"，不再自己改图标/指示条/状态栏
+        val showTab = code.substringAfter("internal fun showTab(").substringBefore("\n    }")
+        assertFalse(
+            "showTab 不许再直接改图标颜色/指示条/状态栏 —— 那是 applyTabState 的活，" +
+                "两份都写就会和拖动路径打架：\n$showTab",
+            showTab.contains("animateTabIndicator") || showTab.contains("setSweepDirection")
+        )
+
+        // 四个页面容器不再自己认横向手势
+        for (name in listOf("NetworkController.kt", "WorkspaceController.kt", "SettingsUiController.kt")) {
+            val f = File(srcDir, name)
+            assertTrue("$name 不见了", f.isFile)
+            val c = read(f)
+            assertFalse(
+                "$name 里的横滑回调已交给 ViewPager2，不许再有 showTab 调用：\n$c",
+                Regex("""onSwipe(Left|Right)\s*=\s*\{[^}]*showTab\(""").containsMatchIn(c)
+            )
+        }
+    }
+
+    /**
      * 5.9.52 加的锁：**特征字立方体的转向必须与页面进场方向一致**。
      *
      * 用户实机报"状态栏左侧特征词的滚动与标签滑动方向相反"。

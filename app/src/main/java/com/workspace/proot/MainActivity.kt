@@ -43,7 +43,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var settingsUiController: SettingsUiController
 
     internal lateinit var rootLayout: FrameLayout
-    private lateinit var slideContainer: FrameLayout
+    private lateinit var slidePager: androidx.viewpager2.widget.ViewPager2
     private lateinit var tabHost: FrameLayout
     private lateinit var tabIndicator: View
     private lateinit var terminalTab: ImageView
@@ -60,14 +60,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tabIntroController: TabIntroController
 
     internal var currentTab = 0
-    private var animating = false
 
-    /** 当前已显示（或动画目标）的 Tab 下标：切换动画的唯一真值，不再依赖 visibility 判断
-     *  （250ms 内连点时两个视图都 VISIBLE，按 visibility 判断会错位）。 */
-    private var displayedTab = 0
-    private var animShow: View? = null
-    private var animHide: View? = null
-    private var animGen = 0
+    // 5.9.53：原先这一组手写切换动画的状态（animating / displayedTab / animShow /
+    // animHide / animGen）随 ViewPager2 接入整体删除。页面显隐、translationX、
+    // 动画收尾、连点时的在途取消，全部由 ViewPager2 内部负责，
+    // 这里不再需要第二套真值 —— 那正是旧实现容易错位的原因（250ms 内连点时
+    // 两个视图都 VISIBLE，靠 visibility 判断必然错位）。
+    //
+    // `currentTab` 保留：它是"逻辑态"，被各 Controller 读取
+    // （`if (activity.currentTab == 3 && ...)`），且由 onPageSelected 统一维护。
 
     private val importLauncher = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
@@ -224,39 +225,32 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        slideContainer = FrameLayout(this)
-        slideContainer.layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-        )
-        slideContainer.addView(terminalArea, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-        slideContainer.addView(filesArea, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-        slideContainer.addView(notesArea, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-        slideContainer.addView(networkArea, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-        slideContainer.addView(settingsWrapper, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-        content.addView(slideContainer)
+        slidePager = androidx.viewpager2.widget.ViewPager2(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+            )
+            // 五个页面全程保持存活：终端会话、笔记编辑态、文件列表都是"建好就不重建"的，
+            // 丢一个 holder 就等于丢用户状态。offscreenPageLimit 拉到 5 让 RecyclerView
+            // 把五个 item 全部常驻，不回收。
+            offscreenPageLimit = 5
+            adapter = TabPagerAdapter()
+            registerOnPageChangeCallback(pageCallback)
+            // 5.9.53：装机 / setup 区可见时不接受横滑切页。
+            // 原先是终端手势里的 `setupArea.visibility != View.VISIBLE` 守卫 ——
+            // 换成 ViewPager2 后那层守卫会一起消失，不补回来就变成"装机时也能划走"，
+            // 而 setup 区只在终端页有意义。
+            isUserInputEnabled = !terminalController.isSetupVisible()
+        }
+        content.addView(slidePager)
 
         rootLayout = FrameLayout(this)
         rootLayout.addView(content)
         setContentView(rootLayout)
         statusController.showPreviousCrash(rootLayout)
 
-        // 初始五视图全 GONE：与 displayedTab=0 语义一致，任何 showTab（含换色重建后
-        // 直接 showTab(非0) 的 animateTo 路径）都不会漏隐藏 notesArea 造成叠加残留。
-        terminalArea.visibility = View.GONE
-        notesArea.visibility = View.GONE
-        filesArea.visibility = View.GONE
-        networkArea.visibility = View.GONE
-        settingsWrapper.visibility = View.GONE
+        // 5.9.53：原先这里把五个视图全设 GONE、并在 showTab 里手工切 visibility。
+        // ViewPager2 自己管理 item 的挂载与显隐，不再需要 —— 手工设 GONE 反而会让
+        // RecyclerView 认为 item 不可见。
 
         // Tab 介绍页：只挂主界面顶栏五个图标，不切换 Tab；子 Activity 无此 UI，天然不可触发。
         tabIntroController = TabIntroController(this, rootLayout, scope.theme, scope.wsFiles)
@@ -370,16 +364,47 @@ class MainActivity : AppCompatActivity() {
         ClipboardBridge.release()
     }
 
+    /**
+     * 5.9.53：**请求**切到某个页签。
+     *
+     * 只做两件事：前置的收尾动作 + 让 ViewPager2 切过去。
+     * 页面显隐与滑动动画由 ViewPager2 负责，所以这里**不再**碰 translationX/visibility。
+     *
+     * 状态更新（图标颜色、指示条、状态栏特征字、各页刷新）全部收敛到
+     * [pageCallback] 的 `onPageSelected` —— 那才是"页签真的变了"的唯一时刻。
+     * 这样手指拖动和代码调用两条路径共用同一套收尾，不会各写一份而错位。
+     */
     internal fun showTab(tabIndex: Int) {
+        if (tabIndex !in 0..4) return
         if (tabIndex != 0) hideIme()
         terminalController.hideSetup()
         val prev = currentTab
-        currentTab = tabIndex
         if (prev == 1 && tabIndex != 1) notesController.flushPendingSave()
 
-        val tabs = listOf(terminalTab, notesTab, filesTab, networkTab, settingsTab)
-        val views = listOf(terminalArea, notesArea, filesArea, networkArea, settingsWrapper)
+        if (slidePager.currentItem != tabIndex) {
+            // 用户正在拖动时不要抢方向盘：交给 ViewPager2 自己结算，
+            // 否则会把"跟着手指"打断成"跳过去"。
+            if (slidePager.isFakeDragging) return
+            // 首次布局之前没有可动画的几何，setCurrentItem(…, true) 会闪一下；
+            // 这种情况直接落位。
+            slidePager.setCurrentItem(tabIndex, slidePager.width > 0)
+        } else if (tabIndex != prev) {
+            // 同一页被重复请求（例如换色重建后直接 showTab(当前页)）：逻辑态已经对上了，
+            // 但仍要把状态刷新一遍，避免图标颜色/状态栏停在旧值。
+            applyTabState(tabIndex, prev)
+        }
+    }
 
+    /**
+     * 页签真的变了：图标、指示条、状态栏、各页刷新 —— 唯一的状态真值。
+     *
+     * 拖动松手会回到原页，这时 [prev] 是拖动中途选中的那个新页，
+     * 方向仍由 `tabIndex > prev` 得出，与旧实现同一套判断。
+     */
+    private fun applyTabState(tabIndex: Int, prev: Int) {
+        // setup 区只在终端页有意义：可见时锁掉横滑（与终端手势里原有的守卫同款）
+        slidePager.isUserInputEnabled = !terminalController.isSetupVisible()
+        val tabs = listOf(terminalTab, notesTab, filesTab, networkTab, settingsTab)
         for (i in tabs.indices) {
             tabs[i].setColorFilter(if (i == tabIndex) scope.cOnSurface else scope.cOnSurfaceVariant)
         }
@@ -392,24 +417,12 @@ class MainActivity : AppCompatActivity() {
         }
         animateTabIndicator(tabIndex)
         statusController.bumpGen()
-        // 5.9.48：告诉状态栏激光的扫动方向 —— 必须与页面滑动方向一致。
-        // 此刻 displayedTab 还是**旧**值，正好能算出方向：
-        // 切到后面的页签（tabIndex > displayedTab）时内容向左滑、新页从右边进来，
-        // 所以激光也从右往左扫（新词先从右侧出现）。
-        statusController.setSweepDirection(toLeft = tabIndex > displayedTab)
+        // 5.9.48：告诉状态栏特征字立方体的转向 —— 必须与页面滑动方向一致。
+        // 此刻 [prev] 还是**旧**值，正好能算出方向：
+        // 切到后面的页签（tabIndex > prev）时内容向左滑、新页从右边进来，
+        // 所以立方体也从右侧转出。
+        statusController.setSweepDirection(toLeft = tabIndex > prev)
         refreshStatusBar()
-
-        val showView = views[tabIndex]
-        if (tabIndex != displayedTab) {
-            animateTo(showView, views[displayedTab], tabIndex > displayedTab)
-            displayedTab = tabIndex
-        } else if (!animating && showView.visibility != View.VISIBLE) {
-            // 兜底：无在途动画却与逻辑态不符（异常路径），直接对齐
-            for (i in views.indices) {
-                views[i].visibility = if (i == tabIndex) View.VISIBLE else View.GONE
-                views[i].translationX = 0f
-            }
-        }
 
         if (tabIndex == 0) terminalController.terminalView.requestFocus()
         if (tabIndex == 1) notesController.refresh()
@@ -417,17 +430,63 @@ class MainActivity : AppCompatActivity() {
         if (tabIndex == 3) networkController.refreshNetTab()
     }
 
+    /** ViewPager2 的唯一状态出口：拖动与代码调用都从这里汇合。 */
+    private val pageCallback = object : androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
+        override fun onPageSelected(position: Int) {
+            val prev = currentTab
+            if (position == prev) return
+            currentTab = position
+            applyTabState(position, prev)
+        }
+    }
+
+    /**
+     * 五个页面各自的 ViewHolder。
+     *
+     * 直接复用**已经建好的那五个 View**，不新建、不重建 —— 终端会话、笔记编辑态、
+     * 文件列表都必须跨页签存活，RecyclerView 回收 holder 等于丢状态。
+     */
+    private inner class TabPagerAdapter : androidx.recyclerview.widget.RecyclerView.Adapter<PageHolder>() {
+        override fun getItemCount() = 5
+
+        // 一页一个 viewType：保证五个 holder 互不复用，天然不会抢同一个 View
+        override fun getItemViewType(position: Int) = position
+
+        override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): PageHolder {
+            val v = when (viewType) {
+                0 -> terminalArea
+                1 -> notesArea
+                2 -> filesArea
+                3 -> networkArea
+                else -> settingsWrapper
+            }
+            // 保险：万一还挂在别的 holder 上（换色重建等异常路径），先摘掉，
+            // 否则 RecyclerView 会抛 "specified child already has a parent"。
+            (v.parent as? android.view.ViewGroup)?.removeView(v)
+            v.layoutParams = androidx.recyclerview.widget.RecyclerView.LayoutParams(
+                androidx.recyclerview.widget.RecyclerView.LayoutParams.MATCH_PARENT,
+                androidx.recyclerview.widget.RecyclerView.LayoutParams.MATCH_PARENT,
+            )
+            return PageHolder(v)
+        }
+
+        // View 是预先建好的，绑定时无需做任何事
+        override fun onBindViewHolder(holder: PageHolder, position: Int) = Unit
+
+        // 五个 View 由 Activity 持有，生命周期跟着 Activity，不随 holder 回收
+        override fun onViewRecycled(holder: PageHolder) = Unit
+    }
+
+    private class PageHolder(view: View) : androidx.recyclerview.widget.RecyclerView.ViewHolder(view)
+
     internal fun showTerminalView() {
         showTab(0)
     }
 
-    internal fun showFilesView() {
-        showTab(2)
-    }
-
-    internal fun showNotesView() {
-        showTab(1)
-    }
+    // 5.9.53：showFilesView / showNotesView 随旧的手势回调一起删除 ——
+    // 它们原本只被那四个 TabSwipe* 容器的 onSwipeLeft/Right 调用，
+    // 现在切页签由 ViewPager2 独占，全模块已无调用点。
+    // 若以后需要"从别处跳到某一页"，直接 showTab(n) 即可，不必再包一层。
 
     internal fun isSetupVisible(): Boolean = terminalController.isSetupVisible()
 
@@ -441,61 +500,12 @@ class MainActivity : AppCompatActivity() {
             .start()
     }
 
-    private fun animateTo(show: View, hide: View, fromRight: Boolean) {
-        // 新一次切换先终结在途的那一次：取消动画并复位其视图，避免残影/串位
-        finalizeTabAnim()
-        val w = slideContainer.width
-        if (w <= 0) {
-            show.translationX = 0f
-            hide.translationX = 0f
-            show.visibility = View.VISIBLE
-            hide.visibility = View.GONE
-            return
-        }
-        animating = true
-        animShow = show
-        animHide = hide
-        val gen = ++animGen
-
-        val dir = if (fromRight) 1f else -1f
-        show.translationX = dir * w
-        show.visibility = View.VISIBLE
-        show.bringToFront()
-
-        hide.animate().translationX(-dir * w).setDuration(250)
-            .setInterpolator(DecelerateInterpolator())
-            .start()
-        show.animate().translationX(0f).setDuration(250)
-            .setInterpolator(DecelerateInterpolator())
-            .withEndAction {
-                // 过期动画（被 cancel 时 endAction 仍可能触发）直接忽略，只让最新一次收尾
-                if (gen != animGen) return@withEndAction
-                hide.translationX = 0f
-                hide.visibility = View.GONE
-                show.translationX = 0f
-                animating = false
-                animShow = null
-                animHide = null
-            }
-            .start()
-    }
-
-    /** 终结在途切换：无论 endAction 是否随 cancel 触发，都由这里统一复位，保证逻辑态与视图一致。 */
-    private fun finalizeTabAnim() {
-        val s = animShow
-        val h = animHide
-        animGen++ // 让在途 endAction 全部失效
-        s?.animate()?.cancel()
-        h?.animate()?.cancel()
-        if (h != null) {
-            h.translationX = 0f
-            h.visibility = View.GONE
-        }
-        s?.translationX = 0f
-        animShow = null
-        animHide = null
-        animating = false
-    }
+    // 5.9.53：原先这里的 animateTo / finalizeTabAnim 已随 ViewPager2 接入整体删除。
+    // 它们手工管 translationX + visibility + 在途取消，为此还养了一组状态
+    // （animating / animShow / animHide / animGen）作为"第二套真值" ——
+    // 那正是旧实现需要靠 `animGen` 做失效判断来兜的复杂度来源。
+    // ViewPager2 内部把这些（以及连点打断、拖动回弹、边界）都做完了，
+    // 这里不需要再复述一遍，也就不该留着一份会走样的影子。
 
     internal fun refreshStatusBar() {
         if (isFinishing || isDestroyed) return

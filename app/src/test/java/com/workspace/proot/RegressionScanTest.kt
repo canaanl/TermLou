@@ -202,10 +202,19 @@ class RegressionScanTest {
         )
     }
 
+    /**
+     * 双击检测不许消费事件。
+     *
+     * OnTouchListener 返回 false 才不会吃掉 termux 的手势：
+     * 长按选字、双指缩放都得照常。
+     *
+     * 5.9.53 改了一条：原先这里还断言 `滑动切笔记必须保留`
+     * （即那段 50dp 死区 + `showNotesView()`）。页签切换已交给 ViewPager2，
+     * 那段逻辑**故意删掉了** —— 留着会与 ViewPager2 双重触发，一次滑动跳两页。
+     * 于是这条断言反转为：**旧死区逻辑不许回来**，由 ViewPager2 独占切页。
+     */
     @Test
     fun `双击检测不许消费事件`() {
-        // OnTouchListener 返回 false 才不会吃掉 termux 的手势：
-        // 长按选字、双指缩放、滑动切笔记都得照常。
         val c = code("TerminalController.kt")
         assertTrue("必须把事件喂给检测器", c.contains("tapDetector.onTouchEvent(event)"))
         val listener = c.substringAfter("setOnTouchListener { _, event ->").take(700)
@@ -213,7 +222,16 @@ class RegressionScanTest {
             "OnTouchListener 必须返回 false（不消费）：$listener",
             Regex("false\\s*(//[^\\n]*)?\\n\\s*\\}").containsMatchIn(listener)
         )
-        assertTrue("滑动切笔记必须保留", c.contains("activity.showNotesView()"))
+        assertFalse(
+            "切页签已交给 ViewPager2，OnTouchListener 里绝不能再调 showTab/showNotesView —— " +
+                "会双重触发，一次滑动跳两页：$listener",
+            listener.contains("showNotesView()") || listener.contains("showTab(")
+        )
+        assertFalse(
+            "50dp 死区（swipeThreshold）必须随旧实现一起删除，" +
+                "它正是「页面不跟手」的根因，现由 ViewPager2 的 touchSlop + 速度判定接管",
+            c.contains("swipeThreshold")
+        )
         assertTrue("双指缩放不该被当成双击", c.contains("setIsLongpressEnabled(false)"))
     }
 

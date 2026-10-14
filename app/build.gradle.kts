@@ -33,8 +33,8 @@ android {
         applicationId = "com.workspace.proot"
         minSdk = 26
         targetSdk = 34
-    versionCode = 5952
-    versionName = "5.9.52"
+    versionCode = 5953
+    versionName = "5.9.53"
         ndk { abiFilters.add("arm64-v8a") }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -93,6 +93,10 @@ dependencies {
     implementation("androidx.sqlite:sqlite-bundled:2.5.1")
     implementation("com.github.termux.termux-app:terminal-view:v0.118.3")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
+    // 5.9.53：页签横滑改为 ViewPager2 —— 拖动实时跟手 + 松手按速度/距离结算。
+    // 5.9.52 之前是自己实现的"50dp 死区 + 松手播固定动画"，页面在拖动阶段完全不跟手。
+    // ViewPager2 是 RecyclerView 的薄封装，recyclerview 本来就在依赖里。
+    implementation("androidx.viewpager2:viewpager2:1.1.0")
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")

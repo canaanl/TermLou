@@ -46,11 +46,8 @@ class WorkspaceController(
         fileList = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
         }
-        val filesScroll = TabSwipeScrollView(
-            activity,
-            onSwipeRight = { if (activity.currentTab == 2 && !activity.isSetupVisible()) activity.showTab(1) },
-            onSwipeLeft = { if (activity.currentTab == 2 && !activity.isSetupVisible()) activity.showTab(3) }
-        )
+        // 5.9.53：同 NetworkController，页签切换交给 ViewPager2，横向回调删掉。
+        val filesScroll = TabSwipeScrollView(activity)
         filesScroll.addView(fileList)
 
         filesListRoot = FrameLayout(activity).apply {

@@ -7,9 +7,79 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.53** | 5953 | **页签横滑改为 ViewPager2：拖动实时跟手 + 松手按速度结算（原 50dp 死区 + 固定动画）** |
 | **5.9.52** | 5952 | **修：状态栏特征字的立方体转向与页面滑动方向相反** |
 | **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
+
+## 5.9.53
+
+### 页签横滑：死区 + 固定动画 → ViewPager2 跟手
+
+用户实机反馈："标签切换总感觉有些肉，微微滑动一点的时候页面没有跟着手指移动。"
+
+**根因不是动画帧率，是拖动阶段页面根本不跟手。** 旧实现分两段：
+
+| 阶段 | 旧行为 |
+|---|---|
+| 拖动中 | 页面**完全不动**。`TabSwipeLayout` / `TabSwipeScrollView` 记下按下点，`ACTION_UP` 时才判 `\|dx\| > 50dp` |
+| 松手后 | 调 `showTab()` → `animateTo()` 播 250ms 固定位移 |
+
+那个 50dp 死区是当年为"防误触"加的。但**防误触不需要靠死区大小** ——
+它靠的是 `touchSlop`（过滤手指抖动）+ 横竖位移方向判定。死区之后的行为不连贯，手感就发木。
+
+参照 Android 原生 `ViewPager` 的实际做法（微信无源码，但表现即 ViewPager 标准行为）：
+
+| 环节 | 做法 |
+|---|---|
+| 识别意图 | `xDiff > touchSlop(16dp) && xDiff * 0.5 > yDiff` —— **16dp，不是 50dp** |
+| 确认拖动瞬间 | 把这段 touchSlop 补偿掉，页面不跳 |
+| 拖动中 | 每个 `ACTION_MOVE` 都跟手 |
+| 松手结算 | 快速划：`位移>75px && 速度>1200px/s` 就切；否则拖过页宽 40%~60% 才切 |
+
+### 改动
+
+**换成 ViewPager2**（`androidx.viewpager2:viewpager2:1.1.0`，recyclerview 本来就在依赖里）。
+五个页面**直接复用已经建好的那五个 View**，不新建不重建 ——
+终端会话、笔记编辑态、文件列表都必须跨页签存活。
+
+删掉整套手写切换动画（`animateTo` / `finalizeTabAnim`）及其状态
+（`animating` / `displayedTab` / `animShow` / `animHide` / `animGen`）。
+它们手工管 translationX + visibility + 在途取消，为此养了"第二套真值" ——
+旧实现正是在 250ms 内连点时两个视图都 VISIBLE 而错位的那一处。
+
+**状态更新收敛到唯一出口** `onPageSelected` → `applyTabState`：
+图标颜色、指示条、状态栏立方体转向、各页刷新。手指拖动与代码调用两条路径汇合到一处，
+不会各写一份收尾而走样。
+
+**删掉 4 处横向手势回调**（Notes / Files / Network / Settings）与终端 `setOnTouchListener`
+里的 50dp 死区 —— 留着会与 ViewPager2 **双重触发**，一次滑动跳两页。
+笔记的"编辑态右滑退回列表"**保留**：那不是页签切换，是笔记页自己的手势。
+
+**补回 setup 区守卫**：原先终端手势有 `setupArea.visibility != View.VISIBLE`，
+换成 ViewPager2 后那层拦截会一起消失，不补就变成"装机时也能划走"。
+
+### 新锁
+
+`tab paging goes through ViewPager2 not a dead zone` —— 防止旧模型复活，并钉住三件易漏的事：
+手写 `animateTo` 不许回来、状态更新只走 `onPageSelected`、四个容器不许再自己调 `showTab`。
+`RegressionScanTest.双击检测不许消费事件` 里那条"滑动切笔记必须保留"同步**反转**为
+"旧死区逻辑不许回来"（它原本守的正是那段被删掉的代码）。
+
+注入验证：把 `animateTo` 塞回 `MainActivity`，**恰好新锁变红**（23 tests, 1 failed）。
+
+### 写锁时踩到的坑（同一个，本项目已栽多次）
+
+注释里写出被删掉那两个符号的名字 → 新锁按字面扫文件时**自己绊倒**。
+已改措辞，并在注释里写明"此处刻意不写出标识符"。
+
+745 全绿（app 613 + probe 79 + workspace 53）。
+
+⚠ **未在真机验证。** 重点看两处：
+1. **终端页跟不跟手** —— termux 自己的 GestureDetector 有没有在横向移动时抢手势，
+   这个只能真机测。若抢了，对策是关掉/覆盖它那段（termux 是自引入依赖，可控）；
+   最差情况是终端页单独不跟手。
+2. 滚动容器（文件/网络/设置）的**纵向滚动**有没有被横滑抢走。
 
 ## 5.9.52
 

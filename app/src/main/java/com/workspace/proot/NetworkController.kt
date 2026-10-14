@@ -77,11 +77,9 @@ class NetworkController(
                 weight = 1f
             }
         }
-        val networkScroll = TabSwipeScrollView(
-            activity,
-            onSwipeRight = { if (activity.currentTab == 3 && !activity.isSetupVisible()) activity.showTab(2) },
-            onSwipeLeft = { if (activity.currentTab == 3 && !activity.isSetupVisible()) activity.showTab(4) }
-        )
+        // 5.9.53：页签切换交给 ViewPager2，横向手势回调删掉，这里退回普通 ScrollView。
+        // 保留成 TabSwipeScrollView 形状是为了少动 import/类型，但已不再传任何回调。
+        val networkScroll = TabSwipeScrollView(activity)
         networkInner = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPaddingMd(UiTokens.SPACE_6, UiTokens.SPACE_2, UiTokens.SPACE_6, UiTokens.SPACE_6)
