@@ -427,6 +427,69 @@ class UiDimsScanTest {
     }
 
     /**
+     * 5.9.52 加的锁：**特征字立方体的转向必须与页面进场方向一致**。
+     *
+     * 用户实机报"状态栏左侧特征词的滚动与标签滑动方向相反"。
+     *
+     * ## 为什么会反
+     *
+     * `Camera.rotateY` 的正负与"看起来往哪边转"不是直觉一致的。按右手法则：
+     *
+     * | 角度 | 法线 | 立方体的面 |
+     * |---|---|---|
+     * | `0` | +Z | 正面 |
+     * | `+90` | **+X 右** | 右侧面 |
+     * | `-90` | **-X 左** | 左侧面 |
+     *
+     * 页面侧：`MainActivity.animateTo(fromRight = true)` 让新页面 `translationX = +w -> 0`，
+     * 即**新页面从右边进来**。于是特征字也必须让**新词从右侧面（+90）转进来**。
+     *
+     * 而原实现写的是 `targetAngle = if (toLeft) 90f else -90f`，
+     * `toLeft=true` 时新面在 **-90 = 左侧面** —— 新词从左边来，与页面正好相反。
+     *
+     * ## 本锁验什么
+     *
+     * 不去锁 `Camera` 的实际行为（那要真机），只锁**推导链的自洽性**：
+     * `toLeft=true` 必须对应 `targetAngle` 为负（从而 `newBase=+90` = 右侧面）。两条都锁：
+     *
+     * 1. `targetAngle` 的符号（源码形状）
+     * 2. `newBase` 由 `targetAngle` 的符号推导，而非手写死值 ——
+     *    这样以后即便再改 `targetAngle`，两个值不会各走各的
+     */
+    @Test
+    fun `cube rotation direction matches the page entrance side`() {
+        val view = File(srcDir, "TabLabelCubeView.kt")
+        assertTrue("TabLabelCubeView.kt 不见了", view.isFile)
+        val code = read(view)
+
+        // ---- 1. toLeft=true 必须让 targetAngle 为负（新面才在右侧面）----
+        val m = Regex("""targetAngle\s*=\s*if\s*\(\s*toLeft\s*\)\s*(-?[\d.]+)f\s+else\s+(-?[\d.]+)f""")
+            .find(code)
+        assertTrue("必须能看出 targetAngle 对 toLeft 的取值：\n$code", m != null)
+        val toLeftTrue = m!!.groupValues[1].toFloat()
+        val toLeftFalse = m.groupValues[2].toFloat()
+        assertTrue(
+            "切后面的页签（toLeft=true，新页面从右边进来）时，targetAngle 必须为负，" +
+                "新面才落在右侧面 +90；现在取的是 $toLeftTrue —— 新词会从左侧面来，与页面反向。\n$code",
+            toLeftTrue < 0f,
+        )
+        assertTrue(
+            "两个方向必须是相反的旋转（否则不是「转过去」而是原地翻面）：$toLeftTrue / $toLeftFalse",
+            toLeftTrue * toLeftFalse < 0f,
+        )
+
+        // ---- 2. newBase 必须按 targetAngle 符号推导，不许手写死值 ----
+        val b = Regex("""val newBase\s*=\s*if\s*\(\s*targetAngle\s*>\s*0f\s*\)\s*(-?[\d.]+)f\s+else\s+(-?[\d.]+)f""")
+            .find(code)
+        assertTrue("必须能看出 newBase 的推导：\n$code", b != null)
+        assertTrue(
+            "toLeft=true 时 targetAngle 为负 → newBase 必须落在 +90（右侧面）。" +
+                "若这里被改成硬编码，两个值就会各走各的：\n$code",
+            b!!.groupValues[2].toFloat() > 0f,
+        )
+    }
+
+    /**
      * 5.9.43 加的锁：**分段控件的相对边距必须清干净**。
      *
      * 用户实机报"上游代理那行的竖线比下面偏右"。真因：`relayoutMargins` 只调了

@@ -38,8 +38,25 @@ import kotlin.math.abs
  *
  * ## 与页面滑动方向一致
  *
- * 切到**后面的**页签时内容向左滑、新页面从右边进来 → 立方体也**向右转**
- * （新词从右侧转进来）；切到前面的页签反之。
+ * `MainActivity.animateTo(fromRight)` 在切到后面的页签时让**新页面从右边进来**
+ * （`show.translationX = +w` 归 0），旧页面向左退出。
+ * 所以立方体也必须让**新词从右侧面转进来** —— 视觉上与页面同向。
+ * 切到前面的页签反之（新页面从左边进来，新词从左侧面转进来）。
+ *
+ * ⚠ 5.9.52 修的就是这里：实现给的是 `targetAngle = +90`，
+ * 而 +90 的新面法线指向 **−X（左侧面）** —— 新词从左边来，与页面正好相反。
+ * 现改为 `targetAngle = -90`（新面在右侧面）。
+ *
+ * ## 面的角度约定（`Camera.rotateY`，正方向按右手法则）
+ *
+ * | 角度 | 法线指向 | 是立方体的哪一面 |
+ * |---|---|---|
+ * | `0` | +Z（朝观察者） | 正面 |
+ * | `+90` | **+X（右）** | 右侧面 |
+ * | `−90` | **−X（左）** | 左侧面 |
+ *
+ * 写这段动画时每次都要现推一遍这张表，很容易推反 —— 所以下面 [setTabName] 与
+ * [onDraw] 附近都写了推导过程，`newBase` 也按 `targetAngle` 的符号推导而非手写死值。
  *
  * ## 两个"手感旋钮"（要调手感就调这两个）
  *
@@ -74,7 +91,7 @@ class TabLabelCubeView @JvmOverloads constructor(
     private var from = ""
     private var to = ""
 
-    /** 转动角度（度）：0 = 正面朝前。切后面的页签走 0 → +90，切前面的走 0 → -90。 */
+    /** 转动角度（度）：0 = 正面朝前。切后面的页签走 0 → −90（新面在右侧面），切前面的走 0 → +90。 */
     private var angle = 0f
 
     /** 转动中每帧都把角度收敛到这个值。 */
@@ -124,8 +141,10 @@ class TabLabelCubeView @JvmOverloads constructor(
         to = name
         current = name
         angle = 0f
-        // 切后面的页签：新词在立方体的右侧面，正转（+90）把它转到正面
-        targetAngle = if (toLeft) 90f else -90f
+        // 5.9.52 修方向反了：原来这里是 +90，新词实际从**左侧面**转进来，
+        // 而 animateTo(fromRight=true) 让新页面从**右边**进来 —— 两者相反。
+        // 改成 -90：新词起始于 +90° 面（法线指向 +X = 右侧面），由右转正，与页面同向。
+        targetAngle = if (toLeft) -90f else 90f
         animating = true
 
         val a = ValueAnimator.ofFloat(0f, 1f).apply {
@@ -167,8 +186,10 @@ class TabLabelCubeView @JvmOverloads constructor(
         canvas.save()
         canvas.clipRect(0f, 0f, width.toFloat(), height.toFloat())
         // 旧面：从正面转出去；新面：与它相差 90°（贴在立方体的侧面上）
-        //   向左滑（切后面）→ 新面在**右**侧，base = -90，随 angle 转回正面
-        //   向右滑（切前面）→ 新面在**左**侧，base = +90
+        //   向左滑（切后面）：新页面从**右**边进来 → 新面必须在**右**侧面（+90），随 angle 转回正面
+        //   向右滑（切前面）：新页面从**左**边进来 → 新面在**左**侧面（-90）
+        // 5.9.52：原注释与实现在这一段是反的（newBase 取 -90 却写成"右侧面"），
+        // 现按 [targetAngle] 的符号推导，不再手写死值。
         val newBase = if (targetAngle > 0f) -90f else 90f
         drawFace(canvas, to, angle + newBase)
         drawFace(canvas, from, angle)
