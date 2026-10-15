@@ -7,10 +7,12 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.hardware.display.DisplayManager
 import android.os.Process
 import android.os.storage.StorageManager
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
+import android.view.Display
 import android.view.Gravity
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
@@ -46,6 +48,7 @@ class SystemInfoCardView(
     private lateinit var versionValue: TextView
     private lateinit var codenameValue: TextView
     private lateinit var archValue: TextView
+    private lateinit var refreshValue: TextView
 
     private var loadJob: Job? = null
 
@@ -83,6 +86,8 @@ class SystemInfoCardView(
         versionValue = addInfoRow(leftCol, ctx.getString(R.string.sysinfo_version), keyColor, density)
         codenameValue = addInfoRow(leftCol, ctx.getString(R.string.sysinfo_codename), keyColor, density)
         archValue = addInfoRow(leftCol, ctx.getString(R.string.sysinfo_arch), keyColor, density)
+        // 5.9.58：实测刷新率。用来当场判断"高刷请求生效没有"，不必再翻系统设置。
+        refreshValue = addInfoRow(leftCol, ctx.getString(R.string.sysinfo_refresh), keyColor, density)
         columns.addView(leftCol, LinearLayout.LayoutParams(
             0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
         ))
@@ -164,6 +169,26 @@ class SystemInfoCardView(
         return valueView
     }
 
+    /**
+     * 刷新率读数（5.9.58）。
+     *
+     * 显示**实测**值，不是我们请求的值 —— 两者的差就是"系统有没有理我们"。
+     * 低于 [DisplayRefresh.requestedHz] 时用带「请求…未生效」的那条，一眼看出被驳回
+     * （vivo/一加/小米的按 app 高刷白名单会这样）。拿不到就显示"未知"，不猜。
+     */
+    private fun refreshText(): String {
+        val dm = runCatching { ctx.getSystemService(DisplayManager::class.java) }.getOrNull()
+        val hz = runCatching { dm?.getDisplay(Display.DEFAULT_DISPLAY)?.refreshRate }
+            .getOrNull()
+            ?.takeIf { it > 0f } ?: return ctx.getString(R.string.sysinfo_unknown)
+        val want = DisplayRefresh.requestedHz
+        return if (want != null && hz < want) {
+            ctx.getString(R.string.sysinfo_refresh_fmt_low, hz, want)
+        } else {
+            ctx.getString(R.string.sysinfo_refresh_fmt, hz)
+        }
+    }
+
     /** 异步加载占用与发行版数据；数据到达后 setData + startSweep（饼图进入动画）。 */
     fun load(scope: CoroutineScope): Job {
         loadJob?.cancel()
@@ -186,6 +211,7 @@ class SystemInfoCardView(
                     versionValue.text = distro?.versionId?.ifBlank { unknown } ?: unknown
                     codenameValue.text = distro?.codename?.ifBlank { unknown } ?: unknown
                     archValue.text = abi
+                    refreshValue.text = refreshText()
 
                     val fStr = ctx.getString(R.string.storage_file_fmt, formatBytes(fileBytes))
                     fileLabel.text = SpannableString(fStr).apply {

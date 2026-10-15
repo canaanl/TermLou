@@ -7,6 +7,7 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.58** | 5958 | **高刷改用 preferredDisplayModeId（指定显示模式）+ 系统信息加实测刷新率读数** |
 | **5.9.57** | 5957 | **快捷键重排（上排 Esc Tab ↑ Ctrl / 下排 / ← ↓ →）· 缝隙活动条铺满全宽 · 主界面请求 120Hz** |
 | **5.9.56** | 5956 | **去掉系统信息四个键名的色块（外面已有大方框，里面小方框多余）** |
 | **5.9.55** | 5955 | **修 5.9.53 回归：终端底部 band（快捷键+wheel）恢复独立触控，不被页签横滑抢手势** |
@@ -15,6 +16,96 @@
 | **5.9.52** | 5952 | **修：状态栏特征字的立方体转向与页面滑动方向相反** |
 | **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
+
+## 5.9.58
+
+5.9.57 只设了 `preferredRefreshRate`，用户实机反馈**按钮和动画都正常，刷新率仍是 60**（vivo）。
+这一版换机制，并给出可验证的读数。
+
+### 根因：`preferredRefreshRate` 是最弱的那一层
+
+官方文档（`developer.android.com/media/optimize/performance/frame-rate`）自己写明：
+
+> `WindowManager.LayoutParams#preferredRefreshRate` 在应用的窗口上设置首选帧速率……
+> **对于使用 `setFrameRate()` 的 Surface，系统会忽略 `preferredRefreshRate`。**
+> 一般情况下，请尽可能使用 `setFrameRate()`。
+
+游戏走的是 `setFrameRate()` 家族（`Surface.setFrameRate` /
+`SurfaceControl.Transaction.setFrameRate` / NDK `ANativeWindow_setFrameRate`）。
+在项目 `compileSdk=34` 的 `android.jar` 里逐个查过：
+
+| API | 状态 |
+|---|---|
+| `Surface.setFrameRate(float,int,int)` | 在 |
+| `SurfaceControl.Transaction.setFrameRate(SurfaceControl,…)` | 在 |
+| `Window.setFrameRate(…)` | **没有**（API 35 才有） |
+| `View.setRequestedFrameRate(…)` | **没有**（API 35 才有） |
+
+**但 View 写的 app 够不到 `setFrameRate`**：`View.getRootSurfaceControl()` 返回的
+`AttachedSurfaceControl` 是个接口，不暴露里面的 `SurfaceControl`；普通窗口也拿不到 `Surface`。
+游戏能调是因为它们用 SurfaceView / NativeActivity，天生带 Surface。
+
+### 改法：指定具体显示模式
+
+改用 `preferredDisplayModeId`。AOSP 的 multiple-refresh-rate 文档写明：应用设了它之后，
+`DisplayManager` 会把默认配置 ID **以及最小和最大刷新率**一起钉到该模式上。
+API 23 起都有，是 View 写的 app 能打到的最强一层。
+
+新文件 `DisplayRefresh.kt` 提供纯函数 `pickTarget()`，四条规则都是为了不引入风险：
+
+- **只认分辨率逐像素一致的模式** —— 换分辨率会让整个版式重排，这是最大风险点
+- **当前已经最优就不切**（返回 `modeId = 0`）—— 避免无意义的切模式黑屏
+  （文档：非无缝切换可能黑屏一秒上下，没有收益就别动）
+- 0.5Hz 容差 —— 面板报 59.94 而目标是 60 时不触发切换
+- 只在 `onCreate` 调一次 —— 全程最多切一次
+
+顺带收益：**不再写死 120**。设备支持 144 就给 144，"支持多高就生效多高"才是用户要的结果。
+
+### 加实测读数
+
+终端介绍页「系统信息」新增第 5 行「刷新率」，显示的是 `Display.getRefreshRate()` 的
+**实测值**，不是请求值 —— 两者的差就是"系统有没有理我们"。低于请求值时直接标注：
+
+```
+刷新率
+60 Hz（请求 144，未生效）
+```
+
+这一步是刻意的：上面每一条是否生效全看厂商策略，在作者机器上无法验证。
+5.9.57 的教训是"设了但不知道有没有用"，这一版必须能看见结果。
+
+### 关于"所有安卓系统都生效"
+
+用户要求的是通用方案，不是 vivo 专用 hack。这一版把 API 34 内所有能用的机制都用上了，
+**但必须诚实说明边界**：
+
+- 若读数显示 `144 Hz` —— 机制生效，任何支持高刷的设备都会生效
+- 若显示 `60 Hz（请求 144，未生效）` —— 是**厂商按 app 的高刷白名单**在拦截。
+  vivo/一加/小米都有这套；已知绕过办法（AutoHz 等）都需要 root 或 Shizuku 写
+  `Settings.System.peak_refresh_rate`，**没有公开 API 能绕过**
+
+Android 15+ 另有一层：ARR 机制下大多数 View 默认投 "Normal"（60Hz）票、系统取最高票，
+对应的 `View.setRequestedFrameRate` 需要 API 35。要覆盖这一层需要把 compileSdk 提到 35，
+本次**明确不做** —— 那是这个改动里唯一的"大"风险（要联网装 SDK、可能全项目冒新的 lint 报错），
+而收益不确定。留待用户实机确认读数后另行决定。
+
+### 锁（全部做过注入验证）
+
+- 新增 `DisplayRefreshTest` 16 条：分辨率不一致一律不选 / 横竖对调不算一致 / 已最优不切 /
+  小数抖动不切 / 120 与 144 各选对档 / 只支持 60 的设备不折腾 / 空列表与尺寸未就绪不崩 /
+  切完再调不切回去（幂等）/ 返回的 Hz 必来自真实模式列表 / 坏模式不许被选成最高档
+- `RegressionScanTest` 4 条：必须设 `preferredDisplayModeId` 且速率与模式同源 /
+  不许写死 120f / 分辨率过滤与"已最优不切"必须留在纯函数里 / 读数必须拿实测值并标出未生效
+
+扫描锁踩过一次坑并记在注释里：数调用点时用了 `requestHighRefresh\(\)`，
+把函数**定义**那行也算进去了，恒得 2 —— 改用 `(?<!fun )` 负向后顾锁定"前面不是 `fun `"。
+
+### 验证
+
+- 全量测试 **776 绿**（app 644 + probe 79 + workspace 53），较上一版 756 正好 +20
+- 注入验证：分辨率过滤、EPS 判据、坏模式过滤、刷新率读数各注入一次，全部咬住并已还原
+- 每次还原都与注入前的备份**逐字节比对**确认无残留
+- release APK 签名 `de851a44…6e002`，与前几版一致，可直接覆盖安装
 
 ## 5.9.57
 

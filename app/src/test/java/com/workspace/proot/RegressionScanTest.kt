@@ -849,6 +849,85 @@ class RegressionScanTest {
         assertTrue("三个数字要用插值带进去：\n$ext", ext.contains("var L=\$limit, T=\$textChars, TC=\$LINK_TEXT_CHARS;"))
     }
 
+    // ---------- 5.9.58：高刷走 preferredDisplayModeId，并给出实测读数 ----------
+
+    // ⚠ 以下三条 5.9.58 的锁，判据字符串必须和**代码行**逐字一致（codeOnly 剥掉 // 与 KDoc，
+    //    注释里写同样的字不算数）。改 DisplayRefresh.kt / MainActivity.kt 的这几行时，
+    //    要连这里的判据一起改 —— 否则锁会在你完全没改行为的情况下红给你看。
+
+    @Test
+    fun `高刷必须指定显示模式而不是只给速率提示`() {
+        val m = codeOnly("MainActivity.kt")
+        assertTrue(
+            "MainActivity 必须设 preferredDisplayModeId（5.9.58 换掉弱提示的那次）：\n$m",
+            m.contains("preferredDisplayModeId = target.modeId")
+        )
+        assertTrue(
+            "preferredRefreshRate 必须和选中的模式对齐，不能各写各的：\n$m",
+            m.contains("preferredRefreshRate = target.hz")
+        )
+        // 走纯函数挑模式 —— 直接在窗口属性上写死 120 就不锁分辨率了
+        assertTrue(
+            "模式必须由 DisplayRefresh.pickTarget 挑：\n$m",
+            m.contains("DisplayRefresh.pickTarget(")
+        )
+        assertFalse(
+            "不许再写死 120f —— 设备支持 144 就该给 144：\n$m",
+            m.contains("preferredRefreshRate = 120f")
+        )
+    }
+
+    @Test
+    fun `高刷请求不许换分辨率也不许反复切模式`() {
+        // 这两条是这个改动能造成的最大风险，必须在**纯函数**那一侧钉住：
+        // 换分辨率 → 整个版式重排；反复切模式 → 非无缝切换可能黑屏一秒上下。
+        val d = codeOnly("DisplayRefresh.kt")
+        assertTrue(
+            "必须只认分辨率逐像素一致的模式：\n$d",
+            d.contains("modes.filter { it.width == currentW && it.height == currentH }")
+        )
+        assertTrue(
+            "已经最优时必须返回不动（modeId=0），否则白挨一次切模式黑屏：\n$d",
+            d.contains("if (best.hz <= currentHz + EPS_HZ) return keep")
+        )
+        // 坏模式（0Hz / 负数）不许被选成"最高档"
+        assertTrue(
+            "必须先滤掉非正刷新率的坏模式：\n$d",
+            d.contains("sameSize.filter { it.hz > 0f }")
+        )
+        // 调用方只许调一次。⚠ 判据数的是**调用点**（前面没有 `fun `），
+        // 不能连函数**定义**一起数 —— 定义那行是 `private fun requestHighRefresh() {`，
+        // 把它算进去会永远得 2（本条锁第一版就这么翻车了）。
+        val m = codeOnly("MainActivity.kt")
+        assertEquals(
+            "requestHighRefresh() 只许被调一次（多处调用会反复切模式）：\n$m",
+            1,
+            Regex("""(?<!fun )requestHighRefresh\(\)""").findAll(m).count()
+        )
+    }
+
+    @Test
+    fun `刷新率读数要如实显示实测值并标出没生效`() {
+        // 没有读数就只能猜厂商有没有理我们 —— 这条锁是为了不让读数被悄悄删掉。
+        val s = codeOnly("StorageDialog.kt")
+        assertTrue(
+            "系统信息卡必须把读数挂上去：\n$s",
+            s.contains("refreshValue = addInfoRow(")
+        )
+        assertTrue(
+            "读数必须在 load() 里被填上：\n$s",
+            s.contains("refreshValue.text = refreshText()")
+        )
+        assertTrue(
+            "读数必须拿实际 display 的 refreshRate，不是我们请求的值：\n$s",
+            s.contains("?.refreshRate")
+        )
+        assertTrue(
+            "低于请求值时必须标出未生效：\n$s",
+            s.contains("sysinfo_refresh_fmt_low")
+        )
+    }
+
     // ---------- 5.9.57：快捷键重排 + 请求 120Hz ----------
 
     @Test
@@ -881,19 +960,14 @@ class RegressionScanTest {
     }
 
     @Test
-    fun `主界面必须向系统请求120Hz`() {
-        // 5.9.57：用户反馈自动模式下这个 app 只有 60Hz。
-        // `preferredRefreshRate` 是**建议**不是命令（设备不支持会自动落回 60，
-        // 省电/发热也可以驳回），所以这条锁只锁"必须去请求"这一件事，不锁结果。
+    fun `主界面必须向系统请求高刷`() {
+        // 结果因 ROM 而异，所以这条锁只锁"必须去请求"这件事，不锁结果。
+        // 实测值由终端介绍页的刷新率读数负责呈现（见「刷新率读数要如实显示实测值并标出没生效」）。
+        // 速率与模式的具体判据在「高刷必须指定显示模式而不是只给速率提示」那条。
         val m = codeOnly("MainActivity.kt")
         assertTrue(
-            "MainActivity 必须请求 preferredRefreshRate = 120f：\n$m",
-            m.contains("preferredRefreshRate = 120f")
-        )
-        assertEquals(
-            "preferredRefreshRate 只许设一次，别在别处又设一遍：\n$m",
-            1,
-            Regex("preferredRefreshRate").findAll(m).count()
+            "onCreate 必须调 requestHighRefresh()：\n$m",
+            Regex("""(?<!fun )requestHighRefresh\(\)""").findAll(m).count() == 1
         )
     }
 

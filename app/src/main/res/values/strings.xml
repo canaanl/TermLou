@@ -110,6 +110,11 @@
     <string name="sysinfo_version">版本</string>
     <string name="sysinfo_codename">代号</string>
     <string name="sysinfo_arch">架构</string>
+    <!-- 5.9.58：实测刷新率读数。拿到手就能判断"高刷请求到底生效没有"，
+         不用再去翻系统设置猜。低于请求值时用带"请求"后缀的那条，一眼看出被驳回。 -->
+    <string name="sysinfo_refresh">刷新率</string>
+    <string name="sysinfo_refresh_fmt">%1$.0f Hz</string>
+    <string name="sysinfo_refresh_fmt_low">%1$.0f Hz（请求 %2$.0f，未生效）</string>
     <string name="sysinfo_unknown">未知</string>
     <string name="lang_title">语言</string>
 
