@@ -7,7 +7,8 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
-| **5.9.61** | 5961 | **修 5.9.58 起就存在的致命 bug：我们一直在向系统请求 60Hz，不是请求失败** |
+| **5.9.62** | 5962 | **修 ARR 投票是死代码（反射 int 重载，实际是 float）+ 每层请求无条件留痕** |
+| **5.9.61** | 5961 | **修 5.9.58 起就存在的致命 bug：请求值取成了当前值** |
 | **5.9.60** | 5960 | **高刷换成三层投票：SurfaceView 显式帧率 + Android 15+ ARR 投 High 票（覆盖 13/14/15/16）；撤销 5.9.59 的游戏伪装** |
 | **5.9.59** | 5959 | **（已撤销）按游戏的方式进厂商高刷名单** |
 | **5.9.58** | 5958 | **高刷改用 preferredDisplayModeId（指定显示模式）+ 系统信息加实测刷新率读数** |
@@ -19,6 +20,100 @@
 | **5.9.52** | 5952 | **修：状态栏特征字的立方体转向与页面滑动方向相反** |
 | **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
+
+## 5.9.62
+
+5.9.61 依然无效。这一版找到了**三个根因**，其中一个是铁证级的死代码。
+
+### 根因一（铁证）：ARR 投票从写下的第一天就是死代码
+
+`View.setRequestedFrameRate` 的参数类型是 **`float`**，而"分类"常量是**负的 float**。
+AOSP 源码原文：
+
+```java
+public static final float REQUESTED_FRAME_RATE_CATEGORY_DEFAULT       = 0.0f;
+public static final float REQUESTED_FRAME_RATE_CATEGORY_NO_PREFERENCE = -1;
+public static final float REQUESTED_FRAME_RATE_CATEGORY_LOW           = -2;
+public static final float REQUESTED_FRAME_RATE_CATEGORY_NORMAL        = -3;
+public static final float REQUESTED_FRAME_RATE_CATEGORY_HIGH          = -4;
+```
+
+而 5.9.60 / 5.9.61 写的是：
+
+```kotlin
+View::class.java.getMethod("setRequestedFrameRate", Int::class.javaPrimitiveType)  // int
+m.invoke(root, DisplayRefresh.CATEGORY_HIGH)                                       // 4
+```
+
+**两处都错。** `Class.getMethod` **要求参数类型精确匹配、不做隐式转换** ——
+拿 `(int)` 去配 `(float)` 的方法，必然抛 `NoSuchMethodException`，
+被 `runCatching` 吞掉，**什么也没发生**。ARR 那一层整整两版没投过票。
+
+**修法**：反射 `float` 重载，直接传**正数的目标帧率**（文档：正数=期望帧率，
+负数=分类）。这同时绕开了那组**会随版本变化**的常量 ——
+它们从 `-30/-60/-120` 改成了 `-2/-3/-4`，不该依赖。
+
+### 根因二：我拿猜测写了一条锁，把错误锁死了
+
+```kotlin
+assertEquals("REQUESTED_FRAME_RATE_CATEGORY_HIGH 必须是 4", 4, DisplayRefresh.CATEGORY_HIGH)
+```
+
+注释里还写着"值取自 AOSP View.java" —— 装成查过的样子，其实没查。
+**这条锁一直在保护那个错值。** 本仓库历史上吃过一次"扫源码的锁给坏设计盖章"，
+这次原样又犯了一遍。已连同该常量一起删除。
+
+### 根因三（真正的病根）：反射失败全是隐形的
+
+`runCatching` 兜死没错（不能崩），但代价是 —— 方法不存在、参数类型不对、常量非法，
+**全都无声无息**。"方法不存在"和"调用成功"在代码上长得一模一样。
+
+所以本版把"调用"和"记录"绑成一个动作 `noteLayer`：**不可能只调用不记录**。
+每层的三种结局分开记，介绍页直接显示：
+
+| 显示 | 含义 |
+|---|---|
+| `OK` | 请求确实发出去了（发出 ≠ 系统采纳，但至少不是死代码） |
+| `无此方法` | 这台设备/这个版本没有该 API，那层等于没有 |
+| `抛Xxx` | 方法在，但调用出错 |
+
+这是对**工作方式**的修补，不是装饰 —— 没有它，下一次还会写出跑不到的代码而不知道。
+
+### 顺带修掉两处
+
+- **请求值不再查设备**：官方文档明确 *"应用无需考虑实际支持的显示屏刷新率即可安全地
+  调用 `setFrameRate()`……设备没有更适合的匹配则会保持当前的显示刷新率。"*
+  先查设备再决定请求值本身就是反模式 —— 而且正是它把"当前值 60"引了进来。
+  现在恒为 `DESIRED_HZ = 120f`。
+- **不再假设 API 级别**：5.9.59/61 用 `SDK_INT < 35` 把 `Window.setFrameRate` 挡在门外，
+  但那个门槛从来没验证过（文档给的 `VERSION_CODES.R` 判断已被 `android-34` 证伪）。
+  现在不设门槛，直接反射试，找不到由 `noteLayer` 记一笔。
+
+### 锁
+
+`RegressionScanTest` 重写为 5 条：必须反射 float 重载且不许用分类常量 /
+**每一层必须走 `noteLayer` 留痕** / 请求值恒为 `DESIRED_HZ` 不许传当前值 /
+不许再设没验证过的版本门槛 / 必须挂 SurfaceView 锚点。
+
+`DisplayRefreshTest` 删掉 6 条（含那条锁错值的）—— 它们锁的是已废弃的语义。
+
+### 验证
+
+- 全量测试 **782 绿**（app 650 + probe 79 + workspace 53）
+- 注入 2 次：把 float 改回 int（**这条正是五版都没抓到的那个 bug，一次就咬住**）/
+  摘掉 ARR 的留痕，均咬住并还原
+- release APK 签名 `de851a44…6e002`，与前几版一致，可直接覆盖安装
+
+### 装上后看介绍页那一行
+
+```
+高刷请求  窗口属性=OK  主窗=OK120  ARR=OK120  锚点=OK  ·  当前60 模式最高120 备选最高0 模式数1
+```
+
+- 四层全 `OK` 而刷新率仍 60 → 请求发出去了但系统不采纳，**不是死代码**，
+  下一步该看系统侧的投票（`adb shell dumpsys display`）
+- 某层显示 `无此方法` → 那层在这台机器上不存在，别指望它
+- `模式最高` / `备选最高` → 设备自己报的能力，和"我想要 120"无关
 
 ## 5.9.61
 

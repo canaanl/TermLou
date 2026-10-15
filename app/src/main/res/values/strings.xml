@@ -115,6 +115,9 @@
     <string name="sysinfo_refresh">刷新率</string>
     <string name="sysinfo_refresh_fmt">%1$.0f Hz</string>
     <string name="sysinfo_refresh_fmt_low">%1$.0f Hz（请求 %2$.0f，未生效）</string>
+    <!-- 5.9.62：每层高刷请求的成败。反射失败曾经是隐形的，连着三版写出执行不到的
+         代码还不知道 —— 这一行就是为了让它再也藏不住。 -->
+    <string name="sysinfo_refresh_layers">高刷请求</string>
     <string name="sysinfo_unknown">未知</string>
     <string name="lang_title">语言</string>
 

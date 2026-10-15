@@ -889,14 +889,13 @@ class RegressionScanTest {
 
     @Test
     fun `高刷必须挂在SurfaceView上而不是只改窗口属性`() {
-        // 本次的核心判据。窗口属性（preferredRefreshRate / preferredDisplayModeId）
-        // 是**最低优先级**的票，会被内容帧率检测直接压死 —— 5.9.57 与 5.9.58 就死在这。
-        // 唯一不受压制的路是 SurfaceView：官方文档明写"为 SurfaceView 和 TextureView
-        // 显式设置的帧率会被尊重并应用"，那正是游戏在用的。
+        // 窗口属性（preferredRefreshRate / preferredDisplayModeId）是**最低优先级**的票，
+        // 会被内容帧率检测直接压死 —— 5.9.57/5.9.58 就死在这。
+        // 官方文档明写"为 SurfaceView 和 TextureView 显式设置的帧率会被尊重并应用"。
         val d = codeOnly("DisplayRefresh.kt")
         assertTrue("必须对 Surface 调 setFrameRate：\n$d", d.contains(".setFrameRate("))
         assertTrue(
-            "必须用 SurfaceView 承载（独立图层才能绕开内容检测）：\n$d",
+            "必须用 SurfaceView 承载（独立图层才有独立投票）：\n$d",
             d.contains("SurfaceView(")
         )
         assertTrue(
@@ -911,75 +910,95 @@ class RegressionScanTest {
     }
 
     @Test
-    fun `Android15以上必须投ARR的High票`() {
-        // 官方文档：大多数 View 默认投 Normal 票（60Hz），系统取最高票。
-        // 不主动投 High，在 15/16 上必然锁 60 —— 与厂商无关。
+    fun `ARR投票必须反射float重载且不许用分类常量`() {
+        // ⚠ 5.9.62 的铁证根因：`View.setRequestedFrameRate` 的参数是 **float**，
+        //    分类常量是**负的 float**（HIGH = -4）。5.9.60/5.9.61 却反射 `(int)` 重载、
+        //    还传了 `4` —— `Class.getMethod` 要求参数类型精确匹配、不做隐式转换，
+        //    必然抛 NoSuchMethodException 被 runCatching 吞掉，**一次都没执行过**。
         val m = codeOnly("MainActivity.kt")
-        assertTrue(
-            "必须按 SDK_INT 把门（该方法是 API 35 才有）：\n$m",
-            m.contains("Build.VERSION.SDK_INT < 35")
-        )
         assertTrue("必须反射调 setRequestedFrameRate：\n$m", m.contains("\"setRequestedFrameRate\""))
         assertTrue(
-            "必须投 CATEGORY_HIGH 而不是 Normal：\n$m",
-            m.contains("DisplayRefresh.CATEGORY_HIGH")
+            "必须反射 float 重载，不是 int：\n$m",
+            m.contains("getMethod(\"setRequestedFrameRate\", Float::class.javaPrimitiveType)")
         )
-        assertTrue("反射必须 runCatching 兜死：\n$m", m.contains("runCatching"))
+        assertFalse(
+            "不许再反射 int 重载（参数类型不匹配就是死代码）：\n$m",
+            m.contains("getMethod(\"setRequestedFrameRate\", Int::class.javaPrimitiveType)")
+        )
+        assertTrue(
+            "必须传正数的目标帧率 —— 绕开那组随版本变化的分类常量：\n$m",
+            m.contains("m.invoke(rootLayout, hz)")
+        )
     }
 
     @Test
-    fun `升不动时速率提示必须置零而不是设成当前值`() {
-        // ⚠ 5.9.60 修过一半：preferredRefreshRate 置 0 了，但 SurfaceView 锚点那行
-        //    还在传 target.hz（= 当前值）。5.9.61 把两件事彻底分开，见下一条。
+    fun `每一层的高低刷请求都必须留痕`() {
+        // ⚠ 这才是 5.9.60/5.9.61 连着两版发不出票的真正病根：
+        //    runCatching 一兜，"方法不存在"和"调用成功"在代码上长得一模一样。
+        //    所以每层都必须走 noteLayer —— 它把"调用"和"记录"绑成一个动作，
+        //    不可能只调用不记录。
+        val m = codeOnly("MainActivity.kt")
+        for (layer in listOf("窗口属性", "主窗", "ARR", "锚点")) {
+            assertTrue(
+                "「$layer」这一层必须走 noteLayer 留痕：\n$m",
+                m.contains("noteLayer(\"$layer\")")
+            )
+        }
+        assertTrue(
+            "noteLayer 必须把「方法不存在」单独记出来（那是死代码的特征）：\n$m",
+            m.contains("catch (e: NoSuchMethodException)") && m.contains("\"无此方法\"")
+        )
+        assertTrue(
+            "noteLayer 必须无条件记成功，否则死代码和活代码分不出来：\n$m",
+            m.contains("DisplayRefresh.note(layer, \"OK\")")
+        )
+        assertTrue(
+            "介绍页必须显示出这些留痕：\n" + codeOnly("StorageDialog.kt"),
+            codeOnly("StorageDialog.kt").contains("DisplayRefresh.report")
+        )
+    }
+
+    @Test
+    fun `帧率请求不许再传当前值也不许写死分类常量`() {
+        // 5.9.58~5.9.60 的根因：请求值取成了"当前刷新率"，启动时屏幕 60 于是要 60。
+        // 5.9.61 修过一次，5.9.62 起请求值恒为 DESIRED_HZ，连设备都不查（官方文档背书）。
         val m = codeOnly("MainActivity.kt")
         assertFalse(
-            "帧率请求不许再传 target.hz —— 那是当前值，等于一直向系统要 60Hz：\n$m",
+            "帧率请求不许再传 target.hz（那是当前值）：\n$m",
             Regex("""(preferredRefreshRate|attachFrameRateAnchor|requestWindowFrameRate)\s*\(?[^)]*target\.hz""")
                 .containsMatchIn(m)
         )
-    }
-
-    @Test
-    fun `请求的帧率必须来自设备最高档而不是当前值`() {
-        // 这是 5.9.61 的核心判据。根因：`pickTarget()` 没事可做时返回的 hz 是**当前值**，
-        // 我们一路把它当"要请求的帧率"传了下去 —— 启动时屏幕 60，于是要 60。
-        // 结果永远是"刚好 60"，而不是 60/90/120 之间的某档。
-        val m = codeOnly("MainActivity.kt")
         assertTrue(
-            "请求值必须取自 bestSupportedHz（设备支持的最高档）：\n$m",
-            m.contains("val want = DisplayRefresh.bestSupportedHz(")
+            "请求值必须恒为 DESIRED_HZ：\n$m",
+            m.contains("val hz = DisplayRefresh.DESIRED_HZ")
         )
         assertTrue(
-            "preferredRefreshRate 必须报最高档：\n$m",
-            m.contains("preferredRefreshRate = want")
+            "preferredRefreshRate 必须报这个值：\n$m",
+            m.contains("preferredRefreshRate = hz")
         )
         assertTrue(
-            "主窗口 setFrameRate 也必须拿同一个最高档：\n$m",
-            m.contains("requestWindowFrameRate(want)")
+            "窗口表面必须报这个值：\n$m",
+            m.contains("requestWindowFrameRate(hz)")
         )
         assertTrue(
-            "SurfaceView 锚点也必须拿同一个最高档：\n$m",
-            m.contains("attachFrameRateAnchor(rootLayout, want)")
-        )
-        // pickTarget 现在只该用来决定 modeId，不该再产出帧率
-        assertTrue(
-            "pickTarget 的返回值只该取 modeId：\n$m",
-            m.contains("preferredDisplayModeId = target.modeId")
+            "锚点必须报这个值：\n$m",
+            m.contains("attachFrameRateAnchor(rootLayout, hz)")
         )
     }
 
     @Test
-    fun `必须调主窗口的setFrameRate而不是只靠锚点`() {
-        // AOSP SurfaceFlinger：图层投票的前提是"可见 + 活跃"。主窗口天然满足，
-        // 额外挂的 1×1 锚点图层不一定满足 —— 所以主窗口那条才是最可靠的一层。
+    fun `反射不许再设没验证过的版本门槛`() {
+        // 5.9.59/5.9.61 用 `SDK_INT < 35` 把 Window.setFrameRate 挡在门外，
+        // 但那个门槛从来没验证过 —— 文档给的 VERSION_CODES.R 判断也被 android-34 证伪了。
+        // 现在不设门槛，直接反射试：找得到就调，找不到就留痕。
         val m = codeOnly("MainActivity.kt")
-        assertTrue(
-            "必须反射调 Window.setFrameRate（作用在主窗口 surface 上）：\n$m",
-            m.contains("android.view.Window::class.java.getMethod(")
-        )
-        assertTrue(
-            "必须按 SDK_INT 把门（该方法是 API 35 才有）：\n$m",
+        assertFalse(
+            "不许再假设 Window.setFrameRate 的 API 级别：\n$m",
             m.contains("if (Build.VERSION.SDK_INT < 35) return")
+        )
+        assertTrue(
+            "必须直接反射调 Window.setFrameRate：\n$m",
+            m.contains("android.view.Window::class.java.getMethod(")
         )
         assertTrue("反射必须 runCatching 兜死：\n$m", m.contains("runCatching"))
     }

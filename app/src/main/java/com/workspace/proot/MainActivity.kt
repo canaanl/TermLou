@@ -317,129 +317,119 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 请求高刷（5.9.61）。
+     * 请求高刷（5.9.62）。**每一层的成败都会记进 [DisplayRefresh.report]**，
+     * 由终端介绍页显示 —— 反射失败不再无声无息，这是本版最重要的一条。
      *
-     * ## ⚠ 5.9.61 修掉一个从 5.9.58 起就一直存在的致命 bug
-     *
-     * 之前这里把 `pickTarget()` 的返回值同时用在了两件不同的事上：
-     *
-     * 1. `preferredDisplayModeId` —— **要不要切换显示模式**（一个 modeId）
-     * 2. `preferredRefreshRate` / `setFrameRate()` —— **请求什么帧率**（一个 float）
-     *
-     * 而 `pickTarget()` 在"没事可做"时返回的是 `Target(0, currentHz)` ——
-     * `currentHz` 是**打开 app 那一刻屏幕正在跑的刷新率**。于是：
-     *
-     * ```
-     * 启动时屏幕 60Hz → target.hz = 60 → 我们拿 60 去 setFrameRate()
-     * → 一个显式的 60 票 → 系统把我们钉死在 60
-     * ```
-     *
-     * **我们不是在"请求失败"，是五版以来一直在明确地、系统地要 60Hz。**
-     * 这解释了为什么结果永远是"刚好 60"，而不是 60/90/120 之间的某个值。
-     *
-     * 现在两件事彻底分开：[want] 恒等于设备支持的最高档（与当前值无关），
-     * [target.modeId] 只用来决定要不要锁显示模式。
-     *
-     * 机制与取舍写在 [DisplayRefresh] 的 KDoc 里，这里只负责调用。
+     * 请求值恒为 [DisplayRefresh.DESIRED_HZ]，**不查设备**。官方文档明确：
+     * *"应用无需考虑实际支持的显示屏刷新率即可安全地调用 `setFrameRate()`……
+     * 设备没有更适合的匹配则会保持当前的显示刷新率。"*
+     * 先查设备再决定请求值本身就是反模式 —— 而且正是它把"当前值 60"引了进来
+     * （5.9.58~5.9.60 的致命 bug）。
      */
     private fun requestHighRefresh() {
-        val dm = runCatching { getSystemService(DisplayManager::class.java) }.getOrNull() ?: return
-        val display = runCatching { dm.getDisplay(Display.DEFAULT_DISPLAY) }.getOrNull() ?: return
-        val cur = display.mode
-        val modes = display.supportedModes.map {
-            DisplayRefresh.Mode(it.modeId, it.physicalWidth, it.physicalHeight, it.refreshRate)
-        }
-        val target = DisplayRefresh.pickTarget(
-            cur.physicalWidth, cur.physicalHeight, display.refreshRate, modes
-        )
-        // ⚠ 要请求的帧率 = 设备支持的**最高档**，绝不是当前值。
-        val want = DisplayRefresh.bestSupportedHz(cur.physicalWidth, cur.physicalHeight, modes)
-        DisplayRefresh.requestedHz = want
-        if (want <= 0f) return
+        val dm = runCatching { getSystemService(DisplayManager::class.java) }.getOrNull()
+        val display = runCatching { dm?.getDisplay(Display.DEFAULT_DISPLAY) }.getOrNull()
+        val hz = DisplayRefresh.DESIRED_HZ
+        DisplayRefresh.requestedHz = hz
 
-        // 窗口属性：modeId 只管锁不锁显示模式；速率一律报最高档。
-        window.attributes = window.attributes.apply {
-            preferredDisplayModeId = target.modeId
-            preferredRefreshRate = want
+        if (display != null) {
+            val cur = display.mode
+            DisplayRefresh.noteDevice(
+                cur.physicalWidth, cur.physicalHeight, display.refreshRate,
+                cur.alternativeRefreshRates.toList(),
+                display.supportedModes.map {
+                    DisplayRefresh.Mode(it.modeId, it.physicalWidth, it.physicalHeight, it.refreshRate)
+                }
+            )
+        } else {
+            DisplayRefresh.noteDevice(0, 0, 0f, emptyList(), emptyList())
         }
 
-        // 主窗口 surface 的显式帧率（API 35+）—— 主窗口天然可见且活跃，
-        // 是最可靠的投票载体，官方给游戏用的就是这条。见 requestWindowFrameRate。
-        requestWindowFrameRate(want)
+        // 第一层：窗口属性。是最弱的一票，但无害，且在 13/14 空闲时有机会生效。
+        noteLayer("窗口属性") {
+            window.attributes = window.attributes.apply {
+                preferredDisplayModeId = 0          // 不锁显示模式（锁了反而可能连分辨率一起钉死）
+                preferredRefreshRate = hz
+            }
+        }
 
-        // ARR 投票（API 35+），见 requestArrVote。
-        requestArrVote()
+        // 第二层：主窗口 surface 的显式帧率 —— 官方给游戏用的那条，最可靠。
+        noteLayer("主窗") { requestWindowFrameRate(hz) }
 
-        // SurfaceView 锚点（API 30+，覆盖 13/14），同样传最高档。
-        DisplayRefresh.attachFrameRateAnchor(rootLayout, want)
+        // 第三层：ARR 投票（Android 15+）。
+        noteLayer("ARR") { requestArrVote(hz) }
+
+        // 第四层：SurfaceView 锚点（覆盖 13/14），内部自己留痕。
+        noteLayer("锚点") { DisplayRefresh.attachFrameRateAnchor(rootLayout, hz) }
     }
 
     /**
-     * 走官方给游戏用的那条 API：`Window.setFrameRate()`。
+     * 跑一层高刷请求并**无条件留痕**（5.9.62）。
      *
-     * ## 为什么它比 SurfaceView 锚点更可靠
+     * ## 为什么非得有这个东西
      *
-     * 它作用在**app 主窗口自己的 surface** 上 —— 那个图层天然可见、且每帧都在
-     * post buffer。AOSP 的 SurfaceFlinger 里图层投票的前提是"可见 + 活跃"，
-     * 主窗口永远满足，而额外挂的锚点图层不一定。
+     * 这是 5.9.60/5.9.61 连着两版发不出票的**真正病根**：反射用 `runCatching`
+     * 一兜，"方法不存在"和"调用成功"在代码上长得一模一样，跑起来也毫无区别。
+     * ARR 那层因为参数类型写了 int（实际是 float）抛了 `NoSuchMethodException`，
+     * 被吞掉，整整两版没投过票而我完全不知道。
      *
-     * ## 为什么用反射
+     * 所以把"调用 + 记录"合并成一个动作：**不可能只调用不记录**。
+     * 三种结局分开记，介绍页直接显示：
      *
-     * `Window#setFrameRate` 是 API 35 才有的，本项目 compileSdk=34，编译期引用不到。
-     * 硬升 compileSdk 要 AGP 8.3.2→8.7+ / Gradle 8.4→8.9+ 连环升级（本项目实测版本），
-     * 是本改动里唯一的大风险，因此不升。它是**公开 SDK 方法**（非 @hide），反射合法。
+     * - `OK` —— 请求确实发出去了（发出去 ≠ 系统采纳，但至少不是死代码）
+     * - `无此方法` —— 这台设备/这个版本没有该 API，那层等于没有
+     * - `抛Xxx` —— 方法在，但调用出错
+     */
+    private inline fun noteLayer(layer: String, block: () -> Unit) {
+        try {
+            block()
+            DisplayRefresh.note(layer, "OK")
+        } catch (e: NoSuchMethodException) {
+            DisplayRefresh.note(layer, "无此方法")
+        } catch (e: Throwable) {
+            DisplayRefresh.note(layer, "抛${e.javaClass.simpleName}")
+        }
+    }
+
+    /**
+     * 主窗口 surface 的显式帧率：`Window.setFrameRate()`。
      *
-     * ## 安全性
+     * ## ⚠ 5.9.62 起不再假设它的 API 级别
      *
-     * 三重保护：`SDK_INT < 35` 直接返回、方法找不到跳过、整段 `runCatching` 兜死。
-     * **不可能崩**，方法不存在时静默降级为其余几层。
-     *
-     * ⚠ 5.9.61：这一版传的是 `want`（设备最高档）。5.9.59 传的是 `target.hz`，
-     * 那个值可能是当前档（60），等于一直在投 60 的票。
+     * 5.9.59/5.9.61 用 `SDK_INT < 35` 把它挡在门外，但那个门槛**从来没有验证过** ——
+     * 文档给的 `VERSION_CODES.R` 判断也被 `android.jar` 证伪了（android-34 里没有这个方法）。
+     * 现在**不设版本门槛，直接反射试**：找得到就调，找不到由 [noteLayer] 记一笔。
      */
     private fun requestWindowFrameRate(hz: Float) {
-        if (Build.VERSION.SDK_INT < 35) return
-        if (hz <= 0f) return
-        runCatching {
-            val m = android.view.Window::class.java.getMethod(
-                "setFrameRate", Float::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
-            )
-            // FRAME_RATE_COMPATIBILITY_DEFAULT=0、CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS=1
-            m.invoke(window, hz, 0, 1)
-        }
+        val m = android.view.Window::class.java.getMethod(
+            "setFrameRate", Float::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
+        )
+        // FRAME_RATE_COMPATIBILITY_DEFAULT=0、CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS=1
+        m.invoke(window, hz, 0, 1)
     }
 
     /**
-     * Android 15+ 的 ARR 投票（5.9.60）。
+     * Android 15+ 的 ARR 投票：`View.setRequestedFrameRate()`。
      *
-     * ## 为什么非做不可
+     * ## ⚠ 5.9.62 修掉一个铁证级的死代码 bug
      *
-     * 官方文档：*"目前大多数 View 默认投 'Normal' 帧率，通常是 60Hz。要更高的帧率
-     * 需要用专门 API 改变偏好，系统一般取最高票。"* —— 不主动投 High 票，
-     * 在 15/16 上必然锁 60，**和厂商无关**。这就是本 app 在 Android 16 上只有 60 的原因。
+     * `setRequestedFrameRate` 的参数类型是 **`float`**，而分类常量是**负的 float**
+     * （`REQUESTED_FRAME_RATE_CATEGORY_HIGH = -4`）。5.9.60/5.9.61 却去找 `(int)`
+     * 重载、并传了 `4` —— `Class.getMethod` 要求参数类型**精确匹配、不做隐式转换**，
+     * 于是必然抛 `NoSuchMethodException` 被 `runCatching` 吞掉，**一次都没执行过**。
      *
-     * ## 为什么用反射
+     * 现在反射 `float` 重载，并直接传**正数的目标帧率**（文档：正数=期望帧率，
+     * 负数=分类）。这样彻底绕开那组**随版本变化**的常量（它们从 -30/-60/-120
+     * 改成了 -2/-3/-4），不依赖任何猜出来的数字。
      *
-     * `View.setRequestedFrameRate(int)` 是 API 35 才有的，本项目 compileSdk=34，编译期引用不到。
-     * 硬升 compileSdk 要 AGP 8.3.2→8.7+ / Gradle 8.4→8.9+ 连环升级（本项目实测版本），
-     * 是本次改动里唯一的大风险，因此不升。它是**公开 SDK 方法**（非 @hide），反射合法。
-     *
-     * ## 安全性
-     *
-     * 三重保护：`SDK_INT < 35` 直接返回、方法找不到跳过、整段 `runCatching` 兜死。
-     * **不可能崩**，方法不存在时静默降级为另两层。
+     * 同样**不设版本门槛**：找得到就调，找不到由 [noteLayer] 记一笔。
      */
-    private fun requestArrVote() {
-        if (Build.VERSION.SDK_INT < 35) return
-        if (!::rootLayout.isInitialized) return
-        val root = rootLayout
-        runCatching {
-            val m = android.view.View::class.java.getMethod("setRequestedFrameRate", Int::class.javaPrimitiveType)
-            // REQUESTED_FRAME_RATE_CATEGORY_HIGH = 4（与 AOSP 一致，见 DisplayRefresh 同名常量）
-            m.invoke(root, DisplayRefresh.CATEGORY_HIGH)
-            m.invoke(window.decorView, DisplayRefresh.CATEGORY_HIGH)
-        }
+    private fun requestArrVote(hz: Float) {
+        val m = android.view.View::class.java
+            .getMethod("setRequestedFrameRate", Float::class.javaPrimitiveType)
+        m.invoke(rootLayout, hz)
+        m.invoke(window.decorView, hz)
     }
 
     /**

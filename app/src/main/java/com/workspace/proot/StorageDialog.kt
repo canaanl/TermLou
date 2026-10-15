@@ -49,6 +49,7 @@ class SystemInfoCardView(
     private lateinit var codenameValue: TextView
     private lateinit var archValue: TextView
     private lateinit var refreshValue: TextView
+    private lateinit var refreshLayersValue: TextView
 
     private var loadJob: Job? = null
 
@@ -88,6 +89,8 @@ class SystemInfoCardView(
         archValue = addInfoRow(leftCol, ctx.getString(R.string.sysinfo_arch), keyColor, density)
         // 5.9.58：实测刷新率。用来当场判断"高刷请求生效没有"，不必再翻系统设置。
         refreshValue = addInfoRow(leftCol, ctx.getString(R.string.sysinfo_refresh), keyColor, density)
+        // 5.9.62：每层高刷请求的成败。反射失败曾经是隐形的，这一行让它藏不住。
+        refreshLayersValue = addInfoRow(leftCol, ctx.getString(R.string.sysinfo_refresh_layers), keyColor, density)
         columns.addView(leftCol, LinearLayout.LayoutParams(
             0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
         ))
@@ -189,6 +192,29 @@ class SystemInfoCardView(
         }
     }
 
+    /**
+     * 每层高刷请求的成败（5.9.62）。**这一行是排查工具，不是装饰。**
+     *
+     * 反射失败是隐形的：`runCatching` 一兜，方法不存在和调用成功在代码上长得一样。
+     * 5.9.60/5.9.61 就是这样写下了执行不到的代码还以为它在工作 —— ARR 那层的
+     * 参数类型该是 float，我反射的是 int，必然抛 NoSuchMethodException，被吞掉，
+     * 连着两版没投票。所以每层都留痕，成败都报。
+     *
+     * 读法：
+     * - `无此方法` → 这台设备/这个版本没有该 API，那层等于没有
+     * - `抛xxx` → 方法在，但调用出错
+     * - `OK` → 请求确实发出去 了（发出去不等于系统采纳，但至少不是死代码）
+     */
+    private fun refreshLayerText(): String {
+        val r = DisplayRefresh.report
+        val cap = DisplayRefresh.deviceCapability
+        val parts = listOfNotNull(
+            r.ifBlank { null },
+            cap.ifBlank { null }
+        )
+        return parts.joinToString("  ·  ").ifBlank { ctx.getString(R.string.sysinfo_unknown) }
+    }
+
     /** 异步加载占用与发行版数据；数据到达后 setData + startSweep（饼图进入动画）。 */
     fun load(scope: CoroutineScope): Job {
         loadJob?.cancel()
@@ -212,6 +238,7 @@ class SystemInfoCardView(
                     codenameValue.text = distro?.codename?.ifBlank { unknown } ?: unknown
                     archValue.text = abi
                     refreshValue.text = refreshText()
+                    refreshLayersValue.text = refreshLayerText()
 
                     val fStr = ctx.getString(R.string.storage_file_fmt, formatBytes(fileBytes))
                     fileLabel.text = SpannableString(fStr).apply {
