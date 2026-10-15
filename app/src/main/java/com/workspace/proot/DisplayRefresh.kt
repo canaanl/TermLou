@@ -8,7 +8,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 
 /**
- * 显示模式挑选 + 高刷三层投票（5.9.60）。
+ * 显示模式挑选 + 高刷四层投票（5.9.61）。
  *
  * ## 前四次为什么全都没用 —— 机制在这一段，不要再走回头路
  *
@@ -25,26 +25,33 @@ import android.widget.FrameLayout
  * 永远是最弱的那一票，会被内容检测直接压死 —— **这就是前两次无效的真正原因**，
  * 与厂商白名单无关。
  *
- * ## 三层叠加，各覆盖不同版本
- *
- * **第一层 · `SurfaceView` 显式帧率（API 30+，覆盖 13/14/15/16）**
- * 官方文档：*"为 `SurfaceView` 和 `TextureView` 显式设置的帧率会被尊重并应用。"*
- * 它有独立图层、独立 BufferQueue，投票不受内容检测压制 —— **这正是游戏在用的路**。
- * 微信/浏览器能到 90 也在这里：它们有 `SurfaceView`，而本 app 此前一个都没有。
+ * **第一层 · `Window.setFrameRate()`（API 35+，覆盖 15/16）**
+ * 官方给游戏用的那条 API。它作用在**app 主窗口自己的 surface** 上 ——
+ * 那个图层天然可见、且每帧都在 post buffer。AOSP 的 SurfaceFlinger 里图层投票的前提
+ * 就是"可见 + 活跃"，主窗口永远满足。**这是最可靠的一层。**
  *
  * **第二层 · `View.setRequestedFrameRate(HIGH)`（API 35+，覆盖 15/16）**
  * Android 15 的 ARR：*"目前大多数 View 默认投 Normal 帧率，通常是 60Hz。
  * 要更高的帧率需要用专门 API 改变偏好，系统一般取最高票。"*
- * 不主动投 High 就必然锁 60，**和厂商无关**。本 app 在 Android 16 上只有 60 就是这条。
+ * 不主动投 High 就必然锁 60，**和厂商无关**。
  *
- * **第三层 · 窗口属性（覆盖 13/14）**
+ * **第三层 · `SurfaceView` 显式帧率（API 30+，覆盖 13/14）**
+ * 官方文档：*"为 `SurfaceView` 和 `TextureView` 显式设置的帧率会被尊重并应用。"*
+ * 13/14 还没有 `Window.setFrameRate`，靠它补位。微信/浏览器能到 90 也在这里：
+ * 它们有 `SurfaceView`，而本 app 此前一个都没有。
+ *
+ * **第四层 · 窗口属性（覆盖 13/14）**
  * 低版本没有 ARR。空闲时内容检测投"无偏好"，此时窗口请求才有机会生效。
  *
- * ## ⚠ 5.9.60 修掉 5.9.58 自己埋的雷
+ * ## ⚠ 5.9.61 修掉一个从 5.9.58 起就一直存在的致命 bug
  *
- * 5.9.58 写的是 `preferredRefreshRate = target.hz`，而 `pickTarget` 在没有更好档位时
- * 返回的 `hz` 是**当前值**。于是没得升的时候，它反而在向系统要 60Hz —— 本该"不表态"，
- * 却变成了"要 60"。现在没得升一律设 0（0 = 不表态）。
+ * 5.9.58 把 `pickTarget()` 的返回值同时当成了"要不要切显示模式"和"请求什么帧率"。
+ * 而它在没事可做时返回的 `hz` 是**当前正在跑的刷新率** —— 启动时通常就是 60。
+ * 于是我们一路把 60 传给了 `setFrameRate()`：**不是在"请求失败"，
+ * 而是四版以来一直在明确地、系统地要 60Hz。** 这解释了为什么结果永远是"刚好 60"。
+ *
+ * 现在彻底分开：请求一律用 [bestSupportedHz]（设备最高档），与当前值无关；
+ * `pickTarget().modeId` 只用来决定要不要锁显示模式。
  *
  * ## 5.9.60 撤掉 5.9.59 的 isGame
  *
@@ -104,15 +111,40 @@ object DisplayRefresh {
     }
 
     /**
+     * 要**请求**的帧率：同分辨率模式里的最高档。
+     *
+     * ## ⚠ 这是 5.9.61 修掉的那个致命 bug 的正解
+     *
+     * 5.9.58 ~ 5.9.60 把 `pickTarget()` 的返回值同时当成了"要不要切显示模式"和
+     * "请求什么帧率"两件事。而它在没事可做时返回的 `hz` 是**当前正在跑的刷新率** ——
+     * 启动时通常就是 60。于是我们一路把 60 传给了 `setFrameRate()`，
+     * **明确地、系统地要 60Hz**。结果永远是"刚好 60"，而不是 60/90/120 之间的某档。
+     *
+     * 这个函数把两件事彻底分开：**请求永远是设备支持的最高档，与当前值无关。**
+     *
+     * - 仍然只认**分辨率逐像素一致**的模式（换分辨率会让版式重排）
+     * - 滤掉非正刷新率的坏模式
+     * - 没有同分辨率模式时返回 0，调用方据此静默放弃（不猜、不退化）
+     */
+    fun bestSupportedHz(currentW: Int, currentH: Int, modes: List<Mode>): Float {
+        if (currentW <= 0 || currentH <= 0 || modes.isEmpty()) return 0f
+        return modes
+            .filter { it.width == currentW && it.height == currentH && it.hz > 0f }
+            .maxOfOrNull { it.hz } ?: 0f
+    }
+
+    /**
      * 第一层：往 [parent] 里挂一个 1×1 的 [SurfaceView] 并对它设显式帧率。
      *
-     * 这是唯一一条**不受内容帧率检测压制**的路，也是游戏真正在用的那条。
+     * ⚠ 5.9.61：这个锚点是**第二顺位**，不如 `Window.setFrameRate()` 可靠 ——
+     * AOSP 的 SurfaceFlinger 里图层投票的前提是"可见 + 活跃"，主窗口天然满足，
+     * 额外挂的图层不一定。保留它是为了覆盖 13/14（那两版还没有 `Window.setFrameRate`）。
      *
      * 尺寸取 1×1 而不是铺满：铺满会多出一个全屏图层，白费合成开销；
      * 而帧率投票只看这个 Surface 有没有显式 `setFrameRate`，与尺寸无关。
      *
      * 全程 `runCatching` 兜死 —— 拿不到 Surface / 底层不支持时静默跳过，
-     * 另两层仍然生效。
+     * 其余几层仍然生效。
      */
     fun attachFrameRateAnchor(parent: ViewGroup, hz: Float) {
         if (hz <= 0f) return

@@ -7,6 +7,7 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.61** | 5961 | **修 5.9.58 起就存在的致命 bug：我们一直在向系统请求 60Hz，不是请求失败** |
 | **5.9.60** | 5960 | **高刷换成三层投票：SurfaceView 显式帧率 + Android 15+ ARR 投 High 票（覆盖 13/14/15/16）；撤销 5.9.59 的游戏伪装** |
 | **5.9.59** | 5959 | **（已撤销）按游戏的方式进厂商高刷名单** |
 | **5.9.58** | 5958 | **高刷改用 preferredDisplayModeId（指定显示模式）+ 系统信息加实测刷新率读数** |
@@ -18,6 +19,108 @@
 | **5.9.52** | 5952 | **修：状态栏特征字的立方体转向与页面滑动方向相反** |
 | **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
+
+## 5.9.61
+
+前四版（5.9.58 ~ 5.9.60）全部无效。**根因不在系统，在本项目自己的代码里 ——
+从 5.9.58 起，我们一直在明确地、系统地请求 60Hz。**
+
+### 根因：把两件事搅成了一件
+
+`pickTarget()` 的职责是**"要不要切换显示模式"**，返回一个 `modeId`。
+但 5.9.58 ~ 5.9.60 把它的返回值 `hz` **同时**用在了"要请求什么帧率"上：
+
+```kotlin
+val target = DisplayRefresh.pickTarget(...)   // 没事可做时返回 Target(0, 当前Hz)
+window.attributes.preferredRefreshRate = target.hz        // ← 当前值
+DisplayRefresh.attachFrameRateAnchor(rootLayout, target.hz) // ← 同样是当前值
+requestWindowFrameRate(target.hz)                           // ← 同样是当前值
+```
+
+而 `pickTarget()` 在"没有更高档位可升"时返回的 `hz` 是 **`currentHz` ——
+打开 app 那一刻屏幕正在跑的刷新率**。冷启动时那基本就是 60。于是：
+
+```
+启动时屏幕 60Hz → target.hz = 60 → 拿 60 去 setFrameRate()
+→ 一个显式的 60 票 → 系统把我们钉死在 60
+```
+
+**这不是"请求失败"，是四版以来一直在主动要 60。**
+这也精确解释了为什么结果**永远刚好是 60**，而不是 60/90/120 之间的某个值 ——
+一个失败的请求不会这么稳定地对齐到 60。
+
+5.9.60 只把 `preferredRefreshRate` 改成了 0，**忘了锚点那行和 `Window.setFrameRate`
+还在传 `target.hz`**，所以完全没效果。
+
+### 修法：两件事彻底分开
+
+新增纯函数 `DisplayRefresh.bestSupportedHz()` —— **要请求的帧率 = 同分辨率模式里的最高档，
+与当前值完全无关**。
+
+```kotlin
+val target = DisplayRefresh.pickTarget(...)      // 只用来决定 modeId
+val want   = DisplayRefresh.bestSupportedHz(...) // 恒为设备最高档
+window.attributes.preferredRefreshRate = want
+requestWindowFrameRate(want)                     // 官方给游戏用的那条
+requestArrVote()                                 // Android 15+ ARR
+DisplayRefresh.attachFrameRateAnchor(rootLayout, want)
+```
+
+### 顺带把最可靠的一层放回第一顺位
+
+查 AOSP 的 SurfaceFlinger 源码，图层投票有个硬前提：
+
+```cpp
+// Non-visible layers should now be inactive in LayerHistory.
+if (flags::misc1() && !info.isVisible()) { return false; }
+```
+
+**图层必须可见 + 活跃才有投票权。** app 主窗口的 surface 天然满足（每帧都在 post buffer），
+而 5.9.60 额外挂的那个 1×1 锚点图层并不一定满足 —— 而且我从头到尾没往里画过东西，
+它很可能根本没在投票。
+
+所以 5.9.61 把 `Window.setFrameRate()`（API 35+，直接作用在主窗口 surface 上，
+官方给游戏用的就是这条）放回第一顺位，SurfaceView 锚点降为给 13/14 补位。
+
+### 四层覆盖
+
+| 层 | API | 覆盖 |
+|---|---|---|
+| 1 | `Window.setFrameRate()`（反射，API 35+） | 15/16 —— 最可靠 |
+| 2 | `View.setRequestedFrameRate(HIGH)`（反射，API 35+） | 15/16 的 ARR |
+| 3 | `Surface.setFrameRate()` on SurfaceView（API 30+） | 13/14 补位 |
+| 4 | `preferredRefreshRate` / `preferredDisplayModeId` | 13/14 空闲时 |
+
+### 锁
+
+新增 `DisplayRefreshTest` 5 条锁 `bestSupportedHz`：取最高档而非当前档 /
+**请求值不受当前档位影响**（同一组模式改"当前多少"结果必须一模一样）/
+同样只认同分辨率 / 坏模式不带偏 / 无同分辨率模式返回 0 而不猜。
+
+`RegressionScanTest` 新增 2 条 + 改写 1 条：
+帧率请求不许再传 `target.hz` / 请求值必须来自 `bestSupportedHz` 且三处调用都用 `want` /
+必须调主窗口 `setFrameRate`。全部注入验证过 —— 其中"把旧 bug 改回去"这一条
+**一次触发两条锁**（含纯函数那条），证明这个 bug 不会再溜回来。
+
+### 验证
+
+- 全量测试 **789 绿**（app 657 + probe 79 + workspace 53）
+- 注入 3 次（把锚点改回传 `target.hz` / 把 `bestSupportedHz` 改成返回第一个模式 /
+  删掉主窗口 `setFrameRate` 调用），全部咬住
+- 还原后与注入前备份**逐字节比对**两个文件，确认无残留
+- release APK 签名 `de851a44…6e002`，与前几版一致，可直接覆盖安装
+
+### 如果这一版还是 60
+
+那就不是请求的问题了，需要看系统自己的投票分解。项目里已有 adb
+（`android-sdk/platform-tools/adb.exe`），手机开 USB 调试连上后跑：
+
+```
+adb shell dumpsys display
+```
+
+它会把**每一个投票来源和它给的区间**打出来，谁把刷新率压在 60 一目了然。
+前五次我全靠推理、错了五次；这一步是读数据，不是猜。
 
 ## 5.9.60
 

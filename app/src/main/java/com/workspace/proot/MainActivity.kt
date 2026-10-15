@@ -317,36 +317,97 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 请求高刷（5.9.60）。三层叠加，各覆盖不同版本 —— 机制与取舍全写在
-     * [DisplayRefresh] 的 KDoc 里，这里只负责调用。
+     * 请求高刷（5.9.61）。
      *
-     * 拿不到 display / 模式列表为空 / 分辨率不匹配 —— 一律静默退回系统默认，不抛不崩。
+     * ## ⚠ 5.9.61 修掉一个从 5.9.58 起就一直存在的致命 bug
+     *
+     * 之前这里把 `pickTarget()` 的返回值同时用在了两件不同的事上：
+     *
+     * 1. `preferredDisplayModeId` —— **要不要切换显示模式**（一个 modeId）
+     * 2. `preferredRefreshRate` / `setFrameRate()` —— **请求什么帧率**（一个 float）
+     *
+     * 而 `pickTarget()` 在"没事可做"时返回的是 `Target(0, currentHz)` ——
+     * `currentHz` 是**打开 app 那一刻屏幕正在跑的刷新率**。于是：
+     *
+     * ```
+     * 启动时屏幕 60Hz → target.hz = 60 → 我们拿 60 去 setFrameRate()
+     * → 一个显式的 60 票 → 系统把我们钉死在 60
+     * ```
+     *
+     * **我们不是在"请求失败"，是五版以来一直在明确地、系统地要 60Hz。**
+     * 这解释了为什么结果永远是"刚好 60"，而不是 60/90/120 之间的某个值。
+     *
+     * 现在两件事彻底分开：[want] 恒等于设备支持的最高档（与当前值无关），
+     * [target.modeId] 只用来决定要不要锁显示模式。
+     *
+     * 机制与取舍写在 [DisplayRefresh] 的 KDoc 里，这里只负责调用。
      */
     private fun requestHighRefresh() {
         val dm = runCatching { getSystemService(DisplayManager::class.java) }.getOrNull() ?: return
         val display = runCatching { dm.getDisplay(Display.DEFAULT_DISPLAY) }.getOrNull() ?: return
         val cur = display.mode
+        val modes = display.supportedModes.map {
+            DisplayRefresh.Mode(it.modeId, it.physicalWidth, it.physicalHeight, it.refreshRate)
+        }
         val target = DisplayRefresh.pickTarget(
-            cur.physicalWidth, cur.physicalHeight, display.refreshRate,
-            display.supportedModes.map {
-                DisplayRefresh.Mode(it.modeId, it.physicalWidth, it.physicalHeight, it.refreshRate)
-            }
+            cur.physicalWidth, cur.physicalHeight, display.refreshRate, modes
         )
-        DisplayRefresh.requestedHz = target.hz
+        // ⚠ 要请求的帧率 = 设备支持的**最高档**，绝不是当前值。
+        val want = DisplayRefresh.bestSupportedHz(cur.physicalWidth, cur.physicalHeight, modes)
+        DisplayRefresh.requestedHz = want
+        if (want <= 0f) return
 
-        // 第三层（13/14）：窗口属性。⚠ 5.9.60 修掉一个自己埋的雷 ——
-        // 原来无更好档位时 preferredRefreshRate 被设成**当前值**（比如 60），
-        // 等于主动向系统要 60Hz。现在没得升就设 0（0 = 不表态，交给系统）。
+        // 窗口属性：modeId 只管锁不锁显示模式；速率一律报最高档。
         window.attributes = window.attributes.apply {
             preferredDisplayModeId = target.modeId
-            preferredRefreshRate = if (target.modeId == 0) 0f else target.hz
+            preferredRefreshRate = want
         }
 
-        // 第二层（15/16）：ARR 投票，见 requestArrVote。
+        // 主窗口 surface 的显式帧率（API 35+）—— 主窗口天然可见且活跃，
+        // 是最可靠的投票载体，官方给游戏用的就是这条。见 requestWindowFrameRate。
+        requestWindowFrameRate(want)
+
+        // ARR 投票（API 35+），见 requestArrVote。
         requestArrVote()
 
-        // 第一层（13~16）：SurfaceView 显式帧率，这是游戏在用的那条路。
-        DisplayRefresh.attachFrameRateAnchor(rootLayout, target.hz)
+        // SurfaceView 锚点（API 30+，覆盖 13/14），同样传最高档。
+        DisplayRefresh.attachFrameRateAnchor(rootLayout, want)
+    }
+
+    /**
+     * 走官方给游戏用的那条 API：`Window.setFrameRate()`。
+     *
+     * ## 为什么它比 SurfaceView 锚点更可靠
+     *
+     * 它作用在**app 主窗口自己的 surface** 上 —— 那个图层天然可见、且每帧都在
+     * post buffer。AOSP 的 SurfaceFlinger 里图层投票的前提是"可见 + 活跃"，
+     * 主窗口永远满足，而额外挂的锚点图层不一定。
+     *
+     * ## 为什么用反射
+     *
+     * `Window#setFrameRate` 是 API 35 才有的，本项目 compileSdk=34，编译期引用不到。
+     * 硬升 compileSdk 要 AGP 8.3.2→8.7+ / Gradle 8.4→8.9+ 连环升级（本项目实测版本），
+     * 是本改动里唯一的大风险，因此不升。它是**公开 SDK 方法**（非 @hide），反射合法。
+     *
+     * ## 安全性
+     *
+     * 三重保护：`SDK_INT < 35` 直接返回、方法找不到跳过、整段 `runCatching` 兜死。
+     * **不可能崩**，方法不存在时静默降级为其余几层。
+     *
+     * ⚠ 5.9.61：这一版传的是 `want`（设备最高档）。5.9.59 传的是 `target.hz`，
+     * 那个值可能是当前档（60），等于一直在投 60 的票。
+     */
+    private fun requestWindowFrameRate(hz: Float) {
+        if (Build.VERSION.SDK_INT < 35) return
+        if (hz <= 0f) return
+        runCatching {
+            val m = android.view.Window::class.java.getMethod(
+                "setFrameRate", Float::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
+            )
+            // FRAME_RATE_COMPATIBILITY_DEFAULT=0、CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS=1
+            m.invoke(window, hz, 0, 1)
+        }
     }
 
     /**

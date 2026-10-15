@@ -929,18 +929,59 @@ class RegressionScanTest {
 
     @Test
     fun `升不动时速率提示必须置零而不是设成当前值`() {
-        // ⚠ 5.9.60 修掉 5.9.58 自己埋的雷：当时写的是 preferredRefreshRate = target.hz，
-        // 而 pickTarget 在没得升时返回的 hz 是**当前值** —— 于是反过来向系统要 60Hz。
-        // 没得升必须置 0（0 = 不表态），绝不设成当前值。
+        // ⚠ 5.9.60 修过一半：preferredRefreshRate 置 0 了，但 SurfaceView 锚点那行
+        //    还在传 target.hz（= 当前值）。5.9.61 把两件事彻底分开，见下一条。
+        val m = codeOnly("MainActivity.kt")
+        assertFalse(
+            "帧率请求不许再传 target.hz —— 那是当前值，等于一直向系统要 60Hz：\n$m",
+            Regex("""(preferredRefreshRate|attachFrameRateAnchor|requestWindowFrameRate)\s*\(?[^)]*target\.hz""")
+                .containsMatchIn(m)
+        )
+    }
+
+    @Test
+    fun `请求的帧率必须来自设备最高档而不是当前值`() {
+        // 这是 5.9.61 的核心判据。根因：`pickTarget()` 没事可做时返回的 hz 是**当前值**，
+        // 我们一路把它当"要请求的帧率"传了下去 —— 启动时屏幕 60，于是要 60。
+        // 结果永远是"刚好 60"，而不是 60/90/120 之间的某档。
         val m = codeOnly("MainActivity.kt")
         assertTrue(
-            "没得升时 preferredRefreshRate 必须为 0：\n$m",
-            m.contains("preferredRefreshRate = if (target.modeId == 0) 0f else target.hz")
+            "请求值必须取自 bestSupportedHz（设备支持的最高档）：\n$m",
+            m.contains("val want = DisplayRefresh.bestSupportedHz(")
         )
-        assertFalse(
-            "不许再无条件写 preferredRefreshRate = target.hz：\n$m",
-            Regex("""preferredRefreshRate\s*=\s*target\.hz""").containsMatchIn(m)
+        assertTrue(
+            "preferredRefreshRate 必须报最高档：\n$m",
+            m.contains("preferredRefreshRate = want")
         )
+        assertTrue(
+            "主窗口 setFrameRate 也必须拿同一个最高档：\n$m",
+            m.contains("requestWindowFrameRate(want)")
+        )
+        assertTrue(
+            "SurfaceView 锚点也必须拿同一个最高档：\n$m",
+            m.contains("attachFrameRateAnchor(rootLayout, want)")
+        )
+        // pickTarget 现在只该用来决定 modeId，不该再产出帧率
+        assertTrue(
+            "pickTarget 的返回值只该取 modeId：\n$m",
+            m.contains("preferredDisplayModeId = target.modeId")
+        )
+    }
+
+    @Test
+    fun `必须调主窗口的setFrameRate而不是只靠锚点`() {
+        // AOSP SurfaceFlinger：图层投票的前提是"可见 + 活跃"。主窗口天然满足，
+        // 额外挂的 1×1 锚点图层不一定满足 —— 所以主窗口那条才是最可靠的一层。
+        val m = codeOnly("MainActivity.kt")
+        assertTrue(
+            "必须反射调 Window.setFrameRate（作用在主窗口 surface 上）：\n$m",
+            m.contains("android.view.Window::class.java.getMethod(")
+        )
+        assertTrue(
+            "必须按 SDK_INT 把门（该方法是 API 35 才有）：\n$m",
+            m.contains("if (Build.VERSION.SDK_INT < 35) return")
+        )
+        assertTrue("反射必须 runCatching 兜死：\n$m", m.contains("runCatching"))
     }
 
     @Test
