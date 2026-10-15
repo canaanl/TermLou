@@ -27,14 +27,14 @@ tasks.named("check") {
 
 android {
     namespace = "com.workspace.proot"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.workspace.proot"
         minSdk = 26
-        targetSdk = 34
-    versionCode = 5962
-    versionName = "5.9.62"
+        targetSdk = 35
+    versionCode = 5963
+    versionName = "5.9.63"
         ndk { abiFilters.add("arm64-v8a") }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

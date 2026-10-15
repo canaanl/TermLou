@@ -51,7 +51,7 @@ Beyond that core, TermLou also grew a complete **notes & todo system** (usable i
 |-------|------------|
 | Language | Kotlin 2.0.21 (modules `app` + `workspace`) + C++17 (JNI / NDK) |
 | Build | Gradle 8.4 / Android Gradle Plugin 8.3.2 / CMake 3.22.1 / NDK 25–26 |
-| Android | compileSdk 34 · targetSdk 34 · minSdk 26 · arm64-v8a |
+| Android | compileSdk 35 · targetSdk 35 · minSdk 26 · arm64-v8a |
 | Terminal | `com.github.termux.termux-app:terminal-view:v0.118.3` (upstream renderer + custom PTY) |
 | UI | Programmatic views (zero XML); `androidx.core-ktx` / `appcompat` / `material` / `recyclerview` / `lifecycle-runtime` |
 | Files | `androidx.documentfile` (SAF import), `commons-compress` (tar unpacking), `xz` (streaming tar.xz) |

@@ -881,164 +881,36 @@ class RegressionScanTest {
         assertTrue("三个数字要用插值带进去：\n$ext", ext.contains("var L=\$limit, T=\$textChars, TC=\$LINK_TEXT_CHARS;"))
     }
 
-    // ---------- 5.9.60：高刷三层投票（SurfaceView / ARR / 窗口属性） ----------
-
-    // ⚠ 以下锁的判据字符串必须和**代码行**逐字一致（codeOnly 剥掉 // 与 KDoc，
-    //    注释里写同样的字不算数）。改 DisplayRefresh.kt / MainActivity.kt 这几行时，
-    //    要连判据一起改 —— 否则锁会在你完全没改行为的情况下红给你看。
+    // ---------- 5.9.63：targetSdk 35 + 退出强制 edge-to-edge ----------
 
     @Test
-    fun `高刷必须挂在SurfaceView上而不是只改窗口属性`() {
-        // 窗口属性（preferredRefreshRate / preferredDisplayModeId）是**最低优先级**的票，
-        // 会被内容帧率检测直接压死 —— 5.9.57/5.9.58 就死在这。
-        // 官方文档明写"为 SurfaceView 和 TextureView 显式设置的帧率会被尊重并应用"。
-        val d = codeOnly("DisplayRefresh.kt")
-        assertTrue("必须对 Surface 调 setFrameRate：\n$d", d.contains(".setFrameRate("))
+    fun `targetSdk必须是35并且所有主题都退出强制edge-to-edge`() {
+        // 5.9.63：把 targetSdk 34→35，**只动这一个变量**。
+        // 依据：同一台手机上能跑 90Hz 的普通应用声明的是 35，TermLou 声明的是 34 ——
+        // 系统对同一设备上的两个应用走两套策略，而它能从应用这边读到的东西里，
+        // 唯一对得上的差别就是 targetSdk（旧应用走兼容路径）。
+        //
+        // 代价：Android 15 起对 targetSdk≥35 的应用**强制 edge-to-edge**。
+        // 而 TermLou 是自绘顶栏和底栏的 —— 不处理就会顶到系统状态栏底下、压在手势条上。
+        // windowOptOutEdgeToEdgeEnforcement 是官方给 API 35 的退出通道，声明它界面才与
+        // 5.9.62 逐像素一致。**这两条是配套的**：少了 targetSdk 就测不出帧率；
+        // 少了退出开关，界面先坏，测出来的结果也就没法信。
+        //
+        // ⚠ 这个开关只对 targetSdk 35 有效。将来抬到 36 时它会被忽略，
+        //    那时必须先做 WindowInsets / ime 适配，而不是把它删掉了事。
+        val g = repoFile("app/build.gradle.kts").readText()
+        assertTrue("targetSdk 必须是 35：\n$g", g.contains("targetSdk = 35"))
         assertTrue(
-            "必须用 SurfaceView 承载（独立图层才有独立投票）：\n$d",
-            d.contains("SurfaceView(")
+            "compileSdk 必须跟着到 35（退出开关是 API 35 的属性）：\n$g",
+            g.contains("compileSdk = 35")
         )
-        assertTrue(
-            "必须是无缝切换，否则会黑屏：\n$d",
-            d.contains("CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS")
-        )
-        val m = codeOnly("MainActivity.kt")
-        assertTrue(
-            "MainActivity 必须挂上帧率锚点：\n$m",
-            m.contains("DisplayRefresh.attachFrameRateAnchor(")
-        )
-    }
-
-    @Test
-    fun `ARR投票必须反射float重载且不许用分类常量`() {
-        // ⚠ 5.9.62 的铁证根因：`View.setRequestedFrameRate` 的参数是 **float**，
-        //    分类常量是**负的 float**（HIGH = -4）。5.9.60/5.9.61 却反射 `(int)` 重载、
-        //    还传了 `4` —— `Class.getMethod` 要求参数类型精确匹配、不做隐式转换，
-        //    必然抛 NoSuchMethodException 被 runCatching 吞掉，**一次都没执行过**。
-        val m = codeOnly("MainActivity.kt")
-        assertTrue("必须反射调 setRequestedFrameRate：\n$m", m.contains("\"setRequestedFrameRate\""))
-        assertTrue(
-            "必须反射 float 重载，不是 int：\n$m",
-            m.contains("getMethod(\"setRequestedFrameRate\", Float::class.javaPrimitiveType)")
-        )
-        assertFalse(
-            "不许再反射 int 重载（参数类型不匹配就是死代码）：\n$m",
-            m.contains("getMethod(\"setRequestedFrameRate\", Int::class.javaPrimitiveType)")
-        )
-        assertTrue(
-            "必须传正数的目标帧率 —— 绕开那组随版本变化的分类常量：\n$m",
-            m.contains("m.invoke(rootLayout, hz)")
-        )
-    }
-
-    @Test
-    fun `每一层的高低刷请求都必须留痕`() {
-        // ⚠ 这才是 5.9.60/5.9.61 连着两版发不出票的真正病根：
-        //    runCatching 一兜，"方法不存在"和"调用成功"在代码上长得一模一样。
-        //    所以每层都必须走 noteLayer —— 它把"调用"和"记录"绑成一个动作，
-        //    不可能只调用不记录。
-        val m = codeOnly("MainActivity.kt")
-        for (layer in listOf("窗口属性", "主窗", "ARR", "锚点")) {
-            assertTrue(
-                "「$layer」这一层必须走 noteLayer 留痕：\n$m",
-                m.contains("noteLayer(\"$layer\")")
-            )
-        }
-        assertTrue(
-            "noteLayer 必须把「方法不存在」单独记出来（那是死代码的特征）：\n$m",
-            m.contains("catch (e: NoSuchMethodException)") && m.contains("\"无此方法\"")
-        )
-        assertTrue(
-            "noteLayer 必须无条件记成功，否则死代码和活代码分不出来：\n$m",
-            m.contains("DisplayRefresh.note(layer, \"OK\")")
-        )
-        assertTrue(
-            "介绍页必须显示出这些留痕：\n" + codeOnly("StorageDialog.kt"),
-            codeOnly("StorageDialog.kt").contains("DisplayRefresh.report")
-        )
-    }
-
-    @Test
-    fun `帧率请求不许再传当前值也不许写死分类常量`() {
-        // 5.9.58~5.9.60 的根因：请求值取成了"当前刷新率"，启动时屏幕 60 于是要 60。
-        // 5.9.61 修过一次，5.9.62 起请求值恒为 DESIRED_HZ，连设备都不查（官方文档背书）。
-        val m = codeOnly("MainActivity.kt")
-        assertFalse(
-            "帧率请求不许再传 target.hz（那是当前值）：\n$m",
-            Regex("""(preferredRefreshRate|attachFrameRateAnchor|requestWindowFrameRate)\s*\(?[^)]*target\.hz""")
-                .containsMatchIn(m)
-        )
-        assertTrue(
-            "请求值必须恒为 DESIRED_HZ：\n$m",
-            m.contains("val hz = DisplayRefresh.DESIRED_HZ")
-        )
-        assertTrue(
-            "preferredRefreshRate 必须报这个值：\n$m",
-            m.contains("preferredRefreshRate = hz")
-        )
-        assertTrue(
-            "窗口表面必须报这个值：\n$m",
-            m.contains("requestWindowFrameRate(hz)")
-        )
-        assertTrue(
-            "锚点必须报这个值：\n$m",
-            m.contains("attachFrameRateAnchor(rootLayout, hz)")
-        )
-    }
-
-    @Test
-    fun `反射不许再设没验证过的版本门槛`() {
-        // 5.9.59/5.9.61 用 `SDK_INT < 35` 把 Window.setFrameRate 挡在门外，
-        // 但那个门槛从来没验证过 —— 文档给的 VERSION_CODES.R 判断也被 android-34 证伪了。
-        // 现在不设门槛，直接反射试：找得到就调，找不到就留痕。
-        val m = codeOnly("MainActivity.kt")
-        assertFalse(
-            "不许再假设 Window.setFrameRate 的 API 级别：\n$m",
-            m.contains("if (Build.VERSION.SDK_INT < 35) return")
-        )
-        assertTrue(
-            "必须直接反射调 Window.setFrameRate：\n$m",
-            m.contains("android.view.Window::class.java.getMethod(")
-        )
-        assertTrue("反射必须 runCatching 兜死：\n$m", m.contains("runCatching"))
-    }
-
-    @Test
-    fun `帧率请求必须在视图树建好之后才发`() {
-        // 5.9.58/59 把它放在 onCreate 最前面，那时 rootLayout 还没建 ——
-        // SurfaceView 锚点根本无处可挂，那两版的锚点逻辑等于没跑。
-        val m = codeOnly("MainActivity.kt")
-        val setContent = m.indexOf("setContentView(rootLayout)")
-        // ⚠ 别用 String.indexOf(Regex) —— 它解析到的是本文件里的 private CharSequence 扩展，
-        //    编译不过（踩过一次）。要位置就用 Regex.find()。
-        val call = Regex("""(?<!fun )requestHighRefresh\(\)""").find(m)?.range?.first ?: -1
-        assertTrue("必须先 setContentView 再请求帧率：\n$m", setContent >= 0 && call > setContent)
-    }
-
-    @Test
-    fun `模式挑选不许换分辨率也不许反复切模式`() {
-        // 换分辨率 → 整个版式重排；反复切模式 → 非无缝切换可能黑屏一秒上下。
-        val d = codeOnly("DisplayRefresh.kt")
-        assertTrue(
-            "必须只认分辨率逐像素一致的模式：\n$d",
-            d.contains("modes.filter { it.width == currentW && it.height == currentH }")
-        )
-        assertTrue(
-            "已经最优时必须返回不动（modeId=0），否则白挨一次切模式黑屏：\n$d",
-            d.contains("if (best.hz <= currentHz + EPS_HZ) return keep")
-        )
-        assertTrue(
-            "必须先滤掉非正刷新率的坏模式：\n$d",
-            d.contains("sameSize.filter { it.hz > 0f }")
-        )
-        // 调用方只许调一次。⚠ 判据数的是**调用点**（前面没有 `fun `），
-        // 不能连函数**定义**一起数 —— 定义那行是 `private fun requestHighRefresh() {`，
-        // 把它算进去会永远得 2（本条锁第一版就这么翻车了）。
-        val m = codeOnly("MainActivity.kt")
+        val t = repoFile("app/src/main/res/values/themes.xml").readText()
+        // 四个主题（主界面 / 跳板 / 滑块 / 开关）一个都不能漏 —— 漏掉的那个界面会被系统栏压住。
         assertEquals(
-            "requestHighRefresh() 只许被调一次（多处调用会反复切模式）：\n$m",
-            1,
-            Regex("""(?<!fun )requestHighRefresh\(\)""").findAll(m).count()
+            "四个主题都要声明退出开关：\n$t",
+            4,
+            Regex("""<item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>""")
+                .findAll(t).count()
         )
     }
 
@@ -1053,35 +925,13 @@ class RegressionScanTest {
             "game_mode_config.xml 必须整个删掉，不是掏空",
             repoFileExists("app/src/main/res/xml/game_mode_config.xml")
         )
-        val d = codeOnly("DisplayRefresh.kt")
-        assertFalse("DisplayRefresh 里不许再读游戏模式：\n$d", d.contains("GameManager"))
+        // 5.9.63：原先这里还扫 DisplayRefresh.kt 有没有读游戏模式 —— 那个文件已随
+        // 5.9.57~5.9.62 的高刷补丁一起删除，判据改为直接扫介绍页源码。
         val s = codeOnly("StorageDialog.kt")
         assertFalse("介绍页里不许再有游戏模式读数：\n$s", s.contains("gameModeText"))
     }
 
-    @Test
-    fun `刷新率读数要如实显示实测值并标出没生效`() {
-        // 没有读数就只能猜厂商有没有理我们 —— 这条锁是为了不让读数被悄悄删掉。
-        val s = codeOnly("StorageDialog.kt")
-        assertTrue(
-            "系统信息卡必须把读数挂上去：\n$s",
-            s.contains("refreshValue = addInfoRow(")
-        )
-        assertTrue(
-            "读数必须在 load() 里被填上：\n$s",
-            s.contains("refreshValue.text = refreshText()")
-        )
-        assertTrue(
-            "读数必须拿实际 display 的 refreshRate，不是我们请求的值：\n$s",
-            s.contains("?.refreshRate")
-        )
-        assertTrue(
-            "低于请求值时必须标出未生效：\n$s",
-            s.contains("sysinfo_refresh_fmt_low")
-        )
-    }
-
-    // ---------- 5.9.57：快捷键重排 + 请求 120Hz ----------
+    // ---------- 5.9.57：快捷键重排 ----------
 
     @Test
     fun `快捷键上下两排的顺序不许回退`() {
@@ -1110,18 +960,6 @@ class RegressionScanTest {
         assertTrue("rowBottom 第 2 个必须是左箭头：\n$c", bottom[1].contains("\"\\u2190\""))
         assertTrue("rowBottom 第 3 个必须是下箭头：\n$c", bottom[2].contains("\"\\u2193\""))
         assertTrue("rowBottom 第 4 个必须是右箭头：\n$c", bottom[3].contains("\"\\u2192\""))
-    }
-
-    @Test
-    fun `主界面必须向系统请求高刷`() {
-        // 结果因 ROM 而异，所以这条锁只锁"必须去请求"这件事，不锁结果。
-        // 实测值由终端介绍页的刷新率读数负责呈现（见「刷新率读数要如实显示实测值并标出没生效」）。
-        // 速率与模式的具体判据在「高刷必须指定显示模式而不是只给速率提示」那条。
-        val m = codeOnly("MainActivity.kt")
-        assertTrue(
-            "onCreate 必须调 requestHighRefresh()：\n$m",
-            Regex("""(?<!fun )requestHighRefresh\(\)""").findAll(m).count() == 1
-        )
     }
 
     @Test

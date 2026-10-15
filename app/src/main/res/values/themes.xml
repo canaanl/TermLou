@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.TermLou" parent="Theme.AppCompat.NoActionBar" />
+    <!-- 5.9.63：targetSdk 34→35。
+         Android 15 起对 targetSdk≥35 的应用**强制 edge-to-edge**（setDecorFitsSystemWindows
+         默认关、状态栏/导航栏色失效），而 TermLou 是自绘顶栏和底栏的 —— 一旦不处理，
+         顶部内容会钻到系统状态栏底下、底部会压在手势条上。
+         windowOptOutEdgeToEdgeEnforcement 是官方为 API 35 提供的**退出通道**，
+         声明它可以让 targetSdk=35 的界面与 5.9.62 逐像素一致，把这次改动收成单变量。
+         ⚠ 这个开关**只对 targetSdk 35 有效**：抬到 36 时它会被系统忽略，
+         那时必须真的做 WindowInsets / ime 适配，不能再靠它。 -->
+    <style name="Theme.TermLou" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+    </style>
 
     <!-- 跳板窗口的"零可见"契约（启动器磁贴抽屉闪现根治，改出生不改寿命）：
          windowDisablePreview = 系统从创建层面就不给跳板建起始/预览窗（命令跳板同主题共用）；
@@ -16,12 +26,15 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:enforceStatusBarContrast">false</item>
         <item name="android:enforceNavigationBarContrast">false</item>
+        <!-- 同 Theme.TermLou：跳板也关掉强制 edge-to-edge，保持"每一帧都是 0 像素"的契约。 -->
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
     </style>
 
     <!-- 字号滑块：Material3 主题提供 M3 sliderStyle（竖条 handle 轨道/拇指），
          MaterialComponents 主题系只有 MD2 圆点样式。拇指尺寸走 M3 style 覆盖。 -->
     <style name="Theme.TermLou.Slider" parent="Theme.Material3.Dark.NoActionBar">
         <item name="sliderStyle">@style/Widget.TermLou.Slider</item>
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
     </style>
 
     <style name="Widget.TermLou.Slider" parent="Widget.Material3.Slider">
@@ -35,5 +48,7 @@
     <!-- 开关专用：Material3 主题提供 materialSwitchStyle（M3 thumb/track drawable），
          AppCompat/MaterialComponents 主题系均无此 attr，直接 new MaterialSwitch 会落空到
          代码默认（showText=true + 空 drawable → 崩溃/隐形）。开关文案由独立 TextView 承担。 -->
-    <style name="Theme.TermLou.Switch" parent="Theme.Material3.Dark.NoActionBar" />
+    <style name="Theme.TermLou.Switch" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+    </style>
 </resources>

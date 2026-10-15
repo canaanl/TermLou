@@ -7,6 +7,7 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.63** | 5963 | **targetSdk 34→35（对齐能跑高刷的普通应用）+ 删掉 5.9.57~5.9.62 全部高刷补丁** |
 | **5.9.62** | 5962 | **修 ARR 投票是死代码（反射 int 重载，实际是 float）+ 每层请求无条件留痕** |
 | **5.9.61** | 5961 | **修 5.9.58 起就存在的致命 bug：请求值取成了当前值** |
 | **5.9.60** | 5960 | **高刷换成三层投票：SurfaceView 显式帧率 + Android 15+ ARR 投 High 票（覆盖 13/14/15/16）；撤销 5.9.59 的游戏伪装** |
@@ -20,6 +21,91 @@
 | **5.9.52** | 5952 | **修：状态栏特征字的立方体转向与页面滑动方向相反** |
 | **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
+
+## 5.9.63
+
+### 换了方向：不再让应用"请求"，而是看**能工作的对照样本**
+
+5.9.57~5.9.62 六版都在"让应用主动请求高刷"上打转，全部无效。
+这一版改用对照法：同一台手机上，普通应用在智能切换下能到 90Hz，TermLou 只有 60。
+
+对照样本是 Canta（开源的卸载系统应用工具）—— 它的构建配置：
+
+| | Canta（能 90） | TermLou（只有 60） |
+|---|---|---|
+| `targetSdk` | **35** | **34** |
+| `compileSdk` | 36 | 34 |
+| UI | Compose | 手写 View |
+
+系统对同一设备上的两个应用走两套策略，而它能从应用这边读到的东西里，
+对得上的差别只有**应用自己声明的 `targetSdk`**（旧应用走兼容路径）。
+所以这一版把 TermLou 也声明成 35 —— **只动这一个变量**。
+
+（"厂商高刷白名单"那条推论作废：Canta 是卸载系统应用的工具，
+厂家不可能给它开绿灯，所以机制不是名单。）
+
+### 同时删掉 5.9.57~5.9.62 的全部高刷补丁
+
+既然那套 API 在这台设备上无法改变智能切换的档位，就不该继续背着它。删除清单：
+
+- `DisplayRefresh.kt` 整个文件（模式挑选 / SurfaceView 锚点 / 留痕 / 设备能力探测）
+- `MainActivity` 的 `requestHighRefresh()`、`noteLayer()`、`requestWindowFrameRate()`、`requestArrVote()`
+- 系统信息卡片的「刷新率」与「高刷请求」两行，以及对应的 4 条字符串
+- `DisplayRefreshTest.kt` 整个（16 条）+ `RegressionScanTest` 里 8 条高刷锁
+
+**删完之后，TermLou 里关于刷新率的代码是零。**
+
+这样测出来的结果才干净：
+
+- 涨到 90 → 根因确认是 `targetSdk`，且不需要任何刷新率代码
+- 仍是 60 → 方向错误，这个假设当场作废，不需要再往上堆任何东西
+
+### 代价：Android 15 起强制 edge-to-edge
+
+`targetSdk ≥ 35` 的应用从 Android 15 起被**强制 edge-to-edge**
+（`setDecorFitsSystemWindows` 默认关闭、`setStatusBarColor` / `setNavigationBarColor` 失效）。
+TermLou 是自绘顶栏和底栏的 —— 不处理就会顶到系统状态栏底下、压在手势条上。
+
+官方给 API 35 留了一个退出通道，本版在**四个主题上全部声明**：
+
+```xml
+<item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+```
+
+界面因此与 5.9.62 逐像素一致，这次改动才收得住成为单变量。
+
+> ⚠ **这个开关只对 `targetSdk 35` 有效。** 抬到 36 时它会被系统忽略，
+> 那时必须先真的做 `WindowInsets` / `ime` 适配，不能把它删掉了事。
+> 回归锁 `targetSdk必须是35并且所有主题都退出强制edge-to-edge` 就是钉这件事。
+
+### 工具链：AGP 8.6 带出一处必须改的库配置
+
+- AGP 8.3.2 → **8.6.1**（`compileSdk 35` 的最低要求）
+- Gradle 8.4 → **8.7**
+- `:app` / `:workspace` / `:probe` 的 `compileSdk` 全部 34 → 35
+
+顺带抓到一个**真实的配置错误**：`workspace` 模块的 release 一直写着
+`isMinifyEnabled = true`，但它的 `proguard-rules.pro` 一个字都没有（全是注释）。
+
+- **AGP 8.3.2 根本不对 library 模块跑 R8**，库的 `classes.jar` 原样交给 app，所以一直没出事。
+- **AGP 8.6 开始真的跑**（`minifyReleaseWithR8`）。库没有入口点、又没有 keep 规则，
+  R8 的结论是"全都没用"—— 输出 `shrunkClasses.jar` **只剩 432 字节，整个库被剃光**。
+  直接后果就是 `:workspace:testReleaseUnitTest` 5 条全部 `NoClassDefFoundError`。
+
+证据（不是推测）：5.9.62 用 AGP 8.3.2 构建的 `app` 映射表里有 42 条
+`me.rerere.workspace.*` 被 **app 自己的** R8 判为未使用而删除 ——
+说明当时喂进 app 的库 jar 是**有内容的**。
+
+改为 `isMinifyEnabled = false`：缩小本来就该由 app 做（`:app` 开着 R8，
+并且会读取本模块的 `consumer-rules.pro`）。库自己先缩一遍只会让 app 拿到一个空壳 ——
+哪天真用上某个类，那就是运行时 `NoClassDefFoundError` 或 R8 missing class。
+
+### 测试
+
+- 删：8 条锁着已删代码的高刷锁 + `DisplayRefreshTest.kt`（16 条）
+- 增：`targetSdk必须是35并且所有主题都退出强制edge-to-edge`
+  —— 一次钉住 `targetSdk = 35`、`compileSdk = 35`、以及**四个主题一个不漏**地声明退出开关
+  （漏一个，那个界面就会被系统栏压住，测出来的帧率结果也就没法信）
 
 ## 5.9.62
 

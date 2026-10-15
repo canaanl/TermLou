@@ -7,13 +7,11 @@ import android.app.NotificationManager
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
-import android.hardware.display.DisplayManager
 import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import android.view.Display
 import android.view.Gravity
 import android.view.View
 import android.view.animation.DecelerateInterpolator
@@ -256,11 +254,11 @@ class MainActivity : AppCompatActivity() {
         setContentView(rootLayout)
         statusController.showPreviousCrash(rootLayout)
 
-        // 5.9.60：请求高刷。必须等 setContentView 之后 —— ARR 投票要 decorView、
-        // SurfaceView 帧率锚点要往 rootLayout 里挂，两者都要求视图树已经存在。
-        // （5.9.58/59 把它放在 onCreate 最前面，那时 rootLayout 还没建，
-        //   SurfaceView 那层根本无处可挂。）
-        requestHighRefresh()
+        // 5.9.63：5.9.57~5.9.62 那一整套"应用主动请求刷新率"的代码**全部删除**。
+        // 六版实测结论：这台设备上那些 API（窗口属性 / Window.setFrameRate /
+        // View.setRequestedFrameRate / SurfaceView 锚点）都无法改变智能切换下的档位，
+        // 而同样的界面上普通应用能到 90。剩下的唯一差异是应用自己声明的 targetSdk
+        // （见 app/build.gradle.kts）。所以这里不再有任何刷新率代码 —— 干净单变量。
 
         // 5.9.53：原先这里把五个视图全设 GONE、并在 showTab 里手工切 visibility。
         // ViewPager2 自己管理 item 的挂载与显隐，不再需要 —— 手工设 GONE 反而会让
@@ -314,122 +312,6 @@ class MainActivity : AppCompatActivity() {
         val name = intent.getStringExtra(NotesPageActivity.EXTRA_OPEN) ?: return
         showTab(1)
         notesController.openNote(name)
-    }
-
-    /**
-     * 请求高刷（5.9.62）。**每一层的成败都会记进 [DisplayRefresh.report]**，
-     * 由终端介绍页显示 —— 反射失败不再无声无息，这是本版最重要的一条。
-     *
-     * 请求值恒为 [DisplayRefresh.DESIRED_HZ]，**不查设备**。官方文档明确：
-     * *"应用无需考虑实际支持的显示屏刷新率即可安全地调用 `setFrameRate()`……
-     * 设备没有更适合的匹配则会保持当前的显示刷新率。"*
-     * 先查设备再决定请求值本身就是反模式 —— 而且正是它把"当前值 60"引了进来
-     * （5.9.58~5.9.60 的致命 bug）。
-     */
-    private fun requestHighRefresh() {
-        val dm = runCatching { getSystemService(DisplayManager::class.java) }.getOrNull()
-        val display = runCatching { dm?.getDisplay(Display.DEFAULT_DISPLAY) }.getOrNull()
-        val hz = DisplayRefresh.DESIRED_HZ
-        DisplayRefresh.requestedHz = hz
-
-        if (display != null) {
-            val cur = display.mode
-            DisplayRefresh.noteDevice(
-                cur.physicalWidth, cur.physicalHeight, display.refreshRate,
-                cur.alternativeRefreshRates.toList(),
-                display.supportedModes.map {
-                    DisplayRefresh.Mode(it.modeId, it.physicalWidth, it.physicalHeight, it.refreshRate)
-                }
-            )
-        } else {
-            DisplayRefresh.noteDevice(0, 0, 0f, emptyList(), emptyList())
-        }
-
-        // 第一层：窗口属性。是最弱的一票，但无害，且在 13/14 空闲时有机会生效。
-        noteLayer("窗口属性") {
-            window.attributes = window.attributes.apply {
-                preferredDisplayModeId = 0          // 不锁显示模式（锁了反而可能连分辨率一起钉死）
-                preferredRefreshRate = hz
-            }
-        }
-
-        // 第二层：主窗口 surface 的显式帧率 —— 官方给游戏用的那条，最可靠。
-        noteLayer("主窗") { requestWindowFrameRate(hz) }
-
-        // 第三层：ARR 投票（Android 15+）。
-        noteLayer("ARR") { requestArrVote(hz) }
-
-        // 第四层：SurfaceView 锚点（覆盖 13/14），内部自己留痕。
-        noteLayer("锚点") { DisplayRefresh.attachFrameRateAnchor(rootLayout, hz) }
-    }
-
-    /**
-     * 跑一层高刷请求并**无条件留痕**（5.9.62）。
-     *
-     * ## 为什么非得有这个东西
-     *
-     * 这是 5.9.60/5.9.61 连着两版发不出票的**真正病根**：反射用 `runCatching`
-     * 一兜，"方法不存在"和"调用成功"在代码上长得一模一样，跑起来也毫无区别。
-     * ARR 那层因为参数类型写了 int（实际是 float）抛了 `NoSuchMethodException`，
-     * 被吞掉，整整两版没投过票而我完全不知道。
-     *
-     * 所以把"调用 + 记录"合并成一个动作：**不可能只调用不记录**。
-     * 三种结局分开记，介绍页直接显示：
-     *
-     * - `OK` —— 请求确实发出去了（发出去 ≠ 系统采纳，但至少不是死代码）
-     * - `无此方法` —— 这台设备/这个版本没有该 API，那层等于没有
-     * - `抛Xxx` —— 方法在，但调用出错
-     */
-    private inline fun noteLayer(layer: String, block: () -> Unit) {
-        try {
-            block()
-            DisplayRefresh.note(layer, "OK")
-        } catch (e: NoSuchMethodException) {
-            DisplayRefresh.note(layer, "无此方法")
-        } catch (e: Throwable) {
-            DisplayRefresh.note(layer, "抛${e.javaClass.simpleName}")
-        }
-    }
-
-    /**
-     * 主窗口 surface 的显式帧率：`Window.setFrameRate()`。
-     *
-     * ## ⚠ 5.9.62 起不再假设它的 API 级别
-     *
-     * 5.9.59/5.9.61 用 `SDK_INT < 35` 把它挡在门外，但那个门槛**从来没有验证过** ——
-     * 文档给的 `VERSION_CODES.R` 判断也被 `android.jar` 证伪了（android-34 里没有这个方法）。
-     * 现在**不设版本门槛，直接反射试**：找得到就调，找不到由 [noteLayer] 记一笔。
-     */
-    private fun requestWindowFrameRate(hz: Float) {
-        val m = android.view.Window::class.java.getMethod(
-            "setFrameRate", Float::class.javaPrimitiveType,
-            Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
-        )
-        // FRAME_RATE_COMPATIBILITY_DEFAULT=0、CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS=1
-        m.invoke(window, hz, 0, 1)
-    }
-
-    /**
-     * Android 15+ 的 ARR 投票：`View.setRequestedFrameRate()`。
-     *
-     * ## ⚠ 5.9.62 修掉一个铁证级的死代码 bug
-     *
-     * `setRequestedFrameRate` 的参数类型是 **`float`**，而分类常量是**负的 float**
-     * （`REQUESTED_FRAME_RATE_CATEGORY_HIGH = -4`）。5.9.60/5.9.61 却去找 `(int)`
-     * 重载、并传了 `4` —— `Class.getMethod` 要求参数类型**精确匹配、不做隐式转换**，
-     * 于是必然抛 `NoSuchMethodException` 被 `runCatching` 吞掉，**一次都没执行过**。
-     *
-     * 现在反射 `float` 重载，并直接传**正数的目标帧率**（文档：正数=期望帧率，
-     * 负数=分类）。这样彻底绕开那组**随版本变化**的常量（它们从 -30/-60/-120
-     * 改成了 -2/-3/-4），不依赖任何猜出来的数字。
-     *
-     * 同样**不设版本门槛**：找得到就调，找不到由 [noteLayer] 记一笔。
-     */
-    private fun requestArrVote(hz: Float) {
-        val m = android.view.View::class.java
-            .getMethod("setRequestedFrameRate", Float::class.javaPrimitiveType)
-        m.invoke(rootLayout, hz)
-        m.invoke(window.decorView, hz)
     }
 
     /**

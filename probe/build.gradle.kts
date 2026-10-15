@@ -5,13 +5,13 @@ plugins {
 
 android {
     namespace = "com.workspace.probe"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         // 独立包名：能和 TermLou 并排装，不冲突
         applicationId = "com.workspace.probe"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
     }
