@@ -115,15 +115,6 @@
     <string name="sysinfo_refresh">刷新率</string>
     <string name="sysinfo_refresh_fmt">%1$.0f Hz</string>
     <string name="sysinfo_refresh_fmt_low">%1$.0f Hz（请求 %2$.0f，未生效）</string>
-    <!-- 5.9.59：游戏模式读数。系统若显示"不支持"，说明 android:isGame 没被认下，
-         要去系统设置里把 TermLou 手动加进游戏/高性能列表，再重开本应用。 -->
-    <string name="sysinfo_gamemode">游戏模式</string>
-    <string name="sysinfo_gamemode_fmt">%1$s（性能 %2$d）</string>
-    <string name="sysinfo_gamemode_unsupported">不支持</string>
-    <string name="sysinfo_gamemode_standard">标准</string>
-    <string name="sysinfo_gamemode_performance">性能</string>
-    <string name="sysinfo_gamemode_battery">省电</string>
-    <string name="sysinfo_gamemode_custom">自定义</string>
     <string name="sysinfo_unknown">未知</string>
     <string name="lang_title">语言</string>
 

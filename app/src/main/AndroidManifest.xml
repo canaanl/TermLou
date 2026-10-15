@@ -12,36 +12,14 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.BIND_VPN_SERVICE" />
 
-    <!--
-      5.9.59：声明本应用是"游戏"。
-
-      为什么冒充游戏：vivo/一加/小米都有**按 app 的高刷白名单**，而进入白名单的判据之一
-      就是这个属性。官方 GameManager.getGameMode() 文档写明："应用可以用
-      android:isGame="true" 或 android:appCategory="game" 表明自己是游戏；
-      不是游戏的应用一律返回 GAME_MODE_UNSUPPORTED。"
-
-      5.9.57 设 preferredRefreshRate 无效、5.9.58 设 preferredDisplayModeId 也无效，
-      根因就是系统把我们当普通应用，不给高刷档位。
-
-      配套的 res/xml/game_mode_config.xml 必须把 supportsPerformance/BatteryGameMode
-      都设成 false —— 官方文档明确：一旦声明支持，系统会**清空厂商施加的所有 Game Mode
-      干预**，高刷立刻又没了。
-    -->
     <application
         android:name="com.workspace.proot.TermLouApp"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
-        android:isGame="true"
         android:label="TermLou"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.TermLou">
-
-        <!-- 5.9.59：游戏模式干预的逐项开关，四项全 false，理由见上面注释与该 xml 自身注释。 -->
-        <meta-data
-            android:name="android.game_mode_config"
-            android:resource="@xml/game_mode_config" />
-
         <activity
             android:name="com.workspace.proot.MainActivity"
             android:screenOrientation="portrait"

@@ -240,4 +240,17 @@ class DisplayRefreshTest {
         assertEquals(0, t.modeId)
         assertTrue("不动就要如实说现在是多少", t.hz in 89f..91f)
     }
+
+    // ---------- 5.9.60：ARR 投票常量 ----------
+
+    @Test
+    fun `ARR的High票常量必须与AOSP一致`() {
+        // 反射传的是裸 int，值错了会投成 Normal（60Hz）—— 而那正是本 app 锁在 60 的原因。
+        // 值取自 AOSP View.REQUESTED_FRAME_RATE_CATEGORY_HIGH。
+        assertEquals(
+            "REQUESTED_FRAME_RATE_CATEGORY_HIGH 必须是 4",
+            4,
+            DisplayRefresh.CATEGORY_HIGH
+        )
+    }
 }

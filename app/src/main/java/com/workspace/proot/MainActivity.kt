@@ -16,7 +16,6 @@ import android.util.Log
 import android.view.Display
 import android.view.Gravity
 import android.view.View
-import android.view.Window
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -97,9 +96,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // 5.9.58：请求高刷。5.9.57 只设了 preferredRefreshRate（弱提示），实机实测无效。
-        requestHighRefresh()
 
         scope = AppScope(
             prefs = getSharedPreferences("term-lou-settings", MODE_PRIVATE),
@@ -260,6 +256,12 @@ class MainActivity : AppCompatActivity() {
         setContentView(rootLayout)
         statusController.showPreviousCrash(rootLayout)
 
+        // 5.9.60：请求高刷。必须等 setContentView 之后 —— ARR 投票要 decorView、
+        // SurfaceView 帧率锚点要往 rootLayout 里挂，两者都要求视图树已经存在。
+        // （5.9.58/59 把它放在 onCreate 最前面，那时 rootLayout 还没建，
+        //   SurfaceView 那层根本无处可挂。）
+        requestHighRefresh()
+
         // 5.9.53：原先这里把五个视图全设 GONE、并在 showTab 里手工切 visibility。
         // ViewPager2 自己管理 item 的挂载与显隐，不再需要 —— 手工设 GONE 反而会让
         // RecyclerView 认为 item 不可见。
@@ -315,11 +317,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 请求高刷（5.9.58）。为什么不用 `preferredRefreshRate`、为什么走不到游戏那条
-     * `setFrameRate()`、风险怎么摁住 —— 全写在 [DisplayRefresh] 的 KDoc 里，这里不重复。
-     *
-     * 只在 `onCreate` 调一次，且 [DisplayRefresh.pickTarget] 在已是高档时返回"不动"，
-     * 所以即使将来多调也不会来回切模式（那会黑屏）。
+     * 请求高刷（5.9.60）。三层叠加，各覆盖不同版本 —— 机制与取舍全写在
+     * [DisplayRefresh] 的 KDoc 里，这里只负责调用。
      *
      * 拿不到 display / 模式列表为空 / 分辨率不匹配 —— 一律静默退回系统默认，不抛不崩。
      */
@@ -327,9 +326,6 @@ class MainActivity : AppCompatActivity() {
         val dm = runCatching { getSystemService(DisplayManager::class.java) }.getOrNull() ?: return
         val display = runCatching { dm.getDisplay(Display.DEFAULT_DISPLAY) }.getOrNull() ?: return
         val cur = display.mode
-        // 先读一次游戏模式：纯诊断（介绍页会显示），但它也顺手证明了
-        // android:isGame="true" 有没有被系统认下 —— 没认下就说明厂商那套根本吃不到。
-        DisplayRefresh.readGameMode(this)
         val target = DisplayRefresh.pickTarget(
             cur.physicalWidth, cur.physicalHeight, display.refreshRate,
             display.supportedModes.map {
@@ -337,50 +333,51 @@ class MainActivity : AppCompatActivity() {
             }
         )
         DisplayRefresh.requestedHz = target.hz
+
+        // 第三层（13/14）：窗口属性。⚠ 5.9.60 修掉一个自己埋的雷 ——
+        // 原来无更好档位时 preferredRefreshRate 被设成**当前值**（比如 60），
+        // 等于主动向系统要 60Hz。现在没得升就设 0（0 = 不表态，交给系统）。
         window.attributes = window.attributes.apply {
-            // modeId 为 0 = 不指定具体模式，交给系统自己挑（只保留速率提示）。
             preferredDisplayModeId = target.modeId
-            preferredRefreshRate = target.hz
+            preferredRefreshRate = if (target.modeId == 0) 0f else target.hz
         }
-        requestWindowFrameRate(target.hz)
+
+        // 第二层（15/16）：ARR 投票，见 requestArrVote。
+        requestArrVote()
+
+        // 第一层（13~16）：SurfaceView 显式帧率，这是游戏在用的那条路。
+        DisplayRefresh.attachFrameRateAnchor(rootLayout, target.hz)
     }
 
     /**
-     * 走官方给游戏用的那条 API：`Window.setFrameRate()`。
+     * Android 15+ 的 ARR 投票（5.9.60）。
+     *
+     * ## 为什么非做不可
+     *
+     * 官方文档：*"目前大多数 View 默认投 'Normal' 帧率，通常是 60Hz。要更高的帧率
+     * 需要用专门 API 改变偏好，系统一般取最高票。"* —— 不主动投 High 票，
+     * 在 15/16 上必然锁 60，**和厂商无关**。这就是本 app 在 Android 16 上只有 60 的原因。
      *
      * ## 为什么用反射
      *
-     * 它是 API 35（Android 15）才有的，本项目 compileSdk=34，编译期引用不到。
-     * 硬升 compileSdk 需要 AGP 8.3.2 → 8.7+、Gradle 8.4 → 8.9+ 连环升级
-     * （本项目实测版本），那是本次改动里唯一的大风险。
-     *
-     * `Window#setFrameRate` 是**公开 SDK 方法**（不是 @hide），所以反射拿得到，
-     * 不涉及隐藏 API 灰名单。
-     *
-     * ## 为什么必须做这一条
-     *
-     * Android 15 的 ARR 机制下，大多数 View 默认投 "Normal" 票（60Hz），
-     * 系统取**最高票** —— 不主动投票就必然锁 60，和厂商无关。
-     * `Window.setFrameRate` 正是覆盖这一层的正路。
+     * `View.setRequestedFrameRate(int)` 是 API 35 才有的，本项目 compileSdk=34，编译期引用不到。
+     * 硬升 compileSdk 要 AGP 8.3.2→8.7+ / Gradle 8.4→8.9+ 连环升级（本项目实测版本），
+     * 是本次改动里唯一的大风险，因此不升。它是**公开 SDK 方法**（非 @hide），反射合法。
      *
      * ## 安全性
      *
-     * 三重保护：SDK_INT >= 35 才试、方法找不到直接跳过、整个调用 runCatching 兜死。
-     * **不可能崩**，方法不存在时静默降级为 5.9.58 那套窗口属性。
-     *
-     * 常量走 `Surface` 的同名常量（API 30/31 就有，编译期可见），
-     * 不去反射 Window.FrameRateCompatibility —— 少一处反射点。
+     * 三重保护：`SDK_INT < 35` 直接返回、方法找不到跳过、整段 `runCatching` 兜死。
+     * **不可能崩**，方法不存在时静默降级为另两层。
      */
-    private fun requestWindowFrameRate(hz: Float) {
+    private fun requestArrVote() {
         if (Build.VERSION.SDK_INT < 35) return
-        if (hz <= 0f) return
+        if (!::rootLayout.isInitialized) return
+        val root = rootLayout
         runCatching {
-            val m = Window::class.java.getMethod(
-                "setFrameRate", Float::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
-            )
-            // FRAME_RATE_COMPATIBILITY_DEFAULT=0、CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS=1
-            m.invoke(window, hz, 0, 1)
+            val m = android.view.View::class.java.getMethod("setRequestedFrameRate", Int::class.javaPrimitiveType)
+            // REQUESTED_FRAME_RATE_CATEGORY_HIGH = 4（与 AOSP 一致，见 DisplayRefresh 同名常量）
+            m.invoke(root, DisplayRefresh.CATEGORY_HIGH)
+            m.invoke(window.decorView, DisplayRefresh.CATEGORY_HIGH)
         }
     }
 

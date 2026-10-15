@@ -64,6 +64,38 @@ class RegressionScanTest {
     }
 
     /**
+     * 读仓库里任意路径的文件（manifest / res 等 java 目录之外的）。
+     *
+     * [source] 只认 `app/src/main/java/...`，锁 manifest 和 res 时用不了它。
+     */
+    private fun repoFile(path: String): File {
+        var d: File? = File("").absoluteFile
+        var hops = 0
+        while (d != null && hops < 6) {
+            val f = File(d, path)
+            if (f.isFile) return f
+            d = d.parentFile
+            hops++
+        }
+        throw AssertionError("找不到 $path，这条检查等于没跑")
+    }
+
+    /**
+     * 路径存不存在（**不抛**）—— 用于"整个删掉的文件不许被重新建出来"这类反向判据。
+     * 用 [repoFile] 判"必须不存在"会直接抛异常，判据就永远不成立。
+     */
+    private fun repoFileExists(path: String): Boolean {
+        var d: File? = File("").absoluteFile
+        var hops = 0
+        while (d != null && hops < 6) {
+            if (File(d, path).isFile) return true
+            d = d.parentFile
+            hops++
+        }
+        return false
+    }
+
+    /**
      * 只看**真正在跑的代码**：`//` 行注释与 KDoc 整块都去掉。
      *
      * ## 为什么要有这么一把而不是直接用 [code]
@@ -849,37 +881,82 @@ class RegressionScanTest {
         assertTrue("三个数字要用插值带进去：\n$ext", ext.contains("var L=\$limit, T=\$textChars, TC=\$LINK_TEXT_CHARS;"))
     }
 
-    // ---------- 5.9.58：高刷走 preferredDisplayModeId，并给出实测读数 ----------
+    // ---------- 5.9.60：高刷三层投票（SurfaceView / ARR / 窗口属性） ----------
 
-    // ⚠ 以下三条 5.9.58 的锁，判据字符串必须和**代码行**逐字一致（codeOnly 剥掉 // 与 KDoc，
-    //    注释里写同样的字不算数）。改 DisplayRefresh.kt / MainActivity.kt 的这几行时，
-    //    要连这里的判据一起改 —— 否则锁会在你完全没改行为的情况下红给你看。
+    // ⚠ 以下锁的判据字符串必须和**代码行**逐字一致（codeOnly 剥掉 // 与 KDoc，
+    //    注释里写同样的字不算数）。改 DisplayRefresh.kt / MainActivity.kt 这几行时，
+    //    要连判据一起改 —— 否则锁会在你完全没改行为的情况下红给你看。
 
     @Test
-    fun `高刷必须指定显示模式而不是只给速率提示`() {
+    fun `高刷必须挂在SurfaceView上而不是只改窗口属性`() {
+        // 本次的核心判据。窗口属性（preferredRefreshRate / preferredDisplayModeId）
+        // 是**最低优先级**的票，会被内容帧率检测直接压死 —— 5.9.57 与 5.9.58 就死在这。
+        // 唯一不受压制的路是 SurfaceView：官方文档明写"为 SurfaceView 和 TextureView
+        // 显式设置的帧率会被尊重并应用"，那正是游戏在用的。
+        val d = codeOnly("DisplayRefresh.kt")
+        assertTrue("必须对 Surface 调 setFrameRate：\n$d", d.contains(".setFrameRate("))
+        assertTrue(
+            "必须用 SurfaceView 承载（独立图层才能绕开内容检测）：\n$d",
+            d.contains("SurfaceView(")
+        )
+        assertTrue(
+            "必须是无缝切换，否则会黑屏：\n$d",
+            d.contains("CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS")
+        )
         val m = codeOnly("MainActivity.kt")
         assertTrue(
-            "MainActivity 必须设 preferredDisplayModeId（5.9.58 换掉弱提示的那次）：\n$m",
-            m.contains("preferredDisplayModeId = target.modeId")
-        )
-        assertTrue(
-            "preferredRefreshRate 必须和选中的模式对齐，不能各写各的：\n$m",
-            m.contains("preferredRefreshRate = target.hz")
-        )
-        // 走纯函数挑模式 —— 直接在窗口属性上写死 120 就不锁分辨率了
-        assertTrue(
-            "模式必须由 DisplayRefresh.pickTarget 挑：\n$m",
-            m.contains("DisplayRefresh.pickTarget(")
-        )
-        assertFalse(
-            "不许再写死 120f —— 设备支持 144 就该给 144：\n$m",
-            m.contains("preferredRefreshRate = 120f")
+            "MainActivity 必须挂上帧率锚点：\n$m",
+            m.contains("DisplayRefresh.attachFrameRateAnchor(")
         )
     }
 
     @Test
-    fun `高刷请求不许换分辨率也不许反复切模式`() {
-        // 这两条是这个改动能造成的最大风险，必须在**纯函数**那一侧钉住：
+    fun `Android15以上必须投ARR的High票`() {
+        // 官方文档：大多数 View 默认投 Normal 票（60Hz），系统取最高票。
+        // 不主动投 High，在 15/16 上必然锁 60 —— 与厂商无关。
+        val m = codeOnly("MainActivity.kt")
+        assertTrue(
+            "必须按 SDK_INT 把门（该方法是 API 35 才有）：\n$m",
+            m.contains("Build.VERSION.SDK_INT < 35")
+        )
+        assertTrue("必须反射调 setRequestedFrameRate：\n$m", m.contains("\"setRequestedFrameRate\""))
+        assertTrue(
+            "必须投 CATEGORY_HIGH 而不是 Normal：\n$m",
+            m.contains("DisplayRefresh.CATEGORY_HIGH")
+        )
+        assertTrue("反射必须 runCatching 兜死：\n$m", m.contains("runCatching"))
+    }
+
+    @Test
+    fun `升不动时速率提示必须置零而不是设成当前值`() {
+        // ⚠ 5.9.60 修掉 5.9.58 自己埋的雷：当时写的是 preferredRefreshRate = target.hz，
+        // 而 pickTarget 在没得升时返回的 hz 是**当前值** —— 于是反过来向系统要 60Hz。
+        // 没得升必须置 0（0 = 不表态），绝不设成当前值。
+        val m = codeOnly("MainActivity.kt")
+        assertTrue(
+            "没得升时 preferredRefreshRate 必须为 0：\n$m",
+            m.contains("preferredRefreshRate = if (target.modeId == 0) 0f else target.hz")
+        )
+        assertFalse(
+            "不许再无条件写 preferredRefreshRate = target.hz：\n$m",
+            Regex("""preferredRefreshRate\s*=\s*target\.hz""").containsMatchIn(m)
+        )
+    }
+
+    @Test
+    fun `帧率请求必须在视图树建好之后才发`() {
+        // 5.9.58/59 把它放在 onCreate 最前面，那时 rootLayout 还没建 ——
+        // SurfaceView 锚点根本无处可挂，那两版的锚点逻辑等于没跑。
+        val m = codeOnly("MainActivity.kt")
+        val setContent = m.indexOf("setContentView(rootLayout)")
+        // ⚠ 别用 String.indexOf(Regex) —— 它解析到的是本文件里的 private CharSequence 扩展，
+        //    编译不过（踩过一次）。要位置就用 Regex.find()。
+        val call = Regex("""(?<!fun )requestHighRefresh\(\)""").find(m)?.range?.first ?: -1
+        assertTrue("必须先 setContentView 再请求帧率：\n$m", setContent >= 0 && call > setContent)
+    }
+
+    @Test
+    fun `模式挑选不许换分辨率也不许反复切模式`() {
         // 换分辨率 → 整个版式重排；反复切模式 → 非无缝切换可能黑屏一秒上下。
         val d = codeOnly("DisplayRefresh.kt")
         assertTrue(
@@ -890,7 +967,6 @@ class RegressionScanTest {
             "已经最优时必须返回不动（modeId=0），否则白挨一次切模式黑屏：\n$d",
             d.contains("if (best.hz <= currentHz + EPS_HZ) return keep")
         )
-        // 坏模式（0Hz / 负数）不许被选成"最高档"
         assertTrue(
             "必须先滤掉非正刷新率的坏模式：\n$d",
             d.contains("sameSize.filter { it.hz > 0f }")
@@ -904,6 +980,23 @@ class RegressionScanTest {
             1,
             Regex("""(?<!fun )requestHighRefresh\(\)""").findAll(m).count()
         )
+    }
+
+    @Test
+    fun `游戏伪装必须已经彻底撤掉`() {
+        // 官方文档：Android 15 默认把游戏刷新率设为 60Hz —— 声明 isGame 等于自己跳坑，
+        // 还会招来 vivo 游戏空间的侧边栏。5.9.60 整个撤销，不许悄悄回来。
+        val mf = repoFile("app/src/main/AndroidManifest.xml").readText()
+        assertFalse("manifest 里不许再有 isGame：\n$mf", mf.contains("android:isGame"))
+        assertFalse("manifest 里不许再挂 game_mode_config：\n$mf", mf.contains("game_mode_config"))
+        assertFalse(
+            "game_mode_config.xml 必须整个删掉，不是掏空",
+            repoFileExists("app/src/main/res/xml/game_mode_config.xml")
+        )
+        val d = codeOnly("DisplayRefresh.kt")
+        assertFalse("DisplayRefresh 里不许再读游戏模式：\n$d", d.contains("GameManager"))
+        val s = codeOnly("StorageDialog.kt")
+        assertFalse("介绍页里不许再有游戏模式读数：\n$s", s.contains("gameModeText"))
     }
 
     @Test

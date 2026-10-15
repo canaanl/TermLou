@@ -7,7 +7,8 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
-| **5.9.59** | 5959 | **按游戏的方式进厂商高刷名单：manifest 声明 isGame + 四项干预全关 + 反射调 Window.setFrameRate** |
+| **5.9.60** | 5960 | **高刷换成三层投票：SurfaceView 显式帧率 + Android 15+ ARR 投 High 票（覆盖 13/14/15/16）；撤销 5.9.59 的游戏伪装** |
+| **5.9.59** | 5959 | **（已撤销）按游戏的方式进厂商高刷名单** |
 | **5.9.58** | 5958 | **高刷改用 preferredDisplayModeId（指定显示模式）+ 系统信息加实测刷新率读数** |
 | **5.9.57** | 5957 | **快捷键重排（上排 Esc Tab ↑ Ctrl / 下排 / ← ↓ →）· 缝隙活动条铺满全宽 · 主界面请求 120Hz** |
 | **5.9.56** | 5956 | **去掉系统信息四个键名的色块（外面已有大方框，里面小方框多余）** |
@@ -18,7 +19,98 @@
 | **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
 
-## 5.9.59
+## 5.9.60
+
+前四次（5.9.57 ~ 5.9.59）全部无效，用户实机反复验证。这一版换掉了整个思路：
+**不是"请求"刷新率，而是理解 Android 到底怎么决定刷新率。**
+
+### 前四次为什么全都没用（机制，务必记住）
+
+刷新率不是"谁请求听谁的"。Android 的 `DisplayModeDirector` 把各来源的投票
+**按优先级求交集**，从高到低依次收窄：
+
+| 优先级 | 来源 | 行为 |
+|---|---|---|
+| 高 | **触摸提升** | 手指按下就顶到高档，持续一段时间 |
+| 中 | **内容帧率检测** | SurfaceFlinger 量每个图层**实际提交帧的间隔**：稳定 16.7ms → 判定"内容是 60fps" |
+| 最低 | **应用请求** | `preferredRefreshRate` / `preferredDisplayModeId` |
+
+于是形成了死循环：
+
+```
+屏幕 60Hz → vsync 16.7ms → Choreographer 只给 60 次回调
+→ 每 16.7ms 交一帧 → SurfaceFlinger 测出"内容是 60fps"
+→ 投 60Hz 的票，压过应用请求 → 屏幕继续 60Hz → 循环
+```
+
+`preferredRefreshRate`（5.9.57）和 `preferredDisplayModeId`（5.9.58）永远是最弱那一票，
+会被内容检测直接压死 —— **这才是前两次无效的真正原因，与厂商白名单无关。**
+TermLou 此前一个 `SurfaceView` 都没有，纯 View 树，所以永远被自己的内容检测按在 60。
+
+### 三层叠加，覆盖 13 / 14 / 15 / 16
+
+**第一层 · `SurfaceView` 显式帧率（API 30+，全版本通用）**
+官方文档：*"为 `SurfaceView` 和 `TextureView` 显式设置的帧率会被尊重并应用。"*
+它有独立图层、独立 BufferQueue，投票**不受内容检测压制** —— 这正是游戏在用的那条路。
+微信、浏览器能到 90 也在这里：它们有 `SurfaceView`，本 app 此前一个都没有。
+实现是 1×1 全透明的 `SurfaceView` + `CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS`（保证无缝切换不黑屏）。
+
+**第二层 · `View.setRequestedFrameRate(HIGH)`（API 35+，覆盖 15/16）**
+Android 15 的 ARR 机制：*"目前大多数 View 默认投 Normal 帧率，通常是 60Hz。
+要更高的帧率需要用专门 API 改变偏好，系统一般取最高票。"*
+**不主动投 High 票，在 15/16 上必然锁 60，与厂商无关** —— 这正是 Android 16 上的现状。
+反射调用（公开 SDK 方法，非 @hide），`SDK_INT` 把门 + `runCatching` 兜死，不可能崩。
+
+**第三层 · 窗口属性（覆盖 13/14）**
+低版本没有 ARR。空闲时内容检测投"无偏好"，此时窗口请求才有机会生效。
+
+### ⚠ 修掉 5.9.58 自己埋的雷
+
+5.9.58 写的是 `preferredRefreshRate = target.hz`，而 `pickTarget` 在没有更好档位时
+返回的 `hz` 是**当前值**。于是没得升的时候，它反而在向系统要 **60Hz** ——
+本该"不表态"却变成了"要 60"。现在没得升一律设 0（0 = 不表态）。
+
+### 撤销 5.9.59
+
+官方文档：*"Android 15 默认把游戏的刷新率设为 60Hz 以省电。要解锁更高帧率必须显式请求。"*
+声明 `android:isGame="true"` 等于**主动跳进这个坑**，还会招来 vivo 游戏空间的侧边栏。
+已连同 `res/xml/game_mode_config.xml`、`GameModeLockTest`、游戏模式读数一并删除，
+并用锁钉住"不许悄悄回来"。
+
+### 顺带修掉一个顺序错误
+
+5.9.58/59 把 `requestHighRefresh()` 放在 `onCreate` 最前面，那时 `rootLayout` 还没建
+—— SurfaceView 锚点根本无处可挂，那两版的锚点逻辑等于没跑。现在挪到 `setContentView` 之后。
+
+### 风险
+
+**小。** 1×1 全透明 `SurfaceView` 只多一个几乎为零的图层，不可见、不占显存；
+反射有 SDK 把门 + `runCatching` 兜死；**不升 compileSdk**，构建工具链零改动。
+
+### 锁
+
+`RegressionScanTest` 重写为 6 条，全部注入验证：必须挂 SurfaceView 且用无缝切换 /
+必须按 SDK_INT 把门投 CATEGORY_HIGH / 升不动时速率提示必须置零 /
+请求必须发生在 setContentView 之后 / 模式挑选不换分辨率不反复切 / 游戏伪装必须已彻底撤销
+（含"文件必须整个删掉，不是掏空"）。
+
+`DisplayRefreshTest` 增 1 条锁住 `CATEGORY_HIGH == 4`（反射传的是裸 int，
+值错了会投成 Normal=60Hz，而那正是本 app 锁在 60 的原因）。
+
+两处踩坑记在注释里：
+- `repoFile` 找不到就抛异常，不能用来判"必须不存在"，另配了 `repoFileExists`
+- `String.indexOf(Regex)` 会解析到本文件的 private CharSequence 扩展，编译不过，要用 `Regex.find()`
+
+### 验证
+
+- 全量测试 **781 绿**（app 649 + probe 79 + workspace 53）
+- 注入验证 5 次（摘掉 SurfaceView 锚点 / 去掉 SDK 把门 / 把 60 的雷改回去 /
+  把请求挪回 setContentView 之前 / 把 isGame 加回去），全部咬住
+- 还原后与注入前备份**逐字节比对**三个文件，确认无残留
+- 已用 `aapt2 dump xmltree` 确认包里**不再有** `isGame` 与 `game_mode_config`
+- release APK 签名 `de851a44…6e002`，与前几版一致，可直接覆盖安装
+
+## 5.9.59（已撤销，见 5.9.60）
 
 5.9.58 实机仍然无效，用户追问"你是按游戏软件的方法设置的吗"。
 **这一版才是。** 前两版（5.9.57 / 5.9.58）都只在窗口属性上设刷新率，那是普通应用的路径；
