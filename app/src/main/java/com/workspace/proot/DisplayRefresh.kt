@@ -47,6 +47,35 @@ object DisplayRefresh {
     @Volatile
     var requestedHz: Float? = null
 
+    /** 系统认定的游戏模式；null = 还没查到（[readGameMode] 没跑成）。 */
+    @Volatile
+    var gameMode: Int? = null
+
+    /**
+     * 读系统认定的游戏模式（5.9.59）—— **纯诊断，不参与任何决策**。
+     *
+     * `GameManager.getGameMode()` 是 API 31+ 的公开方法，普通 app 可调。
+     * 文档明确：不是游戏的应用一律返回 `GAME_MODE_UNSUPPORTED`(0)。
+     * 所以这一个数就回答了"系统认不认我们是游戏"，也就指出了高刷到底被谁卡着。
+     *
+     * 常量在这里重定义而不引用 `GameManager`，是为了让 JVM 单测能直接比对
+     * （加载 GameManager 需要 Android 运行时）。值与 AOSP 一致。
+     */
+    const val GAME_MODE_UNSUPPORTED = 0
+    const val GAME_MODE_STANDARD = 1
+    const val GAME_MODE_PERFORMANCE = 2
+    const val GAME_MODE_BATTERY = 3
+    const val GAME_MODE_CUSTOM = 4
+
+    /**
+     * 取一次游戏模式并记进 [gameMode]。拿不到（服务不存在 / 抛异常）返回 null，
+     * 绝不向上抛 —— 这是诊断信息，不该有能力弄崩介绍页。
+     */
+    fun readGameMode(context: android.content.Context): Int? =
+        runCatching { context.getSystemService(android.app.GameManager::class.java)?.gameMode }
+            .getOrNull()
+            .also { gameMode = it }
+
     /** 浮点比较容差：面板报的 Hz 常带小数（59.94 / 120.0），留 0.5Hz 余量免得反复切。 */
     private const val EPS_HZ = 0.5f
 

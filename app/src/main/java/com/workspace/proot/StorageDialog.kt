@@ -49,6 +49,7 @@ class SystemInfoCardView(
     private lateinit var codenameValue: TextView
     private lateinit var archValue: TextView
     private lateinit var refreshValue: TextView
+    private lateinit var gameModeValue: TextView
 
     private var loadJob: Job? = null
 
@@ -88,6 +89,8 @@ class SystemInfoCardView(
         archValue = addInfoRow(leftCol, ctx.getString(R.string.sysinfo_arch), keyColor, density)
         // 5.9.58：实测刷新率。用来当场判断"高刷请求生效没有"，不必再翻系统设置。
         refreshValue = addInfoRow(leftCol, ctx.getString(R.string.sysinfo_refresh), keyColor, density)
+        // 5.9.59：游戏模式读数，用来判断 android:isGame 有没有被系统认下。
+        gameModeValue = addInfoRow(leftCol, ctx.getString(R.string.sysinfo_gamemode), keyColor, density)
         columns.addView(leftCol, LinearLayout.LayoutParams(
             0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
         ))
@@ -189,6 +192,28 @@ class SystemInfoCardView(
         }
     }
 
+    /**
+     * 游戏模式读数（5.9.59）—— 纯诊断，**不参与任何决策**。
+     *
+     * `GameManager.getGameMode()` 是 API 31+ 公开方法，文档明确：不是游戏的应用
+     * 一律返回 `GAME_MODE_UNSUPPORTED`。所以显示"不支持"就等于告诉我们
+     * `android:isGame="true"` 没被系统认下 —— 这时高刷被卡在厂商白名单上，
+     * 唯一出路是去系统设置里把 TermLou 手动加进游戏/高性能列表，再重开应用。
+     *
+     * 拿不到就显示"未知"，不猜。
+     */
+    private fun gameModeText(): String {
+        val mode = DisplayRefresh.gameMode ?: return ctx.getString(R.string.sysinfo_unknown)
+        val name = when (mode) {
+            DisplayRefresh.GAME_MODE_UNSUPPORTED -> R.string.sysinfo_gamemode_unsupported
+            DisplayRefresh.GAME_MODE_STANDARD -> R.string.sysinfo_gamemode_standard
+            DisplayRefresh.GAME_MODE_PERFORMANCE -> R.string.sysinfo_gamemode_performance
+            DisplayRefresh.GAME_MODE_BATTERY -> R.string.sysinfo_gamemode_battery
+            else -> R.string.sysinfo_gamemode_custom
+        }
+        return ctx.getString(R.string.sysinfo_gamemode_fmt, ctx.getString(name), mode)
+    }
+
     /** 异步加载占用与发行版数据；数据到达后 setData + startSweep（饼图进入动画）。 */
     fun load(scope: CoroutineScope): Job {
         loadJob?.cancel()
@@ -212,6 +237,7 @@ class SystemInfoCardView(
                     codenameValue.text = distro?.codename?.ifBlank { unknown } ?: unknown
                     archValue.text = abi
                     refreshValue.text = refreshText()
+                    gameModeValue.text = gameModeText()
 
                     val fStr = ctx.getString(R.string.storage_file_fmt, formatBytes(fileBytes))
                     fileLabel.text = SpannableString(fStr).apply {

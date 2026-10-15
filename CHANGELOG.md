@@ -7,6 +7,7 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.59** | 5959 | **按游戏的方式进厂商高刷名单：manifest 声明 isGame + 四项干预全关 + 反射调 Window.setFrameRate** |
 | **5.9.58** | 5958 | **高刷改用 preferredDisplayModeId（指定显示模式）+ 系统信息加实测刷新率读数** |
 | **5.9.57** | 5957 | **快捷键重排（上排 Esc Tab ↑ Ctrl / 下排 / ← ↓ →）· 缝隙活动条铺满全宽 · 主界面请求 120Hz** |
 | **5.9.56** | 5956 | **去掉系统信息四个键名的色块（外面已有大方框，里面小方框多余）** |
@@ -16,6 +17,110 @@
 | **5.9.52** | 5952 | **修：状态栏特征字的立方体转向与页面滑动方向相反** |
 | **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
+
+## 5.9.59
+
+5.9.58 实机仍然无效，用户追问"你是按游戏软件的方法设置的吗"。
+**这一版才是。** 前两版（5.9.57 / 5.9.58）都只在窗口属性上设刷新率，那是普通应用的路径；
+游戏能上高刷靠的是另一套机制，这一版才走进去。
+
+### 游戏真正的入口在 manifest，不在代码 API
+
+`GameManager.setGameMode()` 需要 `MANAGE_GAME_MODE`（系统签名权限），普通 app 调不了 —— 死路。
+
+真正管用的是 manifest 声明。官方 `GameManager.getGameMode()` 文档写明：
+
+> 应用可以用 `android:isGame="true"` 或 `android:appCategory="game"` 表明自己是游戏。
+> **不是游戏的应用一律返回 `GAME_MODE_UNSUPPORTED`。**
+
+vivo / 一加 / 小米那套**按 app 的高刷白名单**，判据之一就是这个属性。
+前两版无效的根因就是系统把我们当普通应用，压根不给高刷档位。
+
+### 四个开关，一个都不能配错（这是本版最容易翻车的地方）
+
+只加 `isGame="true"` 而不配干预开关，会同时中两枪：
+
+| 配置项 | 配错的后果 | 本项目 |
+|---|---|---|
+| `supportsPerformanceGameMode` | 官方文档原文：**"一旦声明支持，系统会重置厂商此前施加的所有 Game Mode 干预"** —— 刚进的名单自己被清掉，高刷立刻又没了 | `false` |
+| `supportsBatteryGameMode` | 同上 | `false` |
+| `allowGameDownscaling` | 厂商降分辨率渲染再放大以省电。对游戏是画质取舍，**对终端是文字糊掉** | `false` |
+| `allowGameFpsOverride` | 厂商用 FPS throttling（Android 13+）把帧率限回 60 —— 我们正在争取高刷，让它限回去等于白做 | `false` |
+
+第三行是本次改动**唯一的真实视觉风险**，靠这一行摁住。
+
+### 官方给游戏用的那条 API：反射调 `Window.setFrameRate`
+
+Android 15 的 ARR 机制下，大多数 View 默认投 "Normal"（60Hz）票、系统取**最高票**，
+不主动投票就必然锁 60 —— 和厂商无关。`Window.setFrameRate()` 正是覆盖这一层的正路。
+
+它是 API 35 才有，本项目 `compileSdk=34` 编译期引用不到。硬升需要
+AGP 8.3.2 → 8.7+、Gradle 8.4 → 8.9+ 连环升级（本项目实测版本），
+是这次改动里唯一的大风险，所以**没有升**，改用反射：
+
+```kotlin
+private fun requestWindowFrameRate(hz: Float) {
+    if (Build.VERSION.SDK_INT < 35) return
+    if (hz <= 0f) return
+    runCatching {
+        val m = Window::class.java.getMethod("setFrameRate", ...)
+        m.invoke(window, hz, 0, 1)   // COMPATIBILITY_DEFAULT / ONLY_IF_SEAMLESS
+    }
+}
+```
+
+三重保护：`SDK_INT` 把门、方法找不到直接跳过、`runCatching` 兜死 —— **不可能崩**，
+降级回 5.9.58 那套窗口属性。`Window#setFrameRate` 是**公开 SDK 方法**（非 @hide），
+不涉及隐藏 API 灰名单。常量走 `Surface` 的同名常量（API 30/31 就有），
+不去反射 `Window.FrameRateCompatibility`，少一处反射点。
+
+### 加了游戏模式读数
+
+`GameManager.getGameMode()` 是 **API 31+ 公开方法**，普通 app 可读。
+终端介绍页「系统信息」新增这一行，它直接回答"系统认不认我们是游戏"，
+也就指出了高刷到底被谁卡着：
+
+```
+刷新率      60 Hz（请求 144，未生效）
+游戏模式    不支持（性能 0）
+```
+
+**如果这里显示"不支持"**，说明 `android:isGame` 没被认下，
+需要去系统设置里把 TermLou 手动加进游戏 / 高性能列表，然后重开应用。
+
+### 风险
+
+**小，且比前两版都更可控**：纯 manifest + 一个 XML + 一段有三重保护的反射，
+不动构建工具链、不动 Kotlin 主逻辑。
+
+- `android:isGame` 若不是合法属性，AGP 会**直接构建失败**，不会静默通过
+- 干预开关配错 → 终端文字变糊（已用 `allowGameDownscaling="false"` 摁住）
+- 游戏模式会推高性能 → 多耗电（这本来就是用户要高刷的代价）
+- **必须说清的边界**：vivo 这类系统通常还要求**手动把 app 加进游戏列表**才能真正解锁。
+  代码只能让系统"认它是游戏"，进不进那份名单是厂商自己的决定，公开 API 改不了。
+
+### 锁
+
+新增 `GameModeLockTest` 9 条，全部注入验证过（改坏 → 红 → 还原）：
+
+必须声明 `isGame` / 必须挂上 `meta-data` / 配置文件必须存在 /
+**`supportsPerformance` 与 `supportsBattery` 必须 false 且不许出现 true** /
+`allowGameDownscaling` 必须 false / `allowGameFpsOverride` 必须 false /
+必须反射调 `setFrameRate` 且有 `SDK_INT` 把门与 `runCatching` 兜底 /
+游戏模式常量必须与 AOSP 一致 / 必须有"不支持"文案。
+
+这几条全是扫源码 —— `isGame` 和四个开关都是**配置**，没有编译期接口能在配错时失败，
+只能在运行期体现。真正要防的不是"忘了加"，而是**加了却配错开关**，那比不加更糟：
+用户会以为代码写了啊。
+
+### 验证
+
+- 全量测试 **785 绿**（app 653 + probe 79 + workspace 53），较上一版 776 正好 +9
+- 注入验证 4 次（去掉 `isGame` / 去掉 `SDK_INT` 把门 / 改游戏模式常量 / 改干预开关），全部咬住并还原
+- 每次还原后用 `git diff` 核对，确认无残留
+- 已用 `aapt2 dump xmltree` 确认 `isGame=true` 与 `android.game_mode_config`
+  **真的进了打包后的 APK**，不是只改了源码
+- release APK 签名 `de851a44…6e002`，与前几版一致，可直接覆盖安装
 
 ## 5.9.58
 

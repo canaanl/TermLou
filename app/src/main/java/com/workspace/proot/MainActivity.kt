@@ -16,6 +16,7 @@ import android.util.Log
 import android.view.Display
 import android.view.Gravity
 import android.view.View
+import android.view.Window
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -326,6 +327,9 @@ class MainActivity : AppCompatActivity() {
         val dm = runCatching { getSystemService(DisplayManager::class.java) }.getOrNull() ?: return
         val display = runCatching { dm.getDisplay(Display.DEFAULT_DISPLAY) }.getOrNull() ?: return
         val cur = display.mode
+        // 先读一次游戏模式：纯诊断（介绍页会显示），但它也顺手证明了
+        // android:isGame="true" 有没有被系统认下 —— 没认下就说明厂商那套根本吃不到。
+        DisplayRefresh.readGameMode(this)
         val target = DisplayRefresh.pickTarget(
             cur.physicalWidth, cur.physicalHeight, display.refreshRate,
             display.supportedModes.map {
@@ -337,6 +341,46 @@ class MainActivity : AppCompatActivity() {
             // modeId 为 0 = 不指定具体模式，交给系统自己挑（只保留速率提示）。
             preferredDisplayModeId = target.modeId
             preferredRefreshRate = target.hz
+        }
+        requestWindowFrameRate(target.hz)
+    }
+
+    /**
+     * 走官方给游戏用的那条 API：`Window.setFrameRate()`。
+     *
+     * ## 为什么用反射
+     *
+     * 它是 API 35（Android 15）才有的，本项目 compileSdk=34，编译期引用不到。
+     * 硬升 compileSdk 需要 AGP 8.3.2 → 8.7+、Gradle 8.4 → 8.9+ 连环升级
+     * （本项目实测版本），那是本次改动里唯一的大风险。
+     *
+     * `Window#setFrameRate` 是**公开 SDK 方法**（不是 @hide），所以反射拿得到，
+     * 不涉及隐藏 API 灰名单。
+     *
+     * ## 为什么必须做这一条
+     *
+     * Android 15 的 ARR 机制下，大多数 View 默认投 "Normal" 票（60Hz），
+     * 系统取**最高票** —— 不主动投票就必然锁 60，和厂商无关。
+     * `Window.setFrameRate` 正是覆盖这一层的正路。
+     *
+     * ## 安全性
+     *
+     * 三重保护：SDK_INT >= 35 才试、方法找不到直接跳过、整个调用 runCatching 兜死。
+     * **不可能崩**，方法不存在时静默降级为 5.9.58 那套窗口属性。
+     *
+     * 常量走 `Surface` 的同名常量（API 30/31 就有，编译期可见），
+     * 不去反射 Window.FrameRateCompatibility —— 少一处反射点。
+     */
+    private fun requestWindowFrameRate(hz: Float) {
+        if (Build.VERSION.SDK_INT < 35) return
+        if (hz <= 0f) return
+        runCatching {
+            val m = Window::class.java.getMethod(
+                "setFrameRate", Float::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
+            )
+            // FRAME_RATE_COMPATIBILITY_DEFAULT=0、CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS=1
+            m.invoke(window, hz, 0, 1)
         }
     }
 
