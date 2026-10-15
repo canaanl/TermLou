@@ -30,8 +30,12 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * ## 样子
  *
- * - **等宽等高**：每格宽度 = 一个字符格，高度 = **整个缝隙高度**，一个像素不差。
+ * - **等宽等高**：所有条**一样宽**，高度 = **整个缝隙高度**，一个像素不差。
  *   格子之间**只有明暗不同**，没有高矮之分。
+ * - **铺满全宽**（5.9.57）：条数按「字符格 × 1.1」向下取整，除不尽的余量
+ *   **匀进每条缝里**而不是丢掉 —— 丢掉的话最右边会永远缺一截（1080px 屏上
+ *   实测余量 9.5px ≈ 0.96 条，正是用户看到的「最右边总是少一个方块」）。
+ *   代价是条宽不再精确等于一个字符格，最多偏宽 11%（实测 1080px 上偏 0.9%）。
  * - **单焦点**：整条轨道只有**一个**亮点，其余是它身后渐暗的拖尾。
  *   焦点从左匀速走到右，停一下，折回，再停一下（往复）。
  * - **不跳格**：亮度按「格子中心到焦点的连续距离」算，焦点位置是浮点像素
@@ -77,17 +81,18 @@ class TerminalActivityBar(context: Context) : View(context) {
     }
 
     private fun recountCells() {
-        // 条间距 = 条宽 × 1.1：条与条之间留一条缝（缝 ≈ 条宽的 10%，缝里透背景色）。
-        // 条数向下取整 —— 末尾不足一条的余量直接丢掉，不画半截条。
-        val next = if (width <= 0 || cellWidth <= 0f) 0 else (width / pitch()).toInt()
+        val next = countCells(width, cellWidth)
         if (next != cells) {
             cells = next
             invalidate()
         }
     }
 
-    /** 条间距（含 10% 缝）。条本身还是一个字符格宽（不断条宽，只加缝）。 */
-    private fun pitch(): Float = cellWidth * (1f + GAP_RATIO)
+    /** 实际排布间距（含 10% 缝）= 全宽 ÷ 条数 —— 余量匀进缝里，所以右端铺满。 */
+    private fun pitch(): Float = trackPitch(width, cells)
+
+    /** 条宽 = 间距去掉那条 10% 的缝。 */
+    private fun barWidth(): Float = trackBarWidth(pitch())
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
@@ -149,7 +154,11 @@ class TerminalActivityBar(context: Context) : View(context) {
             // 周期取模 → 天然无缝循环，不需要像原版那样拼 54 帧序列
             elapsedMs = (elapsedMs + dt) % ActivityTrail.CYCLE_MS
             invalidate()
-            postOnAnimationDelayed(this, FRAME_INTERVAL_MS)
+            // 5.9.57：跟 vsync 走，不再自己节流。原来写死 16ms（60fps），
+            // 在 120Hz 屏上 16ms > 一个 vsync 周期 8.33ms，会落到隔一帧 → 仍然只有 60fps，
+            // 变成全 app 唯一慢半拍的动画。位置本来就是按真实时间算的（见 elapsedMs），
+            // 帧率只影响平滑度，所以延时 0 就是最优解，60Hz 设备也照样 60。
+            postOnAnimation(this)
         }
     }
 
@@ -213,7 +222,7 @@ class TerminalActivityBar(context: Context) : View(context) {
         )
         fillPaint.color = trackColor
         for (i in 0 until cells) {
-            canvas.drawRect(cellLeft(i), top, cellLeft(i) + cellWidth, bottom, fillPaint)
+            canvas.drawRect(cellLeft(i), top, cellLeft(i) + barWidth(), bottom, fillPaint)
         }
 
         // 第 2 步：逐格叠拖尾明暗。
@@ -225,7 +234,7 @@ class TerminalActivityBar(context: Context) : View(context) {
             if (alpha <= 0.004f) continue                  // 暗色底已经铺好，这格不用再叠
             val rgb = boosted(i == focusIndex + glareOffset(forward), inkColor, alpha)
             fillPaint.color = withAlpha(rgb, (alpha * 255f).toInt().coerceIn(0, 255))
-            canvas.drawRect(cellLeft(i), top, cellLeft(i) + cellWidth, bottom, fillPaint)
+            canvas.drawRect(cellLeft(i), top, cellLeft(i) + barWidth(), bottom, fillPaint)
         }
     }
 
@@ -282,13 +291,31 @@ class TerminalActivityBar(context: Context) : View(context) {
     companion object {
         /**
          * 条间距里的缝占比（5.9.24）：缝 ≈ 条宽的 10%，缝里透背景色。
-         * 条本身还是一个字符格宽 —— 不断条宽，只加缝；条数因此变少，自动重算。
+         * 只用来算**名义**间距（定条数）；实际排布由 [trackPitch] 匀满全宽。
          */
         private const val GAP_RATIO = 0.1f
+
         /**
-         * 60fps。1.5s 一趟 ÷ 73 格 ≈ 每帧 0.9 格 —— 25fps 下会是每帧 3.6 格，看得出跳。
+         * 名义间距 = 字符格 × (1 + 缝占比)。条宽取一个字符格，缝占条宽的 10%。
+         * 这个值除不尽全宽，末尾余量由 [trackPitch] 匀进缝里，不丢弃。
          */
-        private const val FRAME_INTERVAL_MS = 16L
+        fun nominalPitch(cellWidth: Float): Float = cellWidth * (1f + GAP_RATIO)
+
+        /** 条数 = 全宽 ÷ 名义间距，向下取整（不够一整条就不画）。 */
+        fun countCells(width: Int, cellWidth: Float): Int =
+            if (width <= 0 || cellWidth <= 0f) 0 else (width / nominalPitch(cellWidth)).toInt()
+
+        /**
+         * 实际排布间距 = 全宽 ÷ 条数（5.9.57）。
+         *
+         * 条数是向下取整来的，所以名义间距一定 ≤ 这个值：余量被匀进每一条缝里，
+         * 条因此略宽于一个字符格（最多 +11%），右端则铺满，和条间缝一样收尾。
+         */
+        fun trackPitch(width: Int, cells: Int): Float =
+            if (cells <= 0) 0f else width.toFloat() / cells
+
+        /** 条宽 = 间距 ÷ (1 + 缝占比)，缝仍是条宽的 10%。 */
+        fun trackBarWidth(pitch: Float): Float = pitch / (1f + GAP_RATIO)
 
         /** PTY 空闲多久后清空。够短能接住 TUI 连续重绘，够长不会在敲完命令后一直转。 */
         const val IDLE_MS = 800L

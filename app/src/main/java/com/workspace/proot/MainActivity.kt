@@ -95,6 +95,12 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // 5.9.57：向系统请求 120Hz。自动模式下系统会参考 app 的偏好刷新率来选档。
+        // 这只是一条**建议**（API 21+ 的 window 属性），系统可以驳回（省电/发热），
+        // 设备不支持 120 会自动落到 60，不会异常。只加在主界面 —— 终端和全部动画都在这里，
+        // 设置页/笔记页是静态画面，让它们留在低刷反而省电。
+        window.attributes = window.attributes.apply { preferredRefreshRate = 120f }
+
         scope = AppScope(
             prefs = getSharedPreferences("term-lou-settings", MODE_PRIVATE),
             lxRoot = java.io.File(filesDir, "workspace/linux"),

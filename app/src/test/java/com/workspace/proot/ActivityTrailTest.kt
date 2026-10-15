@@ -226,4 +226,67 @@ class ActivityTrailTest {
         val a = ActivityTrail.alphaAt(ActivityTrail.signedDistance(0f, 0f, true), 100f)
         assertTrue(a >= 0f && a <= 1f)
     }
+
+    // ---------- 铺满全宽：取整余量匀进缝里（5.9.57） ----------
+
+    /** 1080px 屏 / 字符格 9.83px —— 用户实机反馈"最右边总是少一个方块"的那一档。 */
+    private val cellW = 9.83f
+
+    private val widths = intArrayOf(720, 1080, 1440, 2340, 2560)
+
+    @Test
+    fun `条数按名义间距向下取整`() {
+        assertEquals(99, TerminalActivityBar.countCells(1080, cellW))
+        assertEquals("宽度没到位", 0, TerminalActivityBar.countCells(0, cellW))
+        assertEquals("字符格没到位", 0, TerminalActivityBar.countCells(1080, 0f))
+        assertEquals("负宽度", 0, TerminalActivityBar.countCells(-1080, cellW))
+        assertEquals("宽度不足一条", 0, TerminalActivityBar.countCells(5, cellW))
+    }
+
+    @Test
+    fun `实际间距把全宽精确铺满`() {
+        for (width in widths) {
+            val cells = TerminalActivityBar.countCells(width, cellW)
+            assertTrue("宽度 $width 至少要排得下一条", cells >= 1)
+            val pitch = TerminalActivityBar.trackPitch(width, cells)
+            assertEquals("宽度 $width 没有铺满", width.toFloat(), cells * pitch, 0.01f)
+        }
+    }
+
+    @Test
+    fun `右端收尾是一条普通条间缝而不是缺一整条`() {
+        val width = 1080
+        val cells = TerminalActivityBar.countCells(width, cellW)
+        val pitch = TerminalActivityBar.trackPitch(width, cells)
+        val bar = TerminalActivityBar.trackBarWidth(pitch)
+        val gap = pitch - bar
+
+        // 最后一条的右边界到 view 右边缘，应该正好剩一条缝
+        val rightGap = width - ((cells - 1) * pitch + bar)
+        assertEquals("右端空隙应等于条间缝", gap, rightGap, 0.01f)
+
+        // 对照旧算法（余量直接丢掉）：右端空隙是它的近十倍，那正是用户看到的少一整条
+        val oldLeftover = width - cells * TerminalActivityBar.nominalPitch(cellW)
+        assertTrue("旧算法余量 $oldLeftover 应远大于条间缝 $gap", oldLeftover > gap * 5f)
+    }
+
+    @Test
+    fun `条宽全都一样且离一个字符格很近`() {
+        for (width in widths) {
+            val cells = TerminalActivityBar.countCells(width, cellW)
+            val pitch = TerminalActivityBar.trackPitch(width, cells)
+            val bar = TerminalActivityBar.trackBarWidth(pitch)
+            assertTrue("宽度 $width 的条不能窄于字符格，实为 $bar", bar >= cellW - 0.01f)
+            assertTrue("宽度 $width 的条最多偏宽 11%，实为 $bar", bar <= cellW * 1.11f)
+            // 缝恒为条宽的 10% —— 5.9.24 立下的观感，这次改动不能破坏它
+            assertEquals("宽度 $width 的缝占比", bar * 0.1f, pitch - bar, 0.01f)
+        }
+    }
+
+    @Test
+    fun `条数没到时排布不许崩`() {
+        assertEquals(0f, TerminalActivityBar.trackPitch(1080, 0), 0.001f)
+        assertEquals(0f, TerminalActivityBar.trackPitch(1080, -3), 0.001f)
+        assertEquals(0f, TerminalActivityBar.trackBarWidth(0f), 0.001f)
+    }
 }

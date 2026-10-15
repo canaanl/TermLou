@@ -46,14 +46,18 @@ class ShortcutManager(
         rowBottom.removeAllViews()
         shortcutInner.removeViews(1, shortcutInner.childCount - 1)
 
-        rowTop.addView(createShortcutKey("/", "/", false, "", cardW))
-        rowTop.addView(createShortcutKey("Tab", "\t", false, "", cardW))
+        // 5.9.57：上排改成 Esc Tab ↑ Ctrl，下排改成 / ← ↓ →。
+        // Ctrl 必须留在上排第 4 位 —— TerminalController 的
+        // `applyRow(rowTop, listOf(null, null, null, ctrlFill))` 靠下标 3 对应它的按下态。
         rowTop.addView(createShortcutKey("Esc", "\u001b", false, "", cardW))
+        rowTop.addView(createShortcutKey("Tab", "\t", false, "", cardW))
+        rowTop.addView(createShortcutKey("\u2191", "\u001b[A", true, "\u001b[1;5A", cardW))
         rowTop.addView(createCtrlKey(cardW))
 
-        rowBottom.addView(createShortcutKey("\u2191", "\u001b[A", true, "\u001b[1;5A", cardW))
-        rowBottom.addView(createShortcutKey("\u2193", "\u001b[B", true, "\u001b[1;5B", cardW))
+        // 下排全是非选中态（四个 null），没有下标耦合，箭头顺序可以自由调。
+        rowBottom.addView(createShortcutKey("/", "/", false, "", cardW))
         rowBottom.addView(createShortcutKey("\u2190", "\u001b[D", true, "\u001b[1;5D", cardW))
+        rowBottom.addView(createShortcutKey("\u2193", "\u001b[B", true, "\u001b[1;5B", cardW))
         rowBottom.addView(createShortcutKey("\u2192", "\u001b[C", true, "\u001b[1;5C", cardW))
     }
 

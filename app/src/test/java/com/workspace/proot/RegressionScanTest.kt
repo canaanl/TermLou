@@ -848,5 +848,64 @@ class RegressionScanTest {
         assertFalse("不许再一段段 append 拼脚本：\n$ext", ext.contains("append(\"(function()"))
         assertTrue("三个数字要用插值带进去：\n$ext", ext.contains("var L=\$limit, T=\$textChars, TC=\$LINK_TEXT_CHARS;"))
     }
+
+    // ---------- 5.9.57：快捷键重排 + 请求 120Hz ----------
+
+    @Test
+    fun `快捷键上下两排的顺序不许回退`() {
+        // 5.9.57 用户重排了底部固定快捷键（上排第 1、2、3 个与下排四个全换，见 CHANGELOG）。
+        // Ctrl 必须在 rowTop **第 4 位** —— TerminalController 里
+        // applyRow(rowTop, listOf(null,null,null,ctrlFill)) 靠下标 3 对应它的按下态，挪走就错位。
+        // rowBottom 四个都是非选中态，没有下标耦合。
+        // ⚠ 判据读的是 addView 的**调用顺序**，不认注释里写的顺序。
+        val c = codeOnly("ShortcutManager.kt")
+        fun order(row: String) =
+            Regex("$row\\.addView\\(([^)]*)\\)").findAll(c).map { it.groupValues[1] }.toList()
+
+        val top = order("rowTop")
+        assertEquals("rowTop 必须 4 个键：\n$c", 4, top.size)
+        assertTrue("rowTop 第 1 个必须是 Esc：\n$c", top[0].contains("\"Esc\""))
+        assertTrue("rowTop 第 2 个必须是 Tab：\n$c", top[1].contains("\"Tab\""))
+        assertTrue("rowTop 第 3 个必须是上箭头：\n$c", top[2].contains("\"\\u2191\""))
+        assertTrue(
+            "rowTop 第 4 个必须是 Ctrl 键（下标 3 对应它的按下态）：\n$c",
+            top[3].startsWith("createCtrlKey")
+        )
+
+        val bottom = order("rowBottom")
+        assertEquals("rowBottom 必须 4 个键：\n$c", 4, bottom.size)
+        assertTrue("rowBottom 第 1 个必须是斜杠：\n$c", bottom[0].contains("\"/\""))
+        assertTrue("rowBottom 第 2 个必须是左箭头：\n$c", bottom[1].contains("\"\\u2190\""))
+        assertTrue("rowBottom 第 3 个必须是下箭头：\n$c", bottom[2].contains("\"\\u2193\""))
+        assertTrue("rowBottom 第 4 个必须是右箭头：\n$c", bottom[3].contains("\"\\u2192\""))
+    }
+
+    @Test
+    fun `主界面必须向系统请求120Hz`() {
+        // 5.9.57：用户反馈自动模式下这个 app 只有 60Hz。
+        // `preferredRefreshRate` 是**建议**不是命令（设备不支持会自动落回 60，
+        // 省电/发热也可以驳回），所以这条锁只锁"必须去请求"这一件事，不锁结果。
+        val m = codeOnly("MainActivity.kt")
+        assertTrue(
+            "MainActivity 必须请求 preferredRefreshRate = 120f：\n$m",
+            m.contains("preferredRefreshRate = 120f")
+        )
+        assertEquals(
+            "preferredRefreshRate 只许设一次，别在别处又设一遍：\n$m",
+            1,
+            Regex("preferredRefreshRate").findAll(m).count()
+        )
+    }
+
+    @Test
+    fun `缝隙活动条不许再自己节流到60帧`() {
+        // 5.9.57：原来写死 postOnAnimationDelayed(this, 16L)。120Hz 的 vsync 是 8.33ms，
+        // 16ms 延时会落到**隔一帧**，等于屏幕再高它也只有 60fps。
+        // 位置本来就是按真实时间算的（见 elapsedMs），帧率只影响平滑度，
+        // 所以跟 vsync 走（延时 0）才是对的，60Hz 设备也照样 60。
+        val c = codeOnly("TerminalActivityBar.kt")
+        assertFalse("活动条不许再写死帧间隔：\n$c", c.contains("FRAME_INTERVAL_MS"))
+        assertTrue("活动条帧循环必须跟 vsync：\n$c", c.contains("postOnAnimation(this)"))
+    }
 }
 
