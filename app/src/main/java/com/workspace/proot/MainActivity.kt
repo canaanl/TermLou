@@ -257,8 +257,10 @@ class MainActivity : AppCompatActivity() {
         // 5.9.63：5.9.57~5.9.62 那一整套"应用主动请求刷新率"的代码**全部删除**。
         // 六版实测结论：这台设备上那些 API（窗口属性 / Window.setFrameRate /
         // View.setRequestedFrameRate / SurfaceView 锚点）都无法改变智能切换下的档位，
-        // 而同样的界面上普通应用能到 90。剩下的唯一差异是应用自己声明的 targetSdk
-        // （见 app/build.gradle.kts）。所以这里不再有任何刷新率代码 —— 干净单变量。
+        // 而同样的界面上普通应用能到 90。
+        // 5.9.64 收尾定论：连 targetSdk 34→35 的单变量对照（5.9.63）也做过了，依旧 60Hz；
+        // 判定记录在厂商侧（厂商游戏服务数据全清 + 重启都不动它），应用层无解。
+        // 不要在这里再加任何刷新率代码。
 
         // 5.9.53：原先这里把五个视图全设 GONE、并在 showTab 里手工切 visibility。
         // ViewPager2 自己管理 item 的挂载与显隐，不再需要 —— 手工设 GONE 反而会让

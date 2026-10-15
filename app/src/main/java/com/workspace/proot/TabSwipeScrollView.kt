@@ -13,6 +13,11 @@ class TabSwipeScrollView(
     private var startY = 0f
     private val threshold by lazy { (50 * resources.displayMetrics.density).toInt() }
 
+    init {
+        // 5.9.64：关掉系统默认绘制的纵向滚动条 —— 设置页是自绘 UI，右侧细条显脏。
+        isVerticalScrollBarEnabled = false
+    }
+
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {

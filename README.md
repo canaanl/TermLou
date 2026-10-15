@@ -50,7 +50,7 @@
 | 层 | 技术 |
 |----|------|
 | 语言 | Kotlin 2.0.21（模块 `app` + `workspace`）+ C++17（JNI / NDK） |
-| 构建 | Gradle 8.4 / Android Gradle Plugin 8.3.2 / CMake 3.22.1 / NDK 25–26 |
+| 构建 | Gradle 8.7 / Android Gradle Plugin 8.6.1 / CMake 3.22.1 / NDK 25–26 |
 | Android | compileSdk 35 · targetSdk 35 · minSdk 26 · arm64-v8a |
 | 终端 | `com.github.termux.termux-app:terminal-view:v0.118.3`（上游渲染器 + 自写 PTY） |
 | UI | 程序化视图（零 XML）；`androidx.core-ktx` / `appcompat` / `material` / `recyclerview` / `lifecycle-runtime` |

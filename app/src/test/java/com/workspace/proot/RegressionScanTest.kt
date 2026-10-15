@@ -881,20 +881,31 @@ class RegressionScanTest {
         assertTrue("三个数字要用插值带进去：\n$ext", ext.contains("var L=\$limit, T=\$textChars, TC=\$LINK_TEXT_CHARS;"))
     }
 
+    // ---------- 5.9.64：设置页关掉垂直滚动条 ----------
+
+    @Test
+    fun `设置页的垂直滚动条必须关闭`() {
+        // 设置页（TabSwipeScrollView）是全自绘 UI，系统默认绘制的右侧纵向细条很显脏。
+        // 5.9.64 在 init 里关掉；这里钉住 —— 打开的话这条就红。
+        val s = code("TabSwipeScrollView.kt")
+        assertTrue(
+            "TabSwipeScrollView 必须关掉纵向滚动条：\n$s",
+            s.contains("isVerticalScrollBarEnabled = false")
+        )
+    }
+
     // ---------- 5.9.63：targetSdk 35 + 退出强制 edge-to-edge ----------
 
     @Test
     fun `targetSdk必须是35并且所有主题都退出强制edge-to-edge`() {
-        // 5.9.63：把 targetSdk 34→35，**只动这一个变量**。
-        // 依据：同一台手机上能跑 90Hz 的普通应用声明的是 35，TermLou 声明的是 34 ——
-        // 系统对同一设备上的两个应用走两套策略，而它能从应用这边读到的东西里，
-        // 唯一对得上的差别就是 targetSdk（旧应用走兼容路径）。
+        // 5.9.63：targetSdk 34→35 曾是"对齐能跑 90Hz 的普通应用"的单变量对照。
+        // 5.9.64 已定论：对照做完，依旧 60Hz —— 这不是根因（真根因在厂商侧）。
+        // 但 35 保留为**长期配置**（不再是实验）：方向跟随 Play 政策。
         //
         // 代价：Android 15 起对 targetSdk≥35 的应用**强制 edge-to-edge**。
         // 而 TermLou 是自绘顶栏和底栏的 —— 不处理就会顶到系统状态栏底下、压在手势条上。
-        // windowOptOutEdgeToEdgeEnforcement 是官方给 API 35 的退出通道，声明它界面才与
-        // 5.9.62 逐像素一致。**这两条是配套的**：少了 targetSdk 就测不出帧率；
-        // 少了退出开关，界面先坏，测出来的结果也就没法信。
+        // windowOptOutEdgeToEdgeEnforcement 是官方给 API 35 的退出通道，声明它，
+        // 界面才与 5.9.62 逐像素一致（**开关和 targetSdk 是配套的，一起升降**）。
         //
         // ⚠ 这个开关只对 targetSdk 35 有效。将来抬到 36 时它会被忽略，
         //    那时必须先做 WindowInsets / ime 适配，而不是把它删掉了事。
