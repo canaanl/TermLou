@@ -146,6 +146,33 @@ class NotesStoreTest {
     }
 
     @Test
+    fun `empty note detection counts body and todos but not tags`() {
+        val n = store.createNote("e")
+        assertTrue(store.isEmptyNote(n, ""))
+        assertTrue(store.isEmptyNote(n, "  \n "))
+        store.attachTags(n, listOf("tag"))
+        assertTrue(store.isEmptyNote(n, "")) // 只有标签仍是空笔记
+        store.addTodo("t", n)
+        assertFalse(store.isEmptyNote(n, "")) // 有待办 = 有内容
+        store.deleteTodo(store.todosOf(n).single().id)
+        store.saveNote(n, "hi")
+        assertFalse(store.isEmptyNote(n, "hi")) // 有正文 = 有内容
+        assertTrue(store.isEmptyNote(n, "   ")) // 判定看当前草稿：草稿被删空即判空
+    }
+
+    @Test
+    fun `board list is newest first while note editor list stays oldest first`() {
+        store.createNote("n")
+        store.addTodo("a", "n")
+        store.addTodo("b", "n")
+        store.addTodo("c", "n")
+        // 看板（全局）倒排：最新创建的排最前
+        assertEquals(listOf("c", "b", "a"), store.todos().map { it.text })
+        // 编辑器内（按笔记过滤）保持正排：最旧的排最前
+        assertEquals(listOf("a", "b", "c"), store.todosOf("n").map { it.text })
+    }
+
+    @Test
     fun `todo attribution survives reload`() {
         store.createNote("n1")
         store.addTodo("mine", "n1")

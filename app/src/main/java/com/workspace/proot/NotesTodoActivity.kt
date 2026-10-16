@@ -303,9 +303,30 @@ class NotesTodoActivity : NotesPageActivity() {
                 store.deleteTodo(item.id)
                 render()
                 NoteNotify.post("Notes | ${getString(R.string.notes_deleted)}「${item.text}」")
+                handleNoteEmptied(item.note)
             }
             .setNegativeButton(getString(R.string.cancel), null)
             .showStyled(theme)
+    }
+
+    /** 5.9.65：删完若所属笔记被删空（无正文 + 无待办，标签不算内容）→ 按开关删除或询问。
+     *  看板能对内容做修改的路径只有删待办这一处，所以判定挂在这里即时生效。 */
+    private fun handleNoteEmptied(note: String) {
+        if (note.isEmpty()) return
+        if (!store.isEmptyNote(note, store.readNote(note))) return
+        if (autoDeleteEmptyNotes()) {
+            store.deleteNote(note)
+            NoteNotify.post("Notes | ${getString(R.string.notes_empty_deleted_fmt, note)}")
+        } else {
+            AlertDialog.Builder(this)
+                .setMessage(getString(R.string.notes_empty_confirm_fmt, note))
+                .setPositiveButton(getString(R.string.notes_delete)) { _, _ ->
+                    store.deleteNote(note)
+                    NoteNotify.post("Notes | ${getString(R.string.notes_empty_deleted_fmt, note)}")
+                }
+                .setNegativeButton(getString(R.string.cancel), null)
+                .showStyled(theme)
+        }
     }
 
     companion object {

@@ -51,8 +51,10 @@ internal object NotesSql {
     const val Q_NOTE_ROW = "SELECT name, tags_json, created_at, updated_at FROM notes WHERE name = ?"
     const val Q_LIST_NOTES =
         "SELECT name, tags_json, created_at, updated_at FROM notes ORDER BY updated_at DESC, name ASC"
+    /** 5.9.65 看板数据源：倒排（最新在前，同毫秒并列按入库倒序）。
+     *  编辑器内列表走 Q_TODOS_OF，保持正排不动。 */
     const val Q_TODOS =
-        "SELECT id, text, done, created_at, note FROM todos ORDER BY done ASC, created_at ASC, rowid ASC"
+        "SELECT id, text, done, created_at, note FROM todos ORDER BY done ASC, created_at DESC, rowid DESC"
     const val Q_TODOS_OF =
         "SELECT id, text, done, created_at, note FROM todos WHERE note = ? " +
             "ORDER BY done ASC, created_at ASC, rowid ASC"

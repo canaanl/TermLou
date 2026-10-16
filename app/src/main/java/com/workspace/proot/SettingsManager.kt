@@ -456,6 +456,13 @@ class SettingsManager(private val prefs: SharedPreferences) {
         prefs.edit().putBoolean("includeSystemApps", v).apply()
     }
 
+    /** 5.9.65 空笔记自动删除：笔记被删空时静默删除、不再弹窗询问（默认关）。 */
+    fun autoDeleteEmptyNote(): Boolean = prefs.getBoolean("autoDeleteEmptyNote", false)
+
+    fun setAutoDeleteEmptyNote(v: Boolean) {
+        prefs.edit().putBoolean("autoDeleteEmptyNote", v).apply()
+    }
+
     fun loadCaptureApps(): Set<String> {
         val set = linkedSetOf<String>()
         try {

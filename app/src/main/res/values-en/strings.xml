@@ -111,6 +111,9 @@
     <string name="sysinfo_codename">CODENAME</string>
     <string name="sysinfo_arch">ARCHITECTURE</string>
     <string name="sysinfo_unknown">UNKNOWN</string>
+    <string name="settings_notes_title">NOTES</string>
+    <string name="settings_note_autodelete_title">AUTO-DELETE EMPTY NOTES</string>
+    <string name="settings_note_autodelete_desc">Notes with no text and no todos are deleted without asking (tags are not content)</string>
     <string name="lang_title">LANGUAGE</string>
 
     <!-- Terminal/files -->
@@ -421,6 +424,8 @@
     <string name="notes_renamed">Renamed</string>
     <string name="notes_tag_removed">Tag removed</string>
     <string name="notes_confirm_delete_fmt">Delete "%1$s"?</string>
+    <string name="notes_empty_confirm_fmt">Note "%1$s" is empty. Delete it?</string>
+    <string name="notes_empty_deleted_fmt">Deleted empty note "%1$s"</string>
     <string name="notes_edit_todo">Edit todo</string>
     <string name="notes_back_tags">‹ All tags</string>
     <string name="notes_search_tag">Search tags</string>

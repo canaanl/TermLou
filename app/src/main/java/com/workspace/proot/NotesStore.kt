@@ -384,6 +384,12 @@ class NotesStore(
         }
     }
 
+    /** 5.9.65 空笔记判定：正文（trim 后）为空且该笔记无待办 = 无内容。
+     *  标签不算内容（不承载内容），只有标签的空笔记同样判空。
+     *  判定看调用方传入的当前草稿，不读盘——编辑器里删光但未落盘的正文也算。 */
+    fun isEmptyNote(name: String, draftBody: String): Boolean =
+        draftBody.isBlank() && todosOf(name).isEmpty()
+
     fun tagsOf(name: String): List<String> =
         db().query(NotesSql.Q_NOTE_ROW, listOf(name), NotesSql.T_NOTE_ROW)
             .firstOrNull()?.let { NotesSql.decodeTags(it[1] as String) }.orEmpty()
@@ -423,11 +429,11 @@ class NotesStore(
 
     fun notesWithTag(tag: String): List<NoteEntry> = listNotes().filter { it.tags.contains(tag) }
 
-    /** 未完成在前，其次按创建时间（并列按入库序，与旧版一致）。 */
+    /** 未完成在前，其次按创建时间倒序（并列按入库倒序）——看板数据源，新待办排最前。 */
     fun todos(): List<TodoItem> =
         db().query(NotesSql.Q_TODOS, types = NotesSql.T_TODO_ROW).map { NotesSql.todoItem(it) }
 
-    /** 某篇笔记的待办，同全局排序。 */
+    /** 某篇笔记的待办，未完成在前、创建时间正序（编辑器内列表保持正排，与看板相反）。 */
     fun todosOf(note: String): List<TodoItem> =
         db().query(NotesSql.Q_TODOS_OF, listOf(note), NotesSql.T_TODO_ROW).map { NotesSql.todoItem(it) }
 

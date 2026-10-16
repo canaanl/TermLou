@@ -22,7 +22,7 @@ import java.util.Locale
  */
 class NotesController(
     private val activity: MainActivity,
-    scope: AppScope,
+    private val scope: AppScope,
     private val status: StatusController
 ) {
 
@@ -358,6 +358,8 @@ class NotesController(
     }
 
     private fun showList() {
+        val cur = current
+        val draft = body.text?.toString().orEmpty()
         flushPendingSave()
         current = null
         fab.visibility = android.view.View.VISIBLE
@@ -366,7 +368,32 @@ class NotesController(
         editorBox.visibility = android.view.View.GONE
         searchInput.visibility = android.view.View.VISIBLE
         listScroll.visibility = android.view.View.VISIBLE
+        // 5.9.65：退出编辑时笔记已被删空（正文空 + 无待办，标签不算内容）→ 按开关删除或询问。
+        // 打字中途不判定（新建的笔记一打开就是空的，实时判定会当场误杀），退出即统一结算。
+        if (cur != null && store.isEmptyNote(cur, draft)) {
+            if (scope.settingsManager.autoDeleteEmptyNote()) {
+                store.deleteNote(cur)
+                renderList()
+                status.showTempStatus("Notes | ${activity.getString(R.string.notes_empty_deleted_fmt, cur)}")
+            } else {
+                renderList()
+                showEmptyNoteDialog(cur)
+            }
+            return
+        }
         renderList()
+    }
+
+    /** 空笔记询问弹窗：删除或保留（取消=保留，下次再被打开退出时还会问）。 */
+    private fun showEmptyNoteDialog(name: String) {
+        AlertDialog.Builder(activity)
+            .setMessage(activity.getString(R.string.notes_empty_confirm_fmt, name))
+            .setPositiveButton(activity.getString(R.string.notes_delete)) { _, _ ->
+                store.deleteNote(name)
+                if (current == null) renderList()
+            }
+            .setNegativeButton(activity.getString(R.string.cancel), null)
+            .showStyled(theme)
     }
 
     fun openNote(name: String) {

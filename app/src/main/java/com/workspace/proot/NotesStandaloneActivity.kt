@@ -143,6 +143,8 @@ class NotesStandaloneActivity : NotesPageActivity() {
     }
 
     private fun showList() {
+        val cur = current
+        val draft = body.text?.toString().orEmpty()
         flushPendingSave()
         current = null
         fab.visibility = View.VISIBLE
@@ -151,7 +153,32 @@ class NotesStandaloneActivity : NotesPageActivity() {
         editorBox.visibility = View.GONE
         searchInput.visibility = View.VISIBLE
         listScroll.visibility = View.VISIBLE
+        // 5.9.65：退出编辑时笔记已被删空（正文空 + 无待办，标签不算内容）→ 按开关删除或询问。
+        // 与主界面笔记 Tab 同一套规则；提示沿用独立页现有通道（NoteNotify）。
+        if (cur != null && store.isEmptyNote(cur, draft)) {
+            if (autoDeleteEmptyNotes()) {
+                store.deleteNote(cur)
+                renderList()
+                NoteNotify.post("Notes | ${getString(R.string.notes_empty_deleted_fmt, cur)}")
+            } else {
+                renderList()
+                showEmptyNoteDialog(cur)
+            }
+            return
+        }
         renderList()
+    }
+
+    /** 空笔记询问弹窗（与主界面笔记 Tab 同款文案与行为）。 */
+    private fun showEmptyNoteDialog(name: String) {
+        AlertDialog.Builder(this)
+            .setMessage(getString(R.string.notes_empty_confirm_fmt, name))
+            .setPositiveButton(getString(R.string.notes_delete)) { _, _ ->
+                store.deleteNote(name)
+                if (current == null) renderList()
+            }
+            .setNegativeButton(getString(R.string.cancel), null)
+            .showStyled(theme)
     }
 
     fun openNote(name: String) {

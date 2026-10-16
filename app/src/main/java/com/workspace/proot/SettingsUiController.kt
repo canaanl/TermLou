@@ -56,6 +56,8 @@ class SettingsUiController(
 
         buildDisplaySection(settingsInner, density)
         settingsInner.addView(divider())
+        buildNotesSection(settingsInner)
+        settingsInner.addView(divider())
         sectionTitle(settingsInner, activity.getString(R.string.settings_commands_title))
         buildShellSection(settingsInner)
         buildTileSection(settingsInner)
@@ -451,6 +453,40 @@ private fun divider(): View = View(activity).apply {
             // 5.9.40（A1）：这一行紧跟在浏览器按钮行之后，同样会贴太近，
             // 给它组内子项一致的上方留白。
             topMargin = activity.dp(UiTokens.SPACE_2)
+        })
+    }
+
+    /** 5.9.65：笔记域设置——空笔记自动删除开关（默认关）。
+     *  开启后，笔记在退出编辑/看板删空时被静默删除（提示：已删除空笔记），不再弹窗。 */
+    private fun buildNotesSection(parent: LinearLayout) {
+        sectionTitle(parent, activity.getString(R.string.settings_notes_title))
+        parent.addView(LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0)
+            addView(TextView(activity).apply {
+                text = activity.getString(R.string.settings_note_autodelete_title)
+                setTextColor(scope.cOnSurface)
+                textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY, bold = true)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(MaterialSwitch(ContextThemeWrapper(activity, R.style.Theme_TermLou_Switch)).apply {
+                showText = false
+                elevation = 8f
+                thumbTintList = controlTint()
+                trackTintList = switchTrackTint()
+                isChecked = scope.settingsManager.autoDeleteEmptyNote()
+                setOnCheckedChangeListener { _, isChecked ->
+                    if (suppressSwitch) return@setOnCheckedChangeListener
+                    scope.settingsManager.setAutoDeleteEmptyNote(isChecked)
+                }
+            })
+        })
+        parent.addView(TextView(activity).apply {
+            text = activity.getString(R.string.settings_note_autodelete_desc)
+            setTextColor(scope.cOnSurfaceVariant)
+            textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
+            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_1, UiTokens.SPACE_0, UiTokens.SPACE_0)
         })
     }
 

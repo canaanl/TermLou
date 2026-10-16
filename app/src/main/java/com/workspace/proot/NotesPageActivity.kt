@@ -137,6 +137,11 @@ abstract class NotesPageActivity : AppCompatActivity() {
 
     protected fun divider(): android.view.View = SegmentStyle.hDivider(this, theme.onSurface)
 
+    /** 5.9.65 空笔记自动删除开关：与设置页读同一个 prefs 文件（term-lou-settings）。
+     *  两个入口（主界面笔记 Tab / 磁贴独立页）与看板共用此读取。 */
+    protected fun autoDeleteEmptyNotes(): Boolean =
+        SettingsManager(getSharedPreferences(PREFS_NAME, MODE_PRIVATE)).autoDeleteEmptyNote()
+
     /** 带滚动的内容列容器。 */
     protected fun scrollColumn(): Pair<ScrollView, LinearLayout> {
         val inner = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }

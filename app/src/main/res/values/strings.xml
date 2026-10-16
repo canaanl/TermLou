@@ -113,6 +113,9 @@
     <!-- 5.9.63：sysinfo_refresh / sysinfo_refresh_fmt / sysinfo_refresh_fmt_low /
          sysinfo_refresh_layers 四条随 5.9.57~5.9.62 的高刷补丁一起删除。 -->
     <string name="sysinfo_unknown">未知</string>
+    <string name="settings_notes_title">笔记</string>
+    <string name="settings_note_autodelete_title">空笔记自动删除</string>
+    <string name="settings_note_autodelete_desc">没有正文也没有待办的笔记会被直接删除，不再询问（标签不算内容）</string>
     <string name="lang_title">语言</string>
 
     <!-- 终端/文件 -->
@@ -423,6 +426,8 @@
     <string name="notes_renamed">已重命名</string>
     <string name="notes_tag_removed">已移除标签</string>
     <string name="notes_confirm_delete_fmt">删除「%1$s」？</string>
+    <string name="notes_empty_confirm_fmt">「%1$s」笔记内容为空，是否删除？</string>
+    <string name="notes_empty_deleted_fmt">已删除空笔记「%1$s」</string>
     <string name="notes_edit_todo">改待办内容</string>
     <string name="notes_back_tags">‹ 全部标签</string>
     <string name="notes_search_tag">搜索标签</string>
