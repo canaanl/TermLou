@@ -115,7 +115,6 @@
     <string name="sysinfo_unknown">未知</string>
     <string name="settings_notes_title">笔记</string>
     <string name="settings_note_autodelete_title">空笔记自动删除</string>
-    <string name="settings_note_autodelete_desc">没有正文也没有待办的笔记会被直接删除，不再询问（标签不算内容）</string>
     <string name="lang_title">语言</string>
 
     <!-- 终端/文件 -->

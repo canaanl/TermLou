@@ -79,6 +79,7 @@ object TabIntroContent {
             showSystemInfo = false,
             sections = listOf(
                 TabIntroSection(R.string.intro_settings_ui_title, R.string.intro_settings_ui_body),
+                TabIntroSection(R.string.intro_settings_notes_title, R.string.intro_settings_notes_body),
                 TabIntroSection(R.string.intro_settings_commands_title, R.string.intro_settings_commands_body),
                 TabIntroSection(R.string.intro_settings_workshop_title, R.string.intro_settings_workshop_body),
                 TabIntroSection(R.string.intro_settings_net_title, R.string.intro_settings_net_body),

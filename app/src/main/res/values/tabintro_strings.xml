@@ -63,6 +63,8 @@
     <string name="intro_settings_lead">设置页是全部开关与命令的入口；改语言需重开生效，调色盘保存后即时换色。</string>
     <string name="intro_settings_ui_title">界面</string>
     <string name="intro_settings_ui_body">显示相关的开关都在这。\n● 终端字号 —— 五档可选，切换立即生效\n● 语言 —— 中文 / English\n● 调色盘 —— 自定义背景色 + 主题绿，其余颜色按背景自动计算，保存即时换色、可一键恢复默认\n⚠ 语言切换需重开 App 生效；字号与调色盘立即生效。</string>
+    <string name="intro_settings_notes_title">笔记</string>
+    <string name="intro_settings_notes_body">笔记相关的开关都在这。\n● 空笔记自动删除 —— 开启后，没有正文也没有待办的笔记会被直接删除、不再询问（标签不算内容）\n● 触发时机 —— 退出编辑时，或在待办看板删掉最后一个待办时\n● 默认关 —— 关时不自动删，弹窗问「是否删除？」</string>
     <string name="intro_settings_commands_title">命令</string>
     <string name="intro_settings_commands_body">预设命令的填写入口（说明见终端页）。\n● 启动命令 —— 终端启动时自动执行\n● 磁贴命令 —— 磁贴启动时执行\n● 快捷启动 —— 挑选常用 App 一键打开</string>
     <string name="intro_settings_workshop_title">工坊</string>

@@ -372,6 +372,38 @@ class RegressionScanTest {
         }
     }
 
+// ---------- 5.9.66：空笔记说明挪进设置说明页 ----------
+
+    @Test
+    fun `空笔记说明必须落在设置说明页不许挂开关下面`() {
+        // 5.9.66：设置项只留「标题 + 开关」；小字说明统一进设置 Tab 的说明页（第 4 页）——
+        // 与 5.9.4 浏览器设置项的约定一致：设置页本体不放长段说明。
+        // 用 codeOnly：以后在原地留注释讲"为什么挪走"时不许误伤。
+        assertTrue(
+            "说明页必须挂进设置页（第 4 页）",
+            codeOnly("TabIntroContent.kt").contains("R.string.intro_settings_notes_title")
+        )
+        assertFalse(
+            "设置页本体不许再引用小字说明键（desc 键已撤）",
+            codeOnly("SettingsUiController.kt").contains("settings_note_autodelete_desc")
+        )
+        for (file in listOf("values/strings.xml", "values-en/strings.xml")) {
+            assertFalse(
+                "$file 的 desc 键已随 5.9.66 删除，不许回魂",
+                resXml(file).contains("settings_note_autodelete_desc")
+            )
+        }
+        for ((file, title, mustHave) in listOf(
+            Triple("values/tabintro_strings.xml", "笔记", "空笔记自动删除"),
+            Triple("values-en/tabintro_strings.xml", "Notes", "Auto-delete empty notes")
+        )) {
+            val xml = resXml(file)
+            assertTrue("$file 缺 title", stringValue(xml, "intro_settings_notes_title") == title)
+            val body = stringValue(xml, "intro_settings_notes_body")
+            assertTrue("$file 说明必须讲到这个开关：[$body]", body.contains(mustHave))
+        }
+    }
+
 // ---------- 5.9.22：文件状态栏长名纵向整行滚动 ----------
 
     @Test

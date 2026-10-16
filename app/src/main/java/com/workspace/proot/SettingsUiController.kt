@@ -457,7 +457,7 @@ private fun divider(): View = View(activity).apply {
     }
 
     /** 5.9.65：笔记域设置——空笔记自动删除开关（默认关）。
-     *  开启后，笔记在退出编辑/看板删空时被静默删除（提示：已删除空笔记），不再弹窗。 */
+     *  5.9.66：说明统一写在设置 Tab 的说明页（TabIntroContent 第 4 页）；设置页只留「标题 + 开关」。 */
     private fun buildNotesSection(parent: LinearLayout) {
         sectionTitle(parent, activity.getString(R.string.settings_notes_title))
         parent.addView(LinearLayout(activity).apply {
@@ -481,12 +481,6 @@ private fun divider(): View = View(activity).apply {
                     scope.settingsManager.setAutoDeleteEmptyNote(isChecked)
                 }
             })
-        })
-        parent.addView(TextView(activity).apply {
-            text = activity.getString(R.string.settings_note_autodelete_desc)
-            setTextColor(scope.cOnSurfaceVariant)
-            textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
-            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_1, UiTokens.SPACE_0, UiTokens.SPACE_0)
         })
     }
 

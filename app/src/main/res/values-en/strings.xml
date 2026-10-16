@@ -113,7 +113,6 @@
     <string name="sysinfo_unknown">UNKNOWN</string>
     <string name="settings_notes_title">NOTES</string>
     <string name="settings_note_autodelete_title">AUTO-DELETE EMPTY NOTES</string>
-    <string name="settings_note_autodelete_desc">Notes with no text and no todos are deleted without asking (tags are not content)</string>
     <string name="lang_title">LANGUAGE</string>
 
     <!-- Terminal/files -->

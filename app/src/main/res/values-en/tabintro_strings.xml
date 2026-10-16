@@ -63,6 +63,8 @@
     <string name="intro_settings_lead">Settings holds all switches and commands; language needs a restart, the palette applies instantly.</string>
     <string name="intro_settings_ui_title">Display</string>
     <string name="intro_settings_ui_body">Everything display-related lives here.\n● Terminal font size — five steps, applied instantly\n● Language — Chinese / English\n● Color palette — custom background + theme green, other colors derived from the background; saved instantly, one tap to restore defaults\n⚠ Language needs an app restart; font size and palette apply immediately.</string>
+    <string name="intro_settings_notes_title">Notes</string>
+    <string name="intro_settings_notes_body">Everything notes-related lives here.\n● Auto-delete empty notes — when on, a note with no text and no todos is deleted without asking (tags are not content)\n● When it fires — when leaving the editor, or deleting the last todo on the board\n● Default off — when off, a dialog asks whether to delete</string>
     <string name="intro_settings_commands_title">Commands</string>
     <string name="intro_settings_commands_body">Where the preset commands are filled in (see the terminal tab).\n● Startup command — runs when the terminal starts\n● Tile command — runs when launched from the tile\n● Quick launch — pick favorite apps for one-tap opening</string>
     <string name="intro_settings_workshop_title">Workshops</string>
