@@ -6,6 +6,7 @@ import java.io.OutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.Inet4Address
+import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -22,8 +23,8 @@ import java.util.concurrent.atomic.AtomicLong
 class MiniSocks5Server(
     private val host: String,
     private val port: Int,
-    private val protectSocket: (Socket) -> Unit,
-    private val protectDatagram: (DatagramSocket) -> Unit,
+    private val protectSocket: (Socket) -> Boolean,
+    private val protectDatagram: (DatagramSocket) -> Boolean,
     private val logDir: File? = null
 ) : Thread("mini-socks5") {
 
@@ -318,16 +319,30 @@ class MiniSocks5Server(
         }
 
         var remote: Socket? = null
+        var pending: Socket? = null
         var rep = 1
         try {
             val s = Socket()
-            protectSocket(s)
-            runCatching { s.tcpNoDelay = true }
-            s.connect(InetSocketAddress(dst, dstPort), 10000)
-            remote = s
-            writeReply(output, 0, s.localAddress, s.localPort)
-            rep = 0
+            pending = s
+            // Socket() 在 bind/connect 前没有系统 fd，直接 protect 会拿到 fd=-1 并失败。
+            // 先 bind 一个与目标同地址族的临时端口，确保 fd 已创建，再 protect。
+            val any = if (dst is Inet6Address) InetAddress.getByAddress(ByteArray(16))
+                else InetAddress.getByAddress(ByteArray(4))
+            s.bind(InetSocketAddress(any, 0))
+            if (!protectSocket(s)) {
+                log("tcp protect fail ${dst.hostAddress}:$dstPort")
+                try { s.close() } catch (_: Exception) {}
+                try { writeReply(output, 1, client.localAddress, 0) } catch (_: Exception) {}
+            } else {
+                runCatching { s.tcpNoDelay = true }
+                s.connect(InetSocketAddress(dst, dstPort), 10000)
+                writeReply(output, 0, s.localAddress, s.localPort)
+                remote = s
+                pending = null
+                rep = 0
+            }
         } catch (e: Exception) {
+            try { pending?.close() } catch (_: Exception) {}
             try { writeReply(output, rep, client.localAddress, 0) } catch (_: Exception) {}
         }
         log("tcp connect ${dst.hostAddress}:$dstPort rep=$rep")
@@ -494,7 +509,11 @@ class MiniSocks5Server(
                             }
                         }
                         val out = DatagramSocket()
-                        protectDatagram(out)
+                        if (!protectDatagram(out)) {
+                            log("udp protect fail $key -> $ip:$tport")
+                            try { out.close() } catch (_: Exception) {}
+                            continue
+                        }
                         out.soTimeout = 15000
                         val sni = if (!isDns && tport == 443) {
                             SniParser.quicClientHello(data.copyOfRange(off, off + payloadLen))

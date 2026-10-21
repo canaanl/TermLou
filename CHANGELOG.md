@@ -7,6 +7,7 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.68** | 5968 | **修抓包自环：MiniSocks 出站 socket 先 bind 再 protect（`Socket()` 在 bind 前没有 fd，protect 拿到 -1 返回 false 且被忽略，出站连接重新进入自己的 TUN，递归到 fd 耗尽）；检查 protect 结果，失败直接回 SOCKS 1；UDP 同样检查；新增回归单测** |
 | **5.9.67** | 5967 | **修抓包下 opencode.ai 等站点 TLS 握手 EOF（MiniSocks 出站 TCP_NODELAY + 先转发后嗅探 + relay 线程池隔离 + 单向 EOF 关双端）· 删文件页文件夹行入场动画** |
 | **5.9.66** | 5966 | **「空笔记自动删除」的小字说明挪进设置说明页（设置 Tab 说明新增「笔记」一节），设置页本体只留标题 + 开关** |
 | **5.9.65** | 5965 | **空笔记不留行（正文+待办全空、标签不算）：退出编辑/看板删空即处理 + 「空笔记自动删除」开关 + 看板待办倒排** |
@@ -25,6 +26,35 @@
 | **5.9.52** | 5952 | **修：状态栏特征字的立方体转向与页面滑动方向相反** |
 | **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
+
+## 5.9.68
+
+### 抓包：修 MiniSocks 出站自环
+
+真机定位：显式 SOCKS 连不可达的 `192.0.2.1:80`，0.255 秒返回空回复，
+流表瞬间出现 1029 条同目标流；空闲 3 秒新增 0 条。说明 MiniSocks 的出站连接
+被自己的 TUN 抓回，而不是远端问题。
+
+根因：Android 的 `new Socket()` 在 `bind()`/`connect()` 之前没有系统 fd，
+`VpnService.protect()` 拿到 fd=-1 直接返回 false；原代码忽略返回值继续 connect。
+MiniSocks 的出站 SYN 因此重新进入自己的 TUN，tun2socks 再向 MiniSocks 发起
+SOCKS 连接，递归约 1024 层直到 fd 耗尽。所有目标（opencode、example.com、
+1.1.1.1）都表现为空回复或 TLS EOF。
+
+修复：
+
+- 出站 socket 先 `bind(0)`（按目标地址族绑 IPv4/IPv6 通配地址），确保 fd 已创建，再 `protect`
+- `protect` 返回 false 时直接回 SOCKS `rep=1` 并关闭，不再 connect
+- 连接失败时关闭未移交的 socket，避免 fd 泄漏
+- UDP 出站同样检查 `protect` 结果
+- 回归单测：protect 回调收到的 socket 必须已 bound；protect 失败时客户端收到 `rep=1`
+
+### 测试
+
+684 单测（app 631 + workspace 53），新增 1 条 protect 失败回归测试，
+并在原有 relay 测试中断言 protect 收到的 socket 已 bind。
+真机待验证：开抓包后终端 `curl https://opencode.ai` 应 200；显式 SOCKS 连
+`192.0.2.1` 应只有 1 条流并正常超时，不再是 1029 条。
 
 ## 5.9.67
 

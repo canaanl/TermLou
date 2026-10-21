@@ -1,6 +1,7 @@
 package com.workspace.proot
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.DataInputStream
@@ -10,7 +11,7 @@ import java.net.Socket
 
 class MiniSocks5ServerTest {
 
-    private fun server() = MiniSocks5Server("127.0.0.1", 0, {}, {})
+    private fun server() = MiniSocks5Server("127.0.0.1", 0, { true }, { true })
 
     @Test
     fun `parseRequest - CONNECT IPv4`() {
@@ -82,7 +83,11 @@ class MiniSocks5ServerTest {
             start()
         }
 
-        val proxy = MiniSocks5Server("127.0.0.1", 0, {}, {})
+        val protectBound = java.util.concurrent.atomic.AtomicBoolean(false)
+        val proxy = MiniSocks5Server("127.0.0.1", 0, { s ->
+            protectBound.set(s.isBound && s.localPort != 0)
+            true
+        }, { true })
         val proxyPort = proxy.startListening()
         try {
             Socket("127.0.0.1", proxyPort).use { client ->
@@ -116,11 +121,48 @@ class MiniSocks5ServerTest {
                 val echoed = ByteArray(payload.size)
                 input.readFully(echoed)
                 assertEquals("hello", String(echoed, Charsets.US_ASCII))
+                assertTrue("protect 必须在 socket bind 之后调用", protectBound.get())
             }
         } finally {
             proxy.stopListening()
             runCatching { echo.close() }
             echoThread.join(2000)
+        }
+    }
+
+    @Test
+    fun `protect failure returns rep 1 without connecting`() {
+        val target = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
+        val proxy = MiniSocks5Server("127.0.0.1", 0, { false }, { true })
+        val proxyPort = proxy.startListening()
+        try {
+            Socket("127.0.0.1", proxyPort).use { client ->
+                client.soTimeout = 5000
+                val input = DataInputStream(client.getInputStream())
+                val output = client.getOutputStream()
+
+                output.write(byteArrayOf(5, 1, 0))
+                output.flush()
+                val greeting = ByteArray(2)
+                input.readFully(greeting)
+                assertEquals(5, greeting[0].toInt())
+
+                output.write(
+                    byteArrayOf(
+                        5, 1, 0, 1, 127, 0, 0, 1,
+                        ((target.localPort shr 8) and 0xFF).toByte(),
+                        (target.localPort and 0xFF).toByte()
+                    )
+                )
+                output.flush()
+                val reply = ByteArray(10)
+                input.readFully(reply)
+                assertEquals(5, reply[0].toInt())
+                assertEquals(1, reply[1].toInt())
+            }
+        } finally {
+            proxy.stopListening()
+            runCatching { target.close() }
         }
     }
 }
