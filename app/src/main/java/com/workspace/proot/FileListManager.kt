@@ -6,7 +6,6 @@ import android.graphics.Typeface
 import android.os.Handler
 import android.view.Gravity
 import android.view.View
-import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -66,22 +65,6 @@ class FileListManager(
         val dir = currentDir ?: return
         fileList.removeAllViews()
 
-        fun staggerIn() {
-            val d = context.resources.displayMetrics.density
-            for (i in 0 until fileList.childCount) {
-                val child = fileList.getChildAt(i)
-                child.alpha = 0f
-                child.translationY = 18 * d
-                child.animate()
-                    .alpha(1f)
-                    .translationY(0f)
-                    .setDuration(220)
-                    .setStartDelay((minOf(i, 8) * 30).toLong())
-                    .setInterpolator(DecelerateInterpolator())
-                    .start()
-            }
-        }
-
         if (dir != File(context.filesDir, "workspace")) {
             val upRow = TextView(context).apply {
                 text = context.getString(R.string.file_back)
@@ -121,7 +104,6 @@ class FileListManager(
                 textSize = nameTextSize
                 setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_5, UiTokens.SPACE_4, UiTokens.SPACE_5)
             })
-            staggerIn()
             return
         }
 
@@ -222,7 +204,6 @@ class FileListManager(
                 setBackgroundColor(theme.outline)
             })
         }
-        staggerIn()
     }
 
     private fun showBraceMenu(

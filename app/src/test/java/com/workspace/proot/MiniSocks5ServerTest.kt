@@ -3,6 +3,10 @@ package com.workspace.proot
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.io.ByteArrayInputStream
+import java.io.DataInputStream
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
 
 class MiniSocks5ServerTest {
 
@@ -49,5 +53,74 @@ class MiniSocks5ServerTest {
         assertEquals(3, req.atyp)
         assertEquals("8.8.8.8", req.dst.hostAddress)
         assertEquals(53, req.port)
+    }
+
+    @Test
+    fun `relay forwards payload before closing`() {
+        val echo = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
+        val echoThread = Thread {
+            try {
+                echo.accept().use { s ->
+                    val input = s.getInputStream()
+                    val output = s.getOutputStream()
+                    val buf = ByteArray(5)
+                    var off = 0
+                    while (off < buf.size) {
+                        val n = input.read(buf, off, buf.size - off)
+                        if (n < 0) break
+                        off += n
+                    }
+                    if (off > 0) {
+                        output.write(buf, 0, off)
+                        output.flush()
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }.apply {
+            isDaemon = true
+            start()
+        }
+
+        val proxy = MiniSocks5Server("127.0.0.1", 0, {}, {})
+        val proxyPort = proxy.startListening()
+        try {
+            Socket("127.0.0.1", proxyPort).use { client ->
+                client.soTimeout = 5000
+                val input = DataInputStream(client.getInputStream())
+                val output = client.getOutputStream()
+
+                output.write(byteArrayOf(5, 1, 0))
+                output.flush()
+                val greeting = ByteArray(2)
+                input.readFully(greeting)
+                assertEquals(5, greeting[0].toInt())
+                assertEquals(0, greeting[1].toInt())
+
+                output.write(
+                    byteArrayOf(
+                        5, 1, 0, 1, 127, 0, 0, 1,
+                        ((echo.localPort shr 8) and 0xFF).toByte(),
+                        (echo.localPort and 0xFF).toByte()
+                    )
+                )
+                output.flush()
+                val reply = ByteArray(10)
+                input.readFully(reply)
+                assertEquals(5, reply[0].toInt())
+                assertEquals(0, reply[1].toInt())
+
+                val payload = "hello".toByteArray(Charsets.US_ASCII)
+                output.write(payload)
+                output.flush()
+                val echoed = ByteArray(payload.size)
+                input.readFully(echoed)
+                assertEquals("hello", String(echoed, Charsets.US_ASCII))
+            }
+        } finally {
+            proxy.stopListening()
+            runCatching { echo.close() }
+            echoThread.join(2000)
+        }
     }
 }

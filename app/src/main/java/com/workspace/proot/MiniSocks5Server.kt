@@ -5,6 +5,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
+import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -12,11 +13,10 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.RejectedExecutionException
-import java.util.concurrent.RejectedExecutionHandler
 import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 class MiniSocks5Server(
@@ -31,7 +31,10 @@ class MiniSocks5Server(
     @Volatile private var running = false
     private val blockedRows = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
     private var pool: ExecutorService? = null
-    private val overflowActive = AtomicInteger(0)
+    private var relayPool: ExecutorService? = null
+    private val logExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "mini-socks5-log").apply { isDaemon = true }
+    }
     private val dnsCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, InetAddress>>()
     private val live = java.util.concurrent.ConcurrentHashMap.newKeySet<Socket>()
 
@@ -39,8 +42,12 @@ class MiniSocks5Server(
         private const val UDP_PEER_IDLE_MS = 15_000L
         private const val UDP_PEER_MAX = 64
         private const val DNS_CACHE_MS = 60_000L
-        private const val OVERFLOW_MAX = 24
         private const val HANDSHAKE_TIMEOUT_MS = 20_000
+        private const val HANDSHAKE_CORE_THREADS = 8
+        private const val HANDSHAKE_MAX_THREADS = 64
+        private const val RELAY_MAX_THREADS = 256
+        private const val THREAD_KEEP_ALIVE_SECONDS = 60L
+        private const val THREAD_STACK_BYTES = 256L * 1024
     }
 
     private fun blockedOnce(proto: String, ident: String, port: Int) {
@@ -52,12 +59,16 @@ class MiniSocks5Server(
     private fun log(msg: String) {
         val f = logDir ?: return
         runCatching {
-            f.mkdirs()
-            val lf = File(f, "minisocks.log")
-            val lines = if (lf.exists()) lf.readLines() else emptyList()
-            val stamp = java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
-            val out = (lines + "[$stamp] $msg").takeLast(1500)
-            lf.writeText(out.joinToString("\n") + "\n")
+            logExecutor.execute {
+                runCatching {
+                    f.mkdirs()
+                    val lf = File(f, "minisocks.log")
+                    val lines = if (lf.exists()) lf.readLines() else emptyList()
+                    val stamp = java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+                    val out = (lines + "[$stamp] $msg").takeLast(1500)
+                    lf.writeText(out.joinToString("\n") + "\n")
+                }
+            }
         }
     }
 
@@ -65,7 +76,8 @@ class MiniSocks5Server(
         val now = System.currentTimeMillis()
         val hit = dnsCache[name]
         if (hit != null && now - hit.first < DNS_CACHE_MS) return hit.second
-        val addr = InetAddress.getByName(name)
+        val addr = InetAddress.getAllByName(name).firstOrNull { it is Inet4Address }
+            ?: InetAddress.getByName(name)
         dnsCache[name] = now to addr
         return addr
     }
@@ -77,29 +89,14 @@ class MiniSocks5Server(
         server = s
         running = true
         pool = ThreadPoolExecutor(
-            8, 256, 60, TimeUnit.SECONDS, SynchronousQueue(),
-            { r ->
-                Thread(null, r, "mini-socks5-worker", 256 * 1024).apply { isDaemon = true }
-            },
-            object : RejectedExecutionHandler {
-                override fun rejectedExecution(r: Runnable, executor: ThreadPoolExecutor) {
-                    if (Thread.currentThread() === this@MiniSocks5Server) {
-                        (r as? Abortable)?.abort()
-                        log("accept busy, dropped task")
-                        return
-                    }
-                    if (overflowActive.getAndIncrement() < OVERFLOW_MAX) {
-                        Thread(null, { try { r.run() } finally { overflowActive.decrementAndGet() } }, "mini-socks5-overflow", 256 * 1024).apply {
-                            isDaemon = true
-                            start()
-                        }
-                    } else {
-                        overflowActive.decrementAndGet()
-                        (r as? Abortable)?.abort()
-                        log("overload, dropped task")
-                    }
-                }
-            }
+            HANDSHAKE_CORE_THREADS, HANDSHAKE_MAX_THREADS, THREAD_KEEP_ALIVE_SECONDS,
+            TimeUnit.SECONDS, SynchronousQueue(),
+            { r -> Thread(null, r, "mini-socks5-worker", THREAD_STACK_BYTES).apply { isDaemon = true } }
+        )
+        relayPool = ThreadPoolExecutor(
+            0, RELAY_MAX_THREADS, THREAD_KEEP_ALIVE_SECONDS,
+            TimeUnit.SECONDS, SynchronousQueue(),
+            { r -> Thread(null, r, "mini-socks5-relay", THREAD_STACK_BYTES).apply { isDaemon = true } }
         )
         start()
         return s.localPort
@@ -133,34 +130,26 @@ class MiniSocks5Server(
         try { server?.close() } catch (_: Exception) {}
         live.forEach { runCatching { it.close() } }
         live.clear()
+        relayPool?.shutdownNow()
+        relayPool = null
         pool?.shutdownNow()
         pool = null
+        logExecutor.shutdownNow()
     }
 
     private class SocketTask(
         private val socket: Socket,
         private val body: (Socket) -> Unit
-    ) : Runnable, Abortable {
+    ) : Runnable {
         override fun run() = body(socket)
-        override fun abort() {
+        fun abort() {
             runCatching { socket.close() }
         }
     }
 
-    private interface Abortable {
-        fun abort()
-    }
-
-    private class RelayTask(
-        private val body: () -> Unit,
-        private val onAbort: () -> Unit
-    ) : Runnable, Abortable {
-        override fun run() = body()
-        override fun abort() = onAbort()
-    }
-
     private fun handleClient(client: Socket) {
         live.add(client)
+        runCatching { client.tcpNoDelay = true }
         val remote = client.remoteSocketAddress?.toString() ?: "?"
         val retained = java.util.concurrent.atomic.AtomicBoolean(false)
         try {
@@ -182,8 +171,7 @@ class MiniSocks5Server(
                     if (retained.get()) return
                 }
                 3 -> {
-                    client.soTimeout = 0
-                    handleUdpAssociate(client, input, output)
+                    if (startUdpAssociate(client, input, output, retained)) return
                 }
                 else -> throw IllegalStateException("bad cmd ${req.cmd}")
             }
@@ -194,6 +182,32 @@ class MiniSocks5Server(
                 live.remove(client)
                 try { client.close() } catch (_: Exception) {}
             }
+        }
+    }
+
+    private fun startUdpAssociate(
+        client: Socket,
+        input: InputStream,
+        output: OutputStream,
+        retained: AtomicBoolean
+    ): Boolean {
+        client.soTimeout = 0
+        val rp = relayPool ?: return false
+        return try {
+            rp.execute {
+                try {
+                    handleUdpAssociate(client, input, output)
+                } catch (_: Exception) {
+                } finally {
+                    live.remove(client)
+                    try { client.close() } catch (_: Exception) {}
+                }
+            }
+            retained.set(true)
+            true
+        } catch (_: RejectedExecutionException) {
+            log("udp associate rejected")
+            false
         }
     }
 
@@ -308,6 +322,7 @@ class MiniSocks5Server(
         try {
             val s = Socket()
             protectSocket(s)
+            runCatching { s.tcpNoDelay = true }
             s.connect(InetSocketAddress(dst, dstPort), 10000)
             remote = s
             writeReply(output, 0, s.localAddress, s.localPort)
@@ -323,10 +338,16 @@ class MiniSocks5Server(
             live.add(r)
             val rInput = r.getInputStream()
             val rOutput = r.getOutputStream()
-            val p = pool ?: return
-            val remaining = java.util.concurrent.atomic.AtomicInteger(2)
-            fun oneDone() {
-                if (remaining.decrementAndGet() != 0) return
+            val rp = relayPool
+            if (rp == null) {
+                try { r.close() } catch (_: Exception) {}
+                try { client.close() } catch (_: Exception) {}
+                FlowLog.updateBytes(id, 0, 0, "CLOSED")
+                return
+            }
+            val closed = AtomicBoolean(false)
+            fun closeBoth() {
+                if (!closed.compareAndSet(false, true)) return
                 live.remove(client)
                 live.remove(r)
                 try { r.close() } catch (_: Exception) {}
@@ -334,17 +355,15 @@ class MiniSocks5Server(
                 FlowLog.updateBytes(id, up.get(), down.get(), "CLOSED")
             }
             try { client.soTimeout = 0 } catch (_: Exception) {}
-            fun abortRelay() {
-                try { client.close() } catch (_: Exception) {}
-                try { r.close() } catch (_: Exception) {}
-                oneDone()
-            }
-            p.execute(RelayTask(body = {
+            val upTask = Runnable {
                 try {
                     val buf = ByteArray(16384)
                     while (true) {
                         val n = input.read(buf)
                         if (n < 0) break
+                        rOutput.write(buf, 0, n)
+                        rOutput.flush()
+                        up.addAndGet(n.toLong())
                         if (sniffable) {
                             if (dstPort == 443) {
                                 val s = tlsSniffer.feed(buf, n)
@@ -359,34 +378,36 @@ class MiniSocks5Server(
                                 }
                             }
                         }
-                        rOutput.write(buf, 0, n)
-                        rOutput.flush()
-                        up.addAndGet(n.toLong())
                     }
                 } catch (_: Exception) {}
-                try { r.shutdownOutput() } catch (_: Exception) {}
-                oneDone()
-            }, onAbort = ::abortRelay))
-            p.execute(RelayTask(body = {
+                closeBoth()
+            }
+            val downTask = Runnable {
                 try {
                     val buf = ByteArray(16384)
                     while (true) {
                         val n = rInput.read(buf)
                         if (n < 0) break
+                        output.write(buf, 0, n)
+                        output.flush()
+                        down.addAndGet(n.toLong())
                         if (sniffable && dstPort != 443 && httpRes.get() == null) {
                             HttpProbe.statusLine(buf.copyOfRange(0, n))?.let {
                                 httpRes.set(it)
                                 applyMeta()
                             }
                         }
-                        output.write(buf, 0, n)
-                        output.flush()
-                        down.addAndGet(n.toLong())
                     }
                 } catch (_: Exception) {}
-                try { client.shutdownOutput() } catch (_: Exception) {}
-                oneDone()
-            }, onAbort = ::abortRelay))
+                closeBoth()
+            }
+            try {
+                rp.execute(upTask)
+                rp.execute(downTask)
+            } catch (_: RejectedExecutionException) {
+                closeBoth()
+                return
+            }
             retained.set(true)
             return
         }
@@ -402,7 +423,7 @@ class MiniSocks5Server(
 
         val peers = java.util.concurrent.ConcurrentHashMap<String, UdpPeer>()
 
-        (pool ?: return).execute {
+        (relayPool ?: return).execute {
             try {
                 val buf = ByteArray(32768)
                 while (running && !client.isClosed) {
@@ -484,7 +505,7 @@ class MiniSocks5Server(
                         peer = np
                         val peerKey = key
                         if (!isDns) log("udp peer $peerKey -> $ip:$tport")
-                        (pool ?: return@execute).execute {
+                        (relayPool ?: return@execute).execute {
                             try {
                                 val rb = ByteArray(32768)
                                 while (running && !client.isClosed) {
@@ -553,6 +574,7 @@ class MiniSocks5Server(
         } catch (_: Exception) {}
         try { relay.close() } catch (_: Exception) {}
         peers.values.forEach { it.sock.close() }
+        live.remove(client)
         try { client.close() } catch (_: Exception) {}
         log("udp associate closed")
     }

@@ -7,6 +7,7 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.67** | 5967 | **修抓包下 opencode.ai 等站点 TLS 握手 EOF（MiniSocks 出站 TCP_NODELAY + 先转发后嗅探 + relay 线程池隔离 + 单向 EOF 关双端）· 删文件页文件夹行入场动画** |
 | **5.9.66** | 5966 | **「空笔记自动删除」的小字说明挪进设置说明页（设置 Tab 说明新增「笔记」一节），设置页本体只留标题 + 开关** |
 | **5.9.65** | 5965 | **空笔记不留行（正文+待办全空、标签不算）：退出编辑/看板删空即处理 + 「空笔记自动删除」开关 + 看板待办倒排** |
 | **5.9.64** | 5964 | **设置页关掉垂直滚动条 + 删掉 probe 一次性实验模块 + 高刷收尾定论** |
@@ -24,6 +25,35 @@
 | **5.9.52** | 5952 | **修：状态栏特征字的立方体转向与页面滑动方向相反** |
 | **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
+
+## 5.9.67
+
+### 抓包：修 opencode.ai 的 TLS 握手 EOF
+
+`opencode.ai` 在抓包开启时 TLS 握手报 `unexpected eof while reading`，关闭抓包直连正常；
+`models.dev` 走同一个 MiniSocks 却正常。逐层排除后，问题不在 DNS/IPv6/上游/TUN，
+而在 `MiniSocks5Server` 的 relay 路径。
+
+- 出站 socket 未设 `TCP_NODELAY`，ClientHello 尾段可能被 Nagle 延迟。
+- 首包先做 SNI/HTTP 嗅探和 FlowLog 回填、再转发，握手首包被解析和日志拖住。
+- 所有 TCP relay 与握手共用同一个小线程池；单向 EOF 时 `oneDone()` 要等两个方向
+  都结束才关 socket，客户端先断后远端读线程可能永久挂住。反复连接会耗尽 relay
+  线程，新连接在首包前被 abort，表现为 TLS EOF 且流量 0/0。
+- `log()` 在连接路径上同步读改写整个日志文件，进一步拖慢首包。
+
+修复：client/remote 都设 `tcpNoDelay`；上行/下行都先 `write/flush` 再嗅探；
+握手池与 relay 池分离（relay 最多 256 线程）；任一方向 EOF 立即关闭双端；
+`log()` 改单线程异步；域名解析优先 IPv4，IPv6 回退。
+
+### 文件页：删除文件夹行入场动画
+
+`FileListManager.staggerIn()` 删除（含两处调用和 `DecelerateInterpolator` import）。
+切到文件页时整页重建不再从下往上淡入，文件夹行直接显示。
+
+### 测试
+
+683 单测全绿（app 630 + workspace 53），新增一条 MiniSocks relay 回环转发测试。
+另用同一 MiniSocks 在本机直连 `opencode.ai` 做真实 TLS 握手，TLSv1.3 + HTTP 200。
 
 ## 5.9.66
 
