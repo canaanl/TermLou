@@ -84,6 +84,8 @@ TermLou
 │   ├── WheelController/Adapter  Infinite looping wheel (Int.MAX_VALUE modulo + empty slots) + TUI-aware suggestion
 │   ├── CommandRecommender    Multi-signal ranking (frequency + sequence + recency)
 │   ├── ScriptDialogSpec/Renderer/Overlay  Script dialog protocol + rendering + overlay
+│   ├── CanvasScene/View                  Native Canvas scene model/animation/patch + renderer/interaction
+│   ├── CanvasDesignerActivity            Canvas graphical designer (layers/timeline/paths/export)
 │   ├── DialogMakerActivity   Dialog workshop (design termlou-ui dialogs graphically)
 │   ├── OverlayBridge / ClipboardBridge  File IPC bridge (req/res + FileObserver + polling fallback)
 │   ├── SplashView/Letters/Tokens/Maker  Splash rendering + pixel workshop (drawing + grayscale quantization)
@@ -185,7 +187,11 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 - One shell line pops a native Android dialog
 - Controls: `--input`, `--select`, `--check`, `--toggle`, `--output FILE` (ANSI colors)
 - Theme `dark/light/glass`, accent color, corner radius, position, animation, auto-timeout
-- **Dialog workshop** (`DialogMakerActivity`): design dialogs graphically, live preview, export the `termlou-ui` command
+- **Native Canvas scenes**: `--canvas` / `--canvas-file` / `--canvas-height` / `--canvas-key` pass a scene JSON rendered by native Android Canvas (no WebView); supports rects, circles/ellipses, lines, paths, text, images, linear progress bars, groups, camera, particles and animations
+- **In-place patches**: keep the overlay alive with `--no-timeout`, then use `--canvas-update` / `--canvas-progress` / `--canvas-scene` / `--canvas-play|pause|seek` to patch only the active Canvas — no new Entry, no result file, no card rebuild; node actions also just mutate scene state and `invalidate()`
+- **Canvas designer**: single-row top bar (back / undo / redo / more / done), a canvas action strip, and an inline canvas settings page when nothing is selected; layers run top-to-bottom with only an eye on each row (duplicate/delete live in Properties); tap actions are grouped as Submit result / Scene only / No action / Custom; playback lives in the Animation tab and infinite loops show "Looping" instead of an ever-growing clock; still supports drag/scale/rotate, grid snapping, path point editing, SVG/JSON path import, keyframe animation, undo/redo, JSON import/export and command export
+- **Canvas tap submit**: a node action `submit:ID` writes `{"id":"ID","values":{...}}` and closes the window; `submit:ID:keep` writes the same result but keeps the window for the next request. The app only writes the result and never runs commands — the calling shell reads the JSON and executes
+- **Dialog workshop** (`DialogMakerActivity`): design dialogs graphically, live preview, export the `termlou-ui` command; the Canvas designer and runtime share the same renderer/codec, so design-time equals runtime. The permission-free **Try it** mode lets you tap buttons/Canvas shapes and see the exact result JSON
 - **Clipboard bridge**: `termlou-clipboard "text"` or `echo "text" | termlou-clipboard`
 
 ### 6. Network Capture & Filtering
@@ -266,7 +272,39 @@ ls -l > /tmp/out.txt && termlou-ui --title "Listing" --output /tmp/out.txt --but
 echo "https://example.com" | termlou-clipboard
 ```
 
-The Dialog workshop (Settings → Dialog workshop) lets you design these graphically and export the command.
+```bash
+# Native Canvas scene (no WebView): title + linear progress bar
+cat > /tmp/scene.json <<'JSON'
+{"width":360,"height":220,"background":"#101418","nodes":[
+  {"id":"title","type":"text","x":16,"y":12,"w":320,"h":24,"text":"Building…","textSize":18,"bold":true},
+  {"id":"bar","type":"progress","x":16,"y":52,"w":328,"h":12,"progress":0,"showLabel":true}
+]}
+JSON
+
+# Long task: keep the overlay alive in the background (no auto-timeout)
+termlou-ui --title "Build" --canvas @/tmp/scene.json --canvas-key main --no-timeout &
+
+# Patch only the active Canvas: in-place, no new Entry, no result file, no rebuild
+termlou-ui --canvas-update '{"node":"bar","progress":0.42,"animate":true,"duration":300}' --canvas-key main
+termlou-ui --canvas-update '{"node":"title","text":"Done","fill":"#4DD0E1"}' --canvas-key main
+termlou-ui --canvas-progress bar=1 --canvas-key main
+```
+
+The Dialog workshop (Settings → Dialog workshop → Canvas) designs Canvas scenes, layers, paths, progress bars and animations graphically and exports a ready-to-run `termlou-ui --canvas` command. With nothing selected, Properties edits canvas size, background, dialog row height and the update key directly; animations play from the Animation tab.
+
+```bash
+# Canvas node actions: submit:start writes and closes; submit:start:keep keeps the window
+# In the designer, "Tap action → Submit result" + "Keep window open" generates submit:start:keep.
+while :; do
+  r=$(termlou-ui --title "Action" --canvas @/tmp/scene.json --no-timeout --button "Close=close")
+  case "$(printf '%s' "$r" | jq -r .id)" in
+    close|dismiss|timeout) break ;;
+    start) ./start.sh ;;
+  esac
+done
+```
+
+The app never runs commands: `termlou-ui` only prints the result JSON, and the shell executes the `case` branches. A single request accepts one Canvas submit; `keep` only keeps the window alive, and the shell still starts the next request sequentially.
 
 ### Command Library / Groups
 

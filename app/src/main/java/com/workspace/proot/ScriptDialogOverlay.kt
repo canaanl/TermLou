@@ -117,6 +117,10 @@ class ScriptDialogOverlay(
 
     fun captureValues(): Map<String, String> = _renderer?.captureValues() ?: emptyMap()
 
+    /** 脚本 canvas patch：只改活动 Canvas 的场景，不写 req/res、不重建卡片。 */
+    fun applyCanvasPatch(key: String?, patch: CanvasPatch): Boolean =
+        _renderer?.applyCanvasPatch(key, patch) ?: false
+
     fun isAlive(): Boolean = !dismissed && (root?.isAttachedToWindow == true) && (root?.parent != null)
 
     fun updateContent(newRequest: ScriptDialogSpec.Request, newOnResult: ((ScriptDialogSpec.Result) -> Unit)? = null) {

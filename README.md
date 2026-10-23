@@ -84,6 +84,8 @@ TermLou
 │   ├── WheelController/Adapter  无限循环拨轮（Int.MAX_VALUE 取模 + 空槽位）+ TUI 感知推荐
 │   ├── CommandRecommender    多信号加权推荐（频次 + 序列 + 近因）
 │   ├── ScriptDialogSpec/Renderer/Overlay  脚本浮窗协议 + 渲染 + 覆盖层
+│   ├── CanvasScene/View                  原生 Canvas 场景模型/动画/patch + 渲染/交互
+│   ├── CanvasDesignerActivity            Canvas 图形化设计器（图层/时间线/路径/导出）
 │   ├── DialogMakerActivity   弹窗工坊（图形化设计 termlou-ui 对话框）
 │   ├── OverlayBridge / ClipboardBridge  文件 IPC 桥（req/res + FileObserver + 轮询兜底）
 │   ├── SplashView/Letters/Tokens/Maker  启动画面渲染 + 像素工坊（手绘 + 灰阶量化）
@@ -185,7 +187,11 @@ MainActivity.onCreate
 - Shell 一行命令弹出原生 Android 浮窗：`termlou-ui --title "确认" --message "继续？" --button "确定=ok=primary" --button "取消=cancel"`
 - 控件：`--input` 输入框、`--select` 单选、`--check` 多选、`--toggle` 开关、`--output FILE` 带 ANSI 彩色的文本输出
 - 主题 `dark/light/glass`、强调色、圆角、位置、动画、超时自动关闭
-- **弹窗工坊**（`DialogMakerActivity`）：图形化设计对话框，实时预览，一键导出 `termlou-ui` 命令
+- **原生 Canvas 场景**：`--canvas` / `--canvas-file` / `--canvas-height` / `--canvas-key` 传入场景 JSON，App 用原生 Android Canvas 渲染（不接 WebView）；支持矩形、圆/椭圆、直线、路径、文本、图片、线性进度条、分组、相机、粒子和动画
+- **原位 patch**：`--no-timeout` 保持浮窗，`--canvas-update` / `--canvas-progress` / `--canvas-scene` / `--canvas-play|pause|seek` 只改活动 Canvas，不新建 Entry、不写结果、不重建浮窗；交互动作也只改场景状态并 `invalidate()`
+- **Canvas 设计器**：单行顶栏（返回 / 撤销 / 重做 / 更多 / 完成）、画布操作带、未选中元素时的即时画布属性页；图层从上到下即上层到下层，行内只保留显隐眼睛，复制/删除在属性页；点按动作分「提交结果 / 只改画面 / 无动作 / 自定义」，动画面板内置播放控制，无限循环动画显示「循环播放」而不是无限增长的时间；仍支持拖拽/缩放/旋转、网格吸附、路径点编辑、SVG/JSON 路径导入、关键帧动画、撤销/重做、JSON 导入导出和命令导出
+- **Canvas 点击提交**：节点动作 `submit:ID` 点按后写回 `{"id":"ID","values":{...}}` 并关窗；`submit:ID:keep` 写同样结果但保持浮窗，等待下一次请求。App 只写结果、不执行命令，由调用方 shell 读取 JSON 后自行执行
+- **弹窗工坊**（`DialogMakerActivity`）：图形化设计对话框，实时预览，一键导出 `termlou-ui` 命令；Canvas 设计器与运行时共用同一套渲染/编解码，设计态所见即运行态。无需悬浮窗权限即可「试运行」，直接点按钮/画布查看将输出的结果 JSON
 - **剪贴板桥**：`termlou-clipboard "文本"` 或 `echo "文本" | termlou-clipboard` 直写系统剪贴板
 
 ### 6. 网络抓包与过滤 Network
@@ -266,7 +272,39 @@ ls -l > /tmp/out.txt && termlou-ui --title "列表" --output /tmp/out.txt --butt
 echo "https://example.com" | termlou-clipboard
 ```
 
-弹窗工坊（设置 → 弹窗工坊）可图形化设计以上对话框并一键导出命令。
+```bash
+# Canvas 场景：原生绘制（不接 WebView），标题 + 线性进度条
+cat > /tmp/scene.json <<'JSON'
+{"width":360,"height":220,"background":"#101418","nodes":[
+  {"id":"title","type":"text","x":16,"y":12,"w":320,"h":24,"text":"构建中…","textSize":18,"bold":true},
+  {"id":"bar","type":"progress","x":16,"y":52,"w":328,"h":12,"progress":0,"showLabel":true}
+]}
+JSON
+
+# 长任务：后台保持浮窗，不自动超时
+termlou-ui --title "构建" --canvas @/tmp/scene.json --canvas-key main --no-timeout &
+
+# 只 patch 活动 Canvas：原位更新，不新建 Entry、不写结果、不重建弹窗
+termlou-ui --canvas-update '{"node":"bar","progress":0.42,"animate":true,"duration":300}' --canvas-key main
+termlou-ui --canvas-update '{"node":"title","text":"完成","fill":"#4DD0E1"}' --canvas-key main
+termlou-ui --canvas-progress bar=1 --canvas-key main
+```
+
+弹窗工坊（设置 → 弹窗工坊 → Canvas）可图形化设计 Canvas 场景、图层、路径、进度条和动画，并一键导出 `termlou-ui --canvas` 命令。未选中元素时属性页会直接显示画布尺寸、背景、弹窗行高和更新标识；动画保存在「动画」标签里播放。
+
+```bash
+# 画布节点动作：submit:start 写结果并关窗；submit:start:keep 保持窗口
+# 设计器里的“点按动作 → 提交结果”可勾选“保持窗口”，自动生成 submit:start:keep。
+while :; do
+  r=$(termlou-ui --title "操作" --canvas @/tmp/scene.json --no-timeout --button "关闭=close")
+  case "$(printf '%s' "$r" | jq -r .id)" in
+    close|dismiss|timeout) break ;;
+    start) ./start.sh ;;
+  esac
+done
+```
+
+App 不执行命令：`termlou-ui` 只输出结果 JSON，`case` 里的命令由调用方 shell 执行。同一请求内画布只接受一次提交；`keep` 只是保持窗口，下一次请求仍由 shell 串行发起。
 
 ### 命令库 / 组管理 Command Library
 

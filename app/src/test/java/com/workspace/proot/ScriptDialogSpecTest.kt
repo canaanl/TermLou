@@ -139,6 +139,30 @@ class ScriptDialogSpecTest {
     }
 
     @Test
+    fun canvasSubmitResultDismissesByDefaultAndHonorsKeep() {
+        val req = ScriptDialogSpec.parseRequest(
+            """{"id":"x","ui":{"rows":[{"kind":"buttons","buttons":[{"text":"OK","id":"ok"}]}]}}"""
+        )
+        assertTrue(ScriptDialogSpec.shouldDismiss(req, ScriptDialogSpec.Result("start")))
+        assertFalse(
+            ScriptDialogSpec.shouldDismiss(
+                req,
+                ScriptDialogSpec.Result("start", keepOpen = true)
+            )
+        )
+    }
+
+    @Test
+    fun resultToJsonDropsKeepOpen() {
+        val json = ScriptDialogSpec.resultToJson(
+            ScriptDialogSpec.Result("start", keepOpen = true)
+        )
+        assertEquals("start", json.optString("id", ""))
+        assertFalse(json.has("keepOpen"))
+        assertFalse(json.has("keep"))
+    }
+
+    @Test
     fun resultToJsonError() {
         val json = ScriptDialogSpec.resultToJson(
             ScriptDialogSpec.Result("error", error = ScriptDialogSpec.ERROR_PERMISSION)

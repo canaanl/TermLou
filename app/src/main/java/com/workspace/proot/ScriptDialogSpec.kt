@@ -20,6 +20,7 @@ object ScriptDialogSpec {
     const val KIND_SELECT = "select"
     const val KIND_TOGGLE = "toggle"
     const val KIND_BUTTONS = "buttons"
+    const val KIND_CANVAS = "canvas"
 
     const val BTN_PRIMARY = "primary"
     const val BTN_DANGER = "danger"
@@ -76,6 +77,11 @@ object ScriptDialogSpec {
         val filter: String = ""
     )
     data class ButtonsRow(val buttons: List<Button>)
+    data class CanvasRow(
+        val scene: CanvasScene,
+        val heightDp: Int = 220,
+        val key: String = ""
+    )
 
     sealed class Row {
         data class Text(val row: TextRow) : Row()
@@ -83,6 +89,7 @@ object ScriptDialogSpec {
         data class Select(val row: SelectRow) : Row()
         data class Toggle(val row: ToggleRow) : Row()
         data class Buttons(val row: ButtonsRow) : Row()
+        data class Canvas(val row: CanvasRow) : Row()
     }
 
     data class Ui(
@@ -103,7 +110,9 @@ object ScriptDialogSpec {
     data class Result(
         val id: String,
         val values: Map<String, String> = emptyMap(),
-        val error: String? = null
+        val error: String? = null,
+        /** Canvas submit: keep the overlay alive for the next request. Never serialized. */
+        val keepOpen: Boolean = false
     )
 
     // ===== 解析 =====
@@ -167,6 +176,16 @@ object ScriptDialogSpec {
             KIND_BUTTONS -> Row.Buttons(
                 ButtonsRow(parseButtons(obj.optArr("buttons")))
             )
+            KIND_CANVAS -> {
+                val sceneObj = obj.optObj("scene") ?: obj
+                Row.Canvas(
+                    CanvasRow(
+                        scene = CanvasSceneCodec.parseScene(sceneObj),
+                        heightDp = obj.optInt("height", 220).coerceIn(64, 1600),
+                        key = obj.optString("key", "")
+                    )
+                )
+            }
             else -> null
         }
     }
@@ -204,6 +223,7 @@ object ScriptDialogSpec {
     fun shouldDismiss(request: Request, result: Result): Boolean {
         if (result.error != null) return true
         if (result.id == RESULT_ID_DISMISS || result.id == RESULT_ID_TIMEOUT) return true
+        if (result.keepOpen) return false
         val btn = request.ui.rows.filterIsInstance<Row.Buttons>()
             .firstOrNull()?.row?.buttons?.find { it.id == result.id } ?: return true
         return btn.close
@@ -277,6 +297,14 @@ object ScriptDialogSpec {
                         btns.put(bo)
                     }
                     o.put("buttons", btns)
+                    rows.put(o)
+                }
+                is Row.Canvas -> {
+                    val o = MiniJson.Obj()
+                        .put("kind", KIND_CANVAS)
+                        .put("height", r.row.heightDp)
+                        .put("scene", CanvasSceneCodec.sceneToJson(r.row.scene))
+                    if (r.row.key.isNotEmpty()) o.put("key", r.row.key)
                     rows.put(o)
                 }
             }

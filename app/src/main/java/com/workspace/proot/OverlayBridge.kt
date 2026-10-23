@@ -133,7 +133,22 @@ object OverlayBridge {
         val p = parser ?: return
         runCatching { p.execute {
             val text = runCatching { file.readText() }.getOrNull()
-            val parsed = text?.let { runCatching { ScriptDialogSpec.parseRequest(it) }.getOrNull() }
+            val obj = text?.let { runCatching { MiniJson.parse(it) }.getOrNull() }
+            if (obj != null && obj.optString("op", "") == "canvas") {
+                val patch = runCatching { CanvasPatch.parse(obj) }.getOrNull()
+                mainHandler.post {
+                    pendingParses.remove(file.name)
+                    if (running) {
+                        val overlay = activeOverlay
+                        if (patch != null && overlay?.isAlive() == true) {
+                            overlay.applyCanvasPatch(patch.key, patch)
+                        }
+                    }
+                    runCatching { file.delete() }
+                }
+                return@execute
+            }
+            val parsed = obj?.let { runCatching { ScriptDialogSpec.parseRequest(it) }.getOrNull() }
             mainHandler.post {
                 if (!running) return@post
                 pendingParses.remove(file.name)
@@ -166,7 +181,7 @@ object OverlayBridge {
         while (queue.isNotEmpty()) {
             val entry = queue.removeFirst()
             val timeoutMs = (entry.request.timeoutSec * 1000.0).toLong()
-            if (System.currentTimeMillis() - entry.enqueuedAt > timeoutMs) {
+            if (timeoutMs > 0 && System.currentTimeMillis() - entry.enqueuedAt > timeoutMs) {
                 resolve(entry, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_TIMEOUT, mapOf("__reqId" to entry.request.id)))
                 continue
             }
@@ -213,19 +228,7 @@ object OverlayBridge {
                         showNext()
                     }
                 }
-                val runnable = Runnable {
-                    timeoutRunnable = null
-                    val values = activeOverlay?.captureValues() ?: emptyMap()
-                    activeOverlay?.dismiss()
-                    activeOverlay = null
-                    if (ownership.current === entry) {
-                        ownership.finish(entry)
-                        resolve(entry, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_TIMEOUT, values + ("__reqId" to entry.request.id)))
-                        showNext()
-                    }
-                }
-                timeoutRunnable = runnable
-                mainHandler.postDelayed(runnable, timeoutMs)
+                scheduleTimeout(entry, timeoutMs)
                 return
             }
             // 无窗：新建（首建按 --anim）
@@ -246,22 +249,31 @@ object OverlayBridge {
                 }
             }
             activeOverlay = overlay
-            val runnable = Runnable {
-                timeoutRunnable = null
-                val values = activeOverlay?.captureValues() ?: emptyMap()
-                activeOverlay?.dismiss()
-                activeOverlay = null
-                if (ownership.current === entry) {
-                    ownership.finish(entry)
-                    resolve(entry, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_TIMEOUT, values + ("__reqId" to entry.request.id)))
-                    showNext()
-                }
-            }
-            timeoutRunnable = runnable
-            mainHandler.postDelayed(runnable, timeoutMs)
+            scheduleTimeout(entry, timeoutMs)
             overlay.show()
             return
         }
+    }
+
+    /** timeoutSec <= 0 表示不自动超时（--no-timeout）；窗口只能由按钮/返回/关闭/新请求结束。 */
+    private fun scheduleTimeout(entry: Entry, timeoutMs: Long) {
+        if (timeoutMs <= 0) {
+            timeoutRunnable = null
+            return
+        }
+        val runnable = Runnable {
+            timeoutRunnable = null
+            val values = activeOverlay?.captureValues() ?: emptyMap()
+            activeOverlay?.dismiss()
+            activeOverlay = null
+            if (ownership.current === entry) {
+                ownership.finish(entry)
+                resolve(entry, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_TIMEOUT, values + ("__reqId" to entry.request.id)))
+                showNext()
+            }
+        }
+        timeoutRunnable = runnable
+        mainHandler.postDelayed(runnable, timeoutMs)
     }
 
     private fun cancelTimeout() {

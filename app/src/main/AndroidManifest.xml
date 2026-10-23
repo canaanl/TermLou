@@ -57,6 +57,13 @@
             android:theme="@style/Theme.TermLou" />
 
         <activity
+            android:name="com.workspace.proot.CanvasDesignerActivity"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="stateHidden|adjustResize"
+            android:exported="false"
+            android:theme="@style/Theme.TermLou" />
+
+        <activity
             android:name="com.workspace.proot.SplashMakerActivity"
             android:screenOrientation="portrait"
             android:exported="false"

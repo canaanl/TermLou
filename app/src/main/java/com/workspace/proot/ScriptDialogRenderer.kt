@@ -38,12 +38,55 @@ class ScriptDialogRenderer(private val ctx: Context) {
     private var _state: InteractiveState? = null
     private var adapterRef: InnerAdapter? = null
     private var cardRef: LinearLayout? = null
+    private val canvasHosts = LinkedHashMap<String, CanvasHostView>()
+    private val canvasActions = HashMap<String, String>()
+    private val canvasImages by lazy { CanvasImageCache(ctx) }
 
     data class RowKey(val kind: String, val id: String)
 
     fun captureValues(): Map<String, String> {
-        val s = _state ?: return emptyMap()
-        return collectValues(s)
+        val s = _state ?: return canvasValues()
+        return collectValues(s) + canvasValues()
+    }
+
+    /** Canvas 点击提交：复用普通按钮的结果链路，values 里带当前输入和 Canvas 快照。 */
+    private fun submitCanvas(id: String, keepOpen: Boolean) {
+        val s = _state ?: InteractiveState().also { _state = it }
+        val cb = currentOnResult ?: return
+        cb(ScriptDialogSpec.Result(id, collectValues(s) + canvasValues(), keepOpen = keepOpen))
+    }
+
+    fun applyCanvasPatch(key: String?, patch: CanvasPatch): Boolean {
+        canvasHosts.entries.removeAll { it.value.parent == null }
+        var applied = false
+        for ((id, host) in canvasHosts) {
+            val rowKey = host.tag as? String ?: ""
+            if (key != null && key != rowKey) continue
+            if (host.applyPatch(patch)) applied = true
+            if (host.parent == null) continue
+            canvasActions.remove(id)
+        }
+        return applied
+    }
+
+    /** 工坊试运行：把所有活动 Canvas 的动画时钟归零并继续播放。 */
+    fun replayCanvasAnimations() {
+        canvasHosts.entries.removeAll { it.value.parent == null }
+        for (host in canvasHosts.values) {
+            host.seek(0)
+            host.play()
+        }
+    }
+
+    private fun canvasValues(): Map<String, String> {
+        if (canvasHosts.isEmpty()) return emptyMap()
+        val out = mutableMapOf<String, String>()
+        for ((id, host) in canvasHosts) {
+            val key = (host.tag as? String)?.ifEmpty { id } ?: id
+            out[key] = host.snapshotJson()
+            canvasActions[id]?.let { out["$key.action"] = it }
+        }
+        return out
     }
 
     fun buildRoot(request: ScriptDialogSpec.Request, onResult: (ScriptDialogSpec.Result) -> Unit): FrameLayout {
@@ -108,7 +151,7 @@ class ScriptDialogRenderer(private val ctx: Context) {
         val buttons = (request.ui.rows.firstOrNull { it is ScriptDialogSpec.Row.Buttons } as? ScriptDialogSpec.Row.Buttons)?.row?.buttons
         card.addView(buttonBar(buttons, palette) { id ->
             // 读字段而非捕获参数：换屏后同构按钮栏复用，回调归属必须跟着换
-            (currentOnResult ?: onResult)(ScriptDialogSpec.Result(id, collectValues(state)))
+            (currentOnResult ?: onResult)(ScriptDialogSpec.Result(id, collectValues(state) + canvasValues()))
         })
         return card
     }
@@ -123,6 +166,8 @@ class ScriptDialogRenderer(private val ctx: Context) {
     private var currentOnResult: ((ScriptDialogSpec.Result) -> Unit)? = null
 
     fun updateCard(card: LinearLayout, newRequest: ScriptDialogSpec.Request, onResult: (ScriptDialogSpec.Result) -> Unit) {
+        // 新请求 = 新的一次提交机会；同一请求内的 Canvas 只能提交一次。
+        canvasHosts.values.forEach { it.resetSubmitLock() }
         currentOnResult = onResult
         val palette = paletteOf(newRequest.style)
         val bg = card.background as? GradientDrawable
@@ -206,7 +251,7 @@ class ScriptDialogRenderer(private val ctx: Context) {
             if (!same || paletteChanged) {
                 val newBar = buttonBar(buttons, palette) { id ->
                     val s = _state ?: InteractiveState().also { _state = it }
-                    (currentOnResult ?: onResult)(ScriptDialogSpec.Result(id, collectValues(s)))
+                    (currentOnResult ?: onResult)(ScriptDialogSpec.Result(id, collectValues(s) + canvasValues()))
                 }
                 card.removeViewAt(card.childCount - 1)
                 card.addView(newBar)
@@ -222,12 +267,18 @@ class ScriptDialogRenderer(private val ctx: Context) {
         }
         // 文本不合并，每行独立，便于 Diff 稳定 key（text 用内容 hash，不含序号，插入/删除不重判）
         val snap = adapter.currentFilterSnapshot()
+        var canvasIndex = 0
         for (row in request.ui.rows) {
             when (row) {
                 is ScriptDialogSpec.Row.Text -> rows.add(DisplayRow("text:${row.row.text.hashCode()}", TYPE_TEXT, row, snap))
                 is ScriptDialogSpec.Row.Input -> rows.add(DisplayRow("input:${row.row.key}", TYPE_INPUT, row, snap))
                 is ScriptDialogSpec.Row.Select -> rows.add(DisplayRow("select:${row.row.key}", TYPE_SELECT, row, snap))
                 is ScriptDialogSpec.Row.Toggle -> rows.add(DisplayRow("toggle:${row.row.key}", TYPE_TOGGLE, row, snap))
+                is ScriptDialogSpec.Row.Canvas -> {
+                    val key = row.row.key.ifEmpty { "canvas$canvasIndex" }
+                    canvasIndex++
+                    rows.add(DisplayRow("canvas:$key", TYPE_CANVAS, row, snap))
+                }
                 is ScriptDialogSpec.Row.Buttons -> Unit
             }
         }
@@ -268,6 +319,7 @@ class ScriptDialogRenderer(private val ctx: Context) {
         const val TYPE_INPUT = 1
         const val TYPE_SELECT = 2
         const val TYPE_TOGGLE = 3
+        const val TYPE_CANVAS = 4
     }
 
     private object RowDiff : DiffUtil.ItemCallback<DisplayRow>() {
@@ -293,6 +345,7 @@ class ScriptDialogRenderer(private val ctx: Context) {
                 TYPE_INPUT -> InputVH(inputRowView(parent))
                 TYPE_SELECT -> SelectVH(selectRowView(parent))
                 TYPE_TOGGLE -> ToggleVH(toggleRowView(parent))
+                TYPE_CANVAS -> CanvasVH(canvasRowView(parent))
                 else -> TextVH(textRowView(parent))
             }
         }
@@ -344,7 +397,9 @@ class ScriptDialogRenderer(private val ctx: Context) {
         }
 
         private fun toggleRowView(parent: ViewGroup): View {
-            val container = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutParams = RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT); setPaddingMd(0, 0, 0, 8) }
+            val container = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutParams = RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT); setPaddingMd(0, 0, 0, 8)
+            }
             val label = TextView(context).apply { typeface = Typeface.MONOSPACE; setTextColor(palette.onSurfaceVariant); textMd(UiTokens.TEXT_META, UiTokens.LINE_META); layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
             val pill = TextView(context).apply {
                 typeface = Typeface.MONOSPACE; textSize = UiTokens.TEXT_META
@@ -356,6 +411,19 @@ class ScriptDialogRenderer(private val ctx: Context) {
             return container
         }
 
+        private fun canvasRowView(parent: ViewGroup): View {
+            val wrap = FrameLayout(context).apply {
+                layoutParams = RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT)
+                setPaddingMd(0, 0, 0, 8)
+                roundedBg(palette.inputBg, UiTokens.CORNER_SM)
+            }
+            val host = CanvasHostView(context, CanvasScene(), canvasImages).apply {
+                layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, (220 * density).toInt())
+            }
+            wrap.addView(host)
+            return wrap
+        }
+
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
             val item = getItem(position)
             when (holder) {
@@ -363,6 +431,7 @@ class ScriptDialogRenderer(private val ctx: Context) {
                 is InputVH -> holder.bind(item)
                 is SelectVH -> holder.bind(item)
                 is ToggleVH -> holder.bind(item)
+                is CanvasVH -> holder.bind(item)
             }
         }
 
@@ -474,6 +543,46 @@ class ScriptDialogRenderer(private val ctx: Context) {
                     submitList(newList)
                 }
             }
+        }
+
+        inner class CanvasVH(private val wrap: View) : RecyclerView.ViewHolder(wrap) {
+            private val host: CanvasHostView = (wrap as FrameLayout).getChildAt(0) as CanvasHostView
+            private var boundScene: CanvasScene? = null
+
+            fun bind(item: DisplayRow) {
+                val row = (item.row as ScriptDialogSpec.Row.Canvas).row
+                val tag = item.id.substringAfter("canvas:", item.id)
+                host.tag = tag
+                host.layoutParams = (host.layoutParams as FrameLayout.LayoutParams).apply {
+                    height = (row.heightDp.coerceIn(64, 1600) * density).toInt()
+                }
+                host.onAction = { action ->
+                    canvasActions[item.id] = action
+                }
+                host.onSubmit = { id, keepOpen -> submitCanvas(id, keepOpen) }
+                // 只有请求里的场景真的变了才重置画布；RecyclerView 重新绑定/滚动回收
+                // 不能把用户交互或 patch 之后的场景状态冲回初始值。
+                if (boundScene != row.scene) {
+                    boundScene = row.scene
+                    host.setScene(row.scene, resetClock = true)
+                }
+                canvasHosts[item.id] = host
+            }
+        }
+
+        override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+            if (holder is CanvasVH) {
+                val wrap = holder.itemView as FrameLayout
+                val host = wrap.getChildAt(0) as? CanvasHostView
+                val entry = canvasHosts.entries.firstOrNull { it.value === host }
+                if (entry != null) {
+                    canvasHosts.remove(entry.key)
+                    canvasActions.remove(entry.key)
+                }
+                host?.onAction = null
+                host?.onSubmit = null
+            }
+            super.onViewRecycled(holder)
         }
     }
 
