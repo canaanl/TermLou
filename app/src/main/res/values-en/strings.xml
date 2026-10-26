@@ -545,6 +545,7 @@
 
     <!-- Splash workshop -->
     <string name="sm_invert">Invert</string>
+    <string name="sm_brush">Brush</string>
     <string name="sm_clarity">Clarity</string>
     <string name="sm_undo">UNDO</string>
     <string name="sm_import">IMPORT PHOTO</string>

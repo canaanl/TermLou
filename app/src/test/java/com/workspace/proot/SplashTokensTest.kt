@@ -147,6 +147,19 @@ class SplashTokensTest {
     }
 
     @Test
+    fun `default logo stays 18 rows and centers in taller grid`() {
+        val cells = SplashTokens.defaultCells()
+        val offset = SplashTokens.LOGO_ROW_OFFSET
+        assertTrue(cells.isNotEmpty())
+        assertEquals(offset, cells.minOf { it.r })
+        assertEquals(offset + SplashTokens.LOGO_ROWS - 1, cells.maxOf { it.r })
+        assertTrue(cells.all { it.r in 0 until SplashTokens.ROWS })
+        assertTrue(cells.all { it.c in 0 until SplashTokens.COLS })
+        assertFalse(SplashTokens.isCurrentGrid(SplashTokens.ROWS - 1, SplashTokens.COLS))
+        assertTrue(SplashTokens.isCurrentGrid(SplashTokens.ROWS, SplashTokens.COLS))
+    }
+
+    @Test
     fun `splash background and glow share one source across modes`() {
         val offNight = ThemeColors.default(true)
         val offDay = ThemeColors.default(false)

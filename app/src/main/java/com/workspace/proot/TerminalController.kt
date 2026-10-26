@@ -946,6 +946,12 @@ class TerminalController(
             val splashJson = File(f, "splash.json")
             if (!splashJson.exists()) return null
             val obj = MiniJson.parse(splashJson.readText())
+            // 旧版 96×80 数据不做迁移：尺寸不符就当没有自定义开屏，回到默认 LOGO。
+            if (!SplashTokens.isCurrentGrid(
+                    obj.optInt("rows", -1),
+                    obj.optInt("cols", -1)
+                )
+            ) return null
             val arr = obj.optArr("cells") ?: return null
             val out = mutableListOf<SplashTokens.SplashCell>()
             for (i in 0 until arr.length()) {

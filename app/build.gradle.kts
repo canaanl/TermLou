@@ -21,6 +21,12 @@ detekt {
     parallel = true
 }
 
+// detekt 1.23.1 在 JDK 21 上默认把 --jvm-target 传成 21，但只接受到 20。
+// 工程本身编译目标是 17，这里显式对齐，避免本机 JDK 版本影响 check。
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    jvmTarget = "17"
+}
+
 tasks.named("check") {
     dependsOn(tasks.named("detekt"))
 }
@@ -33,8 +39,8 @@ android {
         applicationId = "com.workspace.proot"
         minSdk = 26
         targetSdk = 35
-    versionCode = 5974
-    versionName = "5.9.74"
+    versionCode = 5975
+    versionName = "5.9.75"
         ndk { abiFilters.add("arm64-v8a") }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

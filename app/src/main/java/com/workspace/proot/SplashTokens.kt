@@ -6,11 +6,12 @@ package com.workspace.proot
  */
 object SplashTokens {
 
-    const val ROWS = 80
+    const val ROWS = 160
     const val COLS = 96
     const val COLS_PER_LETTER = 12
     const val LOGO_ROWS = 18
-    const val LOGO_ROW_OFFSET = 31  // 默认 LOGO 18 行在 80 行网格中垂直居中（上下各留 31 行），屏尺寸不变、默认 logo 外观不变
+    /** 默认 LOGO 尺寸不变，只在 160 行画布里垂直居中（上下各留 71 行）。 */
+    const val LOGO_ROW_OFFSET = (ROWS - LOGO_ROWS) / 2
 
     const val GRID_WIDTH_PCT = 0.9f
 
@@ -141,6 +142,9 @@ object SplashTokens {
         }
         return out
     }
+
+    /** 当前 splash.json 的网格尺寸是否与代码一致；旧数据不做迁移，直接忽略。 */
+    fun isCurrentGrid(rows: Int, cols: Int): Boolean = rows == ROWS && cols == COLS
 
     /** 默认 TERMLOU 点阵（18 行 × 7 字母，1 拆 4），映射到 ROWS 网格：行 + LOGO_ROW_OFFSET。 */
     fun defaultCells(): List<SplashCell> {

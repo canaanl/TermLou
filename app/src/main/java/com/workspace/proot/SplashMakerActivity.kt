@@ -31,22 +31,34 @@ private const val ALPHA_SHIFT = 24
 /** 常驻反选开关状态（重开工坊保持；照片生成方向 = 自动判向 ⊕ 此开关）。 */
 private const val KEY_SPLASH_INVERT = "splash_invert"
 
+/** 笔宽滑块：界面用 8–28 的整数刻度，实际半径 = 刻度 / 10 格。 */
+private const val BRUSH_SLIDER_MIN = 8f
+private const val BRUSH_SLIDER_MAX = 28f
+private const val BRUSH_SLIDER_UNIT = 10f
+private const val BRUSH_PRESSURE_EPS = 0.02f
+private const val BRUSH_PRESSURE_MIN = 0.05f
+private const val BRUSH_PRESSURE_MAX = 1f
+
 /**
- * 启动工坊：96×40 洞洞板绘制开屏点阵（1 像素拆 4，屏尺寸不变仅密度翻倍）。
+ * 启动工坊：96×160 洞洞板绘制开屏点阵（宽度不变，纵向可绘制空间翻倍）。
  * 触摸拖动画线（一次抬起=一笔），越界时网格外沿白圈呼吸高亮（采样态禁用）。
+ * 手写笔刷只落点阵格子，不生成矢量路径；一笔一撤销。
  * 品字四键：回退 / 导入照片 / 预览 / 保存；空板 = 默认 TERMLOU。
  */
 class SplashMakerActivity : AppCompatActivity() {
 
     private lateinit var board: SplashBoard
     private val cells = mutableMapOf<Pair<Int, Int>, Int>()
-    private val undoStack = mutableListOf<MutableList<Pair<Int, Int>>>()
+    /** 一笔一撤销：记录这一笔第一次改到的格子及其旧值（null = 原来为空）。 */
+    private val undoStack = mutableListOf<MutableMap<Pair<Int, Int>, Int?>>()
+    private var brushBaseRadius = SplashBrush.DEFAULT_RADIUS
     private var saving = false
     private var photoBitmap: Bitmap? = null
     private var isPhotoSampling = false
     private var overlayCells: MutableMap<Pair<Int, Int>, Int>? = null
     private lateinit var photoView: ImageView
     private lateinit var boardContainer: FrameLayout
+    private lateinit var brushBar: LinearLayout
     private lateinit var styleBar: LinearLayout
     private lateinit var rootFrame: FrameLayout
     private var invertEnabled = false
@@ -146,6 +158,35 @@ class SplashMakerActivity : AppCompatActivity() {
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.MATCH_PARENT
         ).apply { weight = 1f })
+        // 手写工具栏：基准笔宽。压感/速度再在这个基准上浮动。
+        brushBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPaddingMd(12, 0, 12, 0)
+            addView(TextView(this@SplashMakerActivity).apply {
+                text = getString(R.string.sm_brush)
+                setTextColor(theme.onSurface)
+                textMd(UiTokens.TEXT_META, UiTokens.LINE_META)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = (8 * density()).toInt() }
+            })
+            addView(TickSlider(ContextThemeWrapper(this@SplashMakerActivity, R.style.Theme_TermLou_Slider)).apply {
+                // 0.8–2.8 格，刻度存成 8–28。
+                valueFrom = BRUSH_SLIDER_MIN
+                valueTo = BRUSH_SLIDER_MAX
+                stepSize = 1f
+                value = SplashBrush.DEFAULT_RADIUS * BRUSH_SLIDER_UNIT
+                thumbTintList = ColorStateList.valueOf(theme.primaryVisible)
+                trackActiveTintList = ColorStateList.valueOf(theme.primaryVisible)
+                trackInactiveTintList = ColorStateList.valueOf(theme.outline)
+                haloTintList = ColorStateList.valueOf((theme.primaryVisible and 0x00FFFFFF) or (0x33 shl 24))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                addOnChangeListener { _, v, _ -> brushBaseRadius = v / BRUSH_SLIDER_UNIT }
+            })
+        }
+        root.addView(brushBar)
         // 取景态工具栏：清晰度滑块（反选开关已常驻标题栏，此处不再重复）
         styleBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -261,27 +302,20 @@ class SplashMakerActivity : AppCompatActivity() {
             val f = splashFile
             if (f.exists()) {
                 val obj = MiniJson.parse(f.readText())
+                // 旧版 96×80 数据不迁移：尺寸不符就当没有自定义开屏，按空画布处理。
+                if (!SplashTokens.isCurrentGrid(
+                        obj.optInt("rows", -1),
+                        obj.optInt("cols", -1)
+                    )
+                ) return
                 val arr = obj.optArr("cells") ?: return
-                // 旧版 48×20 数据：按 2×2 块放大为 96×40（仅当列减半才视为旧档，避免 96×40 被误判）
-                val legacy = obj.optInt("cols", SplashTokens.COLS) <= SplashTokens.COLS / 2
                 for (i in 0 until arr.length()) {
                     val o = arr.getObj(i) ?: continue
                     val r = o.optInt("r", -1)
                     val c = o.optInt("c", -1)
-                    if (legacy) {
-                        if (r in 0 until SplashTokens.ROWS / 2 && c in 0 until SplashTokens.COLS / 2) {
-                            val rr = r * 2
-                            val cc = c * 2
-                            cells[rr to cc] = SplashTokens.LEVEL_FULL
-                            cells[rr + 1 to cc] = SplashTokens.LEVEL_FULL
-                            cells[rr to cc + 1] = SplashTokens.LEVEL_FULL
-                            cells[rr + 1 to cc + 1] = SplashTokens.LEVEL_FULL
-                        }
-                    } else {
-                        if (r in 0 until SplashTokens.ROWS && c in 0 until SplashTokens.COLS) {
-                            cells[r to c] = o.optInt("v", SplashTokens.LEVEL_FULL)
-                                .coerceIn(SplashTokens.LEVEL_OFF, SplashTokens.LEVEL_FULL)
-                        }
+                    if (r in 0 until SplashTokens.ROWS && c in 0 until SplashTokens.COLS) {
+                        cells[r to c] = o.optInt("v", SplashTokens.LEVEL_FULL)
+                            .coerceIn(SplashTokens.LEVEL_OFF, SplashTokens.LEVEL_FULL)
                     }
                 }
             }
@@ -312,6 +346,7 @@ class SplashMakerActivity : AppCompatActivity() {
             }
             photoView.visibility = View.VISIBLE
             styleBar.visibility = View.VISIBLE
+            brushBar.visibility = View.GONE
             isPhotoSampling = true
             generatePhotoCells()
         }
@@ -322,6 +357,7 @@ class SplashMakerActivity : AppCompatActivity() {
         overlayCells = null
         photoView.visibility = View.GONE
         styleBar.visibility = View.GONE
+        brushBar.visibility = View.VISIBLE
         isPhotoSampling = false
         photoBitmap?.recycle()
         photoBitmap = null
@@ -338,7 +374,11 @@ class SplashMakerActivity : AppCompatActivity() {
             cells.clear()
             cells.putAll(overlay)
             undoStack.clear()
-            undoStack.add(cells.keys.toMutableList())
+            if (cells.isNotEmpty()) {
+                val snapshot = mutableMapOf<Pair<Int, Int>, Int?>()
+                cells.keys.forEach { snapshot[it] = null }
+                undoStack.add(snapshot)
+            }
         }
     }
 
@@ -493,7 +533,9 @@ class SplashMakerActivity : AppCompatActivity() {
 
     private fun undo() {
         val last = undoStack.removeLastOrNull() ?: return
-        for (p in last) cells.remove(p)
+        for ((p, old) in last) {
+            if (old == null) cells.remove(p) else cells[p] = old
+        }
         board.invalidate()
     }
 
@@ -571,7 +613,7 @@ class SplashMakerActivity : AppCompatActivity() {
         tmp.renameTo(splashFile)
     }
 
-    /** 洞洞板：96×40 网格，未绘制均一暗色；有像素以品牌渐变显示，亮度跟灰阶档；越界白圈呼吸（采样态禁用）。 */
+    /** 洞洞板：96×160 网格，未绘制均一暗色；有像素以品牌渐变显示，亮度跟灰阶档；越界白圈呼吸（采样态禁用）。 */
     inner class SplashBoard(context: Context, private val data: MutableMap<Pair<Int, Int>, Int>) : View(context) {
 
         private val d = resources.displayMetrics.density
@@ -641,6 +683,7 @@ class SplashMakerActivity : AppCompatActivity() {
         private var pinchStartScale = 1f
         private var MIN_SCALE = 0.4f
         private var MAX_SCALE = 5f
+        private var lastPoint: SplashBrush.Point? = null
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
             // 照片取景态：单指拖动取景框 + 双指缩放，不落笔画、不触发越界辉光
@@ -707,32 +750,63 @@ class SplashMakerActivity : AppCompatActivity() {
             }
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    undoStack.add(mutableListOf())
-                    // 每次手势从零开始：起始点在画板内由 paintAt 置 true，起始在外则不亮辉光
+                    if (event.pointerCount > 1) return true
+                    undoStack.add(mutableMapOf())
+                    // 每次手势从零开始：起始点在画板内才落笔，起始在外则不亮辉光
                     fingerInside = false
                     wasInside = false
                     exceededSides.clear()
                     glowActive = false
                     removeCallbacks(breatheRunnable)
-                    paintAt(event.x, event.y)
+                    lastPoint = null
+                    handleSample(
+                        event.x, event.y, event.pressure, event.eventTime, isStylus(event)
+                    )
+                    invalidate()
                     return true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    paintAt(event.x, event.y)
+                    if (event.pointerCount != 1) return true
+                    val stylus = isStylus(event)
+                    // MotionEvent 会把两帧之间的高频点放进 history；只取 event.x/y
+                    // 正是快速划动跳格的根因。
+                    for (i in 0 until event.historySize) {
+                        handleSample(
+                            event.getHistoricalX(i),
+                            event.getHistoricalY(i),
+                            event.getHistoricalPressure(i),
+                            event.getHistoricalEventTime(i),
+                            stylus
+                        )
+                    }
+                    handleSample(
+                        event.x, event.y, event.pressure, event.eventTime, stylus
+                    )
+                    invalidate()
                     return true
                 }
                 MotionEvent.ACTION_UP -> {
-                    // 手指离开立即熄灭辉光
-                    if (!fingerInside) {
-                        fingerInside = true
-                        wasInside = true
-                        exceededSides.clear()
-                        glowActive = false
-                        removeCallbacks(breatheRunnable)
-                        invalidate()
+                    if (event.pointerCount <= 1) {
+                        handleSample(
+                            event.x, event.y, event.pressure, event.eventTime, isStylus(event)
+                        )
                     }
-                    glowActive = false
-                    wasInside = true
+                    finishStroke()
+                    resetGlow()
+                    invalidate()
+                    return true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    finishStroke()
+                    resetGlow()
+                    invalidate()
+                    return true
+                }
+                MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_POINTER_UP -> {
+                    // 手写只接受单指/单笔；第二根手指落下时结束当前笔，避免
+                    // 缩放/误触把两段不相干的轨迹连成一条。
+                    finishStroke()
+                    lastPoint = null
                     return true
                 }
             }
@@ -745,25 +819,60 @@ class SplashMakerActivity : AppCompatActivity() {
             return kotlin.math.sqrt(dx * dx + dy * dy)
         }
 
-        private fun paintAt(x: Float, y: Float) {
-            val col = ((x - offsetX) / pixelSize).toInt()
-            val row = ((y - offsetY) / pixelSize).toInt()
-            val inside = row in 0 until rows && col in 0 until cols
+        private fun isStylus(event: MotionEvent): Boolean =
+            event.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS
+
+        /**
+         * 处理一个触摸采样点：
+         *  - 先把屏幕坐标换成格子坐标；
+         *  - 和上一个点之间用 [SplashBrush.line] 补齐；
+         *  - 每个细分点用圆刷覆盖多格，压感/速度只改半径。
+         */
+        @Suppress("CyclomaticComplexMethod")
+        private fun handleSample(
+            x: Float,
+            y: Float,
+            pressure: Float,
+            timeMs: Long,
+            stylus: Boolean
+        ) {
+            val cx = (x - offsetX) / pixelSize
+            val cy = (y - offsetY) / pixelSize
+            val col = kotlin.math.floor(cx).toInt()
+            val row = kotlin.math.floor(cy).toInt()
+            val inside = col in 0 until cols && row in 0 until rows
+            val prev = lastPoint
+            val fallbackPressure = prev?.pressure ?: 1f
+            val p = if (pressure.isFinite() && pressure > BRUSH_PRESSURE_EPS) {
+                pressure.coerceIn(BRUSH_PRESSURE_MIN, BRUSH_PRESSURE_MAX)
+            } else {
+                fallbackPressure
+            }
+            val point = SplashBrush.Point(cx, cy, p, timeMs)
+            val changes = undoStack.lastOrNull()
+
+            // 至少一端在画板内才落笔；圆刷自己会把越界的部分裁掉。
+            if (inside || (prev != null && wasInside)) {
+                if (prev != null) {
+                    for (stamp in SplashBrush.line(prev, point, brushBaseRadius, stylus)) {
+                        SplashBrush.stamp(
+                            data, stamp.x, stamp.y, stamp.radius, rows, cols, changes
+                        )
+                    }
+                } else if (inside) {
+                    SplashBrush.stamp(
+                        data, cx, cy,
+                        SplashBrush.radius(brushBaseRadius, p, 0f, stylus),
+                        rows, cols, changes
+                    )
+                }
+            }
+
             if (inside) {
-                val p = row to col
-                if (!data.containsKey(p)) {
-                    data[p] = SplashTokens.LEVEL_FULL
-                    undoStack.lastOrNull()?.add(p)
-                }
-                if (!fingerInside) {
-                    fingerInside = true
-                    wasInside = true
-                    exceededSides.clear()
-                    glowActive = false
-                    removeCallbacks(breatheRunnable)
-                } else {
-                    wasInside = true
-                }
+                fingerInside = true
+                exceededSides.clear()
+                glowActive = false
+                removeCallbacks(breatheRunnable)
             } else {
                 val sides = mutableSetOf<String>()
                 if (col < 0) sides.add("left")
@@ -774,12 +883,26 @@ class SplashMakerActivity : AppCompatActivity() {
                 if (wasInside) {
                     exceededSides = sides
                     fingerInside = false
-                    wasInside = false
                     glowActive = true
                     postDelayed(breatheRunnable, 16)
                 }
             }
-            invalidate()
+            lastPoint = point
+            wasInside = inside
+        }
+
+        /** 一笔结束：空笔（点在画板外）不占撤销栈。 */
+        private fun finishStroke() {
+            if (undoStack.lastOrNull()?.isEmpty() == true) undoStack.removeLastOrNull()
+            lastPoint = null
+        }
+
+        private fun resetGlow() {
+            fingerInside = true
+            wasInside = true
+            exceededSides.clear()
+            glowActive = false
+            removeCallbacks(breatheRunnable)
         }
 
         override fun onDraw(canvas: Canvas) {

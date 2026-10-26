@@ -547,6 +547,7 @@
 
     <!-- 启动工坊 -->
     <string name="sm_invert">反选</string>
+    <string name="sm_brush">笔宽</string>
     <string name="sm_clarity">清晰度</string>
     <string name="sm_undo">撤销</string>
     <string name="sm_import">导入照片</string>
