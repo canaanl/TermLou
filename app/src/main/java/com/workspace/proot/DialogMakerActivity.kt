@@ -11,7 +11,6 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
 import android.provider.Settings
-import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -202,6 +201,21 @@ class DialogMakerActivity : Activity() {
         }
         form.addView(previewHost)
 
+        // ===== 调试信息：放在实时预览下面，不占用底部操作区 =====
+        form.addView(sectionLabel(getString(R.string.dm_debug_info)))
+        lastResultView = TextView(this).apply {
+            text = getString(R.string.dm_debug_empty)
+            setTextColor(theme.onSurfaceVariant)
+            textMeta()
+            typeface = Typeface.MONOSPACE
+            setTextIsSelectable(true)
+            setPaddingMd(10, 8, 10, 8)
+            roundedBg(theme.surfaceContainer, UiTokens.CORNER_SM)
+        }
+        form.addView(lastResultView, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+
         // ===== 底部按钮（品字：真机测试满行；导出命令+退出在下一行）=====
         val bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -229,19 +243,6 @@ class DialogMakerActivity : Activity() {
             theme.onSurface
         )
         bottomBar.addView(testRow)
-        lastResultView = TextView(this).apply {
-            setTextColor(theme.onSurfaceVariant)
-            textMeta()
-            typeface = Typeface.MONOSPACE
-            setTextIsSelectable(true)
-            maxLines = 4
-            ellipsize = TextUtils.TruncateAt.END
-            setPaddingMd(4, 6, 4, 0)
-            visibility = View.GONE
-        }
-        bottomBar.addView(lastResultView, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-        ))
         val row2 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(
@@ -664,7 +665,9 @@ val b = Button(this).apply {
             )
             return
         }
-        if (::lastResultView.isInitialized) lastResultView.visibility = View.GONE
+        if (::lastResultView.isInitialized) {
+            lastResultView.text = getString(R.string.dm_debug_empty)
+        }
         val overlay = ScriptDialogOverlay(this, buildRequest("test")) { result ->
             showTestResult(result)
         }
@@ -674,7 +677,6 @@ val b = Button(this).apply {
     private fun showTestResult(result: ScriptDialogSpec.Result) {
         if (!::lastResultView.isInitialized) return
         lastResultView.text = ScriptDialogSpec.resultToJsonString(result)
-        lastResultView.visibility = View.VISIBLE
     }
 
     private fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"

@@ -297,6 +297,8 @@
     <string name="dm_section_radius">圆角</string>
     <string name="dm_section_ctrls">控件</string>
     <string name="dm_preview">实时预览</string>
+    <string name="dm_debug_info">调试信息（运行结果 JSON）</string>
+    <string name="dm_debug_empty">运行后这里显示结果 JSON</string>
     <string name="dm_test">运行</string>
     <string name="dm_export">导出命令</string>
     <string name="dm_exit">退出</string>

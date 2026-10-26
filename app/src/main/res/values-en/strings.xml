@@ -295,6 +295,8 @@
     <string name="dm_section_radius">CORNERS</string>
     <string name="dm_section_ctrls">CONTROLS</string>
     <string name="dm_preview">LIVE PREVIEW</string>
+    <string name="dm_debug_info">DEBUG (RESULT JSON)</string>
+    <string name="dm_debug_empty">Run the dialog to see the result JSON here.</string>
     <string name="dm_test">RUN</string>
     <string name="dm_export">EXPORT COMMAND</string>
     <string name="dm_exit">EXIT</string>
