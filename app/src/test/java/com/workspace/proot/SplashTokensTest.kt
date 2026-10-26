@@ -151,7 +151,7 @@ class SplashTokensTest {
     @Test
     fun `rows for height follows real available space without a fixed 160`() {
         assertEquals(160, SplashTokens.rowsForHeight(1620f, 10.125f))
-        assertEquals(160, SplashTokens.rowsForHeight(2000f, 10f))
+        assertEquals(200, SplashTokens.rowsForHeight(2000f, 10f))
         assertEquals(150, SplashTokens.rowsForHeight(1500f, 10f))
         assertEquals(140, SplashTokens.rowsForHeight(1400f, 10f))
         assertEquals(0, SplashTokens.rowsForHeight(0f, 10f))

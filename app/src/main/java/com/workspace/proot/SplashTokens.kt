@@ -60,11 +60,11 @@ object SplashTokens {
 
     /**
      * 当前高度按固定像素尺寸能放下的行数；0 表示尺寸还没准备好。
-     * 放得下 160 行就最多用 160；放不下就用实际行数（150/140...）。
+     * 不再设 160 的硬上限：实际能放 165 就用 165，放不下就用 150/140。
      */
     fun rowsForHeight(availH: Float, pixelSize: Float): Int {
         if (availH <= 0f || pixelSize <= 0f) return 0
-        return floor(availH / pixelSize).toInt().coerceIn(MIN_ROWS, DEFAULT_ROWS)
+        return floor(availH / pixelSize).toInt().coerceIn(MIN_ROWS, MAX_ROWS)
     }
 
     /** 默认 LOGO 在当前行数里垂直居中；行数不足 18 时贴顶。 */
