@@ -379,6 +379,77 @@ class CanvasSceneTest {
     }
 
     @Test
+    fun `nested group transform round trips with offsets and rotation`() {
+        val outer = CanvasNode(
+            "outer", CanvasSpec.TYPE_GROUP, x = 100f, y = 50f, w = 200f, h = 120f,
+            rotation = 30f, scaleX = 1.4f, scaleY = 0.8f
+        )
+        val inner = CanvasNode(
+            "inner", CanvasSpec.TYPE_GROUP, x = 20f, y = 10f, w = 120f, h = 80f,
+            rotation = -15f, scaleX = 1.1f, scaleY = 0.9f
+        )
+        val child = CanvasNode(
+            "child", CanvasSpec.TYPE_RECT, x = 10f, y = 5f, w = 30f, h = 20f,
+            rotation = 20f, scaleX = 1.2f, scaleY = 0.7f
+        )
+        val ancestors = listOf(outer, inner)
+        val world = CanvasTransform.localToScene(child, 0f, 0f, ancestors)
+        val back = CanvasTransform.sceneToLocal(child, world.first, world.second, ancestors)
+        assertEquals(0f, back.first, 0.01f)
+        assertEquals(0f, back.second, 0.01f)
+    }
+
+    @Suppress("MagicNumber")
+    @Test
+    fun `group offset is not applied twice to child hit tests`() {
+        val group = CanvasNode("g", CanvasSpec.TYPE_GROUP, x = 100f, y = 50f, w = 100f, h = 80f)
+        val child = CanvasNode("c", CanvasSpec.TYPE_RECT, x = 10f, y = 5f, w = 30f, h = 20f)
+        val world = CanvasTransform.localToScene(child, 0f, 0f, listOf(group))
+        assertEquals(110f, world.first, 0.01f)
+        assertEquals(55f, world.second, 0.01f)
+        val local = CanvasTransform.sceneToLocal(child, world.first, world.second, listOf(group))
+        assertEquals(0f, local.first, 0.01f)
+        assertEquals(0f, local.second, 0.01f)
+    }
+
+    @Suppress("MagicNumber")
+    @Test
+    fun `node limit is global across nested groups`() {
+        val children = (0 until 150).joinToString(",") { """{"type":"rect"}""" }
+        val group = """{"type":"group","children":[$children]}"""
+        val scene = CanvasSceneCodec.parseScene("""{"nodes":[$group,$group]}""")
+        assertEquals(CanvasSpec.MAX_NODES, scene.flatten().size)
+    }
+
+    @Suppress("MagicNumber")
+    @Test
+    fun `string points are clamped to finite scene bounds`() {
+        val scene = CanvasSceneCodec.parseScene(
+            """{"nodes":[{"type":"line","points":["NaN,Infinity","1e30,-1e30"]}]}"""
+        )
+        val points = scene.nodes[0].points
+        assertTrue(points.all { it.x.isFinite() && it.y.isFinite() })
+        assertTrue(points.all { abs(it.x) <= 100000f && abs(it.y) <= 100000f })
+    }
+
+    @Test
+    fun `removing a group also drops animations of its descendants`() {
+        val child = CanvasNode("child", CanvasSpec.TYPE_RECT)
+        val group = CanvasNode("group", CanvasSpec.TYPE_GROUP, children = listOf(child))
+        val scene = CanvasScene(
+            nodes = listOf(group),
+            animations = listOf(
+                CanvasAnimation(target = "child", property = "x", from = 0f, to = 10f),
+                CanvasAnimation(target = CanvasSpec.CAMERA_TARGET, property = "cameraZoom", from = 1f, to = 2f)
+            )
+        )
+        val out = scene.removeNode("group")
+        assertTrue(out.nodes.isEmpty())
+        assertEquals(1, out.animations.size)
+        assertEquals(CanvasSpec.CAMERA_TARGET, out.animations[0].target)
+    }
+
+    @Test
     fun `scaled rotated node local round trips`() {
         val n = CanvasNode(
             "s", CanvasSpec.TYPE_RECT, x = 10f, y = 20f, w = 100f, h = 60f,

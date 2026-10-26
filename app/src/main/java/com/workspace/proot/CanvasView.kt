@@ -14,30 +14,65 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
+import android.util.LruCache
 import android.view.MotionEvent
 import android.view.View
 import java.io.File
-import kotlin.math.abs
+import java.util.Collections
+import java.util.WeakHashMap
+import java.util.concurrent.Executors
 import kotlin.math.atan2
-import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-/** 图片缓存：脚本只能读 App 能读到的路径/content URI，解码尺寸有上限。 */
+/** 图片缓存：脚本只能读 App 能读到的路径/content URI，解码尺寸和驻留内存都有上限。 */
 class CanvasImageCache(private val ctx: Context) {
-    private val cache = HashMap<String, Bitmap?>()
+    private val cache = object : LruCache<String, Bitmap>(MAX_CACHE_BYTES) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+    }
     private val failed = HashSet<String>()
+    private val pending = HashSet<String>()
+    private val hosts: MutableSet<CanvasHostView> =
+        Collections.newSetFromMap(WeakHashMap<CanvasHostView, Boolean>())
 
+    fun register(host: CanvasHostView) {
+        hosts.add(host)
+    }
+
+    fun unregister(host: CanvasHostView) {
+        hosts.remove(host)
+    }
+
+    /** 命中返回图片；未命中返回 null 并在后台解码，完成后通知宿主重绘。 */
     fun get(src: String): Bitmap? {
         if (src.isBlank()) return null
-        if (cache.containsKey(src)) return cache[src]
-        if (failed.contains(src)) return null
-        val bmp = runCatching { load(src) }.getOrNull()
-        if (bmp == null) failed.add(src) else cache[src] = bmp
-        return bmp
+        cache.get(src)?.let { return it }
+        if (failed.contains(src) || !pending.add(src)) return null
+        LOADER.execute {
+            val bmp = runCatching { load(src) }.getOrNull()
+            MAIN.post {
+                pending.remove(src)
+                if (bmp == null) {
+                    if (failed.size < MAX_FAILED_KEYS) failed.add(src)
+                } else {
+                    cache.put(src, bmp)
+                    hosts.forEach { it.invalidate() }
+                }
+            }
+        }
+        return null
+    }
+
+    companion object {
+        private const val MAX_CACHE_BYTES = 24 * 1024 * 1024
+        private const val MAX_FAILED_KEYS = 256
+        private val LOADER = Executors.newSingleThreadExecutor()
+        private val MAIN = Handler(Looper.getMainLooper())
     }
 
     private fun load(src: String): Bitmap? {
@@ -60,8 +95,7 @@ class CanvasImageCache(private val ctx: Context) {
     }
 
     fun clear() {
-        cache.values.forEach { it?.recycle() }
-        cache.clear()
+        cache.evictAll()
         failed.clear()
     }
 }
@@ -115,7 +149,6 @@ class CanvasHostView(
     private var playing = true
     private var baseMs = 0L
     private var startedAt = SystemClock.uptimeMillis()
-    private var lastFrameMs = 0L
     private var viewScale = 1f
     private var offsetX = 0f
     private var offsetY = 0f
@@ -149,6 +182,7 @@ class CanvasHostView(
         setLayerType(LAYER_TYPE_SOFTWARE, null)
         isClickable = true
         isFocusable = false
+        images.register(this)
     }
 
     fun setScene(newScene: CanvasScene, resetClock: Boolean = false) {
@@ -282,11 +316,13 @@ class CanvasHostView(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         startedAt = SystemClock.uptimeMillis() - baseMs
+        images.register(this)
         invalidate()
     }
 
     override fun onDetachedFromWindow() {
         transients.clear()
+        images.unregister(this)
         super.onDetachedFromWindow()
     }
 
@@ -313,10 +349,17 @@ class CanvasHostView(
         if (scene.particles.count > 0) drawParticles(canvas, frame.timeMs)
         if (designMode) drawSelection(canvas)
         transients.removeAll { currentTimeMs() - it.startMs > it.durationMs }
-        if (playing && (scene.animations.isNotEmpty() || scene.particles.count > 0 || transients.isNotEmpty())) {
-            lastFrameMs = frame.timeMs
+        if (playing && shouldKeepAnimating(frame.timeMs)) {
             postInvalidateOnAnimation()
         }
+    }
+
+    /** 有限动画结束后不再 60fps 空转；循环动画、粒子和 patch 过渡仍继续。 */
+    private fun shouldKeepAnimating(nowMs: Long): Boolean {
+        val timed = scene.animations.isNotEmpty() &&
+            (CanvasPlayback.hasInfinite(scene.animations) ||
+                CanvasPlayback.finiteEndMs(scene.animations) > nowMs)
+        return scene.particles.count > 0 || transients.isNotEmpty() || timed
     }
 
     private fun applyTransients(nodes: List<CanvasNode>): List<CanvasNode> {
@@ -633,8 +676,10 @@ class CanvasHostView(
                 (scene.width + 40f)) - 20f
             val y = ((ry * (scene.height + 40f) - t * speed) % (scene.height + 40f) + (scene.height + 40f)) %
                 (scene.height + 40f) - 20f
-            val r = p.size * (0.5f + ry)
-            canvas.drawCircle(offsetX + (x * viewScale), offsetY + (y * viewScale), r * viewScale, paint)
+            val cam = scene.cameraZoom.coerceIn(0.05f, 20f)
+            val r = p.size * (0.5f + ry) * viewScale * cam
+            val view = toView(x, y)
+            canvas.drawCircle(view.first, view.second, r, paint)
         }
     }
 
@@ -653,81 +698,31 @@ class CanvasHostView(
         return chains[id] ?: emptyList()
     }
 
-    /** 节点自身变换：局部坐标 → 父级坐标（与 drawNode 的旋转/缩放顺序一致）。 */
-    private fun selfToParent(x: Float, y: Float, n: CanvasNode): Pair<Float, Float> {
-        val cx = n.x + n.w / 2f
-        val cy = n.y + n.h / 2f
-        val dx = (x - cx) * n.scaleX
-        val dy = (y - cy) * n.scaleY
-        if (n.rotation == 0f) return (cx + dx) to (cy + dy)
-        val a = Math.toRadians(n.rotation.toDouble())
-        return (cx + dx * cos(a) - dy * sin(a)).toFloat() to
-            (cy + dx * sin(a) + dy * cos(a)).toFloat()
-    }
-
-    /** 节点自身变换的逆映射：父级坐标 → 局部坐标。 */
-    private fun parentToSelf(x: Float, y: Float, n: CanvasNode): Pair<Float, Float> {
-        val cx = n.x + n.w / 2f
-        val cy = n.y + n.h / 2f
-        var dx = x - cx
-        var dy = y - cy
-        if (n.rotation != 0f) {
-            val a = Math.toRadians(-n.rotation.toDouble())
-            val rx = (dx * cos(a) - dy * sin(a)).toFloat()
-            val ry = (dx * sin(a) + dy * cos(a)).toFloat()
-            dx = rx
-            dy = ry
-        }
-        val sx = if (abs(n.scaleX) < 0.001f) 1f else n.scaleX
-        val sy = if (abs(n.scaleY) < 0.001f) 1f else n.scaleY
-        return (cx + dx / sx) to (cy + dy / sy)
-    }
-
-    /** 节点局部坐标（相对 x/y）→ 场景坐标；逐层叠加自身和祖先变换。 */
+    /** 节点局部坐标（相对左上角）→ 场景坐标；组合节点单独处理 x/y。 */
     private fun nodeLocalToScene(
         x: Float,
         y: Float,
         n: CanvasNode,
         ancestors: List<CanvasNode>
-    ): Pair<Float, Float> {
-        var p = selfToParent(x + n.x, y + n.y, n)
-        for (a in ancestors.asReversed()) p = selfToParent(p.first, p.second, a)
-        return p
-    }
+    ): Pair<Float, Float> = CanvasTransform.localToScene(n, x, y, ancestors)
 
+    /** 场景坐标 → 节点局部坐标（相对左上角）。 */
     private fun sceneToNodeLocal(
         x: Float,
         y: Float,
         n: CanvasNode,
         ancestors: List<CanvasNode>
-    ): Pair<Float, Float> {
-        var px = x
-        var py = y
-        // 祖先链是根 → 直接父级，逆变换必须按同样顺序逐层剥。
-        for (a in ancestors) {
-            val p = parentToSelf(px, py, a)
-            px = p.first
-            py = p.second
-        }
-        val local = parentToSelf(px, py, n)
-        return (local.first - n.x) to (local.second - n.y)
-    }
+    ): Pair<Float, Float> = CanvasTransform.sceneToLocal(n, x, y, ancestors)
 
-    /** 场景坐标 → 节点父级坐标（不含节点自身变换）。 */
-    private fun sceneToParent(x: Float, y: Float, ancestors: List<CanvasNode>): Pair<Float, Float> {
-        var px = x
-        var py = y
-        for (a in ancestors) {
-            val p = parentToSelf(px, py, a)
-            px = p.first
-            py = p.second
-        }
-        return px to py
-    }
+    /** 场景坐标 → 节点直接父级坐标（不含节点自身变换）。 */
+    private fun sceneToParent(x: Float, y: Float, ancestors: List<CanvasNode>): Pair<Float, Float> =
+        CanvasTransform.sceneToParent(x, y, ancestors)
 
+    @Suppress("ReturnCount")
     private fun drawSelection(canvas: Canvas) {
         val id = selectedId ?: return
         val n = scene.findNode(id) ?: return
+        if (!n.visible) return
         val ancestors = ancestorsOf(id)
         val corners = cornersOf(n, ancestors)
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -740,6 +735,8 @@ class CanvasHostView(
         for (i in 1 until corners.size) box.lineTo(corners[i].first, corners[i].second)
         box.close()
         canvas.drawPath(box, p)
+        // 锁定节点只显示选中框，不再提供任何可拖拽手柄。
+        if (n.locked) return
         val handle = (4f * d).coerceAtLeast(4f)
         val hp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
@@ -759,38 +756,57 @@ class CanvasHostView(
         }
     }
 
-    private data class Hit(val node: CanvasNode, val depth: Int)
-
     private fun findHit(x: Float, y: Float): CanvasNode? {
         fun walk(
             list: List<CanvasNode>,
-            depth: Int,
             ancestors: List<CanvasNode>,
-            out: MutableList<Hit>
+            out: MutableList<CanvasNode>
         ) {
             for (n in list) {
                 if (!n.visible || !n.hitTest) continue
                 val (lx, ly) = sceneToNodeLocal(x, y, n, ancestors)
                 if (n.isGroup) {
-                    if (inBounds(n, lx, ly)) out.add(Hit(n, depth))
-                    walk(n.children, depth + 1, ancestors + n, out)
+                    if (inBounds(n, lx, ly)) out.add(n)
+                    walk(n.children, ancestors + n, out)
                 } else if (containsLocal(n, lx, ly)) {
-                    out.add(Hit(n, depth))
+                    out.add(n)
                 }
             }
         }
-        val hits = mutableListOf<Hit>()
-        walk(scene.nodes, 0, emptyList(), hits)
+        val hits = mutableListOf<CanvasNode>()
+        walk(scene.nodes, emptyList(), hits)
+        // 命中必须跟绘制顺序，而不是层级深度：后绘制、盖在上面的节点优先。
         val order = scene.flatten().withIndex().associate { it.value.id to it.index }
-        return hits.maxWithOrNull(
-            compareBy<Hit> { it.depth }.thenBy { order[it.node.id] ?: -1 }
-        )?.node
+        return hits.maxByOrNull { order[it.id] ?: -1 }
     }
 
     private fun containsLocal(n: CanvasNode, lx: Float, ly: Float): Boolean = when (n.type) {
         CanvasSpec.TYPE_CIRCLE, CanvasSpec.TYPE_ELLIPSE -> inOval(n, lx, ly)
-        CanvasSpec.TYPE_LINE, CanvasSpec.TYPE_PATH -> nearPath(n, lx, ly)
+        CanvasSpec.TYPE_LINE -> nearPath(n, lx, ly)
+        CanvasSpec.TYPE_PATH -> {
+            val pts = if (n.points.isNotEmpty()) n.points else CanvasPath.parse(n.d).points
+            (n.closed && n.hasFill && pointInPolygon(pts, lx, ly)) ||
+                nearPath(n, lx, ly)
+        }
         else -> inBounds(n, lx, ly)
+    }
+
+    private fun pointInPolygon(points: List<CanvasPoint>, x: Float, y: Float): Boolean {
+        if (points.size < 3) return false
+        var inside = false
+        var j = points.size - 1
+        for (i in points.indices) {
+            val xi = points[i].x
+            val yi = points[i].y
+            val xj = points[j].x
+            val yj = points[j].y
+            if ((yi > y) != (yj > y)) {
+                val crossX = (xj - xi) * (y - yi) / (yj - yi) + xi
+                if (x < crossX) inside = !inside
+            }
+            j = i
+        }
+        return inside
     }
 
     private fun inBounds(n: CanvasNode, lx: Float, ly: Float): Boolean =
@@ -860,6 +876,7 @@ class CanvasHostView(
 
     private fun hitHandle(x: Float, y: Float): DragMode {
         val n = scene.findNode(selectedId ?: return DragMode.NONE) ?: return DragMode.NONE
+        if (!n.visible || n.locked) return DragMode.NONE
         val ancestors = ancestorsOf(n.id)
         val corners = cornersOf(n, ancestors)
         val rad = (14f * d).coerceAtLeast(12f)

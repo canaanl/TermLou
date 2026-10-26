@@ -295,8 +295,7 @@
     <string name="dm_section_radius">CORNERS</string>
     <string name="dm_section_ctrls">CONTROLS</string>
     <string name="dm_preview">LIVE PREVIEW</string>
-    <string name="dm_preview_run">TRY IT</string>
-    <string name="dm_test">DEVICE OVERLAY</string>
+    <string name="dm_test">RUN</string>
     <string name="dm_export">EXPORT COMMAND</string>
     <string name="dm_exit">EXIT</string>
     <string name="dm_ctrl_text_out">TEXT OUTPUT</string>
@@ -459,7 +458,7 @@
     <string name="canvas_settings_background">Background</string>
     <string name="canvas_settings_key">Update key (optional)</string>
     <string name="canvas_settings_key_hint">Used by --canvas-update; empty = auto</string>
-    <string name="canvas_settings_hint">Width/height are the coordinate space. Row height is the space the dialog reserves and does not affect coordinates.</string>
+    <string name="canvas_settings_hint">Width/height are the coordinate space. Row height is the space the dialog reserves and does not affect coordinates; it is capped to the visible screen height.</string>
     <string name="canvas_settings_invalid">Check the number and color formats</string>
     <string name="canvas_help">HELP</string>
     <string name="canvas_help_title">HOW TO USE CANVAS</string>
@@ -524,6 +523,9 @@
     <string name="canvas_layer_ops">LAYER ACTIONS</string>
     <string name="canvas_layer_duplicate">DUPLICATE</string>
     <string name="canvas_layer_delete">DELETE</string>
+    <string name="canvas_node_limit">Node limit reached: %1$d</string>
+    <string name="canvas_point_limit">Path point limit reached: %1$d</string>
+    <string name="canvas_anim_keyframes_dropped">Start/end changed; previous keyframes were cleared.</string>
     <string name="canvas_appearance">APPEARANCE &amp; STYLE</string>
     <string name="canvas_appearance_less">LESS APPEARANCE</string>
     <string name="canvas_advanced">ADVANCED</string>
@@ -538,11 +540,6 @@
     <string name="canvas_anim_no_anim_short">NO ANIMATIONS</string>
     <string name="canvas_anim_repeat_fmt"> · ×%1$d</string>
     <string name="canvas_replay">REPLAY</string>
-    <string name="dm_preview_replay">REPLAY</string>
-    <string name="dm_preview_close">CLOSE PREVIEW</string>
-    <string name="dm_preview_keep">KEEP TRYING</string>
-    <string name="dm_preview_result">RESULT JSON</string>
-    <string name="dm_preview_hint">Tap a button or Canvas shape to see the result JSON.</string>
 
     <!-- Splash workshop -->
     <string name="sm_invert">Invert</string>

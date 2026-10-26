@@ -191,7 +191,7 @@ MainActivity.onCreate
 - **原位 patch**：`--no-timeout` 保持浮窗，`--canvas-update` / `--canvas-progress` / `--canvas-scene` / `--canvas-play|pause|seek` 只改活动 Canvas，不新建 Entry、不写结果、不重建浮窗；交互动作也只改场景状态并 `invalidate()`
 - **Canvas 设计器**：单行顶栏（返回 / 撤销 / 重做 / 更多 / 完成）、画布操作带、未选中元素时的即时画布属性页；图层从上到下即上层到下层，行内只保留显隐眼睛，复制/删除在属性页；点按动作分「提交结果 / 只改画面 / 无动作 / 自定义」，动画面板内置播放控制，无限循环动画显示「循环播放」而不是无限增长的时间；仍支持拖拽/缩放/旋转、网格吸附、路径点编辑、SVG/JSON 路径导入、关键帧动画、撤销/重做、JSON 导入导出和命令导出
 - **Canvas 点击提交**：节点动作 `submit:ID` 点按后写回 `{"id":"ID","values":{...}}` 并关窗；`submit:ID:keep` 写同样结果但保持浮窗，等待下一次请求。App 只写结果、不执行命令，由调用方 shell 读取 JSON 后自行执行
-- **弹窗工坊**（`DialogMakerActivity`）：图形化设计对话框，实时预览，一键导出 `termlou-ui` 命令；Canvas 设计器与运行时共用同一套渲染/编解码，设计态所见即运行态。无需悬浮窗权限即可「试运行」，直接点按钮/画布查看将输出的结果 JSON
+- **弹窗工坊**（`DialogMakerActivity`）：图形化设计对话框，实时预览，一键导出 `termlou-ui` 命令；Canvas 设计器与运行时共用同一套渲染/编解码，设计态所见即运行态。工坊只有一个「运行」入口，直接打开真实悬浮窗；点击结果在工坊底部显示，不再维护第二套预览窗口
 - **剪贴板桥**：`termlou-clipboard "文本"` 或 `echo "文本" | termlou-clipboard` 直写系统剪贴板
 
 ### 6. 网络抓包与过滤 Network

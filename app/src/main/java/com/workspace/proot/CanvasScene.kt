@@ -52,6 +52,7 @@ object CanvasSpec {
     const val MAX_POINTS = 2000
     const val MAX_ANIMATIONS = 200
     const val MAX_KEYFRAMES = 120
+    const val MAX_TARGETS = 64
     const val MAX_TEXT = 4000
     const val MAX_ID = 128
     const val MAX_SRC = 2048
@@ -393,6 +394,105 @@ data class CanvasNode(
     }
 }
 
+/**
+ * 设计态/运行态共用的节点坐标变换。
+ *
+ * 普通节点的局部坐标从节点左上角开始；组合节点的 children 使用组合局部坐标。
+ * 组合自身的 x/y 只在“组合局部 -> 父级”这一步应用，不能像普通节点那样
+ * 在旋转中心里再算一次，否则嵌套组合会整体偏移。
+ */
+internal object CanvasTransform {
+
+    fun localToParent(n: CanvasNode, lx: Float, ly: Float): Pair<Float, Float> {
+        if (n.isGroup) {
+            val cx = n.w / 2f
+            val cy = n.h / 2f
+            var dx = (lx - cx) * safeScale(n.scaleX)
+            var dy = (ly - cy) * safeScale(n.scaleY)
+            if (n.rotation != 0f) {
+                val a = Math.toRadians(n.rotation.toDouble())
+                val rx = (dx * cos(a) - dy * sin(a)).toFloat()
+                val ry = (dx * sin(a) + dy * cos(a)).toFloat()
+                dx = rx
+                dy = ry
+            }
+            return (n.x + cx + dx) to (n.y + cy + dy)
+        }
+        val cx = n.x + n.w / 2f
+        val cy = n.y + n.h / 2f
+        var dx = (lx + n.x - cx) * safeScale(n.scaleX)
+        var dy = (ly + n.y - cy) * safeScale(n.scaleY)
+        if (n.rotation != 0f) {
+            val a = Math.toRadians(n.rotation.toDouble())
+            val rx = (dx * cos(a) - dy * sin(a)).toFloat()
+            val ry = (dx * sin(a) + dy * cos(a)).toFloat()
+            dx = rx
+            dy = ry
+        }
+        return (cx + dx) to (cy + dy)
+    }
+
+    fun parentToLocal(n: CanvasNode, px: Float, py: Float): Pair<Float, Float> {
+        if (n.isGroup) {
+            var dx = px - (n.x + n.w / 2f)
+            var dy = py - (n.y + n.h / 2f)
+            if (n.rotation != 0f) {
+                val a = Math.toRadians(-n.rotation.toDouble())
+                val rx = (dx * cos(a) - dy * sin(a)).toFloat()
+                val ry = (dx * sin(a) + dy * cos(a)).toFloat()
+                dx = rx
+                dy = ry
+            }
+            return (n.w / 2f + dx / safeScale(n.scaleX)) to
+                (n.h / 2f + dy / safeScale(n.scaleY))
+        }
+        var dx = px - (n.x + n.w / 2f)
+        var dy = py - (n.y + n.h / 2f)
+        if (n.rotation != 0f) {
+            val a = Math.toRadians(-n.rotation.toDouble())
+            val rx = (dx * cos(a) - dy * sin(a)).toFloat()
+            val ry = (dx * sin(a) + dy * cos(a)).toFloat()
+            dx = rx
+            dy = ry
+        }
+        return (n.w / 2f + dx / safeScale(n.scaleX)) to
+            (n.h / 2f + dy / safeScale(n.scaleY))
+    }
+
+    /** 节点局部坐标（相对节点左上角）-> 场景坐标。ancestors 从根到直接父级。 */
+    fun localToScene(
+        n: CanvasNode,
+        lx: Float,
+        ly: Float,
+        ancestors: List<CanvasNode>
+    ): Pair<Float, Float> {
+        var p = localToParent(n, lx, ly)
+        for (a in ancestors.asReversed()) p = localToParent(a, p.first, p.second)
+        return p
+    }
+
+    /** 场景坐标 -> 节点局部坐标（相对节点左上角）。ancestors 从根到直接父级。 */
+    fun sceneToLocal(
+        n: CanvasNode,
+        x: Float,
+        y: Float,
+        ancestors: List<CanvasNode>
+    ): Pair<Float, Float> {
+        var p = x to y
+        for (a in ancestors) p = parentToLocal(a, p.first, p.second)
+        return parentToLocal(n, p.first, p.second)
+    }
+
+    /** 场景坐标 -> 直接父级坐标（不含节点自身变换）。 */
+    fun sceneToParent(x: Float, y: Float, ancestors: List<CanvasNode>): Pair<Float, Float> {
+        var p = x to y
+        for (a in ancestors) p = parentToLocal(a, p.first, p.second)
+        return p
+    }
+
+    private fun safeScale(v: Float): Float = if (abs(v) < 0.001f) 1f else v
+}
+
 data class CanvasScene(
     val version: Int = CanvasSpec.VERSION,
     val width: Float = CanvasSpec.DEFAULT_WIDTH,
@@ -428,10 +528,30 @@ data class CanvasScene(
     }
 
     fun removeNode(id: String): CanvasScene {
+        val target = findNode(id) ?: return this
+        val removedIds = mutableSetOf<String>()
+        fun collect(n: CanvasNode) {
+            removedIds.add(n.id)
+            n.children.forEach(::collect)
+        }
+        collect(target)
         fun walk(list: List<CanvasNode>): List<CanvasNode> = list.mapNotNull { n ->
             if (n.id == id) null else if (n.children.isNotEmpty()) n.copy(children = walk(n.children)) else n
         }
-        return copy(nodes = walk(nodes))
+        // 节点删掉后动画不能继续指向旧 id；否则同 id 复用时会突然作用到新节点。
+        val keptAnimations = animations.mapNotNull { anim ->
+            if (anim.targets.isEmpty()) {
+                if (anim.target in removedIds) null else anim
+            } else {
+                val kept = anim.targets.filterNot { it in removedIds }
+                when {
+                    kept.isEmpty() -> null
+                    kept.size == anim.targets.size -> anim
+                    else -> anim.copy(targets = kept)
+                }
+            }
+        }
+        return copy(nodes = walk(nodes), animations = keptAnimations)
     }
 
     fun addNode(node: CanvasNode): CanvasScene = copy(nodes = nodes + node)
@@ -975,15 +1095,14 @@ object CanvasSceneCodec {
             ids.add(id)
             return id
         }
-        var count = 0
+        val nodeCount = intArrayOf(0)
         fun parseNodes(arr: MiniJson.Arr?, depth: Int): List<CanvasNode> {
             if (arr == null || depth > CanvasSpec.MAX_DEPTH) return emptyList()
             val out = mutableListOf<CanvasNode>()
             for (i in 0 until arr.length()) {
-                if (count >= CanvasSpec.MAX_NODES) break
+                if (nodeCount[0] >= CanvasSpec.MAX_NODES) break
                 val o = arr.getObj(i) ?: continue
-                val n = parseNode(o, depth, ids, ::nextId) ?: continue
-                count++
+                val n = parseNode(o, depth, ids, ::nextId, nodeCount) ?: continue
                 out.add(n)
             }
             return out
@@ -1020,12 +1139,16 @@ object CanvasSceneCodec {
         )
     }
 
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth")
     private fun parseNode(
         o: MiniJson.Obj,
         depth: Int,
         ids: MutableSet<String>,
-        nextId: () -> String
+        nextId: () -> String,
+        nodeCount: IntArray
     ): CanvasNode? {
+        if (nodeCount[0] >= CanvasSpec.MAX_NODES) return null
+        nodeCount[0]++
         val rawType = o.optString("type", CanvasSpec.TYPE_RECT)
         val type = if (rawType in CanvasSpec.NODE_TYPES) rawType else CanvasSpec.TYPE_RECT
         var id = CanvasSpec.safeId(o.optString("id", ""))
@@ -1059,11 +1182,10 @@ object CanvasSceneCodec {
             val arr = o.optArr("children") ?: o.optArr("nodes")
             val out = mutableListOf<CanvasNode>()
             if (arr != null) {
-                var c = 0
                 for (i in 0 until arr.length()) {
-                    if (c >= CanvasSpec.MAX_NODES) break
+                    if (nodeCount[0] >= CanvasSpec.MAX_NODES) break
                     val co = arr.getObj(i) ?: continue
-                    parseNode(co, depth + 1, ids, nextId)?.let { out.add(it); c++ }
+                    parseNode(co, depth + 1, ids, nextId, nodeCount)?.let { out.add(it) }
                 }
             }
             out
@@ -1121,8 +1243,13 @@ object CanvasSceneCodec {
         )
     }
 
+    @Suppress("CyclomaticComplexMethod")
     private fun parsePoints(arr: MiniJson.Arr?): List<CanvasPoint> {
         if (arr == null) return emptyList()
+        fun safeNumber(raw: String): Float {
+            val value = raw.trim().toFloatOrNull() ?: 0f
+            return CanvasSpec.clamp(if (value.isFinite()) value else 0f, -100000f, 100000f)
+        }
         val out = mutableListOf<CanvasPoint>()
         for (i in 0 until arr.length()) {
             if (out.size >= CanvasSpec.MAX_POINTS) break
@@ -1145,7 +1272,7 @@ object CanvasSceneCodec {
                 is String -> {
                     val parts = raw.split(",")
                     if (parts.size >= 2) {
-                        out.add(CanvasPoint(parts[0].trim().toFloatOrNull() ?: 0f, parts[1].trim().toFloatOrNull() ?: 0f))
+                        out.add(CanvasPoint(safeNumber(parts[0]), safeNumber(parts[1])))
                     }
                 }
             }
@@ -1157,7 +1284,12 @@ object CanvasSceneCodec {
         val target = o.optString("target", "")
         val targets = mutableListOf<String>()
         o.optArr("targets")?.let { arr ->
-            for (i in 0 until arr.length()) arr.getString(i)?.let { if (it.isNotBlank()) targets.add(it.take(CanvasSpec.MAX_ID)) }
+            for (i in 0 until arr.length()) {
+                if (targets.size >= CanvasSpec.MAX_TARGETS) break
+                arr.getString(i)?.let {
+                    if (it.isNotBlank()) targets.add(it.take(CanvasSpec.MAX_ID))
+                }
+            }
         }
         if (target.isBlank() && targets.isEmpty()) return null
         val keyframes = mutableListOf<CanvasKeyframe>()
@@ -1168,7 +1300,7 @@ object CanvasSceneCodec {
                 keyframes.add(
                     CanvasKeyframe(
                         at = CanvasSpec.clamp(k.optDouble("at", 0.0).toFloat(), 0f, 1f),
-                        value = k.optDouble("value", 0.0).toFloat(),
+                        value = k.optDouble("value", 0.0).toFloat().takeIf { it.isFinite() } ?: 0f,
                         easing = k.optString("easing", "ease-in-out"),
                         path = k.optString("path", "")
                     )
@@ -1181,8 +1313,12 @@ object CanvasSceneCodec {
             target = target.take(CanvasSpec.MAX_ID),
             targets = targets,
             property = o.optString("property", "alpha"),
-            from = if (o.has("from")) o.optDouble("from", 0.0).toFloat() else null,
-            to = if (o.has("to")) o.optDouble("to", 0.0).toFloat() else null,
+            from = if (o.has("from")) {
+                o.optDouble("from", 0.0).toFloat().takeIf { it.isFinite() }
+            } else null,
+            to = if (o.has("to")) {
+                o.optDouble("to", 0.0).toFloat().takeIf { it.isFinite() }
+            } else null,
             fromColor = o.optString("fromColor", ""),
             toColor = o.optString("toColor", ""),
             fromPath = o.optString("fromPath", ""),

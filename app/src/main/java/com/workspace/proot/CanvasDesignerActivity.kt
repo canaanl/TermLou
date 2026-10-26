@@ -94,6 +94,7 @@ class CanvasDesignerActivity : Activity() {
     private var rowHeightDp = 220
     private var canvasKey = ""
     private var initialSnapshot = ""
+    private var resumePlaybackOnResume = false
 
     private val undoStack = ArrayDeque<EditorState>()
     private val redoStack = ArrayDeque<EditorState>()
@@ -167,11 +168,15 @@ class CanvasDesignerActivity : Activity() {
     override fun onResume() {
         super.onResume()
         startTicker()
+        if (resumePlaybackOnResume && hasAnimations()) host.play()
+        resumePlaybackOnResume = false
     }
 
     override fun onPause() {
         mainHandler.removeCallbacks(ticker)
         flushFocusedField()
+        resumePlaybackOnResume = ::host.isInitialized && host.isPlaying()
+        if (::host.isInitialized) host.pause()
         pendingBeforeEdit = null
         super.onPause()
     }
@@ -956,6 +961,10 @@ class CanvasDesignerActivity : Activity() {
     @Suppress("LongMethod")
     private fun addNode(type: String) {
         val s = scene()
+        if (s.flatten().size >= CanvasSpec.MAX_NODES) {
+            toast(getString(R.string.canvas_node_limit, CanvasSpec.MAX_NODES))
+            return
+        }
         val seq = s.nodes.size
         val offset = (seq % 6) * 8f
         val typeName = typeLabel(type)
@@ -1034,9 +1043,14 @@ class CanvasDesignerActivity : Activity() {
         refreshPanels()
     }
 
+    @Suppress("ReturnCount")
     private fun duplicateNode(id: String) {
         val s = scene()
         val source = s.findNode(id) ?: return
+        if (s.flatten().size + subtreeCount(source) > CanvasSpec.MAX_NODES) {
+            toast(getString(R.string.canvas_node_limit, CanvasSpec.MAX_NODES))
+            return
+        }
         val used = s.flatten().map { it.id }.toHashSet()
         fun copyTree(src: CanvasNode): CanvasNode {
             var i = 1
@@ -1058,6 +1072,8 @@ class CanvasDesignerActivity : Activity() {
         currentTab = PanelTab.PROPS
         refreshPanels()
     }
+
+    private fun subtreeCount(n: CanvasNode): Int = 1 + n.children.sumOf { subtreeCount(it) }
 
     @Suppress("ReturnCount", "LoopWithTooManyJumpStatements")
     private fun insertAfter(list: List<CanvasNode>, id: String, node: CanvasNode): List<CanvasNode>? {
@@ -1622,8 +1638,13 @@ class CanvasDesignerActivity : Activity() {
     }
 
     /** 在当前末段中间插入一个可拖拽点；不足两点时补一条对角基础线。 */
+    @Suppress("ReturnCount")
     private fun insertPathMidpoint() {
         val n = host.selectedId?.let { scene().findNode(it) } ?: return
+        if (n.points.size >= CanvasSpec.MAX_POINTS) {
+            toast(getString(R.string.canvas_point_limit, CanvasSpec.MAX_POINTS))
+            return
+        }
         if (n.points.size < 2) {
             commitSelected(refresh = true) {
                 it.copy(
@@ -2380,6 +2401,7 @@ class CanvasDesignerActivity : Activity() {
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             val targets = targetEdit.text.toString()
                 .split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                .take(CanvasSpec.MAX_TARGETS)
             if (targets.isEmpty()) {
                 toast(getString(R.string.canvas_anim_need_target))
                 return@setOnClickListener
@@ -2406,6 +2428,16 @@ class CanvasDesignerActivity : Activity() {
             val duration = durationEdit.text.toString().trim().toIntOrNull()?.coerceIn(0, 600_000) ?: 600
             val delay = delayEdit.text.toString().trim().toIntOrNull()?.coerceIn(0, 600_000) ?: 0
             val staggerMs = stagger.text.toString().trim().toIntOrNull()?.coerceIn(0, 60_000) ?: 0
+            // 设计器没有关键帧编辑 UI：只改时长/循环等非值字段时保留，改值就丢弃，避免
+            // keyframes 悄悄覆盖用户刚填的 from/to。
+            val keepKeyframes = existing != null && existing.keyframes.isNotEmpty() &&
+                existing.property == property &&
+                existing.from == from && existing.to == to &&
+                existing.fromColor == fromColorValue && existing.toColor == toColorValue &&
+                existing.fromPath == fromPathValue && existing.toPath == toPathValue
+            if (existing != null && existing.keyframes.isNotEmpty() && !keepKeyframes) {
+                toast(getString(R.string.canvas_anim_keyframes_dropped))
+            }
             fun buildAnim(prop: String, id: String, start: Float?, end: Float?): CanvasAnimation =
                 CanvasAnimation(
                     id = id,
@@ -2424,7 +2456,7 @@ class CanvasDesignerActivity : Activity() {
                     alternate = alternate.isChecked,
                     easing = easing.text.toString().trim().ifEmpty { "ease-out" },
                     staggerMs = staggerMs,
-                    keyframes = existing?.keyframes.orEmpty()
+                    keyframes = if (keepKeyframes) existing?.keyframes.orEmpty() else emptyList()
                 )
             val s = scene()
             pushUndo(s)
@@ -2578,7 +2610,7 @@ class CanvasDesignerActivity : Activity() {
             ?: getString(R.string.canvas_none)
         statusText.text = getString(
             R.string.canvas_status_fmt,
-            s.nodes.size,
+            s.flatten().size,
             s.width.toInt(),
             s.height.toInt(),
             name

@@ -297,8 +297,7 @@
     <string name="dm_section_radius">圆角</string>
     <string name="dm_section_ctrls">控件</string>
     <string name="dm_preview">实时预览</string>
-    <string name="dm_preview_run">试运行</string>
-    <string name="dm_test">真机浮窗</string>
+    <string name="dm_test">运行</string>
     <string name="dm_export">导出命令</string>
     <string name="dm_exit">退出</string>
     <string name="dm_ctrl_text_out">文本输出</string>
@@ -461,7 +460,7 @@
     <string name="canvas_settings_background">背景色</string>
     <string name="canvas_settings_key">更新标识（可选）</string>
     <string name="canvas_settings_key_hint">供 --canvas-update 定位；留空自动</string>
-    <string name="canvas_settings_hint">宽高是坐标空间；弹窗行高是运行时在弹窗里占用的高度，不影响坐标。</string>
+    <string name="canvas_settings_hint">宽高是坐标空间；弹窗行高是运行时在弹窗里占用的高度，不影响坐标，超过屏幕可用高度时会自动封顶。</string>
     <string name="canvas_settings_invalid">请检查数字和颜色格式</string>
     <string name="canvas_help">帮助</string>
     <string name="canvas_help_title">画布怎么用</string>
@@ -526,6 +525,9 @@
     <string name="canvas_layer_ops">图层操作</string>
     <string name="canvas_layer_duplicate">复制</string>
     <string name="canvas_layer_delete">删除</string>
+    <string name="canvas_node_limit">节点数量已达上限 %1$d 个</string>
+    <string name="canvas_point_limit">路径点已达上限 %1$d 个</string>
+    <string name="canvas_anim_keyframes_dropped">起止值已改变，原关键帧已清除</string>
     <string name="canvas_appearance">外观与样式</string>
     <string name="canvas_appearance_less">收起外观</string>
     <string name="canvas_advanced">高级</string>
@@ -540,11 +542,6 @@
     <string name="canvas_anim_no_anim_short">无动画</string>
     <string name="canvas_anim_repeat_fmt"> · ×%1$d</string>
     <string name="canvas_replay">重播</string>
-    <string name="dm_preview_replay">重播动画</string>
-    <string name="dm_preview_close">关闭预览</string>
-    <string name="dm_preview_keep">继续试运行</string>
-    <string name="dm_preview_result">结果 JSON</string>
-    <string name="dm_preview_hint">点按钮或画布图形，查看会输出的 JSON</string>
 
     <!-- 启动工坊 -->
     <string name="sm_invert">反选</string>

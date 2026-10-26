@@ -26,6 +26,9 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import kotlin.math.max
+import kotlin.math.min
+
+private const val MAX_CANVAS_ROW_FRACTION = 0.62f
 
 /**
  * RecyclerView + DiffUtil 真原位渲染器：边框稳、内容 cross-fade、高度平滑
@@ -553,8 +556,11 @@ class ScriptDialogRenderer(private val ctx: Context) {
                 val row = (item.row as ScriptDialogSpec.Row.Canvas).row
                 val tag = item.id.substringAfter("canvas:", item.id)
                 host.tag = tag
+                val requested = (row.heightDp.coerceIn(64, 1600) * density).toInt()
+                val maxVisible = (context.resources.displayMetrics.heightPixels *
+                    MAX_CANVAS_ROW_FRACTION).toInt()
                 host.layoutParams = (host.layoutParams as FrameLayout.LayoutParams).apply {
-                    height = (row.heightDp.coerceIn(64, 1600) * density).toInt()
+                    height = min(requested, maxVisible).coerceAtLeast((64 * density).toInt())
                 }
                 host.onAction = { action ->
                     canvasActions[item.id] = action

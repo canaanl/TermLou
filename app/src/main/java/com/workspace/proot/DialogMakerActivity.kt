@@ -2,7 +2,6 @@ package com.workspace.proot
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -12,9 +11,9 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
 import android.provider.Settings
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -49,6 +48,7 @@ class DialogMakerActivity : Activity() {
     private lateinit var radiusLabel: TextView
     private lateinit var accentSwatches: LinearLayout
     private lateinit var previewHost: FrameLayout
+    private lateinit var lastResultView: TextView
     private lateinit var ctrlList: LinearLayout
     private lateinit var messageRow: LinearLayout
 
@@ -215,27 +215,33 @@ class DialogMakerActivity : Activity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
-        val tryBtn = Button(this).apply {
-            text = getString(R.string.dm_preview_run)
-            setTextColor(Color.WHITE)
-            isAllCaps = true
-            setOnClickListener { runPreview() }
-        }
         val testBtn = Button(this).apply {
             text = getString(R.string.dm_test)
             setTextColor(Color.WHITE)
             isAllCaps = true
             setOnClickListener { testOnScreen() }
         }
-        testRow.addView(tryBtn, weighted(tryBtn))
         testRow.addView(testBtn, weighted(testBtn))
         SegmentStyle.applyRow(
             testRow,
-            listOf(null, null),
+            listOf(null),
             theme.outline,
             theme.onSurface
         )
         bottomBar.addView(testRow)
+        lastResultView = TextView(this).apply {
+            setTextColor(theme.onSurfaceVariant)
+            textMeta()
+            typeface = Typeface.MONOSPACE
+            setTextIsSelectable(true)
+            maxLines = 4
+            ellipsize = TextUtils.TruncateAt.END
+            setPaddingMd(4, 6, 4, 0)
+            visibility = View.GONE
+        }
+        bottomBar.addView(lastResultView, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
         val row2 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(
@@ -647,122 +653,9 @@ val b = Button(this).apply {
         ))
     }
 
-    /** 权限无关的全屏试运行：真实的卡片宽度/位置/动画，点按会展示将输出的结果 JSON。 */
-    private fun runPreview() {
-        val request = buildRequest("preview")
-        val renderer = ScriptDialogRenderer(this)
-        val dialog = Dialog(this, android.R.style.Theme_Material_NoActionBar_Fullscreen)
-        val column = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF0B0B0B.toInt())
-        }
-
-        val top = previewTopBar(renderer, dialog)
-        column.addView(top)
-
-        val host = FrameLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-            )
-        }
-        column.addView(host)
-
-        val resultView = TextView(this).apply {
-            setTextColor(0xFFB9F6CA.toInt())
-            textMeta()
-            typeface = Typeface.MONOSPACE
-            setPaddingMd(12, 6, 12, 10)
-            setBackgroundColor(0xFF101010.toInt())
-            visibility = View.GONE
-            setTextIsSelectable(true)
-        }
-        column.addView(resultView, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, 0
-        ))
-
-        val content = renderer.buildRoot(request) { result ->
-            handlePreviewResult(dialog, request, result, resultView)
-        }
-        host.addView(content, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-
-        dialog.setContentView(column)
-        dialog.window?.setLayout(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        )
-        dialog.show()
-    }
-
-    private fun previewTopBar(renderer: ScriptDialogRenderer, dialog: Dialog): View {
-        val top = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPaddingMd(12, 8, 12, 8)
-            setBackgroundColor(theme.surfaceVariant)
-        }
-        top.addView(TextView(this).apply {
-            text = getString(R.string.dm_preview_hint)
-            setTextColor(theme.onSurfaceVariant)
-            textMeta()
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        })
-        top.addView(previewActionButton(getString(R.string.dm_preview_replay)) {
-            renderer.replayCanvasAnimations()
-        })
-        top.addView(previewActionButton(getString(R.string.dm_preview_close), primary = true) {
-            dialog.dismiss()
-        })
-        return top
-    }
-
-    private fun handlePreviewResult(
-        dialog: Dialog,
-        request: ScriptDialogSpec.Request,
-        result: ScriptDialogSpec.Result,
-        resultView: TextView
-    ) {
-        val json = ScriptDialogSpec.resultToJsonString(result)
-        resultView.text = json
-        resultView.visibility = View.VISIBLE
-        resultView.layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, (120 * d()).toInt()
-        )
-        if (ScriptDialogSpec.shouldDismiss(request, result)) {
-            AlertDialog.Builder(this)
-                .setTitle(getString(R.string.dm_preview_result))
-                .setMessage(json)
-                .setPositiveButton(getString(R.string.dm_preview_close)) { _, _ ->
-                    dialog.dismiss()
-                }
-                .setNegativeButton(getString(R.string.dm_preview_keep), null)
-                .showStyled(theme)
-        }
-    }
-
-    private fun previewActionButton(label: String, primary: Boolean = false, onClick: () -> Unit): Button =
-        Button(this).apply {
-            text = label
-            isAllCaps = true
-            textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
-            setPaddingMd(10, 4, 10, 4)
-            if (primary) {
-                setTextColor(Color.WHITE)
-                ButtonStyle.apply(this, theme.primary, theme.primaryVisible)
-            } else {
-                setTextColor(theme.onSurface)
-                ButtonStyle.outlined(this, theme.outline)
-            }
-            setOnClickListener { onClick() }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { marginStart = (6 * d()).toInt() }
-        }
-
     // ===== 底部操作 =====
 
+    /** 唯一运行入口：直接使用生产浮窗，结果只在工坊里留一行，不参与弹窗布局。 */
     private fun testOnScreen() {
         if (!Settings.canDrawOverlays(this)) {
             Snackbar.make(root, getString(R.string.dm_need_overlay), Snackbar.LENGTH_SHORT).show()
@@ -771,8 +664,17 @@ val b = Button(this).apply {
             )
             return
         }
-        val overlay = ScriptDialogOverlay(this, buildRequest("test")) {}
+        if (::lastResultView.isInitialized) lastResultView.visibility = View.GONE
+        val overlay = ScriptDialogOverlay(this, buildRequest("test")) { result ->
+            showTestResult(result)
+        }
         overlay.show()
+    }
+
+    private fun showTestResult(result: ScriptDialogSpec.Result) {
+        if (!::lastResultView.isInitialized) return
+        lastResultView.text = ScriptDialogSpec.resultToJsonString(result)
+        lastResultView.visibility = View.VISIBLE
     }
 
     private fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
