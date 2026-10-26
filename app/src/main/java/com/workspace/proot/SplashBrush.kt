@@ -9,7 +9,7 @@ import kotlin.math.roundToInt
  * 启动工坊的手写笔刷：只把笔迹落成点阵格子，不生成、也不保存矢量路径。
  *
  * 坐标统一用“格子坐标”：x=0 是画板左边缘，格子 (r,c) 的中心是
- * (c + 0.5, r + 0.5)。这样笔刷半径的单位就是“格”，和 96×160 点阵同源。
+ * (c + 0.5, r + 0.5)。这样笔刷半径的单位就是“格”，和 96 列点阵同源。
  *
  * 连续性来自两件事：
  *  - 触摸采样点之间的线段按 [STAMP_STEP] 细分，快速划动也不会跳格；
@@ -20,28 +20,34 @@ object SplashBrush {
     /** 基准笔宽（格）。工坊滑块把它放大 10 倍存成整数刻度。 */
     const val DEFAULT_RADIUS = 1.2f
     const val MIN_RADIUS = 0.8f
-    const val MAX_RADIUS = 3.2f
+    const val MAX_RADIUS = 4.0f
 
     /** 相邻采样点之间的细分步长（格）。越小越连续，但落格次数越多。 */
     const val STAMP_STEP = 0.22f
 
-    /** 笔刷边缘的软过渡宽度（格）；核心仍是不透明的满格。 */
-    private const val EDGE = 0.8f
+    /**
+     * 笔刷边缘的软过渡宽度（格）。边缘收窄后，半径变化会真正反映成
+     * 点亮格数的变化，而不是只改一圈很淡的光晕。
+     */
+    private const val EDGE = 0.55f
 
-    private const val STYLUS_PRESSURE_BASE = 0.58f
-    private const val STYLUS_PRESSURE_GAIN = 0.84f
-    private const val FINGER_SPEED_REF = 0.22f
-    private const val FINGER_SLOW_SCALE = 1.22f
-    private const val FINGER_FAST_DROP = 0.42f
-    private const val MIN_SEGMENT_MS = 8L
+    private const val STYLUS_PRESSURE_BASE = 0.55f
+    private const val STYLUS_PRESSURE_GAIN = 1.0f
+    private const val FINGER_SPEED_REF = 0.28f
+    private const val FINGER_SLOW_SCALE = 1.60f
+    private const val FINGER_FAST_DROP = 0.90f
+    private const val MIN_SEGMENT_MS = 1L
     private const val CELL_CENTER = 0.5f
     private const val MIN_COVERAGE = 0.02f
+    private const val CONTACT_MIN = 1.0f
+    private const val CONTACT_MAX = 1.15f
 
     data class Point(
         val x: Float,
         val y: Float,
         val pressure: Float = 1f,
-        val timeMs: Long = 0L
+        val timeMs: Long = 0L,
+        val contactCells: Float = 1f
     )
 
     data class Stamp(val x: Float, val y: Float, val radius: Float)
@@ -49,44 +55,55 @@ object SplashBrush {
     /**
      * 根据基准笔宽、压感和移动速度求这一笔的半径。
      * 手写笔优先用压感；手指没有可靠压感，改用“快细慢粗”。
+     * contactCells 是接触面积（格），用于手指轻微修正。
      */
-    fun radius(base: Float, pressure: Float, speedCellsPerMs: Float, stylus: Boolean): Float {
+    fun radius(
+        base: Float,
+        pressure: Float,
+        speedCellsPerMs: Float,
+        stylus: Boolean,
+        contactCells: Float = 1f
+    ): Float {
         val b = base.coerceIn(MIN_RADIUS, MAX_RADIUS)
-        val out = if (stylus) {
-            b * (STYLUS_PRESSURE_BASE + STYLUS_PRESSURE_GAIN * pressure.coerceIn(0f, 1f))
+        val scale = if (stylus) {
+            STYLUS_PRESSURE_BASE + STYLUS_PRESSURE_GAIN * pressure.coerceIn(0f, 1f)
         } else {
             val fast = (speedCellsPerMs / FINGER_SPEED_REF).coerceIn(0f, 1f)
-            b * (FINGER_SLOW_SCALE - FINGER_FAST_DROP * fast)
+            FINGER_SLOW_SCALE - FINGER_FAST_DROP * fast
         }
-        return out.coerceIn(MIN_RADIUS, MAX_RADIUS)
+        val contact = contactCells.coerceIn(CONTACT_MIN, CONTACT_MAX)
+        return (b * scale * contact).coerceIn(MIN_RADIUS, MAX_RADIUS)
     }
 
     /**
      * 把 from→to 细化成一串笔刷落点。包含两端；压力按段内线性插值，
      * 速度按整段位移/耗时估算。
      */
+    @Suppress("LongParameterList")
     fun line(
         from: Point,
         to: Point,
         base: Float,
         stylus: Boolean,
-        step: Float = STAMP_STEP
+        step: Float = STAMP_STEP,
+        speedOverride: Float? = null
     ): List<Stamp> {
         val dx = to.x - from.x
         val dy = to.y - from.y
         val dist = hypot(dx, dy)
         val steps = ceil(dist / step).toInt().coerceAtLeast(1)
         val dt = (to.timeMs - from.timeMs).coerceAtLeast(MIN_SEGMENT_MS).toFloat()
-        val speed = dist / dt
+        val speed = speedOverride ?: (dist / dt)
         val out = ArrayList<Stamp>(steps + 1)
         for (i in 0..steps) {
             val t = i / steps.toFloat()
             val pressure = from.pressure + (to.pressure - from.pressure) * t
+            val contact = from.contactCells + (to.contactCells - from.contactCells) * t
             out.add(
                 Stamp(
                     from.x + dx * t,
                     from.y + dy * t,
-                    radius(base, pressure, speed, stylus)
+                    radius(base, pressure, speed, stylus, contact)
                 )
             )
         }

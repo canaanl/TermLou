@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber")
+
 package com.workspace.proot
 
 import com.google.android.material.color.utilities.Hct
@@ -147,16 +149,31 @@ class SplashTokensTest {
     }
 
     @Test
-    fun `default logo stays 18 rows and centers in taller grid`() {
-        val cells = SplashTokens.defaultCells()
-        val offset = SplashTokens.LOGO_ROW_OFFSET
-        assertTrue(cells.isNotEmpty())
-        assertEquals(offset, cells.minOf { it.r })
-        assertEquals(offset + SplashTokens.LOGO_ROWS - 1, cells.maxOf { it.r })
-        assertTrue(cells.all { it.r in 0 until SplashTokens.ROWS })
-        assertTrue(cells.all { it.c in 0 until SplashTokens.COLS })
-        assertFalse(SplashTokens.isCurrentGrid(SplashTokens.ROWS - 1, SplashTokens.COLS))
-        assertTrue(SplashTokens.isCurrentGrid(SplashTokens.ROWS, SplashTokens.COLS))
+    fun `rows for height follows real available space without a fixed 160`() {
+        assertEquals(160, SplashTokens.rowsForHeight(1620f, 10.125f))
+        assertEquals(160, SplashTokens.rowsForHeight(2000f, 10f))
+        assertEquals(150, SplashTokens.rowsForHeight(1500f, 10f))
+        assertEquals(140, SplashTokens.rowsForHeight(1400f, 10f))
+        assertEquals(0, SplashTokens.rowsForHeight(0f, 10f))
+    }
+
+    @Test
+    fun `default logo stays 18 rows and centers in dynamic grid`() {
+        val cells150 = SplashTokens.defaultCells(150)
+        val offset150 = SplashTokens.logoRowOffset(150)
+        assertEquals(66, offset150)
+        assertTrue(cells150.isNotEmpty())
+        assertEquals(offset150, cells150.minOf { it.r })
+        assertEquals(offset150 + SplashTokens.LOGO_ROWS - 1, cells150.maxOf { it.r })
+        assertTrue(cells150.all { it.r in 0 until 150 })
+        assertTrue(cells150.all { it.c in 0 until SplashTokens.COLS })
+
+        val cells160 = SplashTokens.defaultCells(160)
+        assertEquals(71, SplashTokens.logoRowOffset(160))
+        assertEquals(71, cells160.minOf { it.r })
+
+        assertTrue(SplashTokens.isCurrentGrid(150, SplashTokens.COLS))
+        assertFalse(SplashTokens.isCurrentGrid(150, SplashTokens.COLS - 1))
     }
 
     @Test

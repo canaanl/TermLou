@@ -22,14 +22,21 @@ import kotlin.math.min
  * 开屏动画：点阵飞入 + 品牌渐变。
  * 点阵默认 TERMLOU（SplashTokens.defaultCells），可传自定义 cells（启动工坊保存的 splash.json）。
  * 背景与已落位像素预渲染进静态层位图，逐帧只贴图 + 画飞行中粒子。
- * @param customCells 自定义像素 (row, col, 灰阶档）；null = 默认 LOGO
+ * @param customCells 自定义像素 (row, col, 灰阶档）；null/空 = 默认 LOGO
  * @param showProgress 是否显示进度条/状态文字（预览模式 false）
+ * @param requestedRows 保存时画布实际行数；null = 按当前屏幕高度算默认行数
  */
-class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? = null, private val showProgress: Boolean = true) : View(context) {
+class SplashView(
+    context: Context,
+    private val customCells: List<SplashTokens.SplashCell>? = null,
+    private val showProgress: Boolean = true,
+    private val requestedRows: Int? = null
+) : View(context) {
 
     companion object {
         private const val DAY_TEXT = 0xFF616161.toInt()
         private const val DAY_TRACK = 0x1F000000.toInt()
+        private const val PARTICLE_JITTER = 80
     }
 
     /** 主题跟调色盘走（与开屏消费同源）：palette 档背景=调色盘背景，off 档维持昼夜默认。
@@ -39,18 +46,18 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
     private val night: Boolean = theme.night
     private val bgColor: Int = SplashTokens.splashBackground(theme)
 
-    private val rows = SplashTokens.ROWS
     private val cols = SplashTokens.COLS
 
     private val density = context.resources.displayMetrics.density
-    private val screenW = context.resources.displayMetrics.widthPixels.toFloat()
-    private val screenH = context.resources.displayMetrics.heightPixels.toFloat()
 
-    private val pixelSize = SplashTokens.pixelSize(screenW)
-    private val totalW = pixelSize * cols
-    private val totalH = pixelSize * rows
-    private val offsetX = (screenW - totalW) / 2f
-    private val offsetY = (screenH - totalH) / 2f
+    private var rows = requestedRows ?: SplashTokens.DEFAULT_ROWS
+    private var pixelSize = 0f
+    private var totalW = 0f
+    private var totalH = 0f
+    private var offsetX = 0f
+    private var offsetY = 0f
+    private var built = false
+    private var convergeStarted = false
 
     /** 点阵渐变双色：off=品牌常量（零漂移），on=主题绿+60° 推导（见 SplashTokens.gradientPair）。 */
     private val gradient = SplashTokens.gradientPair(theme)
@@ -119,23 +126,61 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
         }
 
     init {
-        buildGrid(customCells)
-        buildParticles()
-        settledDrawn = BooleanArray(particles.size)
         setupPaints()
         setBackgroundColor(bgColor)
         layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         )
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (built || w <= 0 || h <= 0) return
+        updateMetrics(w, h)
+        cells.clear()
+        particles.clear()
+        buildGrid()
+        buildParticles(w, h)
+        settledDrawn = BooleanArray(particles.size)
+        built = true
         startConverge()
         postTick()
     }
 
-    private fun buildGrid(customCells: List<SplashTokens.SplashCell>?) {
-        val list = customCells ?: SplashTokens.defaultCells()
+    /**
+     * 只按屏幕宽定格子大小，和工坊完全一致；行数按保存值或当前高度实际能放多少。
+     * 保存行数放不下时不缩放，顶部对齐、底部裁掉。
+     */
+    private fun updateMetrics(w: Int, h: Int) {
+        pixelSize = SplashTokens.pixelSize(w.toFloat())
+        rows = requestedRows
+            ?.coerceIn(SplashTokens.MIN_ROWS, SplashTokens.MAX_ROWS)
+            ?: SplashTokens.rowsForHeight(h.toFloat(), pixelSize)
+                .coerceAtLeast(SplashTokens.MIN_ROWS)
+        totalW = pixelSize * cols
+        totalH = pixelSize * rows
+        offsetX = ((w - totalW) / 2f).coerceAtLeast(0f)
+        offsetY = ((h - totalH) / 2f).coerceAtLeast(0f)
+        gradientShader = null
+        backdropShader = null
+        barShader = null
+        layer?.recycle()
+        layer = null
+        layerCanvas = null
+        layerW = 0
+        layerH = 0
+    }
+
+    private fun buildGrid() {
+        val list = if (customCells.isNullOrEmpty()) {
+            SplashTokens.defaultCells(rows)
+        } else {
+            customCells
+        }
         for (cell in list) {
             val (r, col, v) = cell
+            if (r !in 0 until rows || col !in 0 until cols) continue
             cells.add(
                 Cell(
                     col,
@@ -151,28 +196,30 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
     private fun levelFactor(v: Int): Float =
         SplashTokens.LEVEL_ALPHAS[v.coerceIn(SplashTokens.LEVEL_OFF, SplashTokens.LEVEL_FULL)] / 255f
 
-    private fun buildParticles() {
+    private fun buildParticles(w: Int, h: Int) {
         val margin = SplashTokens.PARTICLE_MARGIN_DP * density
+        val wRange = w.coerceAtLeast(1)
+        val hRange = h.coerceAtLeast(1)
         for (cell in cells) {
             val side = (0..3).random()
             val sx: Float
             val sy: Float
             when (side) {
                 0 -> {
-                    sx = (0 until screenW.toInt()).random().toFloat()
-                    sy = -(margin + (0..80).random())
+                    sx = (0 until wRange).random().toFloat()
+                    sy = -(margin + (0..PARTICLE_JITTER).random())
                 }
                 1 -> {
-                    sx = (0 until screenW.toInt()).random().toFloat()
-                    sy = screenH + margin + (0..80).random()
+                    sx = (0 until wRange).random().toFloat()
+                    sy = h + margin + (0..PARTICLE_JITTER).random()
                 }
                 2 -> {
-                    sx = -(margin + (0..80).random())
-                    sy = (0 until screenH.toInt()).random().toFloat()
+                    sx = -(margin + (0..PARTICLE_JITTER).random())
+                    sy = (0 until hRange).random().toFloat()
                 }
                 else -> {
-                    sx = screenW + margin + (0..80).random()
-                    sy = (0 until screenH.toInt()).random().toFloat()
+                    sx = w + margin + (0..PARTICLE_JITTER).random()
+                    sy = (0 until hRange).random().toFloat()
                 }
             }
             val letterIdx = cell.col / (SplashTokens.COLS_PER_LETTER + 1)
@@ -205,6 +252,8 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
     }
 
     private fun startConverge() {
+        if (convergeStarted) return
+        convergeStarted = true
         val anim = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = SplashTokens.CONVERGE_MS.toLong()
             addUpdateListener { invalidate() }
@@ -427,6 +476,10 @@ class SplashView(context: Context, customCells: List<SplashTokens.SplashCell>? =
     }
 
     override fun onDraw(canvas: Canvas) {
+        if (!built) {
+            canvas.drawColor(bgColor)
+            return
+        }
         val t = convergeAnim?.animatedValue as? Float ?: 0f
         drawLetters(canvas, t * SplashTokens.CONVERGE_MS)
         drawStatus(canvas)

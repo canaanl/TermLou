@@ -509,9 +509,9 @@ class TerminalController(
             scope.fromTile = tileCommand != null
             // splash.json 读取与点数构造较重，移出主线程避免首帧顿卡
             activity.lifecycleScope.launch {
-                val cells = withContext(Dispatchers.IO) { loadSplashCells() }
+                val data = withContext(Dispatchers.IO) { loadSplashCells() }
                 if (activity.isFinishing || activity.isDestroyed) return@launch
-                val splash = SplashView(activity, cells)
+                val splash = SplashView(activity, data?.cells, requestedRows = data?.rows)
                 rootLayout.addView(splash)
                 splash.bringToFront()
                 splashStartTime = System.currentTimeMillis()
@@ -940,25 +940,24 @@ class TerminalController(
         }
     }
 
-    private fun loadSplashCells(): List<SplashTokens.SplashCell>? {
+    @Suppress("ReturnCount")
+    private fun loadSplashCells(): SplashTokens.SplashData? {
         runCatching {
             val f = TermlouDirs.base(activity)
             val splashJson = File(f, "splash.json")
             if (!splashJson.exists()) return null
             val obj = MiniJson.parse(splashJson.readText())
-            // 旧版 96×80 数据不做迁移：尺寸不符就当没有自定义开屏，回到默认 LOGO。
-            if (!SplashTokens.isCurrentGrid(
-                    obj.optInt("rows", -1),
-                    obj.optInt("cols", -1)
-                )
-            ) return null
+            val rows = obj.optInt("rows", -1)
+            val cols = obj.optInt("cols", -1)
+            // 行数按工坊保存的实际画布来；尺寸不合法就当没有自定义开屏。
+            if (!SplashTokens.isCurrentGrid(rows, cols)) return null
             val arr = obj.optArr("cells") ?: return null
             val out = mutableListOf<SplashTokens.SplashCell>()
             for (i in 0 until arr.length()) {
                 val o = arr.getObj(i) ?: continue
                 val r = o.optInt("r", -1)
                 val c = o.optInt("c", -1)
-                if (r in 0 until SplashTokens.ROWS && c in 0 until SplashTokens.COLS) {
+                if (r in 0 until rows && c in 0 until SplashTokens.COLS) {
                     out.add(
                         SplashTokens.SplashCell(
                             r, c,
@@ -968,7 +967,7 @@ class TerminalController(
                     )
                 }
             }
-            return if (out.isEmpty()) null else out
+            return if (out.isEmpty()) null else SplashTokens.SplashData(rows, out)
         }
         return null
     }

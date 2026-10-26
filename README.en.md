@@ -204,7 +204,7 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 
 ### 7. Splash Workshop
 
-- **Hand-drawn matrix**: 96×80 grid, draw pixels with your finger
+- **Hand-drawn matrix**: 96 columns × as many rows as actually fit (up to 160), draw with your finger; saves exactly what is displayed, no scaling
 - **Photo to pixels**: grayscale quantized into 2–20 levels by percentile (clarity slider remaps live), auto light/dark orientation against background vs brand colors to eliminate negatives, resident invert switch to flip again, pinch to zoom/crop
 - **Particle animation**: dots fly in from random edges, brand-green→cyan gradient (palette mode derives from the visibility color)
 

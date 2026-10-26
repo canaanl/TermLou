@@ -1,17 +1,24 @@
 package com.workspace.proot
 
+import kotlin.math.floor
+
 /**
  * 开屏点阵抽象常量与工具：网格/像素/渐变/飞入参数统一来源。
  * SplashView 与 SplashMakerActivity 共用，保证工坊所见即所得。
+ *
+ * 行数不再固定：工坊按实际可用高度算出能放多少行，保存也用这个行数。
+ * 160 只作为默认值，不再强行把屏幕放不下的画布补到 160 行。
  */
 object SplashTokens {
 
-    const val ROWS = 160
+    const val DEFAULT_ROWS = 160
     const val COLS = 96
     const val COLS_PER_LETTER = 12
     const val LOGO_ROWS = 18
-    /** 默认 LOGO 尺寸不变，只在 160 行画布里垂直居中（上下各留 71 行）。 */
-    const val LOGO_ROW_OFFSET = (ROWS - LOGO_ROWS) / 2
+
+    /** 合法行数下限/上限只是防脏数据；不是 160 那种固定高度。 */
+    const val MIN_ROWS = 1
+    const val MAX_ROWS = 512
 
     const val GRID_WIDTH_PCT = 0.9f
 
@@ -25,6 +32,9 @@ object SplashTokens {
 
     /** 照片转化单元：行、列、灰阶档（缺省满级，兼容老文件）。 */
     data class SplashCell(val r: Int, val c: Int, val v: Int = LEVEL_FULL)
+
+    /** splash.json 的完整内容：实际画布行数 + 像素。 */
+    data class SplashData(val rows: Int, val cells: List<SplashCell>)
 
     const val CONVERGE_MS = 2000
     const val FADE_OUT_MS = 240
@@ -47,6 +57,18 @@ object SplashTokens {
     private const val GRADIENT_HUE_SHIFT = 60.0
 
     fun pixelSize(screenW: Float): Float = (screenW * GRID_WIDTH_PCT) / COLS
+
+    /**
+     * 当前高度按固定像素尺寸能放下的行数；0 表示尺寸还没准备好。
+     * 放得下 160 行就最多用 160；放不下就用实际行数（150/140...）。
+     */
+    fun rowsForHeight(availH: Float, pixelSize: Float): Int {
+        if (availH <= 0f || pixelSize <= 0f) return 0
+        return floor(availH / pixelSize).toInt().coerceIn(MIN_ROWS, DEFAULT_ROWS)
+    }
+
+    /** 默认 LOGO 在当前行数里垂直居中；行数不足 18 时贴顶。 */
+    fun logoRowOffset(rows: Int): Int = ((rows - LOGO_ROWS) / 2).coerceAtLeast(0)
 
     fun lerpColor(a: Int, b: Int, f: Float): Int {
         val ar = (a shr 16) and 0xFF
@@ -143,12 +165,15 @@ object SplashTokens {
         return out
     }
 
-    /** 当前 splash.json 的网格尺寸是否与代码一致；旧数据不做迁移，直接忽略。 */
-    fun isCurrentGrid(rows: Int, cols: Int): Boolean = rows == ROWS && cols == COLS
+    /** 当前 splash.json 的网格尺寸是否合法；行数按实际保存值，不再要求固定 160。 */
+    fun isCurrentGrid(rows: Int, cols: Int): Boolean =
+        cols == COLS && rows in MIN_ROWS..MAX_ROWS
 
-    /** 默认 TERMLOU 点阵（18 行 × 7 字母，1 拆 4），映射到 ROWS 网格：行 + LOGO_ROW_OFFSET。 */
-    fun defaultCells(): List<SplashCell> {
+    /** 默认 TERMLOU 点阵（18 行 × 7 字母，1 拆 4），在当前行数里垂直居中。 */
+    @Suppress("NestedBlockDepth")
+    fun defaultCells(rows: Int = DEFAULT_ROWS): List<SplashCell> {
         val out = mutableListOf<SplashCell>()
+        val offset = logoRowOffset(rows)
         var cx = 0
         val letters = listOf(
             SplashLetters.T, SplashLetters.E, SplashLetters.R,
@@ -157,8 +182,10 @@ object SplashTokens {
         )
         for (letter in letters) {
             for (r in 0 until LOGO_ROWS) {
+                val rr = r + offset
+                if (rr >= rows) continue
                 for (c in 0 until COLS_PER_LETTER) {
-                    if (letter[r][c]) out.add(SplashCell(r + LOGO_ROW_OFFSET, cx + c))
+                    if (letter[r][c]) out.add(SplashCell(rr, cx + c))
                 }
             }
             cx += COLS_PER_LETTER + 1
