@@ -294,6 +294,10 @@
     <string name="dm_accent_hint">Accent (tap swatches; theme default if none)</string>
     <string name="dm_section_radius">CORNERS</string>
     <string name="dm_section_ctrls">CONTROLS</string>
+    <string name="dm_section_canvas">CONTENT CANVAS</string>
+    <string name="dm_edit_canvas">EDIT CONTENT CANVAS</string>
+    <string name="dm_canvas_hint">Text, inputs, selects, toggles and buttons all live in the canvas; new elements start at the original standard positions and can be moved freely.</string>
+    <string name="dm_canvas_summary_fmt">Canvas: %1$d nodes</string>
     <string name="dm_preview">LIVE PREVIEW</string>
     <string name="dm_debug_info">DEBUG (RESULT JSON)</string>
     <string name="dm_debug_empty">Run the dialog to see the result JSON here.</string>
@@ -343,6 +347,7 @@
     <string name="canvas_tool_select">SELECT</string>
     <string name="canvas_tool_toggle">TOGGLE</string>
     <string name="canvas_tool_button">BUTTON</string>
+    <string name="canvas_tool_button_bar">BUTTON BAR</string>
     <string name="canvas_undo">UNDO</string>
     <string name="canvas_redo">REDO</string>
     <string name="canvas_grid">GRID</string>
@@ -475,6 +480,7 @@
     <string name="canvas_settings">CANVAS SETTINGS ›</string>
     <string name="canvas_settings_title">CANVAS SETTINGS</string>
     <string name="canvas_settings_width">Canvas width dp</string>
+    <string name="canvas_settings_width_fixed">Content width is fixed by the dialog workshop: %1$s dp</string>
     <string name="canvas_settings_height">Canvas height dp</string>
     <string name="canvas_settings_row_height">Dialog row height dp</string>
     <string name="canvas_settings_background">Background</string>

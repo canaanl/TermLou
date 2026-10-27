@@ -9,6 +9,7 @@ import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.View.MeasureSpec
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -89,6 +90,25 @@ class CanvasDialogView(
         host.setScene(scene, resetClock)
         formState.reset(scene, preserveValues = preserveValues, resetFilters = resetFilters)
         host.invalidate()
+        requestLayout()
+    }
+
+    /**
+     * ScrollView 会用 UNSPECIFIED 高度测量子 View，并忽略 layoutParams.height。
+     * 这里根据场景宽高比报告真实内容高度，否则 FrameLayout 里的 MATCH_PARENT host
+     * 会被量成 0，整张卡片只剩标题栏。
+     */
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val widthSize = MeasureSpec.getSize(widthMeasureSpec)
+        val width = when (MeasureSpec.getMode(widthMeasureSpec)) {
+            MeasureSpec.UNSPECIFIED -> widthSize.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+            else -> widthSize
+        }.coerceAtLeast(1)
+        val height = CanvasDialogSizing.contentHeightPx(host.scene, width)
+        super.onMeasure(
+            MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY)
+        )
     }
 
     fun applyPatch(patch: CanvasPatch): Boolean {

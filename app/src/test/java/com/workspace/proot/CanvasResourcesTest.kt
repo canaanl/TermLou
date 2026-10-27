@@ -39,10 +39,12 @@ class CanvasResourcesTest {
         val required = setOf(
             "canvas_designer_title", "canvas_layers", "canvas_props", "canvas_timeline",
             "canvas_tool_progress", "canvas_tool_input", "canvas_tool_select",
-            "canvas_tool_toggle", "canvas_tool_button", "canvas_import_path",
-            "canvas_add_anim", "canvas_prop_key", "canvas_prop_options",
-            "canvas_button_primary", "canvas_json_import", "canvas_export_cmd",
-            "canvas_done", "dm_ctrl_canvas", "dm_summary_canvas_fmt"
+            "canvas_tool_toggle", "canvas_tool_button", "canvas_tool_button_bar",
+            "canvas_import_path", "canvas_add_anim", "canvas_prop_key",
+            "canvas_prop_options", "canvas_button_primary", "canvas_json_import",
+            "canvas_export_cmd", "canvas_done", "canvas_settings_width_fixed",
+            "dm_ctrl_canvas", "dm_summary_canvas_fmt", "dm_section_canvas",
+            "dm_edit_canvas", "dm_canvas_hint", "dm_canvas_summary_fmt"
         )
         val zhKeys = keys(zh, "canvas_")
         val enKeys = keys(en, "canvas_")

@@ -25,6 +25,48 @@ class CanvasDialogRenderTest {
     val timeout: Timeout = Timeout.seconds(30)
 
     @Test
+    fun canvasContentReportsHeightUnderScrollViewUnspecifiedMeasure() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val ctx = instrumentation.targetContext
+        val palette = CanvasDialogPalette(
+            onSurface = 0xFFE6E6E6.toInt(),
+            onSurfaceVariant = 0xFF9A9A9A.toInt(),
+            accent = 0xFF2D7D46.toInt(),
+            danger = 0xFFC0392B.toInt(),
+            buttonNormal = 0xFF3A3A3A.toInt(),
+            onButton = 0xFFFFFFFF.toInt(),
+            inputBg = 0xFF2A2A2A.toInt()
+        )
+        val scene = CanvasScene(
+            width = 360f,
+            height = 220f,
+            nodes = listOf(
+                CanvasNode(
+                    id = "btn",
+                    type = CanvasSpec.TYPE_BUTTON,
+                    x = 18f,
+                    y = 160f,
+                    w = 324f,
+                    h = CanvasWidgetLayout.BUTTON_H,
+                    text = "OK",
+                    action = "submit:ok"
+                )
+            )
+        )
+        instrumentation.runOnMainSync {
+            val view = CanvasDialogView(ctx, palette)
+            view.setScene(scene, resetClock = true, preserveValues = false, resetFilters = true)
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(950, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+            )
+            val expected = CanvasDialogSizing.contentHeightPx(scene, 950)
+            assertTrue("height=${view.measuredHeight}, expected=$expected", view.measuredHeight > 100)
+            assertTrue("height=${view.measuredHeight}, expected=$expected", kotlin.math.abs(view.measuredHeight - expected) <= 2)
+        }
+    }
+
+    @Test
     fun legacyFormDialogDraws() {
         val request = ScriptDialogSpec.Request(
             id = "render",

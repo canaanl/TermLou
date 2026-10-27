@@ -13,7 +13,6 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import kotlin.math.max
-import kotlin.math.roundToInt
 
 /**
  * 弹窗渲染：原生标题栏 + 一个 CanvasDialogView 内容区。
@@ -149,13 +148,6 @@ class ScriptDialogRenderer(private val ctx: Context) {
             preserveValues = preserveValues,
             resetFilters = resetFilters
         )
-        val scale = contentWidthPx / result.scene.width.coerceAtLeast(1f)
-        val height = (result.scene.height * scale).roundToInt().coerceAtLeast(1)
-        dialog.layoutParams = (dialog.layoutParams ?: ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            height
-        )).apply { this.height = height }
-        dialog.requestLayout()
         scrollRef?.requestLayout()
         scrollRef?.post { updateScrollLimit() }
     }
@@ -251,7 +243,9 @@ class ScriptDialogRenderer(private val ctx: Context) {
         @Suppress("DEPRECATION")
         wm.defaultDisplay.getRealMetrics(metrics)
         val pct = widthPct.coerceIn(40, 100)
-        return (metrics.widthPixels * pct / 100).coerceAtMost(metrics.widthPixels - (16 * d).toInt() * 2)
+        val min = (120 * d).toInt()
+        val max = (metrics.widthPixels - (16 * d).toInt() * 2).coerceAtLeast(min)
+        return (metrics.widthPixels * pct / 100).coerceIn(min, max)
     }
 
     private fun titleBar(title: String, style: ScriptDialogSpec.Style, palette: Palette): TextView {

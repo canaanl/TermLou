@@ -7,6 +7,7 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.80** | 5980 | **修复 5.9.79 弹窗塌成标题条：`ScrollView` 用 `UNSPECIFIED` 测量内容，`CanvasDialogView` 现在按场景宽高比报告 intrinsic height；新增 Robolectric 真实布局回归测试。弹窗工坊真正画布化：移除线性控件列表和独立画布控件，内容统一在 CanvasDesigner 编辑；新增控件按旧表单标准几何落位，按钮仍在画布中** |
 | **5.9.79** | 5979 | **弹窗内容区单 Canvas 化：标题栏保持原生，文本/输入/选项/开关/按钮全部变成标准 Canvas 节点；旧 `termlou-ui` 参数、结果 values、Canvas 快照和 `key.action` 全部不变。选项框独立成节点并支持内部滚动，过滤只影响框内；输入用透明 EditText 代理保留 IME/密码/多行；Canvas 设计器新增控件工具与推荐位置** |
 | **5.9.78** | 5978 | **日志总预算 1MB：Linux `/var/log` 移出 rootfs 并 bind 到应用日志目录，apt/dpkg 已知无界日志指向 `/dev/null`；应用日志写时封顶；Bash 历史不落盘；release 移除 TermLou 的 Android Logcat。只在启动时裁剪一次，不做定时轮询** |
 | **5.9.77** | 5977 | **RootFS 安装可靠性：确认 AAPT 会把 `assets/rootfs.tar.gz` 解压成 APK 内的 `assets/rootfs.tar`（运行时仍打开 `rootfs.tar`，并加 `.gz` 兼容回退）；解包改为 staging + 完成标记 + 原子切换，老安装自动补标记、覆盖升级不重装现有 rootfs** |
@@ -37,6 +38,44 @@
 | **5.9.52** | 5952 | **修：状态栏特征字的立方体转向与页面滑动方向相反** |
 | **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
+
+## 5.9.80
+
+### 修复：弹窗只剩标题条 / 无法关闭
+
+- 根因：`ScrollView` 用 `UNSPECIFIED` 高度测量内容子 View，并忽略
+  `layoutParams.height`；`CanvasDialogView` 的 `MATCH_PARENT` host 在
+  `UNSPECIFIED` 下被量成 0，整张卡片只剩原生标题栏，按钮也被压进 0 高区域。
+- `CanvasDialogView` 新增 `onMeasure`：按 `scene.height * (width / scene.width)`
+  报告 intrinsic height，并强制用 EXACTLY 尺寸测量 host。
+- `setScene` 后 `requestLayout()`，场景高度变化会重新测量。
+- `screenWidthPx` 增加最小宽度保护，避免极端 metrics 下出现负宽度。
+- 新增 Robolectric 真实布局测试：模拟 `ScrollView` 的 `UNSPECIFIED` 测量，
+  并验证完整 renderer 内 `CanvasDialogView` 高度非 0、按钮节点存在。
+  这两个测试在 5.9.79 上会失败。
+
+### 弹窗工坊真正画布化
+
+- `DialogMakerActivity` 收缩成外壳：标题/主题/主色/圆角/位置/动画/预览/运行/导出。
+- 删除线性控件列表。
+- 删除独立的「画布」添加控件。
+- 内容统一进入 CanvasDesigner「弹窗内容画布」编辑；图层/属性/时间轴就是工坊的层级结构。
+- 工坊只生成一个 `--canvas` 内容场景，不再生成 input/select/toggle/button 线性 rows。
+- 弹窗内容画布宽度固定为卡片内容宽度，隐藏宽度编辑；高度仍可编辑。
+- 导出命令包含 `--canvas`、`--canvas-height`、`--canvas-key`，不再追加独立 `--button`；
+  默认关闭按钮由运行时 builder 在画布内生成。
+
+### 新增控件的默认布局
+
+- `CanvasWidgetPlacement` 统一新增控件的标准几何，和旧 rows 共用 `CanvasWidgetLayout`：
+  - 输入框：x=16，宽=内容宽-32，标签上、输入框下。
+  - 选项框：x=16，宽=内容宽-32，标签 + 选项框，超出内部滚动。
+  - 开关：x=16，宽=内容宽-32，标签左、开关右。
+  - 文本：x=20，宽=内容宽-40。
+  - 按钮：仍在画布中；默认按旧按钮栏几何放在内容底部，x=18，宽=内容宽-36，高 44。
+- 新增控件按原来的纵向间距落位，之后可以自由拖动。
+- CanvasDesigner 新增「按钮栏」工具，按旧按钮栏规则一次生成多个等宽按钮。
+- 不恢复 native 固定底栏。
 
 ## 5.9.79
 

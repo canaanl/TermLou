@@ -1,7 +1,6 @@
 package com.workspace.proot
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -16,7 +15,6 @@ import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -25,12 +23,18 @@ import android.widget.SeekBar
 import android.widget.TextView
 import com.google.android.material.snackbar.Snackbar
 
-/** 弹窗工坊：图形化设计脚本弹窗，实时预览，导出命令/真机测试。 */
+/**
+ * 弹窗工坊外壳：标题/主题/外壳样式 + 实时预览 + 导出。
+ *
+ * 内容区已经全部是 Canvas：线性控件列表和独立 Canvas 控件都已移除，
+ * 输入框/选项框/开关/按钮在 CanvasDesigner 的内容画布中编辑。
+ */
 @Suppress("LargeClass")
 class DialogMakerActivity : Activity() {
 
     companion object {
         private const val REQ_CANVAS_DESIGNER = 4911
+        private const val STATE_SCENE = "dialog_content_scene"
     }
 
     private val theme: ThemeColors by lazy {
@@ -39,7 +43,6 @@ class DialogMakerActivity : Activity() {
 
     private lateinit var root: LinearLayout
     private lateinit var titleEdit: EditText
-    private lateinit var messageEdit: EditText
     private lateinit var themeGroup: RadioGroup
     private lateinit var positionGroup: RadioGroup
     private lateinit var animGroup: RadioGroup
@@ -48,21 +51,11 @@ class DialogMakerActivity : Activity() {
     private lateinit var accentSwatches: LinearLayout
     private lateinit var previewHost: FrameLayout
     private lateinit var lastResultView: TextView
-    private lateinit var ctrlList: LinearLayout
-    private lateinit var messageRow: LinearLayout
+    private lateinit var canvasSummary: TextView
 
     private var accent: Int? = null
-    private val controls = mutableListOf<Ctrl>()
-    private var editingCanvasIndex: Int? = null
-
-    private sealed class Ctrl {
-        data class TextOutput(val note: String = "") : Ctrl()
-        data class Input(val label: String, val key: String) : Ctrl()
-        data class Select(val label: String, val key: String, val options: List<String>, val multi: Boolean) : Ctrl()
-        data class Toggle(val label: String, val key: String) : Ctrl()
-        data class Buttons(val buttons: List<ScriptDialogSpec.Button>) : Ctrl()
-        data class Canvas(val scene: CanvasScene, val heightDp: Int = 220, val key: String = "") : Ctrl()
-    }
+    private var contentWidthDp = 360f
+    private lateinit var contentScene: CanvasScene
 
     private val accentColors = listOf(
         0xFF2D7D46.toInt(), 0xFF0E639C.toInt(), 0xFF4DD0E1.toInt(),
@@ -71,6 +64,10 @@ class DialogMakerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        contentWidthDp = dialogContentWidthDp()
+        contentScene = savedInstanceState?.getString(STATE_SCENE)
+            ?.let { runCatching { CanvasSceneCodec.parseScene(it) }.getOrNull() }
+            ?: CanvasScene(width = contentWidthDp, height = 320f)
 
         val d = resources.displayMetrics.density
         root = LinearLayout(this).apply {
@@ -106,28 +103,8 @@ class DialogMakerActivity : Activity() {
         scroll.addView(form)
         root.addView(scroll)
 
-        // ===== 标题 / 正文 =====
+        // ===== 标题 =====
         titleEdit = sectionEdit(form, getString(R.string.dm_section_title), getString(R.string.dm_title_hint))
-        messageRow = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        messageEdit = EditText(this).apply {
-            setTextColor(theme.onSurface)
-            // 5.9.50：原为 setBackgroundColor（纯色方块 = 直角）。此前这是一条**有记录的
-            // 豁免**，理由是"它是模拟 agent 弹窗输入框的预览框，直角才是它该有的样子"。
-            // 但那个理由早已不成立：真实渲染（ScriptDialogRenderer L325/352/463/561/600/615）
-            // 的弹窗输入框全部是 snapCorner(CORNER_SM) 圆角 —— 真弹窗圆了，只有这个模拟框
-            // 还留着直角，模拟反而失了真。圆角取 CORNER_SM 与真实渲染一致（真实那边只有
-            // 圆角无描边，这里同样不加描边）；填充色保持 primaryContainer 不变。
-            roundedBg(theme.primaryContainer, UiTokens.CORNER_SM)
-            textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
-            setHint(getString(R.string.dm_msg_hint))
-            setHintTextColor(theme.onSurfaceVariant)
-            setPaddingMd(10, 8, 10, 8)
-            gravity = Gravity.TOP
-            minLines = 2
-        }
-        messageRow.addView(messageEdit)
-        form.addView(sectionLabel(getString(R.string.dm_section_msg)))
-        form.addView(messageRow)
 
         // ===== 主题 / 位置 / 动画 =====
         themeGroup = sectionRadio(form, getString(R.string.dm_section_theme), listOf("dark", "light", "glass"), "dark")
@@ -163,6 +140,7 @@ class DialogMakerActivity : Activity() {
                 radiusLabel.text = "$p dp"
                 if (fromUser) refreshPreview()
             }
+
             override fun onStartTrackingTouch(sb: SeekBar) {}
             override fun onStopTrackingTouch(sb: SeekBar) {}
         })
@@ -170,13 +148,30 @@ class DialogMakerActivity : Activity() {
         radiusRow.addView(radiusLabel)
         form.addView(radiusRow)
 
-        // ===== 控件列表 =====
-        form.addView(sectionLabel(getString(R.string.dm_section_ctrls)))
-        ctrlList = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        // ===== 内容画布 =====
+        form.addView(sectionLabel(getString(R.string.dm_section_canvas)))
+        canvasSummary = TextView(this).apply {
+            setTextColor(theme.onSurfaceVariant)
+            textCompact()
+            setPaddingMd(0, 0, 0, 4)
         }
-        form.addView(ctrlList)
-        form.addView(addCtrlButtons())
+        form.addView(canvasSummary)
+        val editCanvas = Button(this).apply {
+            text = getString(R.string.dm_edit_canvas)
+            isAllCaps = true
+            setTextColor(Color.WHITE)
+            setOnClickListener { openCanvasDesigner() }
+        }
+        ButtonStyle.apply(editCanvas, theme.primary, theme.primaryVisible)
+        form.addView(editCanvas, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ))
+        form.addView(TextView(this).apply {
+            text = getString(R.string.dm_canvas_hint)
+            setTextColor(theme.onSurfaceVariant)
+            textMeta()
+            setPaddingMd(0, 4, 0, 8)
+        })
 
         form.addView(View(this).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
@@ -201,7 +196,7 @@ class DialogMakerActivity : Activity() {
         }
         form.addView(previewHost)
 
-        // ===== 调试信息：放在实时预览下面，不占用底部操作区 =====
+        // ===== 调试信息 =====
         form.addView(sectionLabel(getString(R.string.dm_debug_info)))
         lastResultView = TextView(this).apply {
             text = getString(R.string.dm_debug_empty)
@@ -216,7 +211,7 @@ class DialogMakerActivity : Activity() {
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ))
 
-        // ===== 底部按钮（品字：真机测试满行；导出命令+退出在下一行）=====
+        // ===== 底部按钮 =====
         val bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPaddingMd(12, 8, 12, 12)
@@ -236,12 +231,7 @@ class DialogMakerActivity : Activity() {
             setOnClickListener { testOnScreen() }
         }
         testRow.addView(testBtn, weighted(testBtn))
-        SegmentStyle.applyRow(
-            testRow,
-            listOf(null),
-            theme.outline,
-            theme.onSurface
-        )
+        SegmentStyle.applyRow(testRow, listOf(null), theme.outline, theme.onSurface)
         bottomBar.addView(testRow)
         val row2 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -264,20 +254,20 @@ class DialogMakerActivity : Activity() {
         }
         row2.addView(exportBtn, weighted(exportBtn))
         row2.addView(exitBtn, weighted(exitBtn))
-        SegmentStyle.applyRow(
-            row2,
-            listOf(
-                null,
-                null
-            ),
-            theme.outline,
-            theme.onSurface
-        )
+        SegmentStyle.applyRow(row2, listOf(null, null), theme.outline, theme.onSurface)
         bottomBar.addView(row2)
         root.addView(bottomBar)
 
         setContentView(root)
+        updateCanvasSummary()
         refreshPreview()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        if (::contentScene.isInitialized) {
+            outState.putString(STATE_SCENE, CanvasSceneCodec.sceneToJsonString(contentScene))
+        }
     }
 
     // ===== helpers: form 构建 =====
@@ -289,6 +279,17 @@ class DialogMakerActivity : Activity() {
         }
 
     private fun d() = resources.displayMetrics.density
+
+    private fun dialogContentWidthDp(): Float {
+        val wm = getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
+        val metrics = android.util.DisplayMetrics()
+        @Suppress("DEPRECATION")
+        wm.defaultDisplay.getRealMetrics(metrics)
+        val min = (120 * d()).toInt()
+        val max = (metrics.widthPixels - (32 * d()).toInt()).coerceAtLeast(min)
+        val card = (metrics.widthPixels * ScriptDialogSpec.DEFAULT_WIDTH_PCT / 100).coerceIn(min, max)
+        return card / d()
+    }
 
     private fun sectionLabel(text: String): TextView = TextView(this).apply {
         this.text = text
@@ -302,12 +303,6 @@ class DialogMakerActivity : Activity() {
         container.addView(sectionLabel(label))
         val e = EditText(this).apply {
             setTextColor(theme.onSurface)
-            // 5.9.50：原为 setBackgroundColor（纯色方块 = 直角）。此前这是一条**有记录的
-            // 豁免**，理由是"它是模拟 agent 弹窗输入框的预览框，直角才是它该有的样子"。
-            // 但那个理由早已不成立：真实渲染（ScriptDialogRenderer L325/352/463/561/600/615）
-            // 的弹窗输入框全部是 snapCorner(CORNER_SM) 圆角 —— 真弹窗圆了，只有这个模拟框
-            // 还留着直角，模拟反而失了真。圆角取 CORNER_SM 与真实渲染一致（真实那边只有
-            // 圆角无描边，这里同样不加描边）；填充色保持 primaryContainer 不变。
             roundedBg(theme.primaryContainer, UiTokens.CORNER_SM)
             textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)
             setHint(hint)
@@ -325,9 +320,7 @@ class DialogMakerActivity : Activity() {
         default: String
     ): RadioGroup {
         container.addView(sectionLabel(label))
-        val rg = RadioGroup(this).apply {
-            orientation = RadioGroup.HORIZONTAL
-        }
+        val rg = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
         for (i in options.indices) {
             val rb = RadioButton(this).apply {
                 id = View.generateViewId()
@@ -361,8 +354,6 @@ class DialogMakerActivity : Activity() {
         return rb.text.toString()
     }
 
-    // ===== 主色色块 =====
-
     private fun rebuildSwatches() {
         accentSwatches.removeAllViews()
         val dd = d()
@@ -387,245 +378,43 @@ class DialogMakerActivity : Activity() {
         }
     }
 
-    // ===== 控件增删 =====
+    // ===== 内容画布 =====
 
-    private fun addCtrl(c: Ctrl) {
-        controls.add(c)
-        renderCtrlList()
+    private fun updateCanvasSummary() {
+        if (!::canvasSummary.isInitialized) return
+        canvasSummary.text = getString(R.string.dm_canvas_summary_fmt, contentScene.flatten().size)
+    }
+
+    private fun openCanvasDesigner() {
+        val intent = Intent(this, CanvasDesignerActivity::class.java)
+            .putExtra(CanvasDesignerActivity.EXTRA_SCENE, CanvasSceneCodec.sceneToJsonString(contentScene))
+            .putExtra(CanvasDesignerActivity.EXTRA_HEIGHT, contentScene.height.toInt().coerceIn(64, 1600))
+            .putExtra(CanvasDesignerActivity.EXTRA_KEY, "main")
+            .putExtra(CanvasDesignerActivity.EXTRA_DIALOG_MODE, true)
+            .putExtra(CanvasDesignerActivity.EXTRA_DIALOG_WIDTH, contentWidthDp)
+        startActivityForResult(intent, REQ_CANVAS_DESIGNER)
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQ_CANVAS_DESIGNER || resultCode != RESULT_OK) return
+        val json = data?.getStringExtra(CanvasDesignerActivity.EXTRA_SCENE) ?: return
+        contentScene = runCatching { CanvasSceneCodec.parseScene(json) }.getOrNull() ?: return
+        updateCanvasSummary()
         refreshPreview()
-    }
-
-    private fun addCtrlButtons(): View {
-        val dd = d()
-        val wrap = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-        }
-        val inner = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val labels = mapOf(
-            getString(R.string.dm_ctrl_text_out) to { addCtrl(Ctrl.TextOutput()) },
-            getString(R.string.dm_ctrl_text_in) to { addInputCtrl() },
-            getString(R.string.dm_ctrl_single) to { addSelectCtrl(multi = false) },
-            getString(R.string.dm_ctrl_multi) to { addSelectCtrl(multi = true) },
-            getString(R.string.dm_ctrl_toggle) to { addToggleCtrl() },
-            getString(R.string.dm_ctrl_buttons) to { addButtonsCtrl() },
-            getString(R.string.dm_ctrl_canvas) to {
-                // 单条 termlou-ui 命令只接收一个 --canvas 初始场景；已有 Canvas 时直接
-                // 打开编辑，避免设计器里出现多个 Canvas 但导出时只能保留最后一个。
-                val existing = controls.indexOfFirst { it is Ctrl.Canvas }
-                openCanvasDesigner(if (existing >= 0) existing else null)
-            }
-        )
-        for ((text, action) in labels) {
-val b = Button(this).apply {
-                this.text = "+$text"
-                setTextColor(theme.primaryVisible)
-                isAllCaps = true
-                textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
-                setPaddingMd(10, 4, 10, 4)
-                ButtonStyle.outlined(this, theme.primaryVisible)
-                setOnClickListener { action() }
-            }
-            inner.addView(b, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { marginEnd = (6 * dd).toInt() })
-        }
-        wrap.addView(inner)
-        return wrap
-    }
-
-    private fun addInputCtrl() {
-        promptFields(mapOf(
-            getString(R.string.dm_f_label) to "",
-            getString(R.string.dm_f_key) to ""
-        )) { vals ->
-            val label = vals[getString(R.string.dm_f_label)]?.trim() ?: ""
-            val key = vals[getString(R.string.dm_f_key)]?.trim()?.ifEmpty { label } ?: label
-            if (key.isNotEmpty()) {
-                controls.add(Ctrl.Input(label.ifEmpty { key }, key))
-                renderCtrlList()
-                refreshPreview()
-            }
-        }
-    }
-
-    private fun addSelectCtrl(multi: Boolean) {
-        promptFields(mapOf(
-            getString(R.string.dm_f_label) to "",
-            getString(R.string.dm_f_key) to "",
-            getString(R.string.dm_f_opts) to "a,b,c"
-        )) { vals ->
-            val label = vals[getString(R.string.dm_f_label)]?.trim() ?: ""
-            val key = vals[getString(R.string.dm_f_key)]?.trim()?.ifEmpty { label } ?: label
-            val opts = vals[getString(R.string.dm_f_opts)]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
-            if (key.isNotEmpty() && opts.isNotEmpty()) {
-                controls.add(Ctrl.Select(label.ifEmpty { key }, key, opts, multi))
-                renderCtrlList()
-                refreshPreview()
-            }
-        }
-    }
-
-    private fun addButtonsCtrl() {
-        promptFields(mapOf(
-            getString(R.string.dm_f_btns) to getString(R.string.dm_btns_default)
-        )) { vals ->
-            val raw = vals[getString(R.string.dm_f_btns)] ?: ""
-            val buttons = raw.split(",").mapNotNull { s ->
-                val parts = s.trim().split("=")
-                if (parts.isEmpty() || parts[0].isEmpty()) null
-                else ScriptDialogSpec.Button(
-                    parts[0].trim(),
-                    parts.getOrNull(1)?.trim()?.ifEmpty { parts[0].trim() } ?: parts[0].trim(),
-                    parts.getOrNull(2)?.trim()?.ifEmpty { ScriptDialogSpec.BTN_NORMAL } ?: ScriptDialogSpec.BTN_NORMAL
-                )
-            }
-            if (buttons.isNotEmpty()) {
-                controls.add(Ctrl.Buttons(buttons))
-                renderCtrlList()
-                refreshPreview()
-            }
-        }
-    }
-
-    private fun addToggleCtrl() {
-        promptFields(mapOf(
-            getString(R.string.dm_f_label) to "",
-            getString(R.string.dm_f_key) to ""
-        )) { vals ->
-            val label = vals[getString(R.string.dm_f_label)]?.trim() ?: ""
-            val key = vals[getString(R.string.dm_f_key)]?.trim()?.ifEmpty { label } ?: label
-            if (key.isNotEmpty()) {
-                controls.add(Ctrl.Toggle(label.ifEmpty { key }, key))
-                renderCtrlList()
-                refreshPreview()
-            }
-        }
-    }
-
-    private fun promptFields(fields: Map<String, String>, onOk: (Map<String, String>) -> Unit) {
-        val d = d()
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPaddingMd(20, 0, 20, 0)
-        }
-        val edits = mutableMapOf<String, EditText>()
-        for ((label, def) in fields) {
-            container.addView(TextView(this).apply {
-                text = label
-                setTextColor(theme.onSurface)
-                textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
-                setPaddingMd(0, 8, 0, 2)
-            })
-            val e = EditText(this).apply {
-                setText(def)
-                setTextColor(theme.onSurface)
-                setSingleLine(true)
-            }
-            edits[label] = e
-            container.addView(e)
-        }
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.dm_add_ctrl))
-            .setView(container)
-            .setPositiveButton(getString(R.string.sc_confirm)) { _, _ ->
-                onOk(edits.mapValues { it.value.text.toString() })
-            }
-            .setNegativeButton(getString(R.string.cancel), null)
-            .showStyled(theme)
-    }
-
-    private fun renderCtrlList() {
-        ctrlList.removeAllViews()
-        val dd = d()
-        for (i in controls.indices) {
-            val c = controls[i]
-            val label = when (c) {
-                is Ctrl.TextOutput -> getString(R.string.dm_summary_out_fmt, c.note.ifBlank { getString(R.string.dm_note_output) })
-                is Ctrl.Input -> getString(R.string.dm_summary_in_fmt, c.label)
-                is Ctrl.Select -> (if (c.multi) getString(R.string.dm_ctrl_multi) else getString(R.string.dm_ctrl_single)) + ": ${c.label}"
-                is Ctrl.Toggle -> getString(R.string.dm_summary_toggle_fmt, c.label)
-                is Ctrl.Buttons -> getString(R.string.dm_summary_btns_fmt, c.buttons.joinToString { it.text })
-                is Ctrl.Canvas -> getString(R.string.dm_summary_canvas_fmt, c.scene.nodes.size)
-            }
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                // 5.9.50：这一行是 LinearLayout 列表行，不是输入框 —— 扫描锁
-                // `edit texts use a rounded background` 只看 EditText 块，所以它从来不在
-                // 5.9.43 那条豁免的范围里。属同一类缺陷（直角方块），但不在本次范围内，保持原样。
-                setBackgroundColor(theme.primaryContainer)
-                setPaddingMd(10, 8, 10, 8)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = (6 * dd).toInt() }
-            }
-            row.addView(TextView(this).apply {
-                text = label
-                setTextColor(theme.onSurface)
-                textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
-                typeface = Typeface.MONOSPACE
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            row.addView(Button(this).apply {
-                text = "×"
-                setTextColor(theme.onSurface)
-                isAllCaps = true
-                textMd(UiTokens.TEXT_COMPACT, UiTokens.LINE_COMPACT)
-                setPaddingMd(8, 0, 8, 0)
-                // 5.9.41：统一圆角来源（此前是 MD2 主题自带圆角）。
-                // 浅底按钮：填充用 surfaceVariant + outline 描边，字色沿用 onSurface。
-                ButtonStyle.outlined(this, theme.outline)
-                setOnClickListener {
-                    controls.removeAt(i)
-                    renderCtrlList()
-                    refreshPreview()
-                }
-            })
-            ctrlList.addView(row)
-            if (c is Ctrl.Canvas) {
-                row.setOnClickListener { openCanvasDesigner(i) }
-            }
-        }
     }
 
     // ===== 组装 Request =====
 
     private fun buildRequest(id: String): ScriptDialogSpec.Request {
-        val rows = mutableListOf<ScriptDialogSpec.Row>()
-        for (c in controls) {
-            when (c) {
-                is Ctrl.TextOutput -> rows.add(ScriptDialogSpec.Row.Text(ScriptDialogSpec.TextRow(c.note.ifBlank { getString(R.string.dm_note_output) })))
-                is Ctrl.Input -> rows.add(
-                    ScriptDialogSpec.Row.Input(ScriptDialogSpec.InputRow(c.key, c.label))
-                )
-                is Ctrl.Select -> rows.add(
-                    ScriptDialogSpec.Row.Select(ScriptDialogSpec.SelectRow(c.key, c.label, c.options, c.multi))
-                )
-                is Ctrl.Toggle -> rows.add(
-                    ScriptDialogSpec.Row.Toggle(ScriptDialogSpec.ToggleRow(c.key, c.label))
-                )
-                is Ctrl.Buttons -> rows.add(
-                    ScriptDialogSpec.Row.Buttons(ScriptDialogSpec.ButtonsRow(c.buttons))
-                )
-                is Ctrl.Canvas -> rows.add(
-                    ScriptDialogSpec.Row.Canvas(
-                        ScriptDialogSpec.CanvasRow(c.scene, c.heightDp, c.key)
-                    )
-                )
-            }
-        }
-        if (controls.none { it is Ctrl.Buttons }) {
-            rows.add(ScriptDialogSpec.Row.Buttons(ScriptDialogSpec.ButtonsRow(
-                listOf(ScriptDialogSpec.Button(getString(R.string.close), "close"))
-            )))
-        }
-        return ScriptDialogSpec.Request(
+        val scene = contentScene.copy(
+            width = contentScene.width.takeIf { it > 0f } ?: contentWidthDp
+        )
+        return DialogWorkshopSpec.buildRequest(
             id = id,
-            ui = ScriptDialogSpec.Ui(
-                title = titleEdit.text.toString().trim(),
-                message = messageEdit.text.toString().trim(),
-                rows = rows
-            ),
+            title = titleEdit.text.toString().trim(),
+            scene = scene,
             style = ScriptDialogSpec.Style(
                 theme = selectedOption(themeGroup) ?: "dark",
                 accent = accent,
@@ -642,7 +431,6 @@ val b = Button(this).apply {
         val stage = FrameLayout(this).apply {
             setBackgroundColor(0xFF0B0B0B.toInt())
         }
-        // buildRoot 而不是 buildCard：宽度百分比、位置（居中/底部）和动画都要能在工坊里看到。
         stage.addView(
             renderer.buildRoot(buildRequest("preview")) {},
             FrameLayout.LayoutParams(
@@ -656,7 +444,6 @@ val b = Button(this).apply {
 
     // ===== 底部操作 =====
 
-    /** 唯一运行入口：直接使用生产浮窗，结果只在工坊里留一行，不参与弹窗布局。 */
     private fun testOnScreen() {
         if (!Settings.canDrawOverlays(this)) {
             Snackbar.make(root, getString(R.string.dm_need_overlay), Snackbar.LENGTH_SHORT).show()
@@ -679,76 +466,27 @@ val b = Button(this).apply {
         lastResultView.text = ScriptDialogSpec.resultToJsonString(result)
     }
 
-    private fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
-
-    private fun openCanvasDesigner(editIndex: Int?) {
-        editingCanvasIndex = editIndex
-        val intent = Intent(this, CanvasDesignerActivity::class.java)
-        val existing = editIndex?.let { controls.getOrNull(it) as? Ctrl.Canvas }
-        if (existing != null) {
-            intent.putExtra(
-                CanvasDesignerActivity.EXTRA_SCENE,
-                CanvasSceneCodec.sceneToJsonString(existing.scene)
-            )
-        }
-        intent.putExtra(CanvasDesignerActivity.EXTRA_HEIGHT, existing?.heightDp ?: 220)
-        intent.putExtra(CanvasDesignerActivity.EXTRA_KEY, existing?.key.orEmpty())
-        startActivityForResult(intent, REQ_CANVAS_DESIGNER)
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != REQ_CANVAS_DESIGNER) return
-        val index = editingCanvasIndex
-        editingCanvasIndex = null
-        if (resultCode != RESULT_OK) return
-        val json = data?.getStringExtra(CanvasDesignerActivity.EXTRA_SCENE) ?: return
-        val scene = runCatching { CanvasSceneCodec.parseScene(json) }.getOrNull() ?: return
-        val height = data.getIntExtra(CanvasDesignerActivity.EXTRA_HEIGHT, 220).coerceIn(64, 1600)
-        val key = data.getStringExtra(CanvasDesignerActivity.EXTRA_KEY).orEmpty()
-        if (index != null && index in controls.indices && controls[index] is Ctrl.Canvas) {
-            controls[index] = Ctrl.Canvas(scene, height, key)
-        } else {
-            controls.add(Ctrl.Canvas(scene, height, key))
-        }
-        renderCtrlList()
-        refreshPreview()
-    }
-
-    private fun colorHex(c: Int): String = "#%06X".format(c and 0x00FFFFFF)
-
     private fun exportCommand() {
         val request = buildRequest("x")
+        val canvas = request.ui.rows.filterIsInstance<ScriptDialogSpec.Row.Canvas>().firstOrNull() ?: return
         val parts = mutableListOf<String>()
         if (request.ui.title.isNotEmpty()) parts.add("--title ${shellQuote(request.ui.title)}")
-        if (request.ui.message.isNotEmpty()) parts.add("--message ${shellQuote(request.ui.message)}")
         parts.add("--theme ${request.style.theme}")
-        if (request.style.accent != null) parts.add("--accent ${shellQuote(colorHex(request.style.accent))}")
+        request.style.accent?.let { parts.add("--accent ${shellQuote(colorHex(it))}") }
         parts.add("--radius ${request.style.radiusDp}")
         parts.add("--position ${request.style.position}")
-        for (r in request.ui.rows.filterIsInstance<ScriptDialogSpec.Row.Input>()) {
-            parts.add("--input ${shellQuote(r.row.label)}")
-        }
-        for (r in request.ui.rows.filterIsInstance<ScriptDialogSpec.Row.Select>()) {
-            parts.add("--${if (r.row.multi) "check" else "select"} ${shellQuote(r.row.label)}")
-            for (o in r.row.options) parts.add("--option ${shellQuote(o)}")
-        }
-        for (r in request.ui.rows.filterIsInstance<ScriptDialogSpec.Row.Toggle>()) {
-            parts.add("--toggle ${shellQuote(r.row.label)}")
-        }
-        for (b in request.ui.rows.filterIsInstance<ScriptDialogSpec.Row.Buttons>().firstOrNull()?.row?.buttons.orEmpty()) {
-            parts.add("--button ${shellQuote("${b.text}=${b.id}=${b.kind}")}")
-        }
-        for (r in request.ui.rows.filterIsInstance<ScriptDialogSpec.Row.Canvas>()) {
-            parts.add("--canvas ${shellQuote(CanvasSceneCodec.sceneToJsonString(r.row.scene))}")
-            parts.add("--canvas-height ${r.row.heightDp}")
-            if (r.row.key.isNotEmpty()) parts.add("--canvas-key ${shellQuote(r.row.key)}")
-        }
+        parts.add("--anim ${request.style.anim}")
+        parts.add("--canvas ${shellQuote(CanvasSceneCodec.sceneToJsonString(canvas.row.scene))}")
+        parts.add("--canvas-height ${canvas.row.heightDp}")
+        if (canvas.row.key.isNotEmpty()) parts.add("--canvas-key ${shellQuote(canvas.row.key)}")
         val sb = StringBuilder("termlou-ui")
         for (p in parts) sb.append(" \\\n  ").append(p)
         val clip = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clip.setPrimaryClip(ClipData.newPlainText("termlou-ui", sb.toString()))
         Snackbar.make(root, getString(R.string.dm_copied), Snackbar.LENGTH_SHORT).show()
     }
+
+    private fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
+
+    private fun colorHex(c: Int): String = "#%06X".format(c and 0x00FFFFFF)
 }

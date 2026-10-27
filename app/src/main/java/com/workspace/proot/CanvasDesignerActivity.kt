@@ -49,8 +49,11 @@ class CanvasDesignerActivity : Activity() {
         const val EXTRA_SCENE = "canvas_scene"
         const val EXTRA_HEIGHT = "canvas_height"
         const val EXTRA_KEY = "canvas_key"
+        const val EXTRA_DIALOG_MODE = "dialog_mode"
+        const val EXTRA_DIALOG_WIDTH = "dialog_width"
         private const val REQ_IMAGE = 4301
         private const val MAX_UNDO = 80
+        private const val BUTTON_BAR_TYPE = "__button_bar__"
     }
 
     /** 撤销栈要连同行高和更新标识一起恢复，否则「即时生效」的设置无法撤销。 */
@@ -93,6 +96,8 @@ class CanvasDesignerActivity : Activity() {
     private var loopPreview = true
     private var rowHeightDp = 220
     private var canvasKey = ""
+    private var dialogMode = false
+    private var dialogWidthDp = 0f
     private var initialSnapshot = ""
     private var resumePlaybackOnResume = false
 
@@ -140,6 +145,11 @@ class CanvasDesignerActivity : Activity() {
             ?: intent.getIntExtra(EXTRA_HEIGHT, 220)).coerceIn(64, 1600)
         canvasKey = savedInstanceState?.getString(EXTRA_KEY)
             ?: intent.getStringExtra(EXTRA_KEY).orEmpty()
+        dialogMode = savedInstanceState?.getBoolean(EXTRA_DIALOG_MODE, false)
+            ?: intent.getBooleanExtra(EXTRA_DIALOG_MODE, false)
+        dialogWidthDp = savedInstanceState?.getFloat(EXTRA_DIALOG_WIDTH, 0f)
+            ?.takeIf { it > 0f }
+            ?: intent.getFloatExtra(EXTRA_DIALOG_WIDTH, 0f)
 
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -188,6 +198,8 @@ class CanvasDesignerActivity : Activity() {
             outState.putString(EXTRA_SCENE, host.snapshotJson())
             outState.putInt(EXTRA_HEIGHT, rowHeightDp)
             outState.putString(EXTRA_KEY, canvasKey)
+            outState.putBoolean(EXTRA_DIALOG_MODE, dialogMode)
+            outState.putFloat(EXTRA_DIALOG_WIDTH, dialogWidthDp)
         }
     }
 
@@ -595,6 +607,7 @@ class CanvasDesignerActivity : Activity() {
             CanvasSpec.TYPE_SELECT to R.string.canvas_tool_select,
             CanvasSpec.TYPE_TOGGLE to R.string.canvas_tool_toggle,
             CanvasSpec.TYPE_BUTTON to R.string.canvas_tool_button,
+            "__button_bar__" to R.string.canvas_tool_button_bar,
             CanvasSpec.TYPE_RECT to R.string.canvas_tool_rect,
             CanvasSpec.TYPE_ROUND_RECT to R.string.canvas_tool_round,
             CanvasSpec.TYPE_CIRCLE to R.string.canvas_tool_circle,
@@ -607,9 +620,98 @@ class CanvasDesignerActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.canvas_add_node_title))
             .setItems(types.map { getString(it.second) }.toTypedArray()) { _, which ->
-                addNode(types[which].first)
+                val type = types[which].first
+                if (type == BUTTON_BAR_TYPE) showButtonBarDialog() else addNode(type)
             }
             .showStyled(theme)
+    }
+
+    private fun showButtonBarDialog() {
+        val edit = EditText(this).apply {
+            setText(getString(R.string.dm_btns_default))
+            setTextColor(theme.onSurface)
+            FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_COMPACT)
+            setPaddingMd(10, 6, 10, 6)
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPaddingMd(20, 4, 20, 4)
+            addView(TextView(this@CanvasDesignerActivity).apply {
+                text = getString(R.string.dm_f_btns)
+                setTextColor(theme.onSurfaceVariant)
+                textMeta()
+                setPaddingMd(0, 0, 0, 4)
+            })
+            addView(edit)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.canvas_tool_button_bar))
+            .setView(box)
+            .setPositiveButton(getString(R.string.sc_confirm)) { _, _ ->
+                val buttons = edit.text.toString().split(",").mapNotNull { raw ->
+                    val parts = raw.trim().split("=")
+                    if (parts.isEmpty() || parts[0].isBlank()) null
+                    else ScriptDialogSpec.Button(
+                        parts[0].trim(),
+                        parts.getOrNull(1)?.trim()?.ifEmpty { parts[0].trim() } ?: parts[0].trim(),
+                        parts.getOrNull(2)?.trim()?.ifEmpty { ScriptDialogSpec.BTN_NORMAL } ?: ScriptDialogSpec.BTN_NORMAL
+                    )
+                }
+                addButtonBar(buttons)
+            }
+            .setNegativeButton(getString(R.string.cancel), null)
+            .showStyled(theme)
+    }
+
+    private fun addButtonBar(buttons: List<ScriptDialogSpec.Button>) {
+        if (buttons.isEmpty()) return
+        val s = scene()
+        if (s.flatten().size + buttons.size > CanvasSpec.MAX_NODES) {
+            toast(getString(R.string.canvas_node_limit, CanvasSpec.MAX_NODES))
+            return
+        }
+        val rects = CanvasWidgetPlacement.buttonBar(s, buttons.size)
+        val used = s.flatten().map { it.id }.toHashSet()
+        fun nextId(): String {
+            var i = 1
+            while (used.contains("n$i")) i++
+            return "n$i".also { used.add(it) }
+        }
+        val nodes = buttons.mapIndexed { index, button ->
+            val rect = rects[index]
+            val fill = when (button.kind) {
+                ScriptDialogSpec.BTN_PRIMARY -> theme.primary
+                ScriptDialogSpec.BTN_DANGER -> theme.error
+                else -> theme.primaryContainer
+            }
+            val textColor = if (button.kind == ScriptDialogSpec.BTN_NORMAL) theme.onSurface else Color.WHITE
+            CanvasNode(
+                id = nextId(),
+                type = CanvasSpec.TYPE_BUTTON,
+                x = rect.x,
+                y = rect.y,
+                w = rect.w,
+                h = rect.h,
+                text = button.text,
+                textColor = colorHex(textColor),
+                fill = colorHex(fill),
+                radius = CanvasWidgetLayout.FIELD_RADIUS,
+                textSize = 13f,
+                bold = true,
+                action = "submit:${button.id}" + if (button.close) "" else ":keep",
+                buttonKind = button.kind,
+                name = "button ${button.id}"
+            )
+        }
+        pushUndo(s)
+        var next = s
+        for (node in nodes) next = next.addNode(node)
+        val bottom = nodes.maxOf { it.y + it.h } + 24f
+        if (bottom > next.height) next = next.copy(height = bottom)
+        currentTab = PanelTab.PROPS
+        host.setScene(next)
+        host.select(nodes.last().id)
+        refreshPanels()
     }
 
     private fun showMoreMenu() {
@@ -980,11 +1082,14 @@ class CanvasDesignerActivity : Activity() {
         val offset = (seq % 6) * 8f
         val typeName = typeLabel(type)
         val id = nextNodeId("n")
-        val recommendedY = (s.flatten().maxOfOrNull { it.y + it.h } ?: 24f) + 8f
-        val widgetW = min(280f, s.width - 64f).coerceAtLeast(120f)
+        val inputRect = CanvasWidgetPlacement.input(s)
+        val selectRect = CanvasWidgetPlacement.select(s, getString(R.string.canvas_sample_label), 3)
+        val toggleRect = CanvasWidgetPlacement.toggle(s)
+        val textRect = CanvasWidgetPlacement.text(s)
+        val buttonRect = CanvasWidgetPlacement.button(s)
         val node = when (type) {
             CanvasSpec.TYPE_INPUT -> CanvasNode(
-                id, type, x = 32f, y = recommendedY, w = widgetW, h = CanvasWidgetLayout.inputHeight(),
+                id, type, x = inputRect.x, y = inputRect.y, w = inputRect.w, h = inputRect.h,
                 key = nextWidgetKey("input"), label = getString(R.string.canvas_sample_label),
                 text = "", textSize = CanvasWidgetLayout.FIELD_TEXT_SIZE,
                 labelSize = CanvasWidgetLayout.LABEL_SIZE, labelColor = "#9A9A9A",
@@ -992,8 +1097,7 @@ class CanvasDesignerActivity : Activity() {
                 name = "$typeName ${seq + 1}"
             )
             CanvasSpec.TYPE_SELECT -> CanvasNode(
-                id, type, x = 32f, y = recommendedY, w = widgetW,
-                h = CanvasWidgetLayout.recommendedSelectHeight(getString(R.string.canvas_sample_label), 3),
+                id, type, x = selectRect.x, y = selectRect.y, w = selectRect.w, h = selectRect.h,
                 key = nextWidgetKey("select"), label = getString(R.string.canvas_sample_label),
                 options = listOf("A", "B", "C"),
                 textSize = CanvasWidgetLayout.OPTION_SIZE, labelSize = CanvasWidgetLayout.LABEL_SIZE,
@@ -1002,7 +1106,7 @@ class CanvasDesignerActivity : Activity() {
                 name = "$typeName ${seq + 1}"
             )
             CanvasSpec.TYPE_TOGGLE -> CanvasNode(
-                id, type, x = 32f, y = recommendedY, w = widgetW, h = CanvasWidgetLayout.TOGGLE_H,
+                id, type, x = toggleRect.x, y = toggleRect.y, w = toggleRect.w, h = toggleRect.h,
                 key = nextWidgetKey("toggle"), label = getString(R.string.canvas_sample_label),
                 textSize = CanvasWidgetLayout.LABEL_SIZE, labelSize = CanvasWidgetLayout.LABEL_SIZE,
                 labelColor = "#9A9A9A", textColor = "#9A9A9A", barColor = "#2D7D46",
@@ -1010,7 +1114,7 @@ class CanvasDesignerActivity : Activity() {
                 name = "$typeName ${seq + 1}"
             )
             CanvasSpec.TYPE_BUTTON -> CanvasNode(
-                id, type, x = 32f, y = recommendedY, w = 120f, h = CanvasWidgetLayout.BUTTON_H,
+                id, type, x = buttonRect.x, y = buttonRect.y, w = buttonRect.w, h = buttonRect.h,
                 text = getString(R.string.canvas_sample_button), action = "submit:ok",
                 buttonKind = ScriptDialogSpec.BTN_PRIMARY, textSize = 13f, textColor = "#FFFFFF",
                 fill = "#2D7D46", radius = CanvasWidgetLayout.FIELD_RADIUS, bold = true,
@@ -1029,9 +1133,9 @@ class CanvasDesignerActivity : Activity() {
                 fill = "#0E639C", name = "$typeName ${seq + 1}"
             )
             CanvasSpec.TYPE_TEXT -> CanvasNode(
-                id, type, x = 32f + offset, y = 32f + offset, w = 240f, h = 48f,
-                text = getString(R.string.canvas_sample_text), textSize = UiTokens.TEXT_BODY,
-                textColor = "#E6E6E6", name = "$typeName ${seq + 1}"
+                id, type, x = textRect.x, y = textRect.y, w = textRect.w, h = textRect.h,
+                text = getString(R.string.canvas_sample_text), textSize = UiTokens.TEXT_META,
+                textColor = "#E6E6E6", wrap = true, name = "$typeName ${seq + 1}"
             )
             CanvasSpec.TYPE_LINE -> CanvasNode(
                 id, type, x = 40f + offset, y = 96f + offset, w = 240f, h = 0f,
@@ -1393,38 +1497,54 @@ class CanvasDesignerActivity : Activity() {
     }
 
     private fun addCanvasGeometryProps(s: CanvasScene) {
-        propFieldPair(
-            getString(R.string.canvas_settings_width), formatNumber(s.width),
-            { raw ->
-                val w = parseNumber(raw) ?: return@propFieldPair
-                if (w !in 32f..4000f) {
-                    toast(getString(R.string.canvas_settings_invalid))
-                } else {
-                    updateCanvas { it.copy(width = w) }
-                }
-            },
-            getString(R.string.canvas_settings_height), formatNumber(s.height),
-            { raw ->
-                val h = parseNumber(raw) ?: return@propFieldPair
+        if (dialogMode) {
+            propsBox.addView(
+                hintView(getString(R.string.canvas_settings_width_fixed, formatNumber(dialogWidthDp.takeIf { it > 0f } ?: s.width)))
+            )
+            propField(
+                getString(R.string.canvas_settings_height), formatNumber(s.height), false, true
+            ) { raw ->
+                val h = parseNumber(raw) ?: return@propField
                 if (h !in 32f..4000f) {
                     toast(getString(R.string.canvas_settings_invalid))
                 } else {
                     updateCanvas { it.copy(height = h) }
                 }
             }
-        )
+        } else {
+            propFieldPair(
+                getString(R.string.canvas_settings_width), formatNumber(s.width),
+                { raw ->
+                    val w = parseNumber(raw) ?: return@propFieldPair
+                    if (w !in 32f..4000f) {
+                        toast(getString(R.string.canvas_settings_invalid))
+                    } else {
+                        updateCanvas { it.copy(width = w) }
+                    }
+                },
+                getString(R.string.canvas_settings_height), formatNumber(s.height),
+                { raw ->
+                    val h = parseNumber(raw) ?: return@propFieldPair
+                    if (h !in 32f..4000f) {
+                        toast(getString(R.string.canvas_settings_invalid))
+                    } else {
+                        updateCanvas { it.copy(height = h) }
+                    }
+                }
+            )
+            propField(
+                getString(R.string.canvas_settings_row_height), rowHeightDp.toString(), false, true
+            ) { raw ->
+                val rh = parseNumber(raw)?.toInt()
+                if (rh == null || rh !in 64..1600) {
+                    toast(getString(R.string.canvas_settings_invalid))
+                } else {
+                    setRowHeight(rh)
+                }
+            }
+        }
         colorField(getString(R.string.canvas_settings_background), s.background) { v ->
             updateCanvas { it.copy(background = v) }
-        }
-        propField(
-            getString(R.string.canvas_settings_row_height), rowHeightDp.toString(), false, true
-        ) { raw ->
-            val rh = parseNumber(raw)?.toInt()
-            if (rh == null || rh !in 64..1600) {
-                toast(getString(R.string.canvas_settings_invalid))
-            } else {
-                setRowHeight(rh)
-            }
         }
     }
 
@@ -2773,6 +2893,8 @@ class CanvasDesignerActivity : Activity() {
     }
 
     private fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
+
+    private fun colorHex(c: Int): String = "#%08X".format(c)
 
     private fun copyText(text: String) {
         val clip = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
