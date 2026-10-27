@@ -35,18 +35,18 @@ class TerminalManager(
         wsTmp.mkdirs()
         wsTmp.listFiles()?.forEach { it.deleteRecursively() }
         wsFiles.mkdirs()
+        // 日志不再写进 rootfs：/var/log 改 bind 到 filesDir/logs/linux。
+        clearRootfsLogs()
+        LogBudget.prepareLinuxLogs(context.filesDir, reset = true)
+        LogBudget.trim(context)
 
         val bashrc = File(lxRoot, "root/.bashrc")
-        val bashrcState = File(lxRoot, "root/.term_lou_state")
-        val savedCmd = if (bashrcState.exists()) bashrcState.readText().trim() else ""
         val existing = if (bashrc.exists()) bashrc.readText() else ""
-        val needWrite = !bashrc.exists() ||
-            !existing.contains(BashrcManager.START_MARK) ||
-            !existing.contains(BashrcManager.END_MARK) ||
-            savedCmd != shellCmd
-        if (needWrite) {
-            bashrc.writeText(BashrcManager.merge(existing, shellCmd))
-            bashrcState.writeText(shellCmd)
+        // 比较完整目标内容，而不是只比较 shellCmd：升级后受管段新增的
+        // 日志/历史策略也会写进老用户的 .bashrc。
+        val desired = BashrcManager.merge(existing, shellCmd)
+        if (!bashrc.exists() || desired != existing) {
+            bashrc.writeText(desired)
         }
 
         File(lxRoot, "tmp").let {
@@ -128,12 +128,15 @@ class TerminalManager(
 
     internal fun buildProotArgs(shellPath: String): List<String> {
         TermlouDirs.base(context).mkdirs()
+        File(lxRoot, "var/log").mkdirs()
+        val linuxLogs = LogBudget.prepareLinuxLogs(context.filesDir)
         val args = mutableListOf(
             "--root-id", "--link2symlink", "--kill-on-exit",
             "-r", lxRoot.absolutePath,
             "-w", "/workspace",
             "-b", "${wsFiles.absolutePath}:/workspace",
             "-b", "${wsTmp.absolutePath}:/tmp",
+            "-b", "${linuxLogs.absolutePath}:/var/log",
             "-b", "${TermlouDirs.base(context).absolutePath}:/termlou",
         )
         for (p in listOf("/dev", "/proc", "/sys", "/etc/hosts")) {
@@ -141,6 +144,17 @@ class TerminalManager(
         }
         args += shellPath
         return args
+    }
+
+    /** rootfs 里旧 /var/log 文件只删一次；目录保留，随后被外部日志目录 bind 覆盖。 */
+    private fun clearRootfsLogs() {
+        val dir = File(lxRoot, "var/log")
+        if (!dir.isDirectory) return
+        dir.walkTopDown()
+            .onEnter { it == dir || !java.nio.file.Files.isSymbolicLink(it.toPath()) }
+            .onFail { _, _ -> true }
+            .filter { it.isFile }
+            .forEach { runCatching { it.delete() } }
     }
 
     internal fun buildProotEnv(loader: File): Array<String> {

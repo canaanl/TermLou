@@ -19,6 +19,9 @@ class BashrcManagerTest {
         assertTrue(block.contains(".opencode/bin"))
         assertTrue(block.contains(BashrcManager.ENV_OVERLAY))
         assertTrue(block.contains("\nnode\n"))
+        assertTrue(block.contains("HISTFILE=/dev/null"))
+        assertTrue(block.contains("HISTSIZE=100"))
+        assertTrue(block.contains(".bash_history"))
     }
 
     @Test

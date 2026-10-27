@@ -222,6 +222,7 @@ class NetVpnService : VpnService() {
 
         val logFile = File(filesDir, "net/tun2socks.log")
         logFile.parentFile?.mkdirs()
+        LogBudget.capFile(logFile, LogBudget.VPN_LOG_CAP_BYTES)
 
         try {
             File(filesDir, "net/start.log").writeText(

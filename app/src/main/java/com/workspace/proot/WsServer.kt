@@ -407,7 +407,7 @@ class WsServer(
                 dir.mkdirs()
                 val stamp = java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
                 val trace = e.stackTrace.take(8).joinToString("\n")
-                File(dir, "error.log").appendText("$stamp $msg\n$trace\n")
+                LogBudget.appendCapped(File(dir, "error.log"), "$stamp $msg\n$trace\n")
             }
             runCatching {
                 val os = socket.getOutputStream()

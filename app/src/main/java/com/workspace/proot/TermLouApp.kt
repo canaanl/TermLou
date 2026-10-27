@@ -41,6 +41,7 @@ class TermLouApp : Application() {
         super.onCreate()
         appColdStartAt = SystemClock.elapsedRealtime()
         AppLang.apply(this)
+        LogBudget.trim(this)
         createCrashChannel()
         // 浏览器无痕保证之一：进程一启动就清 cookie/缓存/localStorage
         // （app 里没有第二个 WebView，故"清全部 WebView 数据"只影响浏览器）

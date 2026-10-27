@@ -128,6 +128,10 @@ MainActivity.onCreate
 
 The file manager goes **around proot**, browsing `filesDir/workspace` directly — the very directory bind-mounted to `/workspace`. So import/export/delete on the device side is instantly visible in Linux; the rootfs (`linux/`) and `tmp/` are hidden from the list. For the same reason, browsing and reading/writing ordinary files does not require a running Linux session.
 
+### Logs & footprint
+
+Linux `/var/log` is not written into the rootfs: it is bind-mounted to `filesDir/logs/linux`, and known unbounded apt/dpkg logs point to `/dev/null`. Linux logs plus app logs (`crash.log`, `net/*.log`, `lan/error.log`, etc.) share a **1MB** budget, trimmed once at process start with no periodic polling. Bash history goes to `/dev/null` and only lives in session memory; the release build strips TermLou's Android Logcat calls via R8. The terminal transcript is memory-only.
+
 ### Notes are Linux-independent
 
 Note bodies live in `filesDir/workspace/Notes/*.txt`, with the index (tags, todos, timestamps) in a hidden JSON in the same directory. All I/O is plain host-side file I/O (atomic tmp+rename writes), **completely decoupled from proot / the terminal session**. The main-UI notes tab, the standalone notes page and the notes tile share the same data, but only the main UI path brings up Linux.

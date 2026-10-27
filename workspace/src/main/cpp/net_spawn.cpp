@@ -1,5 +1,4 @@
 #include <jni.h>
-#include <android/log.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -9,8 +8,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
-
-#define LOG_TAG "TunSpawner"
 
 static char *copy_java_string(JNIEnv *env, jstring value) {
     if (value == nullptr) return nullptr;
@@ -78,7 +75,6 @@ Java_com_workspace_proot_TunSpawner_spawnTun2Socks(
 
     const pid_t pid = fork();
     if (pid < 0) {
-        __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "fork failed: %s", strerror(errno));
         for (char *a : argv) free(a);
         free(log);
         return -1;

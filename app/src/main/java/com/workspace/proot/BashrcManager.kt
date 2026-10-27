@@ -29,8 +29,11 @@ object BashrcManager {
             append("done\n")
             append("apt-get clean -qq 2>/dev/null\n")
             append("rm -rf /data/* /data/.* 2>/dev/null\n")
-            append("export HISTFILESIZE=100\n")
+            // 历史只在当前会话内存里；不写 /root/.bash_history。
+            append("export HISTFILE=/dev/null\n")
+            append("export HISTFILESIZE=0\n")
             append("export HISTSIZE=100\n")
+            append("rm -f \"\$HOME/.bash_history\" 2>/dev/null\n")
             append("export PS1='\\[\\e[32m\\]\\u@\\h\\[\\e[0m\\]:\\[\\e[34m\\]\\w\\[\\e[0m\\]\\$ '\n")
             append("export LANG=C.UTF-8\n")
             append("alias ls='ls --color=auto'\n")

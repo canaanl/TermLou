@@ -128,6 +128,10 @@ MainActivity.onCreate
 
 文件管理器**不经过 proot**，直接浏览 `filesDir/workspace` —— 这正是 proot bind mount 到 `/workspace` 的同一目录。所以手机侧导入/导出/删除，Linux 侧即时可见；rootfs 本体（`linux/`）与 `tmp/` 在列表中隐藏。也正因如此，浏览/读写普通文件并不需要启动 Linux 会话。
 
+### 日志与体积 Logs & footprint
+
+Linux 的 `/var/log` 不写进 rootfs：通过 proot bind 到 `filesDir/logs/linux`，apt/dpkg 的已知无界日志指向 `/dev/null`。Linux 日志与应用日志（`crash.log`、`net/*.log`、`lan/error.log` 等）合计预算 **1MB**，只在进程启动时裁剪一次，不做定时轮询。Bash 历史写 `/dev/null`，只在当前会话内存里保留；release 包通过 R8 移除 TermLou 的 Android Logcat 调用。终端 transcript 只在内存，不落盘。
+
 ### 笔记与 Linux 解耦 Notes are Linux-independent
 
 笔记正文保存在 `filesDir/workspace/Notes/*.txt`，索引（标签、待办、时间戳）保存在同目录下的隐藏 JSON。读写全部是主机侧普通文件 IO（落盘用 tmp + 改名原子写），**与 proot / 终端会话零耦合**。因此：主界面笔记 Tab、独立笔记页、笔记磁贴三条入口共用同一份数据，但只有主界面那一条会随 App 启动 Linux。

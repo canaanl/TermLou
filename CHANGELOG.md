@@ -7,6 +7,7 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.78** | 5978 | **日志总预算 1MB：Linux `/var/log` 移出 rootfs 并 bind 到应用日志目录，apt/dpkg 已知无界日志指向 `/dev/null`；应用日志写时封顶；Bash 历史不落盘；release 移除 TermLou 的 Android Logcat。只在启动时裁剪一次，不做定时轮询** |
 | **5.9.77** | 5977 | **RootFS 安装可靠性：确认 AAPT 会把 `assets/rootfs.tar.gz` 解压成 APK 内的 `assets/rootfs.tar`（运行时仍打开 `rootfs.tar`，并加 `.gz` 兼容回退）；解包改为 staging + 完成标记 + 原子切换，老安装自动补标记、覆盖升级不重装现有 rootfs** |
 | **5.9.76** | 5976 | **启动画布改为按工坊实际可用高度决定行数：显示多少行就保存多少行，不再固定 160、不再二次缩放；开屏读取保存行数按同尺寸渲染。手指手写改为速度+接触面积控制笔宽，拉开粗细微差，起笔渐细** |
 | **5.9.75** | 5975 | **启动动画画布纵向扩为 96×160：默认 LOGO 仍 18 行、大小不变，只在更高的画布里居中；工坊可绘制区域上下各多 40 行。手写改为连续点阵笔迹：补齐触摸采样点之间的格子，按压感/速度覆盖多格模拟粗细，一笔一撤销** |
@@ -35,6 +36,26 @@
 | **5.9.52** | 5952 | **修：状态栏特征字的立方体转向与页面滑动方向相反** |
 | **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
+
+## 5.9.78
+
+### 日志：总预算 1MB，启动裁剪
+
+- `/var/log` 不再写入 rootfs：通过 proot bind 到
+  `filesDir/logs/linux`；rootfs 里旧日志启动时清一次
+- apt/dpkg 的已知无界日志指向 `/dev/null`：
+  `apt/term.log`、`apt/history.log`、`dpkg.log`、`alternatives.log`
+  以及 `wtmp`/`btmp`/`lastlog`
+- Linux 日志 + `crash.log` + `net/*.log` + `lan/error.log`
+  合计预算 **1MB**；只在进程启动时从最旧文件开始裁剪，不做定时轮询
+- 应用侧写入上限：`lan/error.log` 单次追加封顶，
+  `tun2socks.log` 启动 VPN 前截断到 256KB，
+  `minisocks.log` 保持行数上限
+- Bash history 不再落盘：`HISTFILE=/dev/null`，仅保留当前会话内存历史；
+  启动时删除旧 `.bash_history`
+- release 构建通过 R8 移除 TermLou 的 `android.util.Log` 输出；
+  debug 包仍保留 Logcat（不 shrink）
+- 终端 transcript 仍只在内存，不写文件，也不计入 1MB 磁盘预算
 
 ## 5.9.77
 

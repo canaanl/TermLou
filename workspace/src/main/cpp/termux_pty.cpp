@@ -1,5 +1,4 @@
 #include <jni.h>
-#include <android/log.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdlib.h>
@@ -10,8 +9,6 @@
 #include <termios.h>
 #include <unistd.h>
 #include <vector>
-
-#define LOG_TAG "RikkaTermuxJni"
 
 static char *copy_java_string(JNIEnv *env, jstring value) {
     if (value == nullptr) return nullptr;
@@ -75,7 +72,6 @@ Java_com_termux_terminal_JNI_createSubprocess(
     char slave_name[128] = {};
     const int master = open_pty_master(slave_name, sizeof(slave_name));
     if (master < 0) {
-        __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "open pty failed: %s", strerror(errno));
         return -1;
     }
 
@@ -96,7 +92,6 @@ Java_com_termux_terminal_JNI_createSubprocess(
 
     const pid_t pid = fork();
     if (pid < 0) {
-        __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, "fork failed: %s", strerror(errno));
         close(master);
         free(command);
         free(working_dir);
