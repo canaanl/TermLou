@@ -90,6 +90,70 @@ class CanvasDialogLayoutTest {
         assertTrue("canvas button missing", buttonSeen)
     }
 
+    @Test
+    fun `legacy form with every control type keeps real content height`() {
+        val ctx = RuntimeEnvironment.getApplication()
+        val request = fullLegacyRequest()
+        val root = ScriptDialogRenderer(ctx).buildRoot(request) {}
+        root.measure(
+            View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(2400, View.MeasureSpec.EXACTLY)
+        )
+        root.layout(0, 0, 1080, 2400)
+        val dialog = findDialog(root)
+        assertTrue("CanvasDialogView missing", dialog != null)
+        val view = dialog!!
+        assertTrue("content collapsed: ${view.measuredHeight}", view.measuredHeight > 400)
+        assertEquals(
+            CanvasDialogSizing.contentHeightPx(view.host.scene, view.measuredWidth).toFloat(),
+            view.measuredHeight.toFloat(),
+            2f
+        )
+        val types = view.host.scene.flatten().map { it.type }.toSet()
+        assertTrue(
+            "missing widget types: $types",
+            types.containsAll(
+                listOf(
+                    CanvasSpec.TYPE_TEXT,
+                    CanvasSpec.TYPE_INPUT,
+                    CanvasSpec.TYPE_SELECT,
+                    CanvasSpec.TYPE_TOGGLE,
+                    CanvasSpec.TYPE_BUTTON
+                )
+            )
+        )
+        val buttons = view.host.scene.flatten().filter { it.type == CanvasSpec.TYPE_BUTTON }
+        assertEquals(2, buttons.size)
+        assertTrue("button outside scene: ${buttons.map { it.y + it.h }}", buttons.all { it.y + it.h <= view.host.scene.height + 1f })
+    }
+
+    private fun fullLegacyRequest(): ScriptDialogSpec.Request = ScriptDialogSpec.Request(
+        id = "full",
+        ui = ScriptDialogSpec.Ui(
+            title = "Full",
+            message = "hello",
+            rows = listOf(
+                ScriptDialogSpec.Row.Text(ScriptDialogSpec.TextRow("out\u001b[32m green\u001b[0m")),
+                ScriptDialogSpec.Row.Input(ScriptDialogSpec.InputRow("name", "Name", "Ada")),
+                ScriptDialogSpec.Row.Select(
+                    ScriptDialogSpec.SelectRow("host", "Host", (1..12).map { "host $it" })
+                ),
+                ScriptDialogSpec.Row.Select(
+                    ScriptDialogSpec.SelectRow("tags", "Tags", listOf("a", "b", "c"), multi = true)
+                ),
+                ScriptDialogSpec.Row.Toggle(ScriptDialogSpec.ToggleRow("only", "Only")),
+                ScriptDialogSpec.Row.Buttons(
+                    ScriptDialogSpec.ButtonsRow(
+                        listOf(
+                            ScriptDialogSpec.Button("OK", "ok", ScriptDialogSpec.BTN_PRIMARY),
+                            ScriptDialogSpec.Button("Cancel", "cancel")
+                        )
+                    )
+                )
+            )
+        )
+    )
+
     @Suppress("ReturnCount")
     private fun findDialog(view: View): CanvasDialogView? {
         if (view is CanvasDialogView) return view

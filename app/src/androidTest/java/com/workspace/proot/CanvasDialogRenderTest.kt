@@ -176,6 +176,10 @@ class CanvasDialogRenderTest {
                 View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
             )
             view.layout(0, 0, width, height)
+            val dialog = findDialog(view)
+            assertTrue("CanvasDialogView missing", dialog != null)
+            assertTrue("content collapsed: ${dialog!!.measuredHeight}", dialog.measuredHeight > 100)
+            assertTrue("canvas has no button", dialog.host.scene.flatten().any { it.type == CanvasSpec.TYPE_BUTTON })
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             view.draw(Canvas(bitmap))
             var painted = false
@@ -193,5 +197,16 @@ class CanvasDialogRenderTest {
             }
             assertTrue("dialog draw produced a blank bitmap", painted)
         }
+    }
+
+    @Suppress("ReturnCount")
+    private fun findDialog(view: View): CanvasDialogView? {
+        if (view is CanvasDialogView) return view
+        if (view is android.view.ViewGroup) {
+            for (i in 0 until view.childCount) {
+                findDialog(view.getChildAt(i))?.let { return it }
+            }
+        }
+        return null
     }
 }
