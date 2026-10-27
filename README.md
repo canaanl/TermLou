@@ -192,9 +192,12 @@ Linux 的 `/var/log` 不写进 rootfs：通过 proot bind 到 `filesDir/logs/lin
 - Shell 一行命令弹出原生 Android 浮窗：`termlou-ui --title "确认" --message "继续？" --button "确定=ok=primary" --button "取消=cancel"`
 - 控件：`--input` 输入框、`--select` 单选、`--check` 多选、`--toggle` 开关、`--output FILE` 带 ANSI 彩色的文本输出
 - 主题 `dark/light/glass`、强调色、圆角、位置、动画、超时自动关闭
+- **整弹窗内容区 Canvas**：标题栏保持原生，标题栏以下由一个 `CanvasScene` 绘制。`input / select / toggle / button` 都是标准 Canvas 节点；输入聚焦时临时叠透明 EditText 代理，失焦后仍由 Canvas 画
+- **选项框内部滚动**：`select/check` 生成独立选项框，超过约 6 行在框内滚动；过滤开关只改变框内可见选项，不移动外层节点
+- **旧参数零改动**：`termlou-ui` 脚本不用改；旧 `--input/--select/--check/--toggle/--output/--button` 仍按原 `UiTokens` 生成规范竖排，结果 values、Canvas 快照和 `key.action` 格式不变
 - **原生 Canvas 场景**：`--canvas` / `--canvas-file` / `--canvas-height` / `--canvas-key` 传入场景 JSON，App 用原生 Android Canvas 渲染（不接 WebView）；支持矩形、圆/椭圆、直线、路径、文本、图片、线性进度条、分组、相机、粒子和动画
 - **原位 patch**：`--no-timeout` 保持浮窗，`--canvas-update` / `--canvas-progress` / `--canvas-scene` / `--canvas-play|pause|seek` 只改活动 Canvas，不新建 Entry、不写结果、不重建浮窗；交互动作也只改场景状态并 `invalidate()`
-- **Canvas 设计器**：单行顶栏（返回 / 撤销 / 重做 / 更多 / 完成）、画布操作带、未选中元素时的即时画布属性页；图层从上到下即上层到下层，行内只保留显隐眼睛，复制/删除在属性页；点按动作分「提交结果 / 只改画面 / 无动作 / 自定义」，动画面板内置播放控制，无限循环动画显示「循环播放」而不是无限增长的时间；仍支持拖拽/缩放/旋转、网格吸附、路径点编辑、SVG/JSON 路径导入、关键帧动画、撤销/重做、JSON 导入导出和命令导出
+- **Canvas 设计器**：单行顶栏（返回 / 撤销 / 重做 / 更多 / 完成）、画布操作带、未选中元素时的即时画布属性页；图层从上到下即上层到下层，行内只保留显隐眼睛，复制/删除在属性页；点按动作分「提交结果 / 只改画面 / 无动作 / 自定义」，动画面板内置播放控制，无限循环动画显示「循环播放」而不是无限增长的时间；新增输入框、选项框、开关、按钮控件工具，添加时自动放到现有内容下方；仍支持拖拽/缩放/旋转、网格吸附、路径点编辑、SVG/JSON 路径导入、关键帧动画、撤销/重做、JSON 导入导出和命令导出
 - **Canvas 点击提交**：节点动作 `submit:ID` 点按后写回 `{"id":"ID","values":{...}}` 并关窗；`submit:ID:keep` 写同样结果但保持浮窗，等待下一次请求。App 只写结果、不执行命令，由调用方 shell 读取 JSON 后自行执行
 - **弹窗工坊**（`DialogMakerActivity`）：图形化设计对话框，实时预览，一键导出 `termlou-ui` 命令；Canvas 设计器与运行时共用同一套渲染/编解码，设计态所见即运行态。工坊只有一个「运行」入口，直接打开真实悬浮窗；运行结果 JSON 显示在实时预览下方的「调试信息」区，不再维护第二套预览窗口，也不会挤动底部按钮
 - **剪贴板桥**：`termlou-clipboard "文本"` 或 `echo "文本" | termlou-clipboard` 直写系统剪贴板

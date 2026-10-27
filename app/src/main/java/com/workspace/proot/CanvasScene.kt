@@ -33,6 +33,10 @@ object CanvasSpec {
     const val TYPE_IMAGE = "image"
     const val TYPE_PROGRESS = "progress"
     const val TYPE_GROUP = "group"
+    const val TYPE_INPUT = "input"
+    const val TYPE_SELECT = "select"
+    const val TYPE_TOGGLE = "toggle"
+    const val TYPE_BUTTON = "button"
 
     const val ALIGN_LEFT = "left"
     const val ALIGN_CENTER = "center"
@@ -56,10 +60,12 @@ object CanvasSpec {
     const val MAX_TEXT = 4000
     const val MAX_ID = 128
     const val MAX_SRC = 2048
+    const val MAX_OPTIONS = 200
 
     val NODE_TYPES = setOf(
         TYPE_RECT, TYPE_ROUND_RECT, TYPE_CIRCLE, TYPE_ELLIPSE, TYPE_LINE,
-        TYPE_PATH, TYPE_TEXT, TYPE_IMAGE, TYPE_PROGRESS, TYPE_GROUP
+        TYPE_PATH, TYPE_TEXT, TYPE_IMAGE, TYPE_PROGRESS, TYPE_GROUP,
+        TYPE_INPUT, TYPE_SELECT, TYPE_TOGGLE, TYPE_BUTTON
     )
 
     val NUMERIC_PROPS = setOf(
@@ -74,10 +80,14 @@ object CanvasSpec {
     )
 
     val STRING_PROPS = setOf(
-        "text", "labelFormat", "src", "fit", "textAlign", "name", "action", "d", "path"
+        "text", "labelFormat", "src", "fit", "textAlign", "name", "action", "d", "path",
+        "key", "label", "filter", "buttonKind"
     )
 
-    val BOOL_PROPS = setOf("visible", "showLabel", "bold", "italic", "monospace", "closed", "hitTest", "locked", "shadow")
+    val BOOL_PROPS = setOf(
+        "visible", "showLabel", "bold", "italic", "monospace", "closed", "hitTest",
+        "locked", "shadow", "multi", "password", "multiline", "checked", "wrap", "ansi", "clip"
+    )
 
     fun clamp(v: Float, lo: Float, hi: Float): Float = if (v.isNaN()) lo else v.coerceIn(lo, hi)
 
@@ -213,9 +223,23 @@ data class CanvasNode(
     val locked: Boolean = false,
     val shadow: Boolean = false,
     val shadowRadius: Float = 8f,
-    val name: String = ""
+    val name: String = "",
+    val key: String = "",
+    val label: String = "",
+    val options: List<String> = emptyList(),
+    val multi: Boolean = false,
+    val password: Boolean = false,
+    val multiline: Boolean = false,
+    val checked: Boolean = false,
+    val filter: String = "",
+    val buttonKind: String = "normal",
+    val wrap: Boolean = false,
+    val ansi: Boolean = false,
+    val clip: Boolean = false
 ) {
     val isGroup: Boolean get() = type == CanvasSpec.TYPE_GROUP
+    val isWidget: Boolean get() = type == CanvasSpec.TYPE_INPUT ||
+        type == CanvasSpec.TYPE_SELECT || type == CanvasSpec.TYPE_TOGGLE || type == CanvasSpec.TYPE_BUTTON
     val hasFill: Boolean get() = fill.isNotEmpty() && CanvasSpec.color(fill, 0) != 0
     val hasStroke: Boolean get() = stroke.isNotEmpty() && strokeWidth > 0f
 
@@ -338,6 +362,10 @@ data class CanvasNode(
         "textAlign" -> copy(textAlign = value)
         "name" -> copy(name = value.take(128))
         "action" -> copy(action = value.take(256))
+        "key" -> copy(key = value.take(128))
+        "label" -> copy(label = CanvasSpec.safeText(value).take(512))
+        "filter" -> copy(filter = value.take(128))
+        "buttonKind" -> copy(buttonKind = value.take(32))
         "d" -> copy(d = value.take(20000))
         "path" -> copy(d = value.take(20000))
         "fill", "stroke", "textColor", "trackColor", "barColor", "labelColor", "gradientFrom", "gradientTo", "tint" ->
@@ -355,6 +383,7 @@ data class CanvasNode(
         else -> this
     }
 
+    @Suppress("CyclomaticComplexMethod")
     fun withBoolean(prop: String, value: Boolean): CanvasNode = when (prop) {
         "visible" -> copy(visible = value)
         "showLabel" -> copy(showLabel = value)
@@ -365,6 +394,13 @@ data class CanvasNode(
         "hitTest" -> copy(hitTest = value)
         "locked" -> copy(locked = value)
         "shadow" -> copy(shadow = value)
+        "multi" -> copy(multi = value)
+        "password" -> copy(password = value)
+        "multiline" -> copy(multiline = value)
+        "checked" -> copy(checked = value)
+        "wrap" -> copy(wrap = value)
+        "ansi" -> copy(ansi = value)
+        "clip" -> copy(clip = value)
         else -> this
     }
 
@@ -1239,8 +1275,31 @@ object CanvasSceneCodec {
             locked = o.optBoolean("locked", false),
             shadow = o.optBoolean("shadow", false),
             shadowRadius = CanvasSpec.clamp(o.optDouble("shadowRadius", 8.0).toFloat(), 0f, 10000f),
-            name = o.optString("name", "").take(128)
+            name = o.optString("name", "").take(128),
+            key = o.optString("key", "").take(128),
+            label = CanvasSpec.safeText(o.optString("label", "")).take(512),
+            options = parseOptions(o.optArr("options")),
+            multi = o.optBoolean("multi", false),
+            password = o.optBoolean("password", false),
+            multiline = o.optBoolean("multiline", false),
+            checked = o.optBoolean("checked", false),
+            filter = o.optString("filter", "").take(128),
+            buttonKind = o.optString("buttonKind", "normal").take(32),
+            wrap = o.optBoolean("wrap", false),
+            ansi = o.optBoolean("ansi", false),
+            clip = o.optBoolean("clip", false)
         )
+    }
+
+    private fun parseOptions(arr: MiniJson.Arr?): List<String> {
+        if (arr == null) return emptyList()
+        val out = mutableListOf<String>()
+        for (i in 0 until arr.length()) {
+            if (out.size >= CanvasSpec.MAX_OPTIONS) break
+            val value = arr.raw(i) as? String ?: continue
+            out.add(value.take(512))
+        }
+        return out
     }
 
     @Suppress("CyclomaticComplexMethod")
@@ -1363,6 +1422,7 @@ object CanvasSceneCodec {
 
     fun sceneToJsonString(scene: CanvasScene): String = sceneToJson(scene).toString()
 
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     fun nodeToJson(n: CanvasNode): MiniJson.Obj {
         val o = MiniJson.Obj()
             .put("id", n.id)
@@ -1411,6 +1471,23 @@ object CanvasSceneCodec {
             .put("shadow", n.shadow)
             .put("shadowRadius", n.shadowRadius.toDouble())
             .put("name", n.name)
+        // 新字段只在非默认值时写入：旧场景快照保持原样，不因升级多出空字段。
+        if (n.key.isNotEmpty()) o.put("key", n.key)
+        if (n.label.isNotEmpty()) o.put("label", n.label)
+        if (n.options.isNotEmpty()) {
+            val options = MiniJson.Arr()
+            for (option in n.options.take(CanvasSpec.MAX_OPTIONS)) options.put(option)
+            o.put("options", options)
+        }
+        if (n.multi) o.put("multi", true)
+        if (n.password) o.put("password", true)
+        if (n.multiline) o.put("multiline", true)
+        if (n.checked) o.put("checked", true)
+        if (n.filter.isNotEmpty()) o.put("filter", n.filter)
+        if (n.buttonKind.isNotEmpty() && n.buttonKind != "normal") o.put("buttonKind", n.buttonKind)
+        if (n.wrap) o.put("wrap", true)
+        if (n.ansi) o.put("ansi", true)
+        if (n.clip) o.put("clip", true)
         val pts = MiniJson.Arr()
         for (p in n.points) pts.put(MiniJson.Obj().put("x", p.x.toDouble()).put("y", p.y.toDouble()))
         o.put("points", pts)

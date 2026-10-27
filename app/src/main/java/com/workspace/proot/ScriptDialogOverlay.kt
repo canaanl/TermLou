@@ -187,6 +187,7 @@ class ScriptDialogOverlay(
     }
 
     private fun onOutsideTap(card: View) {
+        _renderer?.hideInput()
         if (outsideArmed) {
             if (!dismissed) {
                 dismissed = true

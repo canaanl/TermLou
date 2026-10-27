@@ -591,6 +591,10 @@ class CanvasDesignerActivity : Activity() {
         flushFocusedField()
         val types = listOf(
             CanvasSpec.TYPE_TEXT to R.string.canvas_tool_text,
+            CanvasSpec.TYPE_INPUT to R.string.canvas_tool_input,
+            CanvasSpec.TYPE_SELECT to R.string.canvas_tool_select,
+            CanvasSpec.TYPE_TOGGLE to R.string.canvas_tool_toggle,
+            CanvasSpec.TYPE_BUTTON to R.string.canvas_tool_button,
             CanvasSpec.TYPE_RECT to R.string.canvas_tool_rect,
             CanvasSpec.TYPE_ROUND_RECT to R.string.canvas_tool_round,
             CanvasSpec.TYPE_CIRCLE to R.string.canvas_tool_circle,
@@ -956,9 +960,16 @@ class CanvasDesignerActivity : Activity() {
         return "$prefix$i"
     }
 
+    private fun nextWidgetKey(prefix: String): String {
+        val keys = scene().flatten().map { it.key }.filter { it.isNotEmpty() }.toHashSet()
+        var i = 1
+        while (keys.contains("$prefix$i")) i++
+        return "$prefix$i"
+    }
+
     private fun scene(): CanvasScene = host.scene
 
-    @Suppress("LongMethod")
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun addNode(type: String) {
         val s = scene()
         if (s.flatten().size >= CanvasSpec.MAX_NODES) {
@@ -969,7 +980,42 @@ class CanvasDesignerActivity : Activity() {
         val offset = (seq % 6) * 8f
         val typeName = typeLabel(type)
         val id = nextNodeId("n")
+        val recommendedY = (s.flatten().maxOfOrNull { it.y + it.h } ?: 24f) + 8f
+        val widgetW = min(280f, s.width - 64f).coerceAtLeast(120f)
         val node = when (type) {
+            CanvasSpec.TYPE_INPUT -> CanvasNode(
+                id, type, x = 32f, y = recommendedY, w = widgetW, h = CanvasWidgetLayout.inputHeight(),
+                key = nextWidgetKey("input"), label = getString(R.string.canvas_sample_label),
+                text = "", textSize = CanvasWidgetLayout.FIELD_TEXT_SIZE,
+                labelSize = CanvasWidgetLayout.LABEL_SIZE, labelColor = "#9A9A9A",
+                textColor = "#E6E6E6", fill = "#2A2A2A", radius = CanvasWidgetLayout.FIELD_RADIUS,
+                name = "$typeName ${seq + 1}"
+            )
+            CanvasSpec.TYPE_SELECT -> CanvasNode(
+                id, type, x = 32f, y = recommendedY, w = widgetW,
+                h = CanvasWidgetLayout.recommendedSelectHeight(getString(R.string.canvas_sample_label), 3),
+                key = nextWidgetKey("select"), label = getString(R.string.canvas_sample_label),
+                options = listOf("A", "B", "C"),
+                textSize = CanvasWidgetLayout.OPTION_SIZE, labelSize = CanvasWidgetLayout.LABEL_SIZE,
+                labelColor = "#9A9A9A", textColor = "#E6E6E6", barColor = "#2D7D46",
+                fill = "#2A2A2A", radius = CanvasWidgetLayout.FIELD_RADIUS,
+                name = "$typeName ${seq + 1}"
+            )
+            CanvasSpec.TYPE_TOGGLE -> CanvasNode(
+                id, type, x = 32f, y = recommendedY, w = widgetW, h = CanvasWidgetLayout.TOGGLE_H,
+                key = nextWidgetKey("toggle"), label = getString(R.string.canvas_sample_label),
+                textSize = CanvasWidgetLayout.LABEL_SIZE, labelSize = CanvasWidgetLayout.LABEL_SIZE,
+                labelColor = "#9A9A9A", textColor = "#9A9A9A", barColor = "#2D7D46",
+                fill = "#2A2A2A", radius = CanvasWidgetLayout.FIELD_RADIUS,
+                name = "$typeName ${seq + 1}"
+            )
+            CanvasSpec.TYPE_BUTTON -> CanvasNode(
+                id, type, x = 32f, y = recommendedY, w = 120f, h = CanvasWidgetLayout.BUTTON_H,
+                text = getString(R.string.canvas_sample_button), action = "submit:ok",
+                buttonKind = ScriptDialogSpec.BTN_PRIMARY, textSize = 13f, textColor = "#FFFFFF",
+                fill = "#2D7D46", radius = CanvasWidgetLayout.FIELD_RADIUS, bold = true,
+                name = "$typeName ${seq + 1}"
+            )
             CanvasSpec.TYPE_ROUND_RECT -> CanvasNode(
                 id, type, x = 36f + offset, y = 36f + offset, w = 132f, h = 80f,
                 fill = "#2D7D46", radius = 12f, name = "$typeName ${seq + 1}"
@@ -1018,9 +1064,14 @@ class CanvasDesignerActivity : Activity() {
                 fill = "#2D7D46", radius = 0f, name = "$typeName ${seq + 1}"
             )
         }
+        val expanded = if (node.y + node.h + 16f > s.height) {
+            s.copy(height = node.y + node.h + 24f)
+        } else {
+            s
+        }
         pushUndo(s)
         currentTab = PanelTab.PROPS
-        host.setScene(s.addNode(node))
+        host.setScene(expanded.addNode(node))
         host.select(id)
         refreshPanels()
         if (type == CanvasSpec.TYPE_IMAGE) pickImage()
@@ -1052,13 +1103,29 @@ class CanvasDesignerActivity : Activity() {
             return
         }
         val used = s.flatten().map { it.id }.toHashSet()
+        val usedKeys = s.flatten().map { it.key }.filter { it.isNotEmpty() }.toHashSet()
         fun copyTree(src: CanvasNode): CanvasNode {
             var i = 1
             while (used.contains("n$i")) i++
             val newId = "n$i"
             used.add(newId)
+            val newKey = if (src.type == CanvasSpec.TYPE_INPUT ||
+                src.type == CanvasSpec.TYPE_SELECT || src.type == CanvasSpec.TYPE_TOGGLE
+            ) {
+                val prefix = when (src.type) {
+                    CanvasSpec.TYPE_INPUT -> "input"
+                    CanvasSpec.TYPE_SELECT -> "select"
+                    else -> "toggle"
+                }
+                var k = 1
+                while (usedKeys.contains("$prefix$k")) k++
+                "$prefix$k".also { usedKeys.add(it) }
+            } else {
+                src.key
+            }
             return src.copy(
                 id = newId,
+                key = newKey,
                 x = src.x + 8f,
                 y = src.y + 8f,
                 children = src.children.map { copyTree(it) }
@@ -1252,6 +1319,7 @@ class CanvasDesignerActivity : Activity() {
         return row
     }
 
+    @Suppress("CyclomaticComplexMethod")
     private fun typeLabel(type: String): String = getString(
         when (type) {
             CanvasSpec.TYPE_ROUND_RECT -> R.string.canvas_tool_round
@@ -1263,6 +1331,10 @@ class CanvasDesignerActivity : Activity() {
             CanvasSpec.TYPE_PROGRESS -> R.string.canvas_tool_progress
             CanvasSpec.TYPE_IMAGE -> R.string.canvas_tool_image
             CanvasSpec.TYPE_GROUP -> R.string.canvas_tool_group
+            CanvasSpec.TYPE_INPUT -> R.string.canvas_tool_input
+            CanvasSpec.TYPE_SELECT -> R.string.canvas_tool_select
+            CanvasSpec.TYPE_TOGGLE -> R.string.canvas_tool_toggle
+            CanvasSpec.TYPE_BUTTON -> R.string.canvas_tool_button
             else -> R.string.canvas_tool_rect
         }
     )
@@ -1377,7 +1449,7 @@ class CanvasDesignerActivity : Activity() {
         propsBox.addView(hintView(getString(R.string.canvas_settings_key_hint)))
     }
 
-    @Suppress("LongMethod")
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun buildNodeProps(n: CanvasNode) {
         propsBox.addView(sectionHeader(n.name.ifBlank { typeLabel(n.type) }))
         propsBox.addView(TextView(this).apply {
@@ -1406,6 +1478,10 @@ class CanvasDesignerActivity : Activity() {
             CanvasSpec.TYPE_IMAGE -> imageProps(n)
             CanvasSpec.TYPE_PROGRESS -> progressProps(n)
             CanvasSpec.TYPE_PATH, CanvasSpec.TYPE_LINE -> pathProps(n)
+            CanvasSpec.TYPE_INPUT -> inputProps(n)
+            CanvasSpec.TYPE_SELECT -> selectProps(n)
+            CanvasSpec.TYPE_TOGGLE -> toggleProps(n)
+            CanvasSpec.TYPE_BUTTON -> buttonProps(n)
         }
 
         propsBox.addView(miniButton(
@@ -1476,10 +1552,13 @@ class CanvasDesignerActivity : Activity() {
         }
     }
 
+    @Suppress("CyclomaticComplexMethod", "ComplexCondition")
     private fun paintProps(n: CanvasNode) {
         if (n.type == CanvasSpec.TYPE_RECT || n.type == CanvasSpec.TYPE_ROUND_RECT ||
             n.type == CanvasSpec.TYPE_CIRCLE || n.type == CanvasSpec.TYPE_ELLIPSE ||
-            n.type == CanvasSpec.TYPE_PATH
+            n.type == CanvasSpec.TYPE_PATH || n.type == CanvasSpec.TYPE_INPUT ||
+            n.type == CanvasSpec.TYPE_SELECT || n.type == CanvasSpec.TYPE_TOGGLE ||
+            n.type == CanvasSpec.TYPE_BUTTON
         ) {
             colorField(getString(R.string.canvas_prop_fill), n.fill) { v ->
                 commitSelected { it.withString("fill", v) }
@@ -1493,7 +1572,9 @@ class CanvasDesignerActivity : Activity() {
             parseNumber(v)?.let { w -> commitSelected { it.withNumber("strokeWidth", w) } }
         }
         if (n.type == CanvasSpec.TYPE_RECT || n.type == CanvasSpec.TYPE_ROUND_RECT ||
-            n.type == CanvasSpec.TYPE_PROGRESS
+            n.type == CanvasSpec.TYPE_PROGRESS || n.type == CanvasSpec.TYPE_INPUT ||
+            n.type == CanvasSpec.TYPE_SELECT || n.type == CanvasSpec.TYPE_TOGGLE ||
+            n.type == CanvasSpec.TYPE_BUTTON
         ) {
             propField(getString(R.string.canvas_prop_radius), formatNumber(n.radius), false, true) { v ->
                 parseNumber(v)?.let { r -> commitSelected { it.withNumber("radius", r) } }
@@ -1536,6 +1617,126 @@ class CanvasDesignerActivity : Activity() {
         boolField(getString(R.string.canvas_prop_bold), n.bold) { b -> commitSelected { it.copy(bold = b) } }
         boolField(getString(R.string.canvas_prop_italic), n.italic) { b -> commitSelected { it.copy(italic = b) } }
         boolField(getString(R.string.canvas_prop_mono), n.monospace) { b -> commitSelected { it.copy(monospace = b) } }
+        boolField(getString(R.string.canvas_prop_wrap), n.wrap) { b -> commitSelected { it.copy(wrap = b) } }
+        boolField(getString(R.string.canvas_prop_ansi), n.ansi) { b -> commitSelected { it.copy(ansi = b) } }
+    }
+
+    private fun inputProps(n: CanvasNode) {
+        propField(getString(R.string.canvas_prop_key), n.key, false, false) { v ->
+            commitSelected { it.copy(key = v.trim().take(128)) }
+        }
+        propField(getString(R.string.canvas_prop_label), n.label, false, false) { v ->
+            commitSelected { it.copy(label = v.take(512)) }
+        }
+        propField(getString(R.string.canvas_prop_text), n.text, true, false) { v ->
+            commitSelected { it.copy(text = CanvasSpec.safeText(v)) }
+        }
+        boolField(getString(R.string.canvas_prop_password), n.password) { b ->
+            commitSelected { it.copy(password = b) }
+        }
+        boolField(getString(R.string.canvas_prop_multiline), n.multiline) { b ->
+            commitSelected { it.copy(multiline = b) }
+        }
+        propField(getString(R.string.canvas_prop_text_size), formatNumber(n.textSize), false, true) { v ->
+            parseNumber(v)?.let { s -> commitSelected { it.withNumber("textSize", s) } }
+        }
+        colorField(getString(R.string.canvas_prop_text_color), n.textColor) { v ->
+            commitSelected { it.withString("textColor", v) }
+        }
+        colorField(getString(R.string.canvas_prop_label_color), n.labelColor) { v ->
+            commitSelected { it.withString("labelColor", v) }
+        }
+    }
+
+    private fun selectProps(n: CanvasNode) {
+        propField(getString(R.string.canvas_prop_key), n.key, false, false) { v ->
+            commitSelected { it.copy(key = v.trim().take(128)) }
+        }
+        propField(getString(R.string.canvas_prop_label), n.label, false, false) { v ->
+            commitSelected { it.copy(label = v.take(512)) }
+        }
+        propField(
+            getString(R.string.canvas_prop_options),
+            n.options.joinToString("\n"),
+            true,
+            false
+        ) { v ->
+            val options = v.lines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .take(CanvasSpec.MAX_OPTIONS)
+            commitSelected { it.copy(options = options) }
+        }
+        boolField(getString(R.string.canvas_prop_multi), n.multi) { b ->
+            commitSelected { it.copy(multi = b) }
+        }
+        propField(getString(R.string.canvas_prop_text_size), formatNumber(n.textSize), false, true) { v ->
+            parseNumber(v)?.let { s -> commitSelected { it.withNumber("textSize", s) } }
+        }
+        colorField(getString(R.string.canvas_prop_text_color), n.textColor) { v ->
+            commitSelected { it.withString("textColor", v) }
+        }
+        colorField(getString(R.string.canvas_prop_bar), n.barColor) { v ->
+            commitSelected { it.withString("barColor", v) }
+        }
+        colorField(getString(R.string.canvas_prop_label_color), n.labelColor) { v ->
+            commitSelected { it.withString("labelColor", v) }
+        }
+    }
+
+    private fun toggleProps(n: CanvasNode) {
+        propField(getString(R.string.canvas_prop_key), n.key, false, false) { v ->
+            commitSelected { it.copy(key = v.trim().take(128)) }
+        }
+        propField(getString(R.string.canvas_prop_label), n.label, false, false) { v ->
+            commitSelected { it.copy(label = v.take(512)) }
+        }
+        boolField(getString(R.string.canvas_prop_checked), n.checked) { b ->
+            commitSelected { it.copy(checked = b) }
+        }
+        propField(getString(R.string.canvas_prop_filter), n.filter, false, false) { v ->
+            commitSelected { it.copy(filter = v.trim().take(128)) }
+        }
+        colorField(getString(R.string.canvas_prop_label_color), n.labelColor) { v ->
+            commitSelected { it.withString("labelColor", v) }
+        }
+        colorField(getString(R.string.canvas_prop_text_color), n.textColor) { v ->
+            commitSelected { it.withString("textColor", v) }
+        }
+        colorField(getString(R.string.canvas_prop_bar), n.barColor) { v ->
+            commitSelected { it.withString("barColor", v) }
+        }
+    }
+
+    private fun buttonProps(n: CanvasNode) {
+        propField(getString(R.string.canvas_prop_text), n.text, false, false) { v ->
+            commitSelected { it.copy(text = CanvasSpec.safeText(v)) }
+        }
+        propsBox.addView(hintView(getString(R.string.canvas_prop_button_kind)))
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val kinds = listOf(
+            ScriptDialogSpec.BTN_NORMAL to R.string.canvas_button_normal,
+            ScriptDialogSpec.BTN_PRIMARY to R.string.canvas_button_primary,
+            ScriptDialogSpec.BTN_DANGER to R.string.canvas_button_danger
+        )
+        kinds.forEachIndexed { index, (kind, label) ->
+            row.addView(
+                miniButton(getString(label)) { commitSelected { it.copy(buttonKind = kind) } },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    if (index < kinds.lastIndex) marginEnd = dpPx(4)
+                }
+            )
+        }
+        propsBox.addView(row)
+        propField(getString(R.string.canvas_prop_text_size), formatNumber(n.textSize), false, true) { v ->
+            parseNumber(v)?.let { s -> commitSelected { it.withNumber("textSize", s) } }
+        }
+        colorField(getString(R.string.canvas_prop_text_color), n.textColor) { v ->
+            commitSelected { it.withString("textColor", v) }
+        }
+        boolField(getString(R.string.canvas_prop_bold), n.bold) { b ->
+            commitSelected { it.copy(bold = b) }
+        }
     }
 
     private fun imageProps(n: CanvasNode) {
@@ -2563,7 +2764,9 @@ class CanvasDesignerActivity : Activity() {
             if (canvasKey.isNotBlank()) {
                 append(" \\\n  --canvas-key ").append(shellQuote(canvasKey))
             }
-            append(" \\\n  --button ").append(shellQuote(getString(R.string.canvas_ok_button)))
+            if (host.scene.flatten().none { it.type == CanvasSpec.TYPE_BUTTON && it.visible }) {
+                append(" \\\n  --button ").append(shellQuote(getString(R.string.canvas_ok_button)))
+            }
         }
         copyText(command)
         toast(getString(R.string.canvas_cmd_copied))

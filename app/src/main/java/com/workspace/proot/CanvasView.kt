@@ -17,15 +17,28 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.text.Layout
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.StaticLayout
+import android.text.TextPaint
+import android.text.TextUtils
+import android.text.style.BackgroundColorSpan
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
+import android.text.style.UnderlineSpan
 import android.util.LruCache
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import java.io.File
 import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.Executors
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.hypot
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -114,6 +127,7 @@ class CanvasHostView(
     var scene: CanvasScene = scene
         set(value) {
             field = value
+            textLayouts.clear()
             invalidate()
         }
 
@@ -132,11 +146,28 @@ class CanvasHostView(
     var onSceneChanged: ((CanvasScene) -> Unit)? = null
     var onSelectionChanged: ((String?) -> Unit)? = null
     var onAction: ((String) -> Unit)? = null
+    /** 带来源节点的动作：弹窗需要按 Canvas 块记录 `key.action`。 */
+    var onNodeAction: ((nodeId: String?, action: String) -> Unit)? = null
     /** submit:ID / submit:ID:keep —— 点击后把结果交回现有弹窗结果链路。 */
     var onSubmit: ((id: String, keepOpen: Boolean) -> Unit)? = null
     var onEditStart: (() -> Unit)? = null
+    /** 输入框节点被点中；弹窗宿主据此把透明 EditText 放到节点位置。 */
+    var onInputFocus: ((CanvasNode) -> Unit)? = null
+    /** 点到非输入节点时收起输入代理。 */
+    var onInputBlur: (() -> Unit)? = null
+    /** 运行时表单状态；设计器为 null，按节点默认值静态绘制。 */
+    var formState: CanvasFormState? = null
 
     private var submitLocked = false
+    private var widgetPressedId: String? = null
+    private var widgetScrollNodeId: String? = null
+    private var widgetDownX = 0f
+    private var widgetDownY = 0f
+    private var widgetLastX = 0f
+    private var widgetLastY = 0f
+    private var widgetDragging = false
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private val textLayouts = HashMap<String, CachedTextLayout>()
 
     private val d get() = resources.displayMetrics.density
     private val density get() = resources.displayMetrics.density
@@ -166,6 +197,12 @@ class CanvasHostView(
     )
 
     private val transients = mutableListOf<Transient>()
+
+    private data class CachedTextLayout(
+        val signature: String,
+        val layout: StaticLayout,
+        val paint: TextPaint
+    )
 
     private enum class DragMode { NONE, MOVE, SCALE_TL, SCALE_TR, SCALE_BL, SCALE_BR, ROTATE, POINT }
 
@@ -275,7 +312,8 @@ class CanvasHostView(
         submitLocked = false
     }
 
-    fun performAction(action: String) {
+    @Suppress("CyclomaticComplexMethod", "ReturnCount")
+    fun performAction(action: String, sourceNodeId: String? = null) {
         if (action.isBlank()) return
         CanvasAction.parseSubmit(action)?.let { submit ->
             if (submitLocked) return
@@ -311,6 +349,7 @@ class CanvasHostView(
             "select" -> select(parts.getOrNull(1))
         }
         onAction?.invoke(action)
+        onNodeAction?.invoke(sourceNodeId, action)
     }
 
     override fun onAttachedToWindow() {
@@ -322,6 +361,8 @@ class CanvasHostView(
 
     override fun onDetachedFromWindow() {
         transients.clear()
+        textLayouts.clear()
+        resetWidgetTouch()
         images.unregister(this)
         super.onDetachedFromWindow()
     }
@@ -427,6 +468,7 @@ class CanvasHostView(
         canvas.drawRect(offsetX, offsetY, offsetX + scene.width * viewScale, offsetY + scene.height * viewScale, paint)
     }
 
+    @Suppress("CyclomaticComplexMethod")
     private fun drawNode(canvas: Canvas, n: CanvasNode, inheritedAlpha: Float) {
         if (!n.visible || n.alpha <= 0.001f) return
         val alpha = (n.alpha * inheritedAlpha).coerceIn(0f, 1f)
@@ -447,6 +489,7 @@ class CanvasHostView(
             canvas.scale(n.scaleX, n.scaleY)
             canvas.translate(-cx, -cy)
         }
+        if (n.clip && n.isGroup) canvas.clipRect(0f, 0f, n.w, n.h)
         when (n.type) {
             CanvasSpec.TYPE_GROUP -> for (c in n.children) drawNode(canvas, c, alpha)
             CanvasSpec.TYPE_TEXT -> drawText(canvas, n, alpha)
@@ -455,6 +498,10 @@ class CanvasHostView(
             CanvasSpec.TYPE_LINE -> drawLineNode(canvas, n, alpha)
             CanvasSpec.TYPE_PATH -> drawPathNode(canvas, n, alpha)
             CanvasSpec.TYPE_CIRCLE, CanvasSpec.TYPE_ELLIPSE -> drawOval(canvas, n, alpha)
+            CanvasSpec.TYPE_INPUT -> drawInput(canvas, n, alpha)
+            CanvasSpec.TYPE_SELECT -> drawSelect(canvas, n, alpha)
+            CanvasSpec.TYPE_TOGGLE -> drawToggle(canvas, n, alpha)
+            CanvasSpec.TYPE_BUTTON -> drawButton(canvas, n, alpha)
             else -> drawRect(canvas, n, alpha)
         }
         canvas.restore()
@@ -565,6 +612,10 @@ class CanvasHostView(
 
     private fun drawText(canvas: Canvas, n: CanvasNode, alpha: Float) {
         if (n.text.isEmpty()) return
+        if (n.wrap || n.ansi) {
+            drawRichText(canvas, n, alpha)
+            return
+        }
         textPaint.reset()
         textPaint.isAntiAlias = true
         textPaint.color = CanvasSpec.color(n.textColor, 0xFFE6E6E6.toInt())
@@ -656,6 +707,230 @@ class CanvasHostView(
             val baseline = n.y + n.h / 2f - (textPaint.descent() + textPaint.ascent()) / 2f
             canvas.drawText(label, n.x + n.w / 2f, baseline, textPaint)
         }
+    }
+
+    private fun widgetPaint(size: Float, color: Int, alpha: Float, align: Paint.Align): Paint {
+        textPaint.reset()
+        textPaint.isAntiAlias = true
+        textPaint.typeface = Typeface.MONOSPACE
+        textPaint.textSize = size.coerceIn(1f, 512f)
+        textPaint.color = color
+        textPaint.alpha = (Color.alpha(color) * alpha).roundToInt().coerceIn(0, 255)
+        textPaint.textAlign = align
+        return textPaint
+    }
+
+    private fun drawWidgetLabel(canvas: Canvas, n: CanvasNode, alpha: Float) {
+        if (n.label.isEmpty()) return
+        val p = widgetPaint(n.labelSize, CanvasSpec.color(n.labelColor, 0xFF9A9A9A.toInt()), alpha, Paint.Align.LEFT)
+        val text = TextUtils.ellipsize(n.label, TextPaint(p), n.w.coerceAtLeast(1f), TextUtils.TruncateAt.END)
+        canvas.drawText(text, 0, text.length, n.x, n.y + n.labelSize, p)
+    }
+
+    @Suppress("ReturnCount")
+    private fun drawInput(canvas: Canvas, n: CanvasNode, alpha: Float) {
+        drawWidgetLabel(canvas, n, alpha)
+        val labelH = if (n.label.isEmpty()) 0f else CanvasWidgetLayout.LABEL_H + CanvasWidgetLayout.LABEL_GAP
+        val field = RectF(n.x, n.y + labelH, n.x + n.w, n.y + n.h)
+        if (field.bottom <= field.top) return
+        if (n.hasFill) {
+            val p = basePaint(n, alpha, true)
+            if (n.shadow) p.setShadowLayer(n.shadowRadius, 0f, n.shadowRadius / 3f, 0x66000000)
+            canvas.drawRoundRect(field, n.radius, n.radius, p)
+        }
+        if (n.hasStroke) canvas.drawRoundRect(field, n.radius, n.radius, basePaint(n, alpha, false))
+        if (formState?.isFocused(n) == true) return
+        val value = formState?.inputValue(n) ?: n.text
+        if (value.isEmpty()) return
+        val shown = if (n.password) "•".repeat(value.length.coerceAtMost(64)) else value
+        val p = widgetPaint(n.textSize, CanvasSpec.color(n.textColor, 0xFFE6E6E6.toInt()), alpha, Paint.Align.LEFT)
+        val maxW = (field.width() - 2 * CanvasWidgetLayout.FIELD_PAD_X).coerceAtLeast(1f)
+        canvas.save()
+        canvas.clipRect(field)
+        if (n.multiline) {
+            val lines = shown.split('\n').take(8)
+            val lh = n.textSize * 1.25f
+            var y = field.top + CanvasWidgetLayout.FIELD_PAD_Y + n.textSize
+            for (line in lines) {
+                if (y > field.bottom) break
+                val text = TextUtils.ellipsize(line, TextPaint(p), maxW, TextUtils.TruncateAt.END)
+                canvas.drawText(text, 0, text.length, field.left + CanvasWidgetLayout.FIELD_PAD_X, y, p)
+                y += lh
+            }
+        } else {
+            val text = TextUtils.ellipsize(shown, TextPaint(p), maxW, TextUtils.TruncateAt.END)
+            val baseline = field.top + (field.height() - (p.descent() + p.ascent())) / 2f
+            canvas.drawText(text, 0, text.length, field.left + CanvasWidgetLayout.FIELD_PAD_X, baseline, p)
+        }
+        canvas.restore()
+    }
+
+    @Suppress("CyclomaticComplexMethod")
+    private fun drawSelect(canvas: Canvas, n: CanvasNode, alpha: Float) {
+        drawWidgetLabel(canvas, n, alpha)
+        val top = n.y + CanvasWidgetLayout.selectBodyTop(n)
+        val bottom = n.y + n.h - CanvasWidgetLayout.SELECT_PAD_BOTTOM
+        if (bottom <= top) return
+        val boxTop = if (n.label.isEmpty()) top else top - CanvasWidgetLayout.SELECT_PAD_TOP
+        val box = RectF(n.x, boxTop, n.x + n.w, n.y + n.h)
+        if (n.hasFill) canvas.drawRoundRect(box, n.radius, n.radius, basePaint(n, alpha, true))
+        if (n.hasStroke) canvas.drawRoundRect(box, n.radius, n.radius, basePaint(n, alpha, false))
+        val state = formState
+        val visible = CanvasWidgetLayout.visibleOptions(n, state?.activeFilters ?: emptySet())
+        val selected = state?.selected(n) ?: emptyList()
+        val scroll = state?.scrollOffset(n) ?: 0f
+        val baseColor = CanvasSpec.color(n.textColor, 0xFFE6E6E6.toInt())
+        val accent = CanvasSpec.color(n.barColor, 0xFF2D7D46.toInt())
+        val markerW = 22f
+        canvas.save()
+        canvas.clipRect(n.x, top, n.x + n.w, bottom)
+        for (i in visible.indices) {
+            val rowTop = top + i * CanvasWidgetLayout.OPTION_H - scroll
+            if (rowTop + CanvasWidgetLayout.OPTION_H < top || rowTop > bottom) continue
+            val option = visible[i]
+            val checked = selected.contains(option.label)
+            val p = widgetPaint(n.textSize, if (checked) accent else baseColor, alpha, Paint.Align.LEFT)
+            val baseline = rowTop + (CanvasWidgetLayout.OPTION_H - (p.descent() + p.ascent())) / 2f
+            val marker = when {
+                n.multi && checked -> "[x] "
+                n.multi -> "[ ] "
+                checked -> "● "
+                else -> "○ "
+            }
+            canvas.drawText(marker, n.x + CanvasWidgetLayout.OPTION_PAD_X, baseline, p)
+            val labelX = n.x + CanvasWidgetLayout.OPTION_PAD_X + markerW
+            val maxW = (n.x + n.w - CanvasWidgetLayout.OPTION_PAD_X - labelX).coerceAtLeast(1f)
+            val text = TextUtils.ellipsize(option.label, TextPaint(p), maxW, TextUtils.TruncateAt.END)
+            canvas.drawText(text, 0, text.length, labelX, baseline, p)
+        }
+        canvas.restore()
+        val count = visible.size
+        val maxScroll = CanvasWidgetLayout.maxScroll(n, count)
+        if (maxScroll > 0f) {
+            val trackRight = n.x + n.w - 3f
+            val trackW = 2f
+            val track = RectF(trackRight - trackW, top, trackRight, bottom)
+            paint.reset()
+            paint.isAntiAlias = true
+            paint.color = 0x33FFFFFF
+            canvas.drawRoundRect(track, 1f, 1f, paint)
+            val bodyH = CanvasWidgetLayout.selectBodyHeight(n)
+            val ratio = (bodyH / (count * CanvasWidgetLayout.OPTION_H)).coerceIn(0.1f, 1f)
+            val knobH = max(12f, track.height() * ratio)
+            val maxKnob = (track.height() - knobH).coerceAtLeast(0f)
+            val knobTop = track.top + maxKnob * (scroll / maxScroll).coerceIn(0f, 1f)
+            paint.color = CanvasSpec.color(n.barColor, 0xFF2D7D46.toInt())
+            canvas.drawRoundRect(RectF(track.left, knobTop, track.right, knobTop + knobH), 1f, 1f, paint)
+        }
+    }
+
+    private fun drawToggle(canvas: Canvas, n: CanvasNode, alpha: Float) {
+        val on = formState?.toggleValue(n) ?: n.checked
+        val pillW = CanvasWidgetLayout.TOGGLE_PILL_W.coerceAtMost(n.w)
+        val pillX = n.x + n.w - pillW
+        if (n.label.isNotEmpty()) {
+            val p = widgetPaint(n.labelSize, CanvasSpec.color(n.labelColor, 0xFF9A9A9A.toInt()), alpha, Paint.Align.LEFT)
+            val maxW = (pillX - n.x - 8f).coerceAtLeast(1f)
+            val text = TextUtils.ellipsize(n.label, TextPaint(p), maxW, TextUtils.TruncateAt.END)
+            val baseline = n.y + (n.h - (p.descent() + p.ascent())) / 2f
+            canvas.drawText(text, 0, text.length, n.x, baseline, p)
+        }
+        val pill = RectF(pillX, n.y + (n.h - CanvasWidgetLayout.TOGGLE_PILL_H) / 2f, pillX + pillW, n.y + (n.h + CanvasWidgetLayout.TOGGLE_PILL_H) / 2f)
+        paint.reset()
+        paint.isAntiAlias = true
+        paint.style = Paint.Style.FILL
+        paint.color = CanvasSpec.color(n.fill, 0xFF3A3A3A.toInt())
+        paint.alpha = (Color.alpha(paint.color) * alpha).roundToInt().coerceIn(0, 255)
+        canvas.drawRoundRect(pill, n.radius, n.radius, paint)
+        val p = widgetPaint(n.textSize, CanvasSpec.color(if (on) n.barColor else n.textColor, 0xFF9A9A9A.toInt()), alpha, Paint.Align.CENTER)
+        val text = if (on) "[ON]" else "[OFF]"
+        val baseline = pill.top + (pill.height() - (p.descent() + p.ascent())) / 2f
+        canvas.drawText(text, pill.centerX(), baseline, p)
+    }
+
+    private fun drawButton(canvas: Canvas, n: CanvasNode, alpha: Float) {
+        val rect = RectF(n.x, n.y, n.x + n.w, n.y + n.h)
+        if (n.hasFill) {
+            val p = basePaint(n, alpha, true)
+            if (n.shadow) p.setShadowLayer(n.shadowRadius, 0f, n.shadowRadius / 3f, 0x66000000)
+            canvas.drawRoundRect(rect, n.radius, n.radius, p)
+        }
+        if (n.hasStroke) canvas.drawRoundRect(rect, n.radius, n.radius, basePaint(n, alpha, false))
+        if (n.text.isEmpty()) return
+        val p = widgetPaint(n.textSize, CanvasSpec.color(n.textColor, 0xFFE6E6E6.toInt()), alpha, Paint.Align.CENTER)
+        if (n.bold) p.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        val maxW = (n.w - 16f).coerceAtLeast(1f)
+        val text = TextUtils.ellipsize(n.text, TextPaint(p), maxW, TextUtils.TruncateAt.END)
+        val baseline = n.y + (n.h - (p.descent() + p.ascent())) / 2f
+        canvas.drawText(text, 0, text.length, n.x + n.w / 2f, baseline, p)
+    }
+
+    private fun drawRichText(canvas: Canvas, n: CanvasNode, alpha: Float) {
+        if (n.w <= 0f || n.h <= 0f) return
+        val entry = richTextLayout(n) ?: return
+        canvas.save()
+        canvas.clipRect(n.x, n.y, n.x + n.w, n.y + n.h)
+        val alphaInt = (alpha.coerceIn(0f, 1f) * 255).roundToInt()
+        val layer = if (alphaInt < 255) {
+            canvas.saveLayerAlpha(n.x, n.y, n.x + n.w, n.y + n.h, alphaInt)
+        } else {
+            canvas.save()
+        }
+        canvas.translate(n.x, n.y)
+        entry.layout.draw(canvas)
+        canvas.restoreToCount(layer)
+        canvas.restore()
+    }
+
+    @Suppress("CyclomaticComplexMethod")
+    private fun richTextLayout(n: CanvasNode): CachedTextLayout? {
+        val width = n.w.toInt().coerceAtLeast(1)
+        val signature = listOf(
+            n.text.hashCode(), width, n.textSize, n.ansi, n.bold, n.italic,
+            n.monospace, n.textColor, n.textAlign
+        ).joinToString(":")
+        textLayouts[n.id]?.let { if (it.signature == signature) return it }
+        val tp = TextPaint(Paint.ANTI_ALIAS_FLAG)
+        tp.typeface = when {
+            n.bold && n.italic -> Typeface.create(if (n.monospace) Typeface.MONOSPACE else Typeface.DEFAULT, Typeface.BOLD_ITALIC)
+            n.bold -> Typeface.create(if (n.monospace) Typeface.MONOSPACE else Typeface.DEFAULT, Typeface.BOLD)
+            n.italic -> Typeface.create(if (n.monospace) Typeface.MONOSPACE else Typeface.DEFAULT, Typeface.ITALIC)
+            n.monospace -> Typeface.MONOSPACE
+            else -> Typeface.DEFAULT
+        }
+        tp.textSize = n.textSize.coerceIn(1f, 512f)
+        tp.color = CanvasSpec.color(n.textColor, 0xFFE6E6E6.toInt())
+        val text: CharSequence = if (n.ansi) ansiSpannable(n.text, tp.color) else n.text
+        val alignment = when (n.textAlign) {
+            CanvasSpec.ALIGN_CENTER -> Layout.Alignment.ALIGN_CENTER
+            CanvasSpec.ALIGN_RIGHT -> Layout.Alignment.ALIGN_OPPOSITE
+            else -> Layout.Alignment.ALIGN_NORMAL
+        }
+        val layout = StaticLayout.Builder.obtain(text, 0, text.length, tp, width)
+            .setAlignment(alignment)
+            .setIncludePad(false)
+            .setLineSpacing(0f, 1f)
+            .build()
+        val entry = CachedTextLayout(signature, layout, tp)
+        textLayouts[n.id] = entry
+        return entry
+    }
+
+    private fun ansiSpannable(text: String, defaultFg: Int): CharSequence {
+        val parsed = AnsiParser.parse(text)
+        val sp = SpannableString(parsed.clean)
+        for (s in parsed.spans) {
+            if (s.end <= s.start) continue
+            val fg = if (s.inverse) (s.bg ?: defaultFg) else (s.fg ?: defaultFg)
+            sp.setSpan(ForegroundColorSpan(fg), s.start, s.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if (s.bg != null && !s.inverse) {
+                sp.setSpan(BackgroundColorSpan(s.bg), s.start, s.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            if (s.bold) sp.setSpan(StyleSpan(Typeface.BOLD), s.start, s.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if (s.italic) sp.setSpan(StyleSpan(Typeface.ITALIC), s.start, s.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if (s.underline) sp.setSpan(UnderlineSpan(), s.start, s.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        return sp
     }
 
     private fun drawParticles(canvas: Canvas, timeMs: Long) {
@@ -855,6 +1130,13 @@ class CanvasHostView(
         return sx to sy
     }
 
+    /** 节点局部坐标（相对左上角）→ 当前 View 像素坐标；输入代理定位用。 */
+    fun nodeLocalToView(nodeId: String, localX: Float, localY: Float): Pair<Float, Float>? {
+        val n = scene.findNode(nodeId) ?: return null
+        val (sx, sy) = nodeLocalToScene(localX, localY, n, ancestorsOf(nodeId))
+        return toView(sx, sy)
+    }
+
     private fun toView(x: Float, y: Float): Pair<Float, Float> {
         var sx = x
         var sy = y
@@ -1035,24 +1317,131 @@ class CanvasHostView(
         return true
     }
 
+    private fun widgetSlop(): Float = touchSlop / viewScale.coerceAtLeast(0.01f)
+
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "NestedBlockDepth", "ComplexCondition", "ReturnCount")
     private fun runtimeTouch(event: MotionEvent): Boolean {
         val (sx, sy) = toScene(event.x, event.y)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                pressedNodeId = findHit(sx, sy)?.id
-                return pressedNodeId != null
-            }
-            MotionEvent.ACTION_UP -> {
-                val id = pressedNodeId
-                pressedNodeId = null
-                val n = id?.let { scene.findNode(it) }
-                if (n != null && n.action.isNotEmpty()) {
-                    performAction(n.action)
-                    return true
+                val hit = findHit(sx, sy)
+                if (formState?.focusedNodeId != null && hit?.type != CanvasSpec.TYPE_INPUT) {
+                    formState?.focus(null)
+                    onInputBlur?.invoke()
+                    invalidate()
                 }
-                return false
+                pressedNodeId = hit?.id
+                widgetPressedId = hit?.id
+                widgetDownX = sx
+                widgetDownY = sy
+                widgetLastX = sx
+                widgetLastY = sy
+                widgetDragging = false
+                widgetScrollNodeId = null
+                if (hit != null && hit.type == CanvasSpec.TYPE_SELECT && formState != null) {
+                    val count = CanvasWidgetLayout.visibleOptions(hit, formState!!.activeFilters).size
+                    if (CanvasWidgetLayout.maxScroll(hit, count) > 0f) {
+                        widgetScrollNodeId = hit.id
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                    }
+                }
+                return hit != null
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val id = widgetPressedId ?: return false
+                val n = scene.findNode(id) ?: return false
+                if (widgetScrollNodeId == id && formState != null) {
+                    val ancestors = ancestorsOf(id)
+                    val (_, localY) = sceneToNodeLocal(sx, sy, n, ancestors)
+                    val (_, downLocalY) = sceneToNodeLocal(widgetDownX, widgetDownY, n, ancestors)
+                    if (!widgetDragging && abs(localY - downLocalY) > widgetSlop()) widgetDragging = true
+                    if (widgetDragging) {
+                        val (_, lastLocalY) = sceneToNodeLocal(widgetLastX, widgetLastY, n, ancestors)
+                        val dy = localY - lastLocalY
+                        val changed = formState!!.scrollBy(n, -dy)
+                        widgetLastX = sx
+                        widgetLastY = sy
+                        if (changed) invalidate()
+                        handoffSelectEdge(n, dy)
+                        return true
+                    }
+                }
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val id = widgetPressedId
+                val moved = widgetDragging || abs(sy - widgetDownY) > widgetSlop()
+                resetWidgetTouch()
+                parent?.requestDisallowInterceptTouchEvent(false)
+                if (event.actionMasked == MotionEvent.ACTION_CANCEL || id == null) return false
+                val n = scene.findNode(id) ?: return false
+                when (n.type) {
+                    CanvasSpec.TYPE_INPUT -> if (!moved) {
+                        formState?.focus(n)
+                        invalidate()
+                        onInputFocus?.invoke(n)
+                        true
+                    } else false
+                    CanvasSpec.TYPE_SELECT -> {
+                        if (!moved) {
+                            val (_, ly) = sceneToNodeLocal(sx, sy, n, ancestorsOf(n.id))
+                            if (formState?.tapOption(n, ly) == true) invalidate()
+                        }
+                        true
+                    }
+                    CanvasSpec.TYPE_TOGGLE -> {
+                        if (!moved) {
+                            val state = formState
+                            if (state != null) {
+                                state.toggle(n)
+                                for (select in scene.flatten()) {
+                                    if (select.type == CanvasSpec.TYPE_SELECT) state.clampScroll(select)
+                                }
+                            }
+                            invalidate()
+                        }
+                        true
+                    }
+                    CanvasSpec.TYPE_BUTTON -> {
+                        if (!moved) performAction(n.action, n.id)
+                        true
+                    }
+                    else -> {
+                        if (!moved && n.action.isNotEmpty()) performAction(n.action, n.id)
+                        !moved && n.action.isNotEmpty()
+                    }
+                }
             }
         }
         return false
+    }
+
+    /**
+     * 选项框滚到边界后把后续竖直拖动交还外层 ScrollView。
+     * 手指向下(dy>0)且已经在顶部，或手指向上(dy<0)且已经在底部时释放拦截。
+     */
+    @Suppress("ComplexCondition")
+    private fun handoffSelectEdge(n: CanvasNode, dy: Float) {
+        val state = formState ?: return
+        val count = CanvasWidgetLayout.visibleOptions(n, state.activeFilters).size
+        val max = CanvasWidgetLayout.maxScroll(n, count)
+        val offset = state.scrollOffset(n)
+        val atTop = offset <= 0.01f
+        val atBottom = offset >= max - 0.01f
+        if ((atTop && dy > 0f) || (atBottom && dy < 0f)) {
+            widgetScrollNodeId = null
+            parent?.requestDisallowInterceptTouchEvent(false)
+        }
+    }
+
+    private fun resetWidgetTouch() {
+        pressedNodeId = null
+        widgetPressedId = null
+        widgetScrollNodeId = null
+        widgetDragging = false
+        widgetDownX = 0f
+        widgetDownY = 0f
+        widgetLastX = 0f
+        widgetLastY = 0f
     }
 }

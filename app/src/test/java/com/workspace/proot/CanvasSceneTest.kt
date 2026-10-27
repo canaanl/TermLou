@@ -53,6 +53,71 @@ class CanvasSceneTest {
     }
 
     @Test
+    fun `widget nodes parse round trip and keep old nodes byte stable`() {
+        val old = """{"width":360,"height":240,"nodes":[{"id":"t","type":"text","x":1,"y":2,"w":100,"h":20,"text":"hi"}]}"""
+        val oldScene = CanvasSceneCodec.parseScene(old)
+        val oldJson = CanvasSceneCodec.sceneToJsonString(oldScene)
+        assertFalse(oldJson.contains("\"key\""))
+        assertFalse(oldJson.contains("\"wrap\""))
+        assertFalse(oldJson.contains("\"clip\""))
+
+        val json = """
+            {"width":360,"height":400,"nodes":[
+              {"id":"in","type":"input","x":10,"y":20,"w":200,"h":48,
+               "key":"name","label":"Name","text":"Ada","password":true,"multiline":true},
+              {"id":"sel","type":"select","x":10,"y":80,"w":200,"h":180,
+               "key":"hosts","label":"Hosts","options":["a#up","b#down"],"multi":true},
+              {"id":"tg","type":"toggle","x":10,"y":280,"w":200,"h":20,
+               "key":"filter","label":"Only up","checked":true,"filter":"up"},
+              {"id":"btn","type":"button","x":10,"y":320,"w":100,"h":38,
+               "text":"Go","action":"submit:go","buttonKind":"primary"},
+              {"id":"out","type":"text","x":10,"y":20,"w":200,"h":80,"text":"x","wrap":true,"ansi":true}
+            ]}
+        """.trimIndent()
+        val scene = CanvasSceneCodec.parseScene(json)
+        val input = scene.findNode("in")!!
+        assertEquals("name", input.key)
+        assertEquals("Ada", input.text)
+        assertTrue(input.password)
+        assertTrue(input.multiline)
+        val select = scene.findNode("sel")!!
+        assertEquals(listOf("a#up", "b#down"), select.options)
+        assertTrue(select.multi)
+        val toggle = scene.findNode("tg")!!
+        assertTrue(toggle.checked)
+        assertEquals("up", toggle.filter)
+        val button = scene.findNode("btn")!!
+        assertEquals("primary", button.buttonKind)
+        assertTrue(scene.findNode("out")!!.wrap)
+        assertTrue(scene.findNode("out")!!.ansi)
+
+        val round = CanvasSceneCodec.parseScene(CanvasSceneCodec.sceneToJsonString(scene))
+        assertEquals(scene, round)
+    }
+
+    @Test
+    fun `widget fields are patchable and old fields still patch`() {
+        val scene = CanvasSceneCodec.parseScene(
+            """{"width":360,"height":240,"nodes":[
+               {"id":"in","type":"input","x":1,"y":2,"w":100,"h":48,"key":"a","label":"A","text":"x"},
+               {"id":"tg","type":"toggle","key":"t","checked":false}
+            ]}"""
+        )
+        val patch = CanvasPatch.parse(
+            """{"node":"in","label":"New","multiline":true,"text":"hello","animate":false}"""
+        )
+        val out = patch.applyTo(scene)
+        assertTrue(out.nodeFound)
+        val input = out.scene.findNode("in")!!
+        assertEquals("New", input.label)
+        assertEquals("a", input.key)
+        assertEquals("hello", input.text)
+        assertTrue(input.multiline)
+        val toggle = CanvasPatch.parse("""{"node":"tg","checked":true}""").applyTo(out.scene)
+        assertTrue(toggle.scene.findNode("tg")!!.checked)
+    }
+
+    @Test
     fun `canvas submit action parses id and keep flag`() {
         assertEquals(CanvasAction.Submit("start", false), CanvasAction.parseSubmit("submit:start"))
         assertEquals(CanvasAction.Submit("start", true), CanvasAction.parseSubmit("submit:start:keep"))

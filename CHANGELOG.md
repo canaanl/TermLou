@@ -7,6 +7,7 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.79** | 5979 | **弹窗内容区单 Canvas 化：标题栏保持原生，文本/输入/选项/开关/按钮全部变成标准 Canvas 节点；旧 `termlou-ui` 参数、结果 values、Canvas 快照和 `key.action` 全部不变。选项框独立成节点并支持内部滚动，过滤只影响框内；输入用透明 EditText 代理保留 IME/密码/多行；Canvas 设计器新增控件工具与推荐位置** |
 | **5.9.78** | 5978 | **日志总预算 1MB：Linux `/var/log` 移出 rootfs 并 bind 到应用日志目录，apt/dpkg 已知无界日志指向 `/dev/null`；应用日志写时封顶；Bash 历史不落盘；release 移除 TermLou 的 Android Logcat。只在启动时裁剪一次，不做定时轮询** |
 | **5.9.77** | 5977 | **RootFS 安装可靠性：确认 AAPT 会把 `assets/rootfs.tar.gz` 解压成 APK 内的 `assets/rootfs.tar`（运行时仍打开 `rootfs.tar`，并加 `.gz` 兼容回退）；解包改为 staging + 完成标记 + 原子切换，老安装自动补标记、覆盖升级不重装现有 rootfs** |
 | **5.9.76** | 5976 | **启动画布改为按工坊实际可用高度决定行数：显示多少行就保存多少行，不再固定 160、不再二次缩放；开屏读取保存行数按同尺寸渲染。手指手写改为速度+接触面积控制笔宽，拉开粗细微差，起笔渐细** |
@@ -36,6 +37,36 @@
 | **5.9.52** | 5952 | **修：状态栏特征字的立方体转向与页面滑动方向相反** |
 | **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
+
+## 5.9.79
+
+### 弹窗内容区单 Canvas 化
+
+- 标题栏仍是原生 View；标题栏以下的内容区变成**一个** `CanvasScene`。
+- 新增标准 Canvas 控件节点：
+  - `input`：标签、输入框、密码、多行
+  - `select`：标签、单选/多选选项框、内部滚动
+  - `toggle`：标签、开关、过滤标签
+  - `button`：按钮、`submit:ID[:keep]`
+- 正文/`--output` 继续使用 `text` 节点，新增可选的 `wrap` / `ansi`；
+  旧 text 节点不写新字段，旧场景 JSON 和 Canvas 快照保持原样。
+- 旧 `--input / --select / --check / --toggle / --output / --button`
+  由 `CanvasDialogBuilder` 按原来的 `UiTokens` 间距/字号生成绝对坐标，
+  默认仍是原来的规范竖排；生成后每个控件都能在设计器里单独移动。
+- 选项框是独立节点：最多显示约 6 行，超过后在框内滚动；
+  过滤开关只改变框内可见选项，不移动外层节点。
+- 输入框聚焦时在节点位置叠一个透明 EditText 代理，只负责 IME、光标、
+  选区、密码和多行；失焦后隐藏，视觉仍由 Canvas 绘制。
+- 单个 Canvas + 按钮作为整弹窗根场景；Canvas 与表单混用时作为裁剪 group，
+  保留原节点 ID、动画和 patch。`values[canvasKey]` 仍然只包含该 Canvas
+  自己的场景 JSON，不混入表单节点或按钮。混用模式下场景级粒子/相机按
+  group 语义处理；需要完整保留时请使用「整弹窗 Canvas」模式。
+- Canvas 设计器新增 `input / select / toggle / button` 添加工具、
+  推荐落点、图层名和属性面板；`text` 增加自动换行/ANSI 开关。
+- **API 冻结**：`termlou_ui.sh` 不修改，旧参数、结果字段、Canvas 快照、
+  `key.action`、超时/chain/按钮 close 语义全部保持；新节点字段全部可选。
+- 工坊的线性控件列表和独立 Canvas 控件本版保留（预览已经走新 Canvas）；
+  工坊收缩成「外壳 + 内容画布编辑器」放到下一版。
 
 ## 5.9.78
 

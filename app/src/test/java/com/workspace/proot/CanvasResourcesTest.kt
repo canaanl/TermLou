@@ -38,9 +38,11 @@ class CanvasResourcesTest {
     fun `canvas designer strings are present`() {
         val required = setOf(
             "canvas_designer_title", "canvas_layers", "canvas_props", "canvas_timeline",
-            "canvas_tool_progress", "canvas_import_path", "canvas_add_anim",
-            "canvas_json_import", "canvas_export_cmd", "canvas_done",
-            "dm_ctrl_canvas", "dm_summary_canvas_fmt"
+            "canvas_tool_progress", "canvas_tool_input", "canvas_tool_select",
+            "canvas_tool_toggle", "canvas_tool_button", "canvas_import_path",
+            "canvas_add_anim", "canvas_prop_key", "canvas_prop_options",
+            "canvas_button_primary", "canvas_json_import", "canvas_export_cmd",
+            "canvas_done", "dm_ctrl_canvas", "dm_summary_canvas_fmt"
         )
         val zhKeys = keys(zh, "canvas_")
         val enKeys = keys(en, "canvas_")
