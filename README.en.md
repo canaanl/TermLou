@@ -109,7 +109,8 @@ MainActivity.onCreate
   └─ UiBuilder builds the whole UI (zero XML)
   └─ SettingsManager.load() (font size / commands / tile command / keep-alive / library JSON / language)
   ├─ rootfs missing → show Install RootFS screen
-  │      └─ RootfsExtractor unpacks assets/rootfs.tar.gz → filesDir/workspace/linux
+  │      └─ RootfsExtractor unpacks assets/rootfs.tar (source is rootfs.tar.gz; AAPT strips .gz)
+  │         → filesDir/workspace/linux; writes .termlou-rootfs-ok; legacy installs only get the marker backfilled
   └─ rootfs ready → SplashView particle animation
         └─ startShell() (IO coroutine)
              ├─ migrate old dirs / clean caches / migrate old .termlou

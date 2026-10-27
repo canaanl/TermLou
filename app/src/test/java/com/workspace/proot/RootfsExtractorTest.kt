@@ -1,5 +1,6 @@
 package com.workspace.proot
 
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -16,6 +17,11 @@ class RootfsExtractorTest {
     fun setUp() {
         testDir = File(System.getProperty("java.io.tmpdir"), "rootfs_test_${System.currentTimeMillis()}")
         testDir.mkdirs()
+    }
+
+    @After
+    fun tearDown() {
+        testDir.deleteRecursively()
     }
 
     @Test
@@ -72,11 +78,60 @@ class RootfsExtractorTest {
     fun `test executable permission setting`() {
         val file = File(testDir, "executable_file")
         file.writeText("#!/bin/bash\necho hello")
-        
+
         // On Windows, setExecutable may not work as expected
         // Just verify the file exists and can be written
         assertTrue(file.exists())
         assertTrue(file.canRead())
         assertTrue(file.canWrite())
+    }
+
+    @Test
+    fun `rootfs asset follows aapt gzip stripping`() {
+        // 源码是 .tar.gz；AAPT 打包后 APK 内是去掉 .gz 的 .tar。
+        assertEquals("rootfs.tar", RootfsExtractor.ROOTFS_ASSET)
+        assertEquals("rootfs.tar.gz", RootfsExtractor.ROOTFS_GZ_ASSET)
+        val sourceCandidates = listOf(
+            File("src/main/assets/${RootfsExtractor.ROOTFS_GZ_ASSET}"),
+            File("app/src/main/assets/${RootfsExtractor.ROOTFS_GZ_ASSET}")
+        )
+        assertTrue(
+            "missing ${RootfsExtractor.ROOTFS_GZ_ASSET}; checked $sourceCandidates",
+            sourceCandidates.any { it.isFile }
+        )
+    }
+
+    @Test
+    fun `legacy install gets marker without reinstall`() {
+        val linux = legacyRootfs()
+        assertTrue(RootfsExtractor.isInstalled(linux))
+        assertTrue(File(linux, RootfsExtractor.ROOTFS_MARKER).isFile)
+    }
+
+    @Test
+    fun `legacy passwd only install still gets marker`() {
+        val linux = File(testDir, "linux")
+        File(linux, "etc").mkdirs()
+        File(linux, "etc/passwd").writeText("root:x:0:0:root:/root:/bin/sh\n")
+        assertTrue(RootfsExtractor.isInstalled(linux))
+        assertTrue(File(linux, RootfsExtractor.ROOTFS_MARKER).isFile)
+    }
+
+    @Test
+    fun `marker alone is not enough without key paths`() {
+        val linux = File(testDir, "linux")
+        linux.mkdirs()
+        File(linux, RootfsExtractor.ROOTFS_MARKER).writeText("old")
+        assertFalse(RootfsExtractor.isInstalled(linux))
+    }
+
+    private fun legacyRootfs(): File {
+        val linux = File(testDir, "linux")
+        File(linux, "etc").mkdirs()
+        File(linux, "usr/bin").mkdirs()
+        File(linux, "etc/passwd").writeText("root:x:0:0:root:/root:/bin/sh\n")
+        File(linux, "usr/bin/env").writeText("")
+        File(linux, "usr/bin/sh").writeText("")
+        return linux
     }
 }

@@ -504,7 +504,7 @@ class TerminalController(
 
     /** 寮€鏈哄垎鏀細rootfs 灏辩华鍒?splash + startShell锛屽惁鍒欎寒 setupArea銆?*/
     fun boot(rootLayout: FrameLayout, tileCommand: String?) {
-        if (File(scope.lxRoot, "etc/passwd").exists()) {
+        if (RootfsExtractor.isInstalled(scope.lxRoot)) {
             setSetupVisible(false)
             scope.fromTile = tileCommand != null
             // splash.json 读取与点数构造较重，移出主线程避免首帧顿卡

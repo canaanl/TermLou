@@ -109,7 +109,8 @@ MainActivity.onCreate
   └─ UiBuilder 构建全部界面（零 XML）
   └─ SettingsManager.load()（字号 / 命令 / 磁贴命令 / 保活 / 命令库 JSON / 语言）
   ├─ rootfs 不存在 → 显示 Install RootFS 界面
-  │      └─ RootfsExtractor 解包 assets/rootfs.tar.gz → filesDir/workspace/linux
+  │      └─ RootfsExtractor 解包 assets/rootfs.tar（源码 rootfs.tar.gz，AAPT 打包时去掉 .gz）
+  │         → filesDir/workspace/linux；完成后写 .termlou-rootfs-ok；老安装只补标记，不重解包
   └─ rootfs 就绪 → SplashView 粒子启动动画
         └─ startShell()（IO 协程）
              ├─ 迁移旧目录 / 清理缓存 / 迁移旧 .termlou

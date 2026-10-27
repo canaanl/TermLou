@@ -34,7 +34,7 @@ class CommandTileService : TileService() {
         }
 
         // rootfs 就绪 → 一律走无界面浮窗路径（命令是否含 termlou-ui 无关）
-        val rootfsReady = File(filesDir, "workspace/linux/etc/passwd").exists()
+        val rootfsReady = RootfsExtractor.isInstalled(File(filesDir, "workspace/linux"))
         val target: Intent = if (rootfsReady) {
             Intent(this, TileCommandTrampolineActivity::class.java)
                 .putExtra(TermlouCommandRunner.EXTRA_COMMAND, cmd)
