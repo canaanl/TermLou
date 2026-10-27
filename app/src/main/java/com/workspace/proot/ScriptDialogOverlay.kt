@@ -1,17 +1,25 @@
 package com.workspace.proot
 
 import android.content.Context
+import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 
 /** 把一个 ScriptDialogSpec.Request 以 TYPE_APPLICATION_OVERLAY 浮层形式弹到任意 App 之上。
  *  @param fast 队列连续弹出时用极短动画，避免翻页时动画叠加拖慢体感。 */
+@Suppress("TooManyFunctions")
 class ScriptDialogOverlay(
     private val ctx: Context,
     private val request: ScriptDialogSpec.Request,
@@ -19,14 +27,23 @@ class ScriptDialogOverlay(
     private val onResult: (ScriptDialogSpec.Result) -> Unit
 ) {
 
+    private enum class State { SHOWN, DISMISSING, DESTROYED }
+
     private val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val mainHandler = Handler(Looper.getMainLooper())
     private var root: View? = null
-    private var dismissed = false
+    private var state = State.SHOWN
     private var focusAcquired = false
     private var outsideArmed = false
     private var _renderer: ScriptDialogRenderer? = null
-    private val disarmRunnable = Runnable { outsideArmed = false }
+    private var outsideHint: TextView? = null
+    private val disarmRunnable = Runnable {
+        outsideArmed = false
+        hideOutsideHint()
+    }
+
+    /** 窗口真正移除后回调；OverlayBridge 用它清空 activeOverlay，而不是在 dismiss 开始时清空。 */
+    var onDismissed: (() -> Unit)? = null
 
     // 当前请求的可变引用，供 chain 原地更新时替换
     private var currentRequest: ScriptDialogSpec.Request = request
@@ -35,37 +52,35 @@ class ScriptDialogOverlay(
     // 按钮栏/返回键/点外部一律在触发时读取这两个字段，杜绝换屏后还把点击算到上一屏头上。
     private var currentOnResult: (ScriptDialogSpec.Result) -> Unit = onResult
 
+    @Suppress("ReturnCount", "LongMethod", "CyclomaticComplexMethod")
     fun show() {
+        // 同一窗口只允许 addView 一次；重复 show 不重建也不回退到初始请求。
+        if (root != null) return
+        if (state == State.DESTROYED) return
+
         val renderer = ScriptDialogRenderer(ctx)
         _renderer = renderer
         currentRequest = request
         currentOnResult = onResult
         val content = renderer.buildRoot(request) { result ->
-            if (!dismissed) {
-                if (!ScriptDialogSpec.shouldDismiss(currentRequest, result)) {
-                    currentOnResult(result)
-                } else {
-                    dismissed = true
-                    currentOnResult(result)
-                    dismiss()
-                }
-            }
+            onResultFromNode(result)
         }
+        bindInsideTouch(renderer)
         content.isFocusableInTouchMode = true
         content.setOnKeyListener { _, keyCode, event ->
             if (event.action == KeyEvent.ACTION_UP && keyCode == KeyEvent.KEYCODE_BACK) {
-                if (!dismissed) {
-                    dismissed = true
-                    currentOnResult(ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
+                if (state == State.SHOWN) {
+                    // 先进入消失，再通知桥；桥里的新请求可以在这 140ms 内取消消失。
                     dismiss()
+                    currentOnResult(ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
                 }
                 true
             } else {
                 false
             }
         }
-        // 点外部两段式关闭：第一次闪烁提示，第二次真正关闭
-        val card = (content as? android.widget.FrameLayout)?.getChildAt(0)
+        // 点外部两段式关闭：第一次显示顶部白字提示，第二次真正关闭。
+        val card = (content as? FrameLayout)?.getChildAt(0)
         content.setOnTouchListener { _, ev ->
             if (ev.actionMasked == MotionEvent.ACTION_UP) {
                 val c = card
@@ -75,14 +90,27 @@ class ScriptDialogOverlay(
                     val inside = x >= c.left && x <= c.right && y >= c.top && y <= c.bottom
                     if (inside) {
                         outsideArmed = false
+                        hideOutsideHint()
                         mainHandler.removeCallbacks(disarmRunnable)
                     } else {
-                        onOutsideTap(c)
+                        onOutsideTap()
                     }
                 }
             }
             false
         }
+
+        // 提示必须是最顶层子 View：加在 card 之后，z-order 最高。
+        val hint = buildOutsideHint()
+        outsideHint = hint
+        content.addView(
+            hint,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            ).apply { topMargin = dp(HINT_TOP_DP) }
+        )
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -98,20 +126,21 @@ class ScriptDialogOverlay(
 
         val result = runCatching { wm.addView(content, params) }
         if (result.isFailure) {
-            if (!dismissed) {
-                dismissed = true
-                currentOnResult(ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS, error = "add_view_failed"))
-            }
+            state = State.DESTROYED
+            root = null
+            currentOnResult(ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS, error = "add_view_failed"))
+            onDismissed?.invoke()
             return
         }
         root = content
+        state = State.SHOWN
 
         content.post {
-            if (!focusAcquired && content.isAttachedToWindow) {
+            if (state == State.SHOWN && !focusAcquired && content.isAttachedToWindow) {
                 focusAcquired = true
                 content.requestFocus()
             }
-            animateIn(content, request.style.anim)
+            if (state == State.SHOWN) animateIn(content, request.style.anim)
         }
     }
 
@@ -121,48 +150,40 @@ class ScriptDialogOverlay(
     fun applyCanvasPatch(key: String?, patch: CanvasPatch): Boolean =
         _renderer?.applyCanvasPatch(key, patch) ?: false
 
-    fun isAlive(): Boolean = !dismissed && (root?.isAttachedToWindow == true) && (root?.parent != null)
+    /** DISMISSING 也算 alive：淡出期间来新请求要取消消失并原位更新，不能新建窗口。 */
+    fun isAlive(): Boolean = state != State.DESTROYED && root != null
 
-    fun updateContent(newRequest: ScriptDialogSpec.Request, newOnResult: ((ScriptDialogSpec.Result) -> Unit)? = null) {
-        if (dismissed) return
-        // 归属同步：先把当前屏的请求与结果回调换到最新。此后所有触发点（按钮栏、返回键、点外部）
-        // 都在触发时读取 currentRequest/currentOnResult，换屏后不会再把点击算到上一屏的等待方头上。
+    internal fun isDismissing(): Boolean = state == State.DISMISSING
+
+    internal fun windowRoot(): View? = root
+
+    internal fun outsideHintForTest(): TextView? = outsideHint
+
+    /**
+     * 原位换内容：只更新现有 card/dialog，不 addView/removeView，也不播窗口动画。
+     * @return 是否成功更新；窗口已销毁或内部视图缺失时返回 false。
+     */
+    @Suppress("ReturnCount", "CyclomaticComplexMethod")
+    fun updateContent(
+        newRequest: ScriptDialogSpec.Request,
+        newOnResult: ((ScriptDialogSpec.Result) -> Unit)? = null
+    ): Boolean {
+        if (state == State.DESTROYED) return false
+        if (state == State.DISMISSING) cancelDismiss()
         currentRequest = newRequest
         if (newOnResult != null) currentOnResult = newOnResult
-        val r = root as? android.widget.FrameLayout ?: return
-        // 打断可能还在跑的进场动画，重置为可见态
-        r.animate().cancel()
-        r.alpha = 1f
-        r.translationY = 0f
-        r.scaleX = 1f
-        r.scaleY = 1f
         outsideArmed = false
+        hideOutsideHint()
         mainHandler.removeCallbacks(disarmRunnable)
+        val r = root as? FrameLayout ?: return false
+        val oldCard = r.getChildAt(0) as? LinearLayout ?: return false
         val renderer = _renderer ?: ScriptDialogRenderer(ctx).also { _renderer = it }
-        val oldCard = r.getChildAt(0) as? android.widget.LinearLayout ?: return
-        // 真原位 Diff：行级复用、值保留、Fade+ChangeBounds 120ms
+        // 尺寸/位置/内容过渡全部交给 renderer，外层窗口和 card 实例不动。
         renderer.updateCard(oldCard, newRequest) { result ->
-            if (!dismissed) {
-                if (!ScriptDialogSpec.shouldDismiss(currentRequest, result)) {
-                    currentOnResult(result)
-                } else {
-                    dismissed = true
-                    currentOnResult(result)
-                    dismiss()
-                }
-            }
+            onResultFromNode(result)
         }
-        // 同步卡片宽度/位置（widthPct/position 可能变）
-        try {
-            val newW = renderer.screenWidthPx(newRequest.style.widthPct)
-            val lp = oldCard.layoutParams as? android.widget.FrameLayout.LayoutParams
-            if (lp != null) {
-                lp.width = newW
-                lp.gravity = if (newRequest.style.position == ScriptDialogSpec.POSITION_BOTTOM) Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL else Gravity.CENTER
-                oldCard.layoutParams = lp
-            }
-        } catch (_: Exception) {}
-        // 更新外部点击卡片引用与触摸监听（卡片实例复用，仅更新引用）
+        bindInsideTouch(renderer)
+        // 更新外部点击卡片引用与触摸监听（卡片实例复用，仅更新引用）。
         r.setOnTouchListener { _, ev ->
             if (ev.actionMasked == MotionEvent.ACTION_UP) {
                 val x = ev.x.toInt()
@@ -170,38 +191,139 @@ class ScriptDialogOverlay(
                 val inside = x >= oldCard.left && x <= oldCard.right && y >= oldCard.top && y <= oldCard.bottom
                 if (inside) {
                     outsideArmed = false
+                    hideOutsideHint()
                     mainHandler.removeCallbacks(disarmRunnable)
                 } else {
-                    onOutsideTap(oldCard)
+                    onOutsideTap()
                 }
             }
             false
         }
-        // 焦点
+        // 焦点：不打断首次呼出动画，只补一次焦点。
         r.post {
-            if (!focusAcquired && r.isAttachedToWindow) {
+            if (state == State.SHOWN && !focusAcquired && r.isAttachedToWindow) {
                 focusAcquired = true
                 r.requestFocus()
             }
         }
+        return true
     }
 
-    private fun onOutsideTap(card: View) {
+    private fun onResultFromNode(result: ScriptDialogSpec.Result) {
+        if (state == State.DESTROYED) return
+        if (!ScriptDialogSpec.shouldDismiss(currentRequest, result)) {
+            currentOnResult(result)
+        } else {
+            // 先进入消失，再通知桥；桥里的新请求可以取消这次消失并原位更新。
+            dismiss()
+            currentOnResult(result)
+        }
+    }
+
+    /** 取消正在进行的消失；窗口从未真正移除，所以不播任何动画。 */
+    private fun cancelDismiss() {
+        if (state != State.DISMISSING) return
+        val v = root ?: return
+        v.animate().cancel()
+        v.alpha = 1f
+        v.translationY = 0f
+        v.scaleX = 1f
+        v.scaleY = 1f
+        v.visibility = View.VISIBLE
+        state = State.SHOWN
+    }
+
+    /** 最终消失；只有这里允许窗口动画。 */
+    @Suppress("ReturnCount")
+    fun dismiss(immediate: Boolean = false) {
+        if (state == State.DESTROYED || state == State.DISMISSING) return
+        state = State.DISMISSING
+        outsideArmed = false
+        hideOutsideHint()
+        mainHandler.removeCallbacks(disarmRunnable)
+        val v = root
+        if (v == null) {
+            finishDismiss()
+            return
+        }
+        if (immediate) {
+            v.visibility = View.INVISIBLE
+            runCatching { wm.removeView(v) }
+            finishDismiss()
+            return
+        }
+        v.animate().cancel()
+        v.animate().alpha(0f).setDuration(DISMISS_ANIM_MS).withEndAction {
+            // 淡出期间若来了新请求，cancelDismiss 已把 state 改回 SHOWN，这里不能移除。
+            if (state == State.DISMISSING) {
+                v.visibility = View.INVISIBLE
+                runCatching { wm.removeView(v) }
+                finishDismiss()
+            }
+        }.start()
+    }
+
+    private fun finishDismiss() {
+        if (state == State.DESTROYED) return
+        state = State.DESTROYED
+        root = null
+        outsideHint = null
+        mainHandler.removeCallbacksAndMessages(null)
+        onDismissed?.invoke()
+    }
+
+    private fun bindInsideTouch(renderer: ScriptDialogRenderer) {
+        renderer.canvasDialog()?.host?.setOnTouchListener { _, ev ->
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+                // 点卡片内容也立即收起顶部提示；返回 false 不抢 Canvas 自己的触摸。
+                outsideArmed = false
+                hideOutsideHint()
+                mainHandler.removeCallbacks(disarmRunnable)
+            }
+            false
+        }
+    }
+
+    private fun onOutsideTap() {
         _renderer?.hideInput()
         if (outsideArmed) {
-            if (!dismissed) {
-                dismissed = true
-                currentOnResult(ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
+            hideOutsideHint()
+            if (state == State.SHOWN) {
+                // 同返回键：先进入消失，让桥有机会用新请求取消它。
                 dismiss()
+                currentOnResult(ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
             }
         } else {
             outsideArmed = true
+            showOutsideHint()
             mainHandler.removeCallbacks(disarmRunnable)
             mainHandler.postDelayed(disarmRunnable, OUTSIDE_ARM_MS)
-            card.animate().alpha(0.4f).setDuration(80).withEndAction {
-                card.animate().alpha(1f).setDuration(80).start()
-            }.start()
         }
+    }
+
+    private fun showOutsideHint() {
+        outsideHint?.visibility = View.VISIBLE
+    }
+
+    private fun hideOutsideHint() {
+        outsideHint?.visibility = View.GONE
+    }
+
+    private fun buildOutsideHint(): TextView = TextView(ctx).apply {
+        text = ctx.getString(R.string.dialog_tap_again_to_close)
+        setTextColor(Color.WHITE)
+        typeface = Typeface.DEFAULT_BOLD
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, HINT_TEXT_SP)
+        gravity = Gravity.CENTER
+        setPadding(dp(HINT_PAD_X_DP), dp(HINT_PAD_Y_DP), dp(HINT_PAD_X_DP), dp(HINT_PAD_Y_DP))
+        background = GradientDrawable().apply {
+            setColor(HINT_BG)
+            cornerRadius = dp(HINT_CORNER_DP).toFloat()
+        }
+        visibility = View.GONE
+        isClickable = false
+        isFocusable = false
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
     }
 
     private fun animateIn(v: View, anim: String) {
@@ -227,22 +349,18 @@ class ScriptDialogOverlay(
         }
     }
 
-    fun dismiss() {
-        if (dismissed && root == null) return
-        dismissed = true
-        val v = root ?: return
-        v.animate().alpha(0f).setDuration(140).withEndAction {
-            // 先隐藏再移除，避免全屏半透明窗口移除瞬间的合成闪烁
-            v.visibility = View.INVISIBLE
-            runCatching { wm.removeView(v) }
-        }.start()
-        root = null
-        mainHandler.removeCallbacksAndMessages(null)
-    }
+    private fun dp(v: Int): Int = (v * ctx.resources.displayMetrics.density).toInt()
 
     companion object {
         private const val OUTSIDE_ARM_MS = 2500L
         private const val NORMAL_ANIM_MS = 120L
         private const val FAST_ANIM_MS = 80L
+        private const val DISMISS_ANIM_MS = 140L
+        private const val HINT_TOP_DP = 44
+        private const val HINT_TEXT_SP = 13f
+        private const val HINT_PAD_X_DP = 12
+        private const val HINT_PAD_Y_DP = 7
+        private const val HINT_CORNER_DP = 8
+        private val HINT_BG = 0xB3000000.toInt()
     }
 }

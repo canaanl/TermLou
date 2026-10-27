@@ -8,6 +8,7 @@
     <string name="reset">初始化</string>
     <string name="done">完成</string>
     <string name="close">关闭</string>
+    <string name="dialog_tap_again_to_close">再次点击空白区域关闭</string>
     <string name="view">查看</string>
     <string name="retry">重试</string>
     <string name="inited">已初始化</string>

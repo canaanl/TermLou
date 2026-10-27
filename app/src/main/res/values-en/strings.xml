@@ -8,6 +8,7 @@
     <string name="reset">RESET</string>
     <string name="done">DONE</string>
     <string name="close">CLOSE</string>
+    <string name="dialog_tap_again_to_close">Tap blank area again to close</string>
     <string name="view">VIEW</string>
     <string name="retry">RETRY</string>
     <string name="inited">INITIALIZED</string>

@@ -197,9 +197,10 @@ Linux 的 `/var/log` 不写进 rootfs：通过 proot bind 到 `filesDir/logs/lin
 - **旧参数零改动**：`termlou-ui` 脚本不用改；旧 `--input/--select/--check/--toggle/--output/--button` 仍按原 `UiTokens` 生成规范竖排，结果 values、Canvas 快照和 `key.action` 格式不变
 - **原生 Canvas 场景**：`--canvas` / `--canvas-file` / `--canvas-height` / `--canvas-key` 传入场景 JSON，App 用原生 Android Canvas 渲染（不接 WebView）；支持矩形、圆/椭圆、直线、路径、文本、图片、线性进度条、分组、相机、粒子和动画
 - **原位 patch**：`--no-timeout` 保持浮窗，`--canvas-update` / `--canvas-progress` / `--canvas-scene` / `--canvas-play|pause|seek` 只改活动 Canvas，不新建 Entry、不写结果、不重建浮窗；交互动作也只改场景状态并 `invalidate()`
+- **单窗口会话**：换屏、主题、标题、尺寸和 Canvas patch 全部原位更新同一个浮窗，不销毁重建；外层窗口只有首次呼出和最终消失有动画。更新时卡片宽高平滑过渡，标题和内容渐隐渐现，外框始终不淡出。第一次点空白区域在最顶层显示白字「再次点击空白区域关闭」，第二次才关闭；标题和点外部都不再闪烁
 - **Canvas 设计器**：单行顶栏（返回 / 撤销 / 重做 / 更多 / 完成）、画布操作带、未选中元素时的即时画布属性页；图层从上到下即上层到下层，行内只保留显隐眼睛，复制/删除在属性页；点按动作分「提交结果 / 只改画面 / 无动作 / 自定义」，动画面板内置播放控制，无限循环动画显示「循环播放」而不是无限增长的时间；新增输入框、选项框、开关、按钮和按钮栏工具；新增控件按旧表单标准几何落到内容下方（输入 x=16、选项框 x=16、按钮栏 x=18 等），之后自由拖动；仍支持拖拽/缩放/旋转、网格吸附、路径点编辑、SVG/JSON 路径导入、关键帧动画、撤销/重做、JSON 导入导出和命令导出
 - **Canvas 点击提交**：节点动作 `submit:ID` 点按后写回 `{"id":"ID","values":{...}}` 并关窗；`submit:ID:keep` 写同样结果但保持浮窗，等待下一次请求。App 只写结果、不执行命令，由调用方 shell 读取 JSON 后自行执行
-- **弹窗工坊**（`DialogMakerActivity`）：只保留外壳（标题、主题、主色、圆角、位置、动画、预览、运行、导出）；线性控件列表和独立「画布」控件已移除。内容统一在 CanvasDesigner 的弹窗内容画布中编辑，图层/属性/时间轴就是工坊的层级结构。工坊只生成一个 `--canvas` 内容场景；实时预览、真机运行结果 JSON 和导出命令保持不变
+- **弹窗工坊**（`DialogMakerActivity`）：只保留外壳（标题、主题、主色、圆角、位置、动画、预览、运行、导出）；线性控件列表和独立「画布」控件已移除。内容统一在 CanvasDesigner 的弹窗内容画布中编辑，图层/属性/时间轴就是工坊的层级结构。工坊只生成一个 `--canvas` 内容场景；实时预览原位更新，不再 `removeAllViews`；「运行」复用同一个浮窗，真机运行结果 JSON 和导出命令保持不变
 - **剪贴板桥**：`termlou-clipboard "文本"` 或 `echo "文本" | termlou-clipboard` 直写系统剪贴板
 
 ### 6. 网络抓包与过滤 Network

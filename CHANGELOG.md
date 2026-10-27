@@ -7,6 +7,7 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.9.81** | 5981 | **浮窗单窗口生命周期：换屏、主题、尺寸、`--canvas-update` 全部原位更新同一个窗口，不再销毁重建；外层窗口只有首次呼出和最终消失有动画。更新时卡片宽高 180ms 平滑过渡，标题/内容 90ms 渐隐、140ms 渐现，外框不淡出；删除标题闪烁和点外部闪烁，第一次点空白区域在浮窗最顶层显示白字「再次点击空白区域关闭」，第二次才关闭。工坊预览与「运行」复用同一窗口并走同一套过渡；新增 Robolectric 单窗口/尺寸/内容/patch 测试和源码扫描锁** |
 | **5.9.80** | 5980 | **修复 5.9.79 弹窗塌成标题条：`ScrollView` 用 `UNSPECIFIED` 测量内容，`CanvasDialogView` 现在按场景宽高比报告 intrinsic height；新增 Robolectric 真实布局回归测试。弹窗工坊真正画布化：移除线性控件列表和独立画布控件，内容统一在 CanvasDesigner 编辑；新增控件按旧表单标准几何落位，按钮仍在画布中** |
 | **5.9.79** | 5979 | **弹窗内容区单 Canvas 化：标题栏保持原生，文本/输入/选项/开关/按钮全部变成标准 Canvas 节点；旧 `termlou-ui` 参数、结果 values、Canvas 快照和 `key.action` 全部不变。选项框独立成节点并支持内部滚动，过滤只影响框内；输入用透明 EditText 代理保留 IME/密码/多行；Canvas 设计器新增控件工具与推荐位置** |
 | **5.9.78** | 5978 | **日志总预算 1MB：Linux `/var/log` 移出 rootfs 并 bind 到应用日志目录，apt/dpkg 已知无界日志指向 `/dev/null`；应用日志写时封顶；Bash 历史不落盘；release 移除 TermLou 的 Android Logcat。只在启动时裁剪一次，不做定时轮询** |
@@ -38,6 +39,60 @@
 | **5.9.52** | 5952 | **修：状态栏特征字的立方体转向与页面滑动方向相反** |
 | **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
+
+## 5.9.81
+
+### 浮窗单窗口生命周期
+
+- `ScriptDialogOverlay` 增加 `SHOWN / DISMISSING / DESTROYED` 状态机。
+- 同一会话只 `addView` 一次；换屏、主题、标题、宽高、位置、Canvas patch
+  全部复用同一个 root / card / `CanvasDialogView`。
+- 淡出 140ms 内来新请求：取消消失并原位更新，不再新建第二个窗口。
+- `OverlayBridge.release()` 在活动窗口存在时不再 `stop()`；命令进程结束不会
+  顺手把用户正在看的浮窗销毁。
+- `--close` / 超时 / 关闭按钮 / 返回键只进入 `DISMISSING`，真正 `removeView`
+  后由 `onDismissed` 清空 `activeOverlay`。
+- 工坊「运行」只保留一个 `testOverlay`；重复点运行走 `updateContent`。
+
+### 外层窗口只有呼出和消失有动画
+
+- 保留：首次 `show()` 的 fade/scale/slide-up；最终 `dismiss()` 的 140ms 淡出。
+- 更新时不重建外层窗口；卡片外框背景、圆角、边框始终存在，不淡出。
+- 卡片宽高从旧值 180ms 平滑过渡到新值，不再一帧跳过去。
+- 标题和卡片内容先 90ms 渐隐；换内容后 140ms 渐现，和尺寸过渡重叠。
+- 标题随内容一起渐隐渐现，不再单独做 60ms 闪烁。
+- 删除：点空白区域时卡片 80ms alpha 闪烁。
+- `updateContent` 不重置 root 的 alpha/translation/scale，不会打断首次呼出动画。
+- Canvas 场景内部关键帧/进度/粒子动画不受影响。
+
+### 点空白区域提示
+
+- 第一次点空白区域：在浮窗最顶层显示白字「再次点击空白区域关闭」，
+  深色半透明圆角底，不拦截触摸、不抢焦点。
+- 2.5 秒无操作自动隐藏；点卡片内部、窗口更新、窗口消失时立即隐藏。
+- 第二次点空白区域才真正关闭。
+- 中英文文案：`dialog_tap_again_to_close`。
+
+### 工坊原位预览
+
+- `refreshPreview` 不再 `removeAllViews()`；只建一次 stage，
+  后续用同一个 `ScriptDialogRenderer.updateCard()` 原位更新。
+- 预览与真实弹窗共用同一套 builder/renderer，内容/布局一致；
+  点空白提示只属于真实浮窗。
+
+### 测试
+
+- `ScriptDialogOverlayLifecycleTest`：update 复用 root/dialog、
+  第一次点外部显示提示、第二次才消失、淡出中来新请求取消消失、
+  最终 dismiss 只移除一次。
+- `ScriptDialogRendererUpdateTest`：updateCard 复用同一个 `CanvasDialogView`、
+  标题/内容/值/输入焦点保留、卡片高度平滑增长、内容渐隐渐现、
+  `--canvas-update` patch 命中同一视图。
+- `DialogWindowScanTest`：只有 `animateIn`/`dismiss` 允许窗口动画，
+  `updateContent` 不允许 `removeView`/`dismiss`，renderer 不允许 `.animate()`。
+- `CanvasDialogRenderTest` 增加真机 updateCard 复用测试。
+- `ScriptDialogOverlayInstrumentedTest`：真机注入空白区域点击，断言白字提示
+  可见、有实际宽高、并能画出像素。
 
 ## 5.9.80
 

@@ -56,6 +56,10 @@ class DialogMakerActivity : Activity() {
     private var accent: Int? = null
     private var contentWidthDp = 360f
     private lateinit var contentScene: CanvasScene
+    private var previewRenderer: ScriptDialogRenderer? = null
+    private var previewRoot: FrameLayout? = null
+    private var previewCard: LinearLayout? = null
+    private var testOverlay: ScriptDialogOverlay? = null
 
     private val accentColors = listOf(
         0xFF2D7D46.toInt(), 0xFF0E639C.toInt(), 0xFF4DD0E1.toInt(),
@@ -425,21 +429,31 @@ class DialogMakerActivity : Activity() {
         )
     }
 
+    @Suppress("ComplexCondition")
     private fun refreshPreview() {
-        previewHost.removeAllViews()
-        val renderer = ScriptDialogRenderer(this)
-        val stage = FrameLayout(this).apply {
-            setBackgroundColor(0xFF0B0B0B.toInt())
+        val request = buildRequest("preview")
+        val root = previewRoot
+        val card = previewCard
+        val renderer = previewRenderer
+        if (root != null && card != null && renderer != null && root.parent === previewHost) {
+            // 原位更新：不再 removeAllViews，也不再新建 ScriptDialogRenderer。
+            renderer.updateCard(card, request) {}
+            return
         }
-        stage.addView(
-            renderer.buildRoot(buildRequest("preview")) {},
+        previewHost.removeAllViews()
+        val newRenderer = ScriptDialogRenderer(this)
+        val newRoot = newRenderer.buildRoot(request) {}
+        val newCard = newRoot.getChildAt(0) as? LinearLayout
+        previewRenderer = newRenderer
+        previewRoot = newRoot
+        previewCard = newCard
+        previewHost.addView(
+            newRoot,
             FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
             )
         )
-        previewHost.addView(stage, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
-        ))
     }
 
     // ===== 底部操作 =====
@@ -455,10 +469,31 @@ class DialogMakerActivity : Activity() {
         if (::lastResultView.isInitialized) {
             lastResultView.text = getString(R.string.dm_debug_empty)
         }
-        val overlay = ScriptDialogOverlay(this, buildRequest("test")) { result ->
+        val existing = testOverlay
+        if (existing != null && existing.isAlive()) {
+            // 重复点运行：同一个窗口原位换内容，不叠第二个浮窗。
+            existing.updateContent(buildRequest("test")) { result ->
+                showTestResult(result)
+            }
+            return
+        }
+        val overlay = ScriptDialogOverlay(applicationContext, buildRequest("test")) { result ->
             showTestResult(result)
         }
+        testOverlay = overlay
+        overlay.onDismissed = {
+            if (testOverlay === overlay) testOverlay = null
+        }
         overlay.show()
+    }
+
+    override fun onDestroy() {
+        testOverlay?.dismiss()
+        testOverlay = null
+        previewRenderer = null
+        previewRoot = null
+        previewCard = null
+        super.onDestroy()
     }
 
     private fun showTestResult(result: ScriptDialogSpec.Result) {

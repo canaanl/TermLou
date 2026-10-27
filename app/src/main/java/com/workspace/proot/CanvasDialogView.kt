@@ -23,7 +23,7 @@ import kotlin.math.roundToInt
  * CanvasHostView 负责绘制/命中；输入框聚焦时在其位置叠一个真正的 EditText，
  * 只借它接系统输入法、光标、选区和密码。失焦后 EditText 隐藏，视觉仍由 Canvas 画。
  */
-@Suppress("MagicNumber")
+@Suppress("MagicNumber", "TooManyFunctions")
 class CanvasDialogView(
     context: Context,
     private val palette: CanvasDialogPalette
@@ -85,10 +85,36 @@ class CanvasDialogView(
         input.setHintTextColor(palette.onSurfaceVariant)
     }
 
+    @Suppress("CyclomaticComplexMethod")
     fun setScene(scene: CanvasScene, resetClock: Boolean, preserveValues: Boolean, resetFilters: Boolean) {
-        hideInput()
+        val focusedId = formState.focusedNodeId
+        val focusedBefore = focusedId?.let { host.scene.findNode(it) }
+        var focusedAfter = focusedId?.let { scene.findNode(it) }
+        // 行顺序变了时节点 id 可能变；同 key 的 input 视为同一个输入框。
+        if (focusedAfter == null && focusedBefore?.type == CanvasSpec.TYPE_INPUT && focusedBefore.key.isNotEmpty()) {
+            focusedAfter = scene.flatten().firstOrNull {
+                it.type == CanvasSpec.TYPE_INPUT && it.key == focusedBefore.key
+            }
+        }
+        val keepFocus = preserveValues &&
+            focusedId != null &&
+            focusedBefore?.type == CanvasSpec.TYPE_INPUT &&
+            focusedAfter?.type == CanvasSpec.TYPE_INPUT &&
+            boundInputId == focusedId &&
+            input.isFocused
+        if (!keepFocus) hideInput()
         host.setScene(scene, resetClock)
         formState.reset(scene, preserveValues = preserveValues, resetFilters = resetFilters)
+        if (keepFocus) {
+            val node = focusedAfter?.let { host.scene.findNode(it.id) }
+            if (node != null && node.type == CanvasSpec.TYPE_INPUT && layoutInput(node)) {
+                // 同一个 input 仍在：保留焦点和输入法，只重新对齐代理 EditText 的几何。
+                boundInputId = node.id
+                formState.focus(node)
+            } else {
+                hideInput()
+            }
+        }
         host.invalidate()
         requestLayout()
     }
@@ -143,18 +169,18 @@ class CanvasDialogView(
         host.invalidate()
     }
 
-    @Suppress("ReturnCount", "CyclomaticComplexMethod")
-    private fun focusInput(node: CanvasNode) {
-        if (node.type != CanvasSpec.TYPE_INPUT) return
-        if (boundInputId == node.id && input.isFocused) return
+    /** 只负责把代理 EditText 对齐到节点几何/样式，不改文本、不抢焦点。 */
+    @Suppress("ReturnCount")
+    private fun layoutInput(node: CanvasNode): Boolean {
+        if (node.type != CanvasSpec.TYPE_INPUT) return false
         val top = if (node.label.isEmpty()) 0f else CanvasWidgetLayout.LABEL_H + CanvasWidgetLayout.LABEL_GAP
-        val tl = host.nodeLocalToView(node.id, 0f, top) ?: return
-        val tr = host.nodeLocalToView(node.id, node.w, top) ?: return
-        val bl = host.nodeLocalToView(node.id, 0f, node.h) ?: return
-        val br = host.nodeLocalToView(node.id, node.w, node.h) ?: return
+        val tl = host.nodeLocalToView(node.id, 0f, top) ?: return false
+        val tr = host.nodeLocalToView(node.id, node.w, top) ?: return false
+        val bl = host.nodeLocalToView(node.id, 0f, node.h) ?: return false
+        val br = host.nodeLocalToView(node.id, node.w, node.h) ?: return false
         val width = hypot(tr.first - tl.first, tr.second - tl.second)
         val height = hypot(bl.first - tl.first, bl.second - tl.second)
-        if (width <= 1f || height <= 1f) return
+        if (width <= 1f || height <= 1f) return false
         val cx = (tl.first + tr.first + bl.first + br.first) / 4f
         val cy = (tl.second + tr.second + bl.second + br.second) / 4f
         val rotation = Math.toDegrees(atan2((tr.second - tl.second).toDouble(), (tr.first - tl.first).toDouble())).toFloat()
@@ -185,6 +211,14 @@ class CanvasDialogView(
         }
         input.isSingleLine = !node.multiline
         input.visibility = View.VISIBLE
+        return true
+    }
+
+    @Suppress("ReturnCount")
+    private fun focusInput(node: CanvasNode) {
+        if (node.type != CanvasSpec.TYPE_INPUT) return
+        if (boundInputId == node.id && input.isFocused) return
+        if (!layoutInput(node)) return
         boundInputId = node.id
         formState.focus(node)
         bindingText = true

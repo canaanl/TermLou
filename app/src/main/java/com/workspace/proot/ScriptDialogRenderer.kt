@@ -1,18 +1,25 @@
 package com.workspace.proot
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Handler
+import android.os.Looper
 import android.text.TextPaint
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * 弹窗渲染：原生标题栏 + 一个 CanvasDialogView 内容区。
@@ -34,11 +41,19 @@ class ScriptDialogRenderer(private val ctx: Context) {
     private var lastRequest: ScriptDialogSpec.Request? = null
     private var currentOnResult: ((ScriptDialogSpec.Result) -> Unit)? = null
     private val canvasActions = HashMap<String, String>()
+    private var updateAnimator: ValueAnimator? = null
+    private var contentAnimator: ValueAnimator? = null
+    private var updateRunnable: Runnable? = null
+    private var updateGeneration = 0
+    private var transitionLocked = false
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     fun captureValues(): Map<String, String> {
         val form = dialogRef?.collectValues() ?: emptyMap()
         return form + canvasValues()
     }
+
+    internal fun canvasDialog(): CanvasDialogView? = dialogRef
 
     fun buildRoot(request: ScriptDialogSpec.Request, onResult: (ScriptDialogSpec.Result) -> Unit): FrameLayout {
         val style = request.style
@@ -103,12 +118,102 @@ class ScriptDialogRenderer(private val ctx: Context) {
         return card
     }
 
-    fun updateCard(card: LinearLayout, newRequest: ScriptDialogSpec.Request, onResult: (ScriptDialogSpec.Result) -> Unit) {
-        currentOnResult = onResult
-        lastRequest = newRequest
+    /**
+     * 原位换内容。
+     *
+     * 外层 card / CanvasDialogView 实例始终复用：
+     * 1. 外框不动，旧内容 alpha 渐隐；
+     * 2. 在 alpha 0 时换新内容，并测出目标宽高；
+     * 3. card 从旧宽高平滑过渡到新宽高；
+     * 4. 新内容 alpha 渐现，和尺寸过渡重叠。
+     *
+     * @param animate false 时直接落到最终状态，供测试/首次布局使用。
+     */
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
+    fun updateCard(
+        card: LinearLayout,
+        newRequest: ScriptDialogSpec.Request,
+        animate: Boolean = true,
+        onDone: (() -> Unit)? = null,
+        onResult: (ScriptDialogSpec.Result) -> Unit
+    ) {
+        val generation = ++updateGeneration
+        cancelUpdateTransition()
         val style = newRequest.style
         val p = paletteOf(style)
         palette = p
+        updateCardFrame(card, style, p)
+
+        if (!animate) {
+            currentOnResult = onResult
+            lastRequest = newRequest
+            transitionLocked = false
+            applyContent(card, newRequest, p)
+            dialogRef?.alpha = 1f
+            titleRef?.alpha = 1f
+            applyCardLayoutFinal(card, style)
+            card.post { updateScrollLimit() }
+            onDone?.invoke()
+            return
+        }
+
+        val dialog = dialogRef
+        val title = titleRef
+        val oldW = card.width.takeIf { it > 0 } ?: card.measuredWidth
+        val oldH = card.height.takeIf { it > 0 } ?: card.measuredHeight
+        if (dialog == null || oldW <= 0 || oldH <= 0) {
+            currentOnResult = onResult
+            lastRequest = newRequest
+            transitionLocked = false
+            applyContent(card, newRequest, p)
+            dialog?.alpha = 1f
+            title?.alpha = 1f
+            applyCardLayoutFinal(card, style)
+            card.post { updateScrollLimit() }
+            onDone?.invoke()
+            return
+        }
+
+        val newTitle = titleBar(newRequest.ui.title, style, p).text.toString()
+        val titleChanged = title?.text?.toString() != newTitle
+        // 过渡期间忽略旧内容上的按钮，避免把正在淡出的旧控件算到新请求。
+        currentOnResult = onResult
+        transitionLocked = true
+        fadeOutContent(dialog, if (titleChanged) title else null)
+
+        val run = Runnable {
+            if (generation != updateGeneration) return@Runnable
+            updateRunnable = null
+            currentOnResult = onResult
+            lastRequest = newRequest
+            applyContent(card, newRequest, p)
+            transitionLocked = false
+            dialog.alpha = 0f
+            if (titleChanged) title?.alpha = 0f
+
+            // 冻结旧尺寸，外框继续可见；新内容此时 alpha 0，不会跳。
+            val frozen = card.layoutParams
+            if (frozen != null) {
+                frozen.width = oldW
+                frozen.height = oldH
+                card.layoutParams = frozen
+            }
+            updateScrollLimit()
+            val targetW = screenWidthPx(style.widthPct)
+            card.measure(
+                View.MeasureSpec.makeMeasureSpec(targetW, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+            )
+            val targetH = card.measuredHeight.coerceAtLeast(1)
+            startSizeAnimation(card, oldW, oldH, targetW, targetH, generation, onDone)
+
+            fadeInContent(dialog, if (titleChanged) title else null)
+        }
+        updateRunnable = run
+        mainHandler.postDelayed(run, UPDATE_FADE_OUT_MS)
+    }
+
+    private fun updateCardFrame(card: LinearLayout, style: ScriptDialogSpec.Style, p: Palette) {
         (card.background as? GradientDrawable)?.let { bg ->
             bg.setColor(p.surface)
             bg.cornerRadius = style.radiusDp * d
@@ -116,12 +221,130 @@ class ScriptDialogRenderer(private val ctx: Context) {
             card.invalidateOutline()
         }
         card.setTag(style.radiusDp)
-        titleRef?.let { updateTitleBar(it, newRequest.ui.title, style, p) }
+    }
+
+    private fun applyContent(
+        card: LinearLayout,
+        request: ScriptDialogSpec.Request,
+        p: Palette
+    ) {
+        val style = request.style
+        titleRef?.let { updateTitleBar(it, request.ui.title, style, p) }
         dialogRef?.updatePalette(p.toCanvasPalette())
         dialogRef?.resetSubmitLock()
         canvasActions.clear()
-        rebuild(newRequest, resetClock = true, preserveValues = true, resetFilters = true)
-        card.post { updateScrollLimit() }
+        rebuild(request, resetClock = true, preserveValues = true, resetFilters = true)
+        applyCardGravity(card, style)
+    }
+
+    private fun applyCardGravity(card: LinearLayout, style: ScriptDialogSpec.Style) {
+        val lp = card.layoutParams as? FrameLayout.LayoutParams ?: return
+        lp.gravity = if (style.position == ScriptDialogSpec.POSITION_BOTTOM) {
+            Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        } else {
+            Gravity.CENTER
+        }
+        card.layoutParams = lp
+    }
+
+    private fun applyCardLayoutFinal(card: LinearLayout, style: ScriptDialogSpec.Style) {
+        val lp = card.layoutParams as? FrameLayout.LayoutParams
+        if (lp != null) {
+            lp.width = screenWidthPx(style.widthPct)
+            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            lp.gravity = if (style.position == ScriptDialogSpec.POSITION_BOTTOM) {
+                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            } else {
+                Gravity.CENTER
+            }
+            card.layoutParams = lp
+        }
+        card.requestLayout()
+    }
+
+    private fun fadeOutContent(dialog: View, title: View?) {
+        contentAnimator?.cancel()
+        val animator = ValueAnimator.ofFloat(dialog.alpha.coerceIn(0f, 1f), 0f).apply {
+            duration = UPDATE_FADE_OUT_MS
+            addUpdateListener { animation ->
+                val alpha = animation.animatedValue as Float
+                dialog.alpha = alpha
+                title?.alpha = alpha
+            }
+        }
+        contentAnimator = animator
+        animator.start()
+    }
+
+    private fun fadeInContent(dialog: View, title: View?) {
+        val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+            startDelay = UPDATE_FADE_IN_DELAY_MS
+            duration = UPDATE_FADE_IN_MS
+            addUpdateListener { animation ->
+                val alpha = animation.animatedValue as Float
+                dialog.alpha = alpha
+                title?.alpha = alpha
+            }
+        }
+        contentAnimator = animator
+        animator.start()
+    }
+
+    @Suppress("LongParameterList")
+    private fun startSizeAnimation(
+        card: LinearLayout,
+        oldW: Int,
+        oldH: Int,
+        targetW: Int,
+        targetH: Int,
+        generation: Int,
+        onDone: (() -> Unit)?
+    ) {
+        val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = UPDATE_SIZE_MS
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { animation ->
+                val t = animation.animatedValue as Float
+                val w = (oldW + (targetW - oldW) * t).roundToInt().coerceAtLeast(1)
+                val h = (oldH + (targetH - oldH) * t).roundToInt().coerceAtLeast(1)
+                val lp = card.layoutParams
+                if (lp != null) {
+                    lp.width = w
+                    lp.height = h
+                    card.layoutParams = lp
+                }
+                card.requestLayout()
+            }
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    if (generation != updateGeneration) return
+                    updateAnimator = null
+                    val lp = card.layoutParams
+                    if (lp != null) {
+                        lp.width = targetW
+                        lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                        card.layoutParams = lp
+                    }
+                    card.requestLayout()
+                    mainHandler.post {
+                        updateScrollLimit()
+                        onDone?.invoke()
+                    }
+                }
+            })
+        }
+        updateAnimator = animator
+        animator.start()
+    }
+
+    private fun cancelUpdateTransition() {
+        updateRunnable?.let { mainHandler.removeCallbacks(it) }
+        updateRunnable = null
+        updateAnimator?.cancel()
+        updateAnimator = null
+        contentAnimator?.cancel()
+        contentAnimator = null
+        transitionLocked = false
     }
 
     private fun rebuild(
@@ -177,6 +400,7 @@ class ScriptDialogRenderer(private val ctx: Context) {
 
     private fun submit(id: String, keepOpen: Boolean) {
         val cb = currentOnResult ?: return
+        if (transitionLocked) return
         val values = (dialogRef?.collectValues() ?: emptyMap()) + canvasValues()
         cb(ScriptDialogSpec.Result(id, values, keepOpen = keepOpen))
     }
@@ -214,8 +438,10 @@ class ScriptDialogRenderer(private val ctx: Context) {
         val request = lastRequest ?: return false
         if (patch.scene != null) {
             val newRequest = CanvasDialogPatchPlanner.replaceScenes(request, key, patch.scene) ?: return false
-            lastRequest = newRequest
-            rebuild(newRequest, resetClock = false, preserveValues = true, resetFilters = false)
+            val card = cardRef ?: return false
+            val cb = currentOnResult ?: return false
+            // 整场景替换按内容替换处理：卡片尺寸过渡 + 内容渐隐渐现。
+            updateCard(card, newRequest, animate = true, onResult = cb)
             if (key == null) canvasActions.clear() else canvasActions.remove(key)
             return true
         }
@@ -283,16 +509,10 @@ class ScriptDialogRenderer(private val ctx: Context) {
 
     private fun updateTitleBar(tv: TextView, title: String, style: ScriptDialogSpec.Style, palette: Palette) {
         val newTitle = titleBar(title, style, palette)
-        val newText = newTitle.text.toString()
-        if (tv.text.toString() == newText) {
-            tv.setTextColor(palette.accent)
-            return
-        }
-        tv.animate().alpha(0f).setDuration(60).withEndAction {
-            tv.text = newText
-            tv.setTextColor(palette.accent)
-            tv.animate().alpha(1f).setDuration(60).start()
-        }.start()
+        // 只有首次呼出和最终消失允许窗口动画；更新时直接换字，不做淡入淡出。
+        tv.text = newTitle.text
+        tv.setTextColor(palette.accent)
+        tv.alpha = 1f
     }
 
     private fun paletteOf(style: ScriptDialogSpec.Style): Palette {
@@ -340,6 +560,13 @@ class ScriptDialogRenderer(private val ctx: Context) {
             onButton = onButton,
             inputBg = inputBg
         )
+    }
+
+    private companion object {
+        const val UPDATE_FADE_OUT_MS = 90L
+        const val UPDATE_SIZE_MS = 180L
+        const val UPDATE_FADE_IN_MS = 140L
+        const val UPDATE_FADE_IN_DELAY_MS = 45L
     }
 
     private object PaintDialogMetrics : CanvasDialogMetrics {

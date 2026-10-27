@@ -98,6 +98,49 @@ class CanvasDialogRenderTest {
     }
 
     @Test
+    fun updateCardReusesTheSameContentHost() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val ctx = instrumentation.targetContext
+        fun request(title: String): ScriptDialogSpec.Request = ScriptDialogSpec.Request(
+            id = "update",
+            ui = ScriptDialogSpec.Ui(
+                title = title,
+                rows = listOf(
+                    ScriptDialogSpec.Row.Text(ScriptDialogSpec.TextRow("line $title")),
+                    ScriptDialogSpec.Row.Input(ScriptDialogSpec.InputRow("name", "Name", "Ada")),
+                    ScriptDialogSpec.Row.Buttons(
+                        ScriptDialogSpec.ButtonsRow(
+                            listOf(ScriptDialogSpec.Button("OK", "ok", ScriptDialogSpec.BTN_PRIMARY))
+                        )
+                    )
+                )
+            )
+        )
+        instrumentation.runOnMainSync {
+            val renderer = ScriptDialogRenderer(ctx)
+            val root = renderer.buildRoot(request("A")) {}
+            root.measure(
+                View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(2400, View.MeasureSpec.EXACTLY)
+            )
+            root.layout(0, 0, 1080, 2400)
+            val card = root.getChildAt(0) as android.widget.LinearLayout
+            val before = findDialog(root)!!
+            renderer.updateCard(card, request("B"), animate = false) {}
+            root.measure(
+                View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(2400, View.MeasureSpec.EXACTLY)
+            )
+            root.layout(0, 0, 1080, 2400)
+            val after = findDialog(root)!!
+            assertTrue("update must reuse the same CanvasDialogView", before === after)
+            val title = card.getChildAt(0) as android.widget.TextView
+            assertTrue("title not updated: ${title.text}", title.text.contains("B"))
+            assertTrue("content collapsed: ${after.measuredHeight}", after.measuredHeight > 100)
+        }
+    }
+
+    @Test
     fun canvasOnlyDialogWithWidgetsDraws() {
         val scene = CanvasScene(
             width = 360f,

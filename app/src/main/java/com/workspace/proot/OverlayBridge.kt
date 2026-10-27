@@ -51,7 +51,20 @@ object OverlayBridge {
 
     fun release() {
         if (refs.get() > 0) refs.decrementAndGet()
-        if (refs.get() <= 0 && running) stop()
+        maybeStop()
+    }
+
+    /**
+     * 有活动窗口/队列时不能停：命令进程结束只是 release 一个引用，
+     * 不能把用户正在看的浮窗一起销毁。真正消失后由 onDismissed 再调用这里。
+     */
+    @Suppress("ComplexCondition")
+    private fun maybeStop() {
+        if (refs.get() <= 0 && running && activeOverlay == null &&
+            queue.isEmpty() && pendingParses.isEmpty()
+        ) {
+            stop()
+        }
     }
 
     private fun start() {
@@ -99,8 +112,9 @@ object OverlayBridge {
         parser = null
         pendingParses.clear()
         cancelTimeout()
-        activeOverlay?.dismiss()
+        val closing = activeOverlay
         activeOverlay = null
+        closing?.dismiss(immediate = true)
         // 收尾前给仍在等待的请求写明确结果，避免 bash 侧空等到自身超时
         ownership.current?.let {
             resolve(it, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
@@ -189,13 +203,13 @@ object OverlayBridge {
                 resolve(entry, ScriptDialogSpec.Result("error", error = ScriptDialogSpec.ERROR_PERMISSION))
                 continue
             }
-            // 显式关闭
+            // 显式关闭：只进入 DISMISSING，不立即丢掉窗口引用。
+            // 淡出期间若队列里还有新请求，showNext 会用 updateContent 取消消失并原位更新。
             if (entry.request.op == "close") {
                 cancelTimeout()
                 val prev = ownership.current
-                activeOverlay?.dismiss()
-                activeOverlay = null
                 ownership.clearCurrent()
+                activeOverlay?.dismiss()
                 // 关闭者自身回 close，之前等待的 current 也回 dismiss
                 resolve(entry, ScriptDialogSpec.Result("close"))
                 if (prev != null) {
@@ -210,48 +224,58 @@ object OverlayBridge {
             if (superseded != null) {
                 resolve(superseded, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
             }
-            // 单例原位更新：有窗则改内容，无窗则新建
-            if (activeOverlay?.isAlive() == true) {
-                activeOverlay?.updateContent(entry.request) { result ->
-                    // 陈旧点击：上一屏（或更早）的回调晚到，忽略，不覆盖本屏归属
-                    if (ownership.isResolved(entry)) return@updateContent
-                    cancelTimeout()
-                    resolve(entry, result)
-                    if (!ScriptDialogSpec.shouldDismiss(entry.request, result)) {
-                        // 非关窗（按钮 close=false）：保持窗口等待下一次更新
-                        ownership.finish(entry)
-                        showNext()
-                    } else {
-                        activeOverlay?.dismiss()
-                        activeOverlay = null
-                        ownership.finish(entry)
-                        showNext()
-                    }
+            // 单例原位更新：有窗则改内容，无窗才新建。
+            // isAlive() 在 DISMISSING 时仍为 true，updateContent 会取消消失。
+            val current = activeOverlay
+            if (current != null && current.isAlive()) {
+                current.updateContent(entry.request) { result ->
+                    handleEntryResult(entry, current, result)
                 }
                 scheduleTimeout(entry, timeoutMs)
                 return
             }
             // 无窗：新建（首建按 --anim）
+            activeOverlay = null
+            var created: ScriptDialogOverlay? = null
             val overlay = ScriptDialogOverlay(c, entry.request) { result ->
-                // 陈旧点击：已结算的请求不再接收（也不惊动本屏归属）
-                if (!ownership.isResolved(entry)) {
-                    cancelTimeout()
-                    resolve(entry, result)
-                    if (!ScriptDialogSpec.shouldDismiss(entry.request, result)) {
-                        // 非关窗（按钮 close=false）：保持窗口等待下一次更新
-                        ownership.finish(entry)
-                        showNext()
-                    } else {
-                        activeOverlay = null
-                        ownership.finish(entry)
-                        showNext()
-                    }
+                handleEntryResult(entry, created, result)
+            }
+            created = overlay
+            activeOverlay = overlay
+            overlay.onDismissed = {
+                if (activeOverlay === overlay) {
+                    activeOverlay = null
+                    maybeStop()
                 }
             }
-            activeOverlay = overlay
             scheduleTimeout(entry, timeoutMs)
             overlay.show()
             return
+        }
+    }
+
+    /**
+     * 一屏结果的统一结算。
+     * 关窗时只 dismiss 当前窗口；activeOverlay 由 onDismissed 真正移除后再清空，
+     * 这样淡出期间到来的新请求还能取消消失并原位更新。
+     */
+    private fun handleEntryResult(
+        entry: Entry,
+        overlay: ScriptDialogOverlay?,
+        result: ScriptDialogSpec.Result
+    ) {
+        // 陈旧点击：上一屏（或更早）的回调晚到，忽略，不覆盖本屏归属
+        if (ownership.isResolved(entry)) return
+        cancelTimeout()
+        resolve(entry, result)
+        if (!ScriptDialogSpec.shouldDismiss(entry.request, result)) {
+            // 非关窗（按钮 close=false）：保持窗口等待下一次更新
+            ownership.finish(entry)
+            showNext()
+        } else {
+            overlay?.dismiss()
+            ownership.finish(entry)
+            showNext()
         }
     }
 
@@ -263,9 +287,9 @@ object OverlayBridge {
         }
         val runnable = Runnable {
             timeoutRunnable = null
-            val values = activeOverlay?.captureValues() ?: emptyMap()
-            activeOverlay?.dismiss()
-            activeOverlay = null
+            val overlay = activeOverlay
+            val values = overlay?.captureValues() ?: emptyMap()
+            overlay?.dismiss()
             if (ownership.current === entry) {
                 ownership.finish(entry)
                 resolve(entry, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_TIMEOUT, values + ("__reqId" to entry.request.id)))
