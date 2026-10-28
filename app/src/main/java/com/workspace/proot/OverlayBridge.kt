@@ -34,10 +34,16 @@ object OverlayBridge {
     private var pollTask: Runnable? = null
     private var reqObserver: FileObserver? = null
     private var refs = AtomicInteger(0)
-    private var timeoutRunnable: Runnable? = null
+    private var idleRunnable: Runnable? = null
+    private var sessionTimeoutMs: Long = DEFAULT_SESSION_TIMEOUT_MS
+    private var closingSession = false
     private var activeOverlay: ScriptDialogOverlay? = null
 
-    private class Entry(val request: ScriptDialogSpec.Request, val file: File, val enqueuedAt: Long)
+    private class Entry(val request: ScriptDialogSpec.Request, val file: File)
+
+    internal fun activeOverlayForTest(): ScriptDialogOverlay? = activeOverlay
+
+    internal fun sessionTimeoutMsForTest(): Long = sessionTimeoutMs
 
     fun acquire(context: Context, termlouBase: File) {
         if (ctx == null) {
@@ -111,11 +117,12 @@ object OverlayBridge {
         }
         parser = null
         pendingParses.clear()
-        cancelTimeout()
+        cancelIdleTimer()
+        closingSession = true
         val closing = activeOverlay
         activeOverlay = null
         closing?.dismiss(immediate = true)
-        // 收尾前给仍在等待的请求写明确结果，避免 bash 侧空等到自身超时
+        // 收尾前给仍在等待的请求写明确结果，避免 bash 侧空等
         ownership.current?.let {
             resolve(it, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
         }
@@ -125,6 +132,7 @@ object OverlayBridge {
         }
         queue.clear()
         ownership.reset()
+        closingSession = false
     }
 
     private fun pollOnce() {
@@ -143,6 +151,7 @@ object OverlayBridge {
     }
 
     /** 后台读文件 + 解析，结果回主线程入队；解析失败（半写残留）短暂延迟后重试。 */
+    @Suppress("CyclomaticComplexMethod")
     private fun submitParse(file: File) {
         val p = parser ?: return
         runCatching { p.execute {
@@ -152,10 +161,14 @@ object OverlayBridge {
                 val patch = runCatching { CanvasPatch.parse(obj) }.getOrNull()
                 mainHandler.post {
                     pendingParses.remove(file.name)
-                    if (running) {
+                    if (running && !closingSession) {
                         val overlay = activeOverlay
                         if (patch != null && overlay?.isAlive() == true) {
-                            overlay.applyCanvasPatch(patch.key, patch)
+                            if (overlay.applyCanvasPatch(patch.key, patch)) {
+                                // 程序化 patch 也算“还有更新在推进”，重置空闲计时；
+                                // 停止更新后仍会按会话超时关闭。
+                                resetIdleTimer()
+                            }
                         }
                     }
                     runCatching { file.delete() }
@@ -174,7 +187,7 @@ object OverlayBridge {
                 }
                 if (file.name == ownership.current?.file?.name) return@post
                 if (queue.any { it.file.name == file.name }) return@post
-                queue.addLast(Entry(parsed, file, System.currentTimeMillis()))
+                queue.addLast(Entry(parsed, file))
                 showNext()
             }
         } }.onFailure {
@@ -192,117 +205,148 @@ object OverlayBridge {
     private fun showNext() {
         if (!running) return
         val c = ctx ?: return
+        // 最终关闭动画期间，不复活旧窗口；新请求排队，等窗口真正移除后开新会话。
+        if (closingSession && activeOverlay != null) return
         while (queue.isNotEmpty()) {
-            val entry = queue.removeFirst()
-            val timeoutMs = (entry.request.timeoutSec * 1000.0).toLong()
-            if (timeoutMs > 0 && System.currentTimeMillis() - entry.enqueuedAt > timeoutMs) {
-                resolve(entry, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_TIMEOUT, mapOf("__reqId" to entry.request.id)))
-                continue
-            }
+            val entry = queue.first()
             if (!Settings.canDrawOverlays(c)) {
+                queue.removeFirst()
                 resolve(entry, ScriptDialogSpec.Result("error", error = ScriptDialogSpec.ERROR_PERMISSION))
                 continue
             }
-            // 显式关闭：只进入 DISMISSING，不立即丢掉窗口引用。
-            // 淡出期间若队列里还有新请求，showNext 会用 updateContent 取消消失并原位更新。
+            // 显式关闭：销毁整个会话，清空队列。
             if (entry.request.op == "close") {
-                cancelTimeout()
+                queue.removeFirst()
                 val prev = ownership.current
                 ownership.clearCurrent()
-                activeOverlay?.dismiss()
-                // 关闭者自身回 close，之前等待的 current 也回 dismiss
                 resolve(entry, ScriptDialogSpec.Result("close"))
-                if (prev != null) {
-                    resolve(prev, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
-                }
-                continue
+                closeSession(prev, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
+                return
             }
-            // 归属同步：停掉上一屏超时器，指针移到新请求，并结算被顶掉、仍在等待的上一屏
-            // （治本：上一屏等待方拿到明确 dismiss 而非挂到超时；本屏点击也不会再算到它头上）
-            cancelTimeout()
+            queue.removeFirst()
+            // 归属同步：旧屏被顶掉时拿到明确 dismiss，而不是挂到无响应。
             val superseded = ownership.takeOver(entry)
             if (superseded != null) {
                 resolve(superseded, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
             }
             // 单例原位更新：有窗则改内容，无窗才新建。
-            // isAlive() 在 DISMISSING 时仍为 true，updateContent 会取消消失。
             val current = activeOverlay
             if (current != null && current.isAlive()) {
-                current.updateContent(entry.request) { result ->
-                    handleEntryResult(entry, current, result)
+                configureSessionTimeout(entry.request, first = false)
+                val updated = current.updateContent(entry.request) { result ->
+                    handleEntryResult(entry, result)
                 }
-                scheduleTimeout(entry, timeoutMs)
+                if (!updated) {
+                    closeSession(entry, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
+                    return
+                }
+                resetIdleTimer()
                 return
             }
-            // 无窗：新建（首建按 --anim）
+            // 无窗：新建会话（首建按 --anim）。
             activeOverlay = null
-            var created: ScriptDialogOverlay? = null
+            closingSession = false
+            configureSessionTimeout(entry.request, first = true)
             val overlay = ScriptDialogOverlay(c, entry.request) { result ->
-                handleEntryResult(entry, created, result)
+                handleEntryResult(entry, result)
             }
-            created = overlay
             activeOverlay = overlay
+            overlay.onUserActivity = { resetIdleTimer() }
+            overlay.onSessionClose = { closeSession(ownership.current, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS)) }
             overlay.onDismissed = {
                 if (activeOverlay === overlay) {
                     activeOverlay = null
+                    closingSession = false
                     maybeStop()
+                    if (running) showNext()
                 }
             }
-            scheduleTimeout(entry, timeoutMs)
             overlay.show()
+            resetIdleTimer()
             return
         }
     }
 
     /**
-     * 一屏结果的统一结算。
-     * 关窗时只 dismiss 当前窗口；activeOverlay 由 onDismissed 真正移除后再清空，
-     * 这样淡出期间到来的新请求还能取消消失并原位更新。
+     * 一屏结果结算。
+     * close=false / keep 只保持窗口并重置空闲计时；其余最终结果销毁整个会话。
      */
-    private fun handleEntryResult(
-        entry: Entry,
-        overlay: ScriptDialogOverlay?,
-        result: ScriptDialogSpec.Result
-    ) {
-        // 陈旧点击：上一屏（或更早）的回调晚到，忽略，不覆盖本屏归属
+    private fun handleEntryResult(entry: Entry, result: ScriptDialogSpec.Result) {
         if (ownership.isResolved(entry)) return
-        cancelTimeout()
         resolve(entry, result)
         if (!ScriptDialogSpec.shouldDismiss(entry.request, result)) {
-            // 非关窗（按钮 close=false）：保持窗口等待下一次更新
             ownership.finish(entry)
+            resetIdleTimer()
             showNext()
         } else {
-            overlay?.dismiss()
             ownership.finish(entry)
-            showNext()
+            closeSession(null, null)
         }
     }
 
-    /** timeoutSec <= 0 表示不自动超时（--no-timeout）；窗口只能由按钮/返回/关闭/新请求结束。 */
-    private fun scheduleTimeout(entry: Entry, timeoutMs: Long) {
-        if (timeoutMs <= 0) {
-            timeoutRunnable = null
-            return
+    /**
+     * 销毁整个弹窗会话：取消空闲计时、结算当前/队列、淡出窗口、清空归属。
+     * activeOverlay 由 onDismissed 真正移除后再清空；期间新请求排队等新会话。
+     */
+    private fun closeSession(current: Entry?, currentResult: ScriptDialogSpec.Result?) {
+        cancelIdleTimer()
+        closingSession = true
+        if (current != null && !ownership.isResolved(current)) {
+            ownership.finish(current)
+            resolve(current, currentResult ?: ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
         }
-        val runnable = Runnable {
-            timeoutRunnable = null
-            val overlay = activeOverlay
-            val values = overlay?.captureValues() ?: emptyMap()
-            overlay?.dismiss()
-            if (ownership.current === entry) {
-                ownership.finish(entry)
-                resolve(entry, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_TIMEOUT, values + ("__reqId" to entry.request.id)))
-                showNext()
-            }
+        val pending = queue.toList()
+        queue.clear()
+        for (e in pending) {
+            resolve(e, ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
         }
-        timeoutRunnable = runnable
-        mainHandler.postDelayed(runnable, timeoutMs)
+        ownership.clearCurrent()
+        ownership.reset()
+        val overlay = activeOverlay
+        if (overlay == null) {
+            closingSession = false
+            maybeStop()
+        } else {
+            overlay.dismiss()
+        }
     }
 
-    private fun cancelTimeout() {
-        timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
-        timeoutRunnable = null
+    private fun onIdleTimeout() {
+        idleRunnable = null
+        if (!running || activeOverlay == null || closingSession) return
+        val entry = ownership.current
+        val values = activeOverlay?.captureValues() ?: emptyMap()
+        val extras = if (entry != null) mapOf("__reqId" to entry.request.id) else emptyMap()
+        closeSession(
+            entry,
+            ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_TIMEOUT, values + extras)
+        )
+    }
+
+    private fun configureSessionTimeout(request: ScriptDialogSpec.Request, first: Boolean) {
+        if (request.timeoutExplicit) {
+            sessionTimeoutMs = (request.timeoutSec.coerceIn(
+                ScriptDialogSpec.MIN_TIMEOUT_SEC,
+                ScriptDialogSpec.MAX_TIMEOUT_SEC
+            ) * 1000.0).toLong()
+        } else if (first) {
+            sessionTimeoutMs = DEFAULT_SESSION_TIMEOUT_MS
+        }
+    }
+
+    @Suppress("ComplexCondition")
+    private fun resetIdleTimer() {
+        cancelIdleTimer()
+        val overlay = activeOverlay
+        if (!running || overlay == null || !overlay.isAlive() || closingSession) return
+        val runnable = Runnable { onIdleTimeout() }
+        idleRunnable = runnable
+        mainHandler.postDelayed(runnable, sessionTimeoutMs)
+    }
+
+    private fun cancelIdleTimer() {
+        idleRunnable?.let { mainHandler.removeCallbacks(it) }
+        idleRunnable = null
     }
 
     private fun resolve(entry: Entry, result: ScriptDialogSpec.Result) {
@@ -330,4 +374,5 @@ object OverlayBridge {
     private const val FALLBACK_POLL_INTERVAL_MS = 1000L
     private const val EVENT_SETTLE_MS = 5L
     private const val PARSE_RETRY_MS = 10L
+    private const val DEFAULT_SESSION_TIMEOUT_MS = 30_000L
 }

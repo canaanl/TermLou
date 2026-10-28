@@ -43,8 +43,13 @@ class DialogWindowScanTest {
         val outside = body(overlay, "private fun onOutsideTap(", "private fun showOutsideHint")
         assertFalse("outside tap must not flash the window", outside.contains(".animate("))
 
-        val dismiss = body(overlay, "fun dismiss(immediate", "private fun finishDismiss")
-        assertTrue("final dismiss must keep the fade-out animation", dismiss.contains(".animate("))
+        val dismiss = body(overlay, "fun dismiss(immediate", "private fun animateOut")
+        assertTrue("final dismiss must use the style animation", dismiss.contains("animateOut("))
+
+        val animateOut = body(overlay, "private fun animateOut(", "private fun finishDismiss")
+        assertTrue("dismiss must animate the window", animateOut.contains(".animate("))
+        assertTrue("scale-out must not be just alpha", animateOut.contains("scaleX("))
+        assertTrue("slide-out must not be just alpha", animateOut.contains("translationY("))
 
         val animateIn = body(overlay, "private fun animateIn(", "private fun dp(")
         assertTrue("first show must keep the entrance animation", animateIn.contains(".animate("))

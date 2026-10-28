@@ -1,3 +1,5 @@
+@file:Suppress("MagicNumber")
+
 package com.workspace.proot
 
 import org.junit.Assert.assertEquals
@@ -73,6 +75,29 @@ class ScriptDialogSpecTest {
         assertEquals(ScriptDialogSpec.DEFAULT_TIMEOUT_SEC.toDouble(), req.timeoutSec, 0.0)
         assertNull(req.style.accent)
         assertTrue(req.ui.rows.isEmpty())
+    }
+
+    @Test
+    fun timeoutOmittedUsesSessionDefault() {
+        val req = ScriptDialogSpec.parseRequest("""{"id":"x"}""")
+        assertEquals(ScriptDialogSpec.DEFAULT_TIMEOUT_SEC.toDouble(), req.timeoutSec, 0.0)
+        assertFalse(req.timeoutExplicit)
+        assertFalse(ScriptDialogSpec.requestToJsonString(req).contains("\"timeout\""))
+    }
+
+    @Test
+    fun explicitTimeoutIsClampedToRange() {
+        val normal = ScriptDialogSpec.parseRequest("""{"id":"x","timeout":45}""")
+        assertTrue(normal.timeoutExplicit)
+        assertEquals(45.0, normal.timeoutSec, 0.0)
+
+        val tooLarge = ScriptDialogSpec.parseRequest("""{"id":"x","timeout":90}""")
+        assertTrue(tooLarge.timeoutExplicit)
+        assertEquals(ScriptDialogSpec.MAX_TIMEOUT_SEC, tooLarge.timeoutSec, 0.0)
+
+        val tooSmall = ScriptDialogSpec.parseRequest("""{"id":"x","timeout":0}""")
+        assertTrue(tooSmall.timeoutExplicit)
+        assertEquals(ScriptDialogSpec.MIN_TIMEOUT_SEC, tooSmall.timeoutSec, 0.0)
     }
 
     @Test

@@ -148,6 +148,8 @@ class CanvasHostView(
     var onAction: ((String) -> Unit)? = null
     /** 带来源节点的动作：弹窗需要按 Canvas 块记录 `key.action`。 */
     var onNodeAction: ((nodeId: String?, action: String) -> Unit)? = null
+    /** 运行态任意点击/滚动，用于弹窗空闲超时重置。 */
+    var onUserActivity: (() -> Unit)? = null
     /** submit:ID / submit:ID:keep —— 点击后把结果交回现有弹窗结果链路。 */
     var onSubmit: ((id: String, keepOpen: Boolean) -> Unit)? = null
     var onEditStart: (() -> Unit)? = null
@@ -1180,7 +1182,10 @@ class CanvasHostView(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (!designMode) return runtimeTouch(event)
+        if (!designMode) {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) onUserActivity?.invoke()
+            return runtimeTouch(event)
+        }
         val (sx, sy) = toScene(event.x, event.y)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {

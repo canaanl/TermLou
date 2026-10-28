@@ -45,6 +45,12 @@ class ScriptDialogOverlay(
     /** 窗口真正移除后回调；OverlayBridge 用它清空 activeOverlay，而不是在 dismiss 开始时清空。 */
     var onDismissed: (() -> Unit)? = null
 
+    /** 卡片内任意有效交互；OverlayBridge 用它重置会话空闲计时。 */
+    var onUserActivity: (() -> Unit)? = null
+
+    /** 返回键/点外部第二次：销毁整个会话，由 OverlayBridge 清队列。 */
+    var onSessionClose: (() -> Unit)? = null
+
     // 当前请求的可变引用，供 chain 原地更新时替换
     private var currentRequest: ScriptDialogSpec.Request = request
 
@@ -69,18 +75,15 @@ class ScriptDialogOverlay(
         content.isFocusableInTouchMode = true
         content.setOnKeyListener { _, keyCode, event ->
             if (event.action == KeyEvent.ACTION_UP && keyCode == KeyEvent.KEYCODE_BACK) {
-                if (state == State.SHOWN) {
-                    // 先进入消失，再通知桥；桥里的新请求可以在这 140ms 内取消消失。
-                    dismiss()
-                    currentOnResult(ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
-                }
+                if (state == State.SHOWN) requestSessionClose()
                 true
             } else {
                 false
             }
         }
-        // 点外部两段式关闭：第一次显示顶部白字提示，第二次真正关闭。
+        // 点外部两段式关闭：第一次显示顶部白字提示，第二次销毁整个会话。
         val card = (content as? FrameLayout)?.getChildAt(0)
+        card?.let { bindCardActivity(it) }
         content.setOnTouchListener { _, ev ->
             if (ev.actionMasked == MotionEvent.ACTION_UP) {
                 val c = card
@@ -253,14 +256,29 @@ class ScriptDialogOverlay(
             return
         }
         v.animate().cancel()
-        v.animate().alpha(0f).setDuration(DISMISS_ANIM_MS).withEndAction {
-            // 淡出期间若来了新请求，cancelDismiss 已把 state 改回 SHOWN，这里不能移除。
+        animateOut(v, currentRequest.style.anim)
+    }
+
+    /** 消失动画和弹窗工坊的 --anim 设置一致，不是固定淡出。 */
+    private fun animateOut(v: View, anim: String) {
+        val end = {
             if (state == State.DISMISSING) {
                 v.visibility = View.INVISIBLE
                 runCatching { wm.removeView(v) }
                 finishDismiss()
             }
-        }.start()
+        }
+        val a = when (anim) {
+            ScriptDialogSpec.ANIM_FADE -> v.animate().alpha(0f)
+            ScriptDialogSpec.ANIM_SLIDE -> v.animate()
+                .translationY(v.height.toFloat())
+                .alpha(0f)
+            else -> v.animate()
+                .scaleX(0.9f)
+                .scaleY(0.9f)
+                .alpha(0f)
+        }
+        a.setDuration(NORMAL_ANIM_MS).withEndAction(end).start()
     }
 
     private fun finishDismiss() {
@@ -273,7 +291,9 @@ class ScriptDialogOverlay(
     }
 
     private fun bindInsideTouch(renderer: ScriptDialogRenderer) {
-        renderer.canvasDialog()?.host?.setOnTouchListener { _, ev ->
+        val dialog = renderer.canvasDialog() ?: return
+        dialog.onUserActivity = { onUserActivity?.invoke() }
+        dialog.host.setOnTouchListener { _, ev ->
             if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
                 // 点卡片内容也立即收起顶部提示；返回 false 不抢 Canvas 自己的触摸。
                 outsideArmed = false
@@ -284,15 +304,34 @@ class ScriptDialogOverlay(
         }
     }
 
+    private fun bindCardActivity(card: View) {
+        card.setOnTouchListener { _, ev ->
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+                outsideArmed = false
+                hideOutsideHint()
+                mainHandler.removeCallbacks(disarmRunnable)
+                onUserActivity?.invoke()
+            }
+            false
+        }
+        (card as? LinearLayout)?.getChildAt(0)?.setOnTouchListener { _, ev ->
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) onUserActivity?.invoke()
+            false
+        }
+    }
+
+    private fun requestSessionClose() {
+        if (state != State.SHOWN) return
+        dismiss()
+        val cb = onSessionClose
+        if (cb != null) cb() else currentOnResult(ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
+    }
+
     private fun onOutsideTap() {
         _renderer?.hideInput()
         if (outsideArmed) {
             hideOutsideHint()
-            if (state == State.SHOWN) {
-                // 同返回键：先进入消失，让桥有机会用新请求取消它。
-                dismiss()
-                currentOnResult(ScriptDialogSpec.Result(ScriptDialogSpec.RESULT_ID_DISMISS))
-            }
+            requestSessionClose()
         } else {
             outsideArmed = true
             showOutsideHint()
@@ -353,9 +392,8 @@ class ScriptDialogOverlay(
 
     companion object {
         private const val OUTSIDE_ARM_MS = 2500L
-        private const val NORMAL_ANIM_MS = 120L
+        private const val NORMAL_ANIM_MS = 140L
         private const val FAST_ANIM_MS = 80L
-        private const val DISMISS_ANIM_MS = 140L
         private const val HINT_TOP_DP = 44
         private const val HINT_TEXT_SP = 13f
         private const val HINT_PAD_X_DP = 12

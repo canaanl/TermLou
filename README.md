@@ -191,13 +191,13 @@ Linux 的 `/var/log` 不写进 rootfs：通过 proot bind 到 `filesDir/logs/lin
 
 - Shell 一行命令弹出原生 Android 浮窗：`termlou-ui --title "确认" --message "继续？" --button "确定=ok=primary" --button "取消=cancel"`
 - 控件：`--input` 输入框、`--select` 单选、`--check` 多选、`--toggle` 开关、`--output FILE` 带 ANSI 彩色的文本输出
-- 主题 `dark/light/glass`、强调色、圆角、位置、动画、超时自动关闭
+- 主题 `dark/light/glass`、强调色、圆角、位置、动画、空闲超时自动关闭（默认 30s，可设 1..60s；有效点击/输入/滚动会重置）
 - **整弹窗内容区 Canvas**：标题栏保持原生，标题栏以下由一个 `CanvasScene` 绘制。`input / select / toggle / button` 都是标准 Canvas 节点；输入聚焦时临时叠透明 EditText 代理，失焦后仍由 Canvas 画
 - **选项框内部滚动**：`select/check` 生成独立选项框，超过约 6 行在框内滚动；过滤开关只改变框内可见选项，不移动外层节点
 - **旧参数零改动**：`termlou-ui` 脚本不用改；旧 `--input/--select/--check/--toggle/--output/--button` 仍按原 `UiTokens` 生成规范竖排，结果 values、Canvas 快照和 `key.action` 格式不变
 - **原生 Canvas 场景**：`--canvas` / `--canvas-file` / `--canvas-height` / `--canvas-key` 传入场景 JSON，App 用原生 Android Canvas 渲染（不接 WebView）；支持矩形、圆/椭圆、直线、路径、文本、图片、线性进度条、分组、相机、粒子和动画
-- **原位 patch**：`--no-timeout` 保持浮窗，`--canvas-update` / `--canvas-progress` / `--canvas-scene` / `--canvas-play|pause|seek` 只改活动 Canvas，不新建 Entry、不写结果、不重建浮窗；交互动作也只改场景状态并 `invalidate()`
-- **单窗口会话**：换屏、主题、标题、尺寸和 Canvas patch 全部原位更新同一个浮窗，不销毁重建；外层窗口只有首次呼出和最终消失有动画。更新时卡片宽高平滑过渡，标题和内容渐隐渐现，外框始终不淡出。第一次点空白区域在最顶层显示白字「再次点击空白区域关闭」，第二次才关闭；标题和点外部都不再闪烁
+- **原位 patch**：`--canvas-update` / `--canvas-progress` / `--canvas-scene` / `--canvas-play|pause|seek` 只改活动 Canvas，不新建 Entry、不写结果、不重建浮窗；每次成功 patch 重置会话空闲计时；交互动作也只改场景状态并 `invalidate()`
+- **单窗口会话**：换屏、主题、标题、尺寸和 Canvas patch 全部原位更新同一个浮窗，不销毁重建；外层窗口只有首次呼出和最终消失有动画，消失动画和工坊的 `--anim` 设置一致（fade/scale/slide-up）。更新时卡片宽高平滑过渡，标题和内容渐隐渐现，外框始终不淡出。空闲超时是会话级通用超时，默认 30s、最大 60s；弹窗内有效点击/输入/选择/滚动会重置；点空白第一次显示白字提示，2.5s 内第二次销毁整个会话；标题和点外部都不再闪烁
 - **Canvas 设计器**：单行顶栏（返回 / 撤销 / 重做 / 更多 / 完成）、画布操作带、未选中元素时的即时画布属性页；图层从上到下即上层到下层，行内只保留显隐眼睛，复制/删除在属性页；点按动作分「提交结果 / 只改画面 / 无动作 / 自定义」，动画面板内置播放控制，无限循环动画显示「循环播放」而不是无限增长的时间；新增输入框、选项框、开关、按钮和按钮栏工具；新增控件按旧表单标准几何落到内容下方（输入 x=16、选项框 x=16、按钮栏 x=18 等），之后自由拖动；仍支持拖拽/缩放/旋转、网格吸附、路径点编辑、SVG/JSON 路径导入、关键帧动画、撤销/重做、JSON 导入导出和命令导出
 - **Canvas 点击提交**：节点动作 `submit:ID` 点按后写回 `{"id":"ID","values":{...}}` 并关窗；`submit:ID:keep` 写同样结果但保持浮窗，等待下一次请求。App 只写结果、不执行命令，由调用方 shell 读取 JSON 后自行执行
 - **弹窗工坊**（`DialogMakerActivity`）：只保留外壳（标题、主题、主色、圆角、位置、动画、预览、运行、导出）；线性控件列表和独立「画布」控件已移除。内容统一在 CanvasDesigner 的弹窗内容画布中编辑，图层/属性/时间轴就是工坊的层级结构。工坊只生成一个 `--canvas` 内容场景；实时预览原位更新，不再 `removeAllViews`；「运行」复用同一个浮窗，真机运行结果 JSON 和导出命令保持不变
@@ -290,8 +290,8 @@ cat > /tmp/scene.json <<'JSON'
 ]}
 JSON
 
-# 长任务：后台保持浮窗，不自动超时
-termlou-ui --title "构建" --canvas @/tmp/scene.json --canvas-key main --no-timeout &
+# 长任务：后台保持，持续 patch 会重置空闲计时；--timeout 60 为最大空闲间隔
+termlou-ui --title "构建" --canvas @/tmp/scene.json --canvas-key main --timeout 60 &
 
 # 只 patch 活动 Canvas：原位更新，不新建 Entry、不写结果、不重建弹窗
 termlou-ui --canvas-update '{"node":"bar","progress":0.42,"animate":true,"duration":300}' --canvas-key main
@@ -305,7 +305,7 @@ termlou-ui --canvas-progress bar=1 --canvas-key main
 # 画布节点动作：submit:start 写结果并关窗；submit:start:keep 保持窗口
 # 设计器里的“点按动作 → 提交结果”可勾选“保持窗口”，自动生成 submit:start:keep。
 while :; do
-  r=$(termlou-ui --title "操作" --canvas @/tmp/scene.json --no-timeout --button "关闭=close")
+  r=$(termlou-ui --title "操作" --canvas @/tmp/scene.json --button "关闭=close")
   case "$(printf '%s' "$r" | jq -r .id)" in
     close|dismiss|timeout) break ;;
     start) ./start.sh ;;

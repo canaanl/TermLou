@@ -31,7 +31,9 @@ object ScriptDialogSpec {
     const val ERROR_PERMISSION = "permission"
     const val ERROR_BUSY = "busy"
 
-    const val DEFAULT_TIMEOUT_SEC = 60
+    const val DEFAULT_TIMEOUT_SEC = 30
+    const val MIN_TIMEOUT_SEC = 1.0
+    const val MAX_TIMEOUT_SEC = 60.0
 
     /**
      * 5.9.41：原 18。agent 终端弹窗的圆角与安卓界面按钮（12）不一致，
@@ -101,6 +103,8 @@ object ScriptDialogSpec {
     data class Request(
         val id: String,
         val timeoutSec: Double = DEFAULT_TIMEOUT_SEC.toDouble(),
+        /** true 表示脚本显式传了 timeout；false 表示沿用会话当前值/App 默认值。 */
+        val timeoutExplicit: Boolean = false,
         val ui: Ui,
         val style: Style = Style(),
         val chain: String? = null,
@@ -129,9 +133,17 @@ object ScriptDialogSpec {
         val styleObj = json.optObj("style")
         val chainRaw = json.optString("chain", "")
         val opRaw = json.optString("op", "")
+        val hasTimeout = json.has("timeout")
+        val timeout = if (hasTimeout) {
+            json.optDouble("timeout", DEFAULT_TIMEOUT_SEC.toDouble())
+                .coerceIn(MIN_TIMEOUT_SEC, MAX_TIMEOUT_SEC)
+        } else {
+            DEFAULT_TIMEOUT_SEC.toDouble()
+        }
         return Request(
             id = json.optString("id", ""),
-            timeoutSec = json.optDouble("timeout", DEFAULT_TIMEOUT_SEC.toDouble()),
+            timeoutSec = timeout,
+            timeoutExplicit = hasTimeout,
             ui = Ui(
                 title = uiObj?.optString("title", "") ?: "",
                 message = uiObj?.optString("message", "") ?: "",
@@ -321,9 +333,11 @@ object ScriptDialogSpec {
         }
         val out = MiniJson.Obj()
             .put("id", req.id)
-            .put("timeout", req.timeoutSec)
             .put("ui", ui)
             .put("style", style)
+        if (req.timeoutExplicit || req.timeoutSec != DEFAULT_TIMEOUT_SEC.toDouble()) {
+            out.put("timeout", req.timeoutSec)
+        }
         if (req.chain != null) out.put("chain", req.chain)
         if (req.op != null) out.put("op", req.op)
         return out

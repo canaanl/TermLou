@@ -18,15 +18,16 @@
 #   --toggle 标签=key      开关行（默认关；结果值 "1"/"0"）
 #   --toggle 标签=key=标签  过滤开关：开启时只显示带对应 #标签 的 select 选项，关闭显示全部
 #   --output FILE          把文件内容作为文本输出行（支持 ANSI 色）
-#   --timeout 秒           超时（默认 60；0 = 永不自动超时）
-#   --no-timeout           等价于 --timeout 0
+#   --timeout 秒           空闲超时（默认 30；范围 1..60；不传用 App 默认值）
+#                          弹窗内有效点击/输入/选择/滚动会重置；无操作到点自动关闭
 #   --close                显式关闭当前浮窗（单例）
+#   点弹窗外第一次显示提示，2.5 秒内第二次销毁整个会话；--no-timeout 已移除
 #   --chain CHAIN_ID       已废弃：单例自动原位更新，无需分组（保留兼容）
 #   --theme dark|light|glass
 #   --accent #RRGGBB       主色
 #   --radius N             圆角 dp
 #   --position center|bottom
-#   --anim fade|scale|slide-up  # 仅首建生效，原位更新为 Diff + 高度平滑
+#   --anim fade|scale|slide-up  # 呼出和消失都使用；更新时卡片尺寸/内容平滑过渡
 #
 # Canvas（原生 Android Canvas，不接 WebView）:
 #   --canvas JSON|@文件     初始 Canvas 场景（JSON 对象）
@@ -62,7 +63,7 @@ resfile="$RES_DIR/$id.json"
 TITLE=""
 MESSAGE=""
 OUTPUT_FILE=""
-TIMEOUT=60
+TIMEOUT=""
 THEME="dark"
 ACCENT=""
 RADIUS=""
@@ -81,7 +82,6 @@ CANVAS_PLAY=0
 CANVAS_PAUSE=0
 CANVAS_SEEK=""
 PATCH_ONLY=0
-NO_TIMEOUT=0
 
 BTN_SPEC=()
 IN_LABEL=()
@@ -137,8 +137,9 @@ Basic options:
   --toggle label=key     Toggle row (default off; result "1"/"0")
   --toggle label=key=tag Filter toggle: when on, only #tag options show
   --output FILE          Render file content as text output (ANSI colors OK)
-  --timeout SEC          Timeout in seconds (default 60; 0 means never)
-  --no-timeout           Same as --timeout 0; wait until a button/close request
+  --timeout SEC          Idle timeout in seconds (default 30; range 1..60;
+                         omit to use the app default; clicks/typing/scrolling
+                         inside reset it; two outside taps destroy the session)
   --close                Close the current overlay explicitly
   --chain CHAIN_ID       Deprecated (singleton updates in place, kept for compat)
   --theme dark|light|glass
@@ -161,10 +162,10 @@ Canvas options (native Android Canvas, no WebView):
   --canvas-play           Resume the active canvas animation clock
   --canvas-pause          Pause the active canvas animation clock
   --canvas-seek MS        Seek the active canvas animation clock (integer ms)
-  --no-timeout            Keep the dialog open for long-running canvas updates
   Patch options produce no new Entry and never write a result. They are dropped
   when no matching live canvas exists. Without --canvas-key, all active canvases
-  receive the patch. Use a background termlou-ui with --no-timeout, then update it.
+  receive the patch. Each successful patch resets the idle timer; keep sending
+  updates for long-running work (--no-timeout was removed).
 
 Canvas scene JSON:
   width,height            Design size in dp (default 360x220)
@@ -214,7 +215,7 @@ Runtime actions (node "action"):
   Actions update the scene in place; they do not write req/res or rebuild the card.
 
 Patch examples:
-  termlou-ui --title "Build" --canvas @scene.json --no-timeout --button "Close=close"
+  termlou-ui --title "Build" --canvas @scene.json --button "Close=close"
   termlou-ui --canvas-update '{"node":"bar","progress":0.42,"animate":true,"duration":300}'
   termlou-ui --canvas-update '{"node":"title","text":"Done","fill":"#4DD0E1"}'
   termlou-ui --canvas-progress bar=0.8 --canvas-progress bar2=1
@@ -230,7 +231,7 @@ Canvas click -> shell command:
   The app never runs commands: termlou-ui prints JSON, then your shell runs it.
   One request accepts one submit. For continuous use, loop (still sequential):
     while :; do
-      r=$(termlou-ui --canvas @panel.json --no-timeout --button "Close=close")
+      r=$(termlou-ui --canvas @panel.json --button "Close=close")
       case "$(printf '%s' "$r" | jq -r .id)" in
         close|dismiss|timeout) break ;;
         start) ./start.sh ;;
@@ -269,9 +270,11 @@ EOF
   --toggle 标签=key      开关行（默认关；结果值 "1"/"0"）
   --toggle 标签=key=标签  过滤开关：开启时只显示带对应 #标签 的 select 选项
   --output FILE          把文件内容作为文本输出行（支持 ANSI 色）
-  --timeout 秒           超时（默认 60；0 表示永不自动超时）
-  --no-timeout           等价于 --timeout 0；一直等到按钮/关闭请求
+  --timeout 秒           空闲超时（默认 30；范围 1..60；不传用 App 默认值）
+                         卡片内点击/输入/选择/滚动会重置；无操作到点自动关闭
+  不传 --timeout 时由 App 统一使用默认 30 秒
   --close                显式关闭当前浮窗（单例）
+  点外部第一次显示提示，2.5 秒内第二次销毁整个会话；--no-timeout 已移除
   --chain CHAIN_ID       已废弃（单例自动原位更新，保留兼容）
   --theme dark|light|glass
   --accent #RRGGBB       主色
@@ -293,10 +296,9 @@ Canvas 选项（Android 原生 Canvas，不接 WebView）:
   --canvas-play           继续活动 Canvas 动画时钟
   --canvas-pause          暂停活动 Canvas 动画时钟
   --canvas-seek MS        跳转活动 Canvas 动画时间（整数毫秒）
-  --no-timeout            长任务配合画布更新时保持浮窗不自动关闭
   Patch 不创建新 Entry、不写结果；没有匹配的活动 Canvas 时直接丢弃。
-  不传 --canvas-key 时 patch 会应用到所有活动 Canvas。建议后台运行一个
-  --no-timeout 的 termlou-ui，再用 --canvas-update 持续更新。
+  不传 --canvas-key 时 patch 会应用到所有活动 Canvas。每次成功 patch 会重置
+  空闲计时；长任务请持续发送 --canvas-update（--no-timeout 已移除）。
 
 Canvas 场景 JSON:
   width,height            设计尺寸 dp（默认 360x220）
@@ -346,7 +348,7 @@ Canvas 场景 JSON:
   动作只原位更新场景，不写 req/res，不重建卡片。
 
 Patch 示例:
-  termlou-ui --title "构建" --canvas @scene.json --no-timeout --button "关闭=close"
+  termlou-ui --title "构建" --canvas @scene.json --button "关闭=close"
   termlou-ui --canvas-update '{"node":"bar","progress":0.42,"animate":true,"duration":300}'
   termlou-ui --canvas-update '{"node":"title","text":"完成","fill":"#4DD0E1"}'
   termlou-ui --canvas-progress bar=0.8 --canvas-progress bar2=1
@@ -362,7 +364,7 @@ Canvas 点击 → 执行命令:
   App 不执行命令：termlou-ui 只输出 JSON，由调用方 shell 执行。
   一次请求只接受一次提交；连续操作在 shell 里循环（仍然串行）：
     while :; do
-      r=$(termlou-ui --canvas @panel.json --no-timeout --button "Close=close")
+      r=$(termlou-ui --canvas @panel.json --button "Close=close")
       case "$(printf '%s' "$r" | jq -r .id)" in
         close|dismiss|timeout) break ;;
         start) ./start.sh ;;
@@ -444,7 +446,7 @@ EOF
     --canvas-play) CANVAS_PLAY=1; PATCH_ONLY=1 ;;
     --canvas-pause) CANVAS_PAUSE=1; PATCH_ONLY=1 ;;
     --canvas-seek) shift; [ $# -eq 0 ] && die "$(_t "--canvas-seek 缺少参数值" "--canvas-seek needs a value")"; CANVAS_SEEK="$1"; PATCH_ONLY=1 ;;
-    --no-timeout) NO_TIMEOUT=1 ;;
+    --no-timeout) die "$(_t "--no-timeout 已移除；请用 --timeout 1..60" "--no-timeout was removed; use --timeout 1..60")" ;;
     --timeout) shift; [ $# -eq 0 ] && die "$(_t "--timeout 缺少参数值" "--timeout needs a value")"; TIMEOUT="$1" ;;
     --close) CLOSE=1 ;;
     --chain) shift; [ $# -eq 0 ] && die "$(_t "--chain 缺少参数值" "--chain needs a value")"; CHAIN="$1"; [[ "$CHAIN" =~ ^[A-Za-z0-9._-]+$ ]] || die "--chain $(_t "非法" "invalid"): $CHAIN" ;;
@@ -505,8 +507,12 @@ done
 case "$THEME" in dark|light|glass) ;; *) die "--theme $(_t "无效值" "invalid value"): $THEME" ;; esac
 case "$POSITION" in center|bottom) ;; *) die "--position $(_t "无效值" "invalid value"): $POSITION" ;; esac
 case "$ANIM" in fade|scale|slide-up) ;; *) die "--anim $(_t "无效值" "invalid value"): $ANIM" ;; esac
-[[ "$TIMEOUT" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "--timeout $(_t "必须是数字" "must be a number"): $TIMEOUT"
-if [ "$NO_TIMEOUT" = 1 ]; then TIMEOUT=0; fi
+if [ -n "$TIMEOUT" ]; then
+  [[ "$TIMEOUT" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "--timeout $(_t "必须是数字" "must be a number"): $TIMEOUT"
+  parsed_timeout=$(awk -v t="$TIMEOUT" 'BEGIN { if (t < 1 || t > 60) exit 1; print t }') || \
+    die "--timeout $(_t "范围必须是 1..60" "must be in 1..60"): $TIMEOUT"
+  TIMEOUT="$parsed_timeout"
+fi
 if [ -n "$RADIUS" ]; then
   [[ "$RADIUS" =~ ^[0-9]+$ ]] || die "--radius $(_t "必须是整数" "must be an integer"): $RADIUS"
 fi
@@ -745,53 +751,26 @@ chain_json=""
 if [ -n "$CHAIN" ]; then chain_json=",\"chain\":\"$(json_str "$CHAIN")\""; fi
 op_json=""
 if [ "$CLOSE" = 1 ]; then op_json=",\"op\":\"close\""; fi
+timeout_json=""
+if [ -n "$TIMEOUT" ]; then timeout_json=",\"timeout\":$TIMEOUT"; fi
 
-json="{\"id\":\"$id\",\"timeout\":$TIMEOUT$chain_json$op_json,\"ui\":{\"title\":\"$(json_str "$TITLE")\",\"message\":\"$(json_str "$MESSAGE")\",\"rows\":[$rows]},\"style\":$style}"
+json="{\"id\":\"$id\"$timeout_json$chain_json$op_json,\"ui\":{\"title\":\"$(json_str "$TITLE")\",\"message\":\"$(json_str "$MESSAGE")\",\"rows\":[$rows]},\"style\":$style}"
 # 原子写：先写临时文件再 rename，保证文件到达时内容已完整（Android 端监听 MOVED_TO 立即触发）
 printf '%s\n' "$json" > "$reqfile.tmp" && mv "$reqfile.tmp" "$reqfile"
 
-# ---------- 等待结果（优先 inotifywait，回退 0.02s 轮询） ----------
-itimeout=$(awk -v t="$TIMEOUT" 'BEGIN { printf "%d", int(t) + (t > int(t)) }')
-if [ "$TIMEOUT" = "0" ]; then
-  # --no-timeout：浮窗不自动关闭，脚本持续等待结果（适合后台任务 + --canvas-update）
-  if command -v inotifywait >/dev/null 2>&1; then
-    while [ ! -f "$resfile" ]; do
-      fname=$(inotifywait -q -e create -e moved_to --timeout 1 --format '%f' "$RES_DIR" 2>/dev/null)
-      if [ "$fname" = "$id.json" ]; then break; fi
-      [ -f "$resfile" ] && break
-    done
-    [ -f "$resfile" ] && sleep 0.05
-  else
-    while [ ! -f "$resfile" ]; do sleep 0.02; done
-  fi
-elif command -v inotifywait >/dev/null 2>&1; then
-  # deadline 循环：避免被他人 id 误唤醒导致超时误判，精确比对文件名
-  deadline=$(( $(date +%s) + itimeout + 1 ))
+# ---------- 等待结果 ----------
+# 正常关闭/超时由 App 的会话空闲计时控制；这里只是 App 无响应时的安全兜底。
+deadline=$(( $(date +%s) + 90 ))
+if command -v inotifywait >/dev/null 2>&1; then
   while [ ! -f "$resfile" ] && [ "$(date +%s)" -lt "$deadline" ]; do
-    remain=$(( deadline - $(date +%s) ))
-    [ "$remain" -le 0 ] && break
-    [ "$remain" -gt 1 ] && remain=1
-    fname=$(inotifywait -q -e create -e moved_to --timeout "$remain" --format '%f' "$RES_DIR" 2>/dev/null)
-    # 仅当唤醒文件名精确等于 $id.json 时才跳出；否则继续等
-    if [ "$fname" = "$id.json" ]; then
-      break
-    fi
-    # 误唤醒：检查是否已到达
-    [ -f "$resfile" ] && break
+    inotifywait -q -e create -e moved_to --timeout 1 --format '%f' "$RES_DIR" >/dev/null 2>&1
   done
-  # 触达可能早于文件写完，短暂兜底
-  if [ -f "$resfile" ]; then
-    sleep 0.05
-  fi
 else
-  attempts=$(awk -v t="$TIMEOUT" 'BEGIN { printf "%d", int(t * 50) + 1 }')
-  i=0
-  while [ "$i" -lt "$attempts" ]; do
-    [ -f "$resfile" ] && break
+  while [ ! -f "$resfile" ] && [ "$(date +%s)" -lt "$deadline" ]; do
     sleep 0.02
-    i=$(( i + 1 ))
   done
 fi
+[ -f "$resfile" ] && sleep 0.05
 
 if [ -f "$resfile" ]; then
   # 校验：首非空白字符为 { 且含 "id" 字段（id 为按钮 id/timeout，非请求 id；串扰已由文件名 deadline 循环保证）

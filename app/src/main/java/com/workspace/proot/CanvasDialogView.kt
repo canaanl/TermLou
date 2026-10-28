@@ -8,6 +8,7 @@ import android.text.InputType
 import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.View.MeasureSpec
 import android.view.inputmethod.InputMethodManager
@@ -48,6 +49,8 @@ class CanvasDialogView(
 
     var onSubmit: ((id: String, keepOpen: Boolean) -> Unit)? = null
     var onNodeAction: ((nodeId: String?, action: String) -> Unit)? = null
+    /** 任意运行态输入/点击/滚动，用于空闲超时重置。 */
+    var onUserActivity: (() -> Unit)? = null
 
     init {
         addView(host, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -57,6 +60,11 @@ class CanvasDialogView(
         host.onInputBlur = { hideInput() }
         host.onSubmit = { id, keepOpen -> onSubmit?.invoke(id, keepOpen) }
         host.onNodeAction = { id, action -> onNodeAction?.invoke(id, action) }
+        host.onUserActivity = { onUserActivity?.invoke() }
+        input.setOnTouchListener { _, ev ->
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) onUserActivity?.invoke()
+            false
+        }
         input.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
@@ -66,6 +74,7 @@ class CanvasDialogView(
                 val id = boundInputId ?: return
                 val node = host.scene.findNode(id) ?: return
                 formState.setInput(node, s?.toString() ?: "")
+                onUserActivity?.invoke()
                 host.invalidate()
             }
         })
@@ -219,6 +228,7 @@ class CanvasDialogView(
         if (node.type != CanvasSpec.TYPE_INPUT) return
         if (boundInputId == node.id && input.isFocused) return
         if (!layoutInput(node)) return
+        onUserActivity?.invoke()
         boundInputId = node.id
         formState.focus(node)
         bindingText = true

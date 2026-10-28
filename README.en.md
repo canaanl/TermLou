@@ -191,13 +191,13 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 
 - One shell line pops a native Android dialog
 - Controls: `--input`, `--select`, `--check`, `--toggle`, `--output FILE` (ANSI colors)
-- Theme `dark/light/glass`, accent color, corner radius, position, animation, auto-timeout
+- Theme `dark/light/glass`, accent color, corner radius, position, animation, idle auto-close (default 30s, configurable 1..60s; clicks/typing/scrolling reset it)
 - **Whole dialog content is one Canvas**: the title bar stays native; everything below it is drawn by a single `CanvasScene`. `input / select / toggle / button` are standard Canvas nodes; a transparent EditText proxy is overlaid only while an input is focused
 - **Scrollable option box**: `select/check` becomes an independent box with internal scrolling after about 6 rows; filter toggles only change visible options inside the box and never move outer nodes
 - **Old flags unchanged**: existing `termlou-ui` scripts keep working; `--input/--select/--check/--toggle/--output/--button` still lay out with the original `UiTokens` metrics, and result values, Canvas snapshots and `key.action` keep their exact shapes
 - **Native Canvas scenes**: `--canvas` / `--canvas-file` / `--canvas-height` / `--canvas-key` pass a scene JSON rendered by native Android Canvas (no WebView); supports rects, circles/ellipses, lines, paths, text, images, linear progress bars, groups, camera, particles and animations
-- **In-place patches**: keep the overlay alive with `--no-timeout`, then use `--canvas-update` / `--canvas-progress` / `--canvas-scene` / `--canvas-play|pause|seek` to patch only the active Canvas — no new Entry, no result file, no card rebuild; node actions also just mutate scene state and `invalidate()`
-- **One window per session**: screen changes, theme/title/size changes and Canvas patches all update the same overlay in place; only the outer window's first show and final dismiss animate. Updates smoothly transition the card size and cross-fade the title/content while the frame stays opaque. The first tap on blank space shows a white hint at the topmost layer ("Tap blank area again to close"); the second tap closes. Titles and outside taps no longer flash
+- **In-place patches**: use `--canvas-update` / `--canvas-progress` / `--canvas-scene` / `--canvas-play|pause|seek` to patch only the active Canvas — no new Entry, no result file, no card rebuild; each successful patch resets the session idle timer; node actions also just mutate scene state and `invalidate()`
+- **One window per session**: screen changes, theme/title/size changes and Canvas patches all update the same overlay in place; only the outer window's first show and final dismiss animate, and the dismiss animation follows the workshop `--anim` setting (fade/scale/slide-up). Updates smoothly transition the card size and cross-fade the title/content while the frame stays opaque. The idle timeout is session-wide: default 30s, max 60s; clicks/typing/selecting/scrolling inside reset it. The first tap on blank space shows a white hint at the topmost layer ("Tap blank area again to close"); a second tap within 2.5s destroys the whole session. Titles and outside taps no longer flash
 - **Canvas designer**: single-row top bar (back / undo / redo / more / done), a canvas action strip, and an inline canvas settings page when nothing is selected; layers run top-to-bottom with only an eye on each row (duplicate/delete live in Properties); tap actions are grouped as Submit result / Scene only / No action / Custom; playback lives in the Animation tab and infinite loops show "Looping" instead of an ever-growing clock; new input / select / toggle / button / button-bar tools insert controls with the original form geometry (input x=16, button bar x=18, etc.) below the current content, then they can be dragged freely; still supports drag/scale/rotate, grid snapping, path point editing, SVG/JSON path import, keyframe animation, undo/redo, JSON import/export and command export
 - **Canvas tap submit**: a node action `submit:ID` writes `{"id":"ID","values":{...}}` and closes the window; `submit:ID:keep` writes the same result but keeps the window for the next request. The app only writes the result and never runs commands — the calling shell reads the JSON and executes
 - **Dialog workshop** (`DialogMakerActivity`): now only the shell (title, theme, accent, radius, position, animation, live preview, run, export). The linear control list and standalone Canvas control are gone; content is edited entirely in the CanvasDesigner dialog canvas, whose layers/properties/timeline are the workshop hierarchy. The workshop exports one `--canvas` scene; live preview updates in place without `removeAllViews`, Run reuses the same overlay, and the real-overlay result JSON and clipboard export stay the same
@@ -290,8 +290,8 @@ cat > /tmp/scene.json <<'JSON'
 ]}
 JSON
 
-# Long task: keep the overlay alive in the background (no auto-timeout)
-termlou-ui --title "Build" --canvas @/tmp/scene.json --canvas-key main --no-timeout &
+# Long task: keep it in the background; each patch resets the idle timer (60s max idle gap)
+termlou-ui --title "Build" --canvas @/tmp/scene.json --canvas-key main --timeout 60 &
 
 # Patch only the active Canvas: in-place, no new Entry, no result file, no rebuild
 termlou-ui --canvas-update '{"node":"bar","progress":0.42,"animate":true,"duration":300}' --canvas-key main
@@ -305,7 +305,7 @@ The Dialog workshop (Settings → Dialog workshop → Canvas) designs Canvas sce
 # Canvas node actions: submit:start writes and closes; submit:start:keep keeps the window
 # In the designer, "Tap action → Submit result" + "Keep window open" generates submit:start:keep.
 while :; do
-  r=$(termlou-ui --title "Action" --canvas @/tmp/scene.json --no-timeout --button "Close=close")
+  r=$(termlou-ui --title "Action" --canvas @/tmp/scene.json --button "Close=close")
   case "$(printf '%s' "$r" | jq -r .id)" in
     close|dismiss|timeout) break ;;
     start) ./start.sh ;;

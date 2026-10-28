@@ -51,6 +51,17 @@ class ScriptDialogOverlayLifecycleTest {
         val root = overlay.windowRoot()!!
         val dialog = findDialog(root)!!
 
+        var activity = 0
+        overlay.onUserActivity = { activity++ }
+        val now0 = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(now0, now0, MotionEvent.ACTION_DOWN, 10f, 10f, 0)
+        val up = MotionEvent.obtain(now0, now0 + 20, MotionEvent.ACTION_UP, 10f, 10f, 0)
+        dialog.host.dispatchTouchEvent(down)
+        dialog.host.dispatchTouchEvent(up)
+        down.recycle()
+        up.recycle()
+        assertTrue("inside canvas touch must reset idle activity", activity > 0)
+
         overlay.updateContent(request("B"))
         Shadows.shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(400))
         assertSame("updateContent must not replace the root", root, overlay.windowRoot())
@@ -68,11 +79,14 @@ class ScriptDialogOverlayLifecycleTest {
         assertEquals("first outside tap must show hint", View.VISIBLE, hint.visibility)
         assertFalse("first outside tap must not dismiss", overlay.isDismissing())
 
+        var sessionClosed = 0
+        overlay.onSessionClose = { sessionClosed++ }
         val second = MotionEvent.obtain(now, now + 100, MotionEvent.ACTION_UP, 4f, 4f, 0)
         root.dispatchTouchEvent(second)
         second.recycle()
         assertEquals(View.GONE, hint.visibility)
         assertTrue("second outside tap must dismiss", overlay.isDismissing())
+        assertEquals("second outside tap must destroy the whole session", 1, sessionClosed)
     }
 
     @Test
