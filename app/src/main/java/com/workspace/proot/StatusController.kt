@@ -2,18 +2,11 @@ package com.workspace.proot
 
 import android.os.SystemClock
 import android.view.Gravity
-import android.view.View
 import android.util.TypedValue
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.google.android.material.snackbar.Snackbar
-import kotlinx.coroutines.Job
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.delay
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.launch
-import androidx.lifecycle.lifecycleScope
 import java.io.File
 
 /**
@@ -44,8 +37,8 @@ class StatusController(
     private var statusGen = 0
     private var lastClickedInfo = ""
     private var terminalTempActive = false
-    private var terminalTempJob: Job? = null
-    private var settingsStatusJob: Runnable? = null
+    /** 每次临时提示/恢复都递增；晚到的 marquee 回调据此丢弃。 */
+    private var transientGen = 0
 
     fun createStatusBar(): TextView {
         statusView = scope.uiBuilder.createStatusBar()
@@ -145,9 +138,16 @@ class StatusController(
             activity.dp(UiTokens.SPACE_4), STATUS_V_PAD,
         )
         // 5.9.47：间隔已含在块① 的宽度里，这里**不再加 marginStart**，免得翻倍。
+        //
+        // 5.10.1：块② 高度**从创建起就锁死一行**，不再 WRAP_CONTENT。
+        // 之前 Network 选多个 App 的「建议一次只勾一个」折成两行，statusView 变高，
+        // 父容器 statusWrap 跟着变高，下面整个 ViewPager 被顶下去。
+        // 现在任何长文本都不会改变状态栏高度；超长内容由 StatusMarquee 纵向滚动。
+        val oneLineHeight = (statusView.lineHeight + statusView.paddingTop + statusView.paddingBottom)
+            .coerceAtLeast(1)
         statusView.layoutParams = LinearLayout.LayoutParams(
             0,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
+            oneLineHeight,
             1f,
         )
 
@@ -195,28 +195,31 @@ class StatusController(
         if (lastClickedInfo.isEmpty()) "Terminal" else "Terminal | $lastClickedInfo"
 
     fun cancelTemp() {
-        terminalTempJob?.cancel()
-        terminalTempJob = null
+        transientGen++
         terminalTempActive = true
+        statusViewOrNull()?.let { StatusMarquee.cancel(it, scope.mainHandler) }
     }
 
     fun restoreTerminalStatus() {
-        terminalTempJob?.cancel()
-        terminalTempJob = null
+        transientGen++
         terminalTempActive = false
         lastClickedInfo = ""
-        if (activity.currentTab == 0 && ::statusView.isInitialized) apply(terminalBaseText())
+        statusViewOrNull()?.let { StatusMarquee.cancel(it, scope.mainHandler) }
+        if (activity.currentTab == 0 && ::statusView.isInitialized) {
+            ensureStatusVisible()
+            apply(terminalBaseText())
+        }
     }
 
     fun showTerminalTemp(text: String, durationMs: Long) {
-        terminalTempJob?.cancel()
         terminalTempActive = true
-        setStatusTextAnimated(text)
-        terminalTempJob = activity.lifecycleScope.launch {
-            delay(durationMs)
+        showTransientStatus(text, durationMs) {
             terminalTempActive = false
             lastClickedInfo = ""
-            if (activity.currentTab == 0 && ::statusView.isInitialized) apply(terminalBaseText())
+            if (activity.currentTab == 0 && ::statusView.isInitialized) {
+                ensureStatusVisible()
+                apply(terminalBaseText())
+            }
         }
     }
 
@@ -235,7 +238,20 @@ class StatusController(
     }
 
     fun setStatusText(text: String) {
-        if (::statusView.isInitialized) apply(text)
+        if (::statusView.isInitialized) {
+            ensureStatusVisible()
+            apply(text)
+        }
+    }
+
+    /**
+     * 取消临时提示的淡出后，直接换常态文字时必须把 alpha 拉回 1。
+     * 否则淡出到一半被切走，旧动画的 fade-in 又被 transientGen 丢弃 → 状态栏透明。
+     */
+    private fun ensureStatusVisible() {
+        if (!::statusView.isInitialized) return
+        statusView.animate().cancel()
+        statusView.alpha = 1f
     }
 
     /**
@@ -258,16 +274,20 @@ class StatusController(
      */
     fun setFilesPath(path: String) {
         if (!::statusView.isInitialized) return
+        transientGen++
+        ensureStatusVisible()
         // 5.9.49：**animate = true**。此前这里是 false（怕文件页内部刷新会重放动画），
 // 结果把"切到文件页"时的动画也一起关掉了 —— 用户实机报"文件 tab 不显示动画"。
 // 内部刷新不会重放：setTabName 里"名字没变就直接返回"，已经兜住了。
         tabLabel.setTabName("Files", animate = true, toLeft = tabSweepLeft)
         if (path.isEmpty()) {
+            StatusMarquee.cancel(statusView, scope.mainHandler)
             StatusMarquee.clearPersistent(statusView)
+            statusView.scrollY = 0
             statusView.text = ""
             return
         }
-        StatusMarquee.showPersistent(statusView, path)
+        StatusMarquee.showPersistent(statusView, path, scope.mainHandler)
     }
 
     /**
@@ -284,13 +304,22 @@ class StatusController(
      * 作为"这是内容区"的视觉起点。
      */
     private fun apply(text: String) {
-        val name = StatusAccent.tabNameOf(text)
-        if (name != null) {
-            // 只有**真的换词**才放动画；同一页签内反复刷新（临时提示、网络状态行等）
-            // 传进来的名字一样，此时 setTabName 内部会走"不动画"分支，不会闪。
-            tabLabel.setTabName(name, animate = true, toLeft = tabSweepLeft)
-        }
-        statusView.text = StatusAccent.contentOf(text)
+        applyTabLabel(text)
+        // 5.10.1：非文件 tab 的常态文字也走同一套纵向滚动。单行时不启动动画，
+        // 多行时锁一行高并循环上下滚——状态栏高度永远不变。
+        StatusMarquee.showPersistentVertical(
+            statusView,
+            StatusAccent.contentOf(text),
+            scope.mainHandler,
+        )
+    }
+
+    /** 只更新块① 的页签特征字；临时提示/滚动的文字拆块与它无关。 */
+    private fun applyTabLabel(text: String) {
+        val name = StatusAccent.tabNameOf(text) ?: return
+        // 只有**真的换词**才放动画；同一页签内反复刷新（临时提示、网络状态行等）
+        // 传进来的名字一样，此时 setTabName 内部会走"不动画"分支，不会闪。
+        tabLabel.setTabName(name, animate = true, toLeft = tabSweepLeft)
     }
 
     /**
@@ -359,7 +388,7 @@ class StatusController(
                 webIdleCheck = null
                 webPhase = null
                 if (inTerminal && ::statusView.isInitialized) {
-                    statusView.animate().cancel()
+                    ensureStatusVisible()
                     apply(terminalBaseText())
                 }
             }
@@ -386,7 +415,7 @@ class StatusController(
         val on = WebNoticeArbiter.noticeVisible(inputs, SystemClock.elapsedRealtime() - webSince)
         if (on == webPhase) return
         webPhase = on
-        statusView.animate().cancel()
+        ensureStatusVisible()
         apply(if (on) {
             "Terminal | " + activity.getString(R.string.web_notice_blink)
         } else {
@@ -406,19 +435,46 @@ class StatusController(
         renderWebNotice()
     }
 
+    /**
+     * 临时提示的统一展示：淡出 -> 锁一行高并纵向滚动 -> 淡入。
+     *
+     * 5.10.1：不再直接 `statusView.text = msg`。Network 选多个 App 的警告、
+     * LAN/Web 的复制提示、终端按键反馈等长文本都走这里，状态栏高度保持不变。
+     * `durationMs` 只是最短展示时间；行数多时 [StatusMarquee.show] 会自动延长到滚完一遍。
+     */
+    private fun showTransientStatus(text: String, durationMs: Long, onDone: () -> Unit) {
+        val view = statusViewOrNull()
+        if (view == null) {
+            onDone()
+            return
+        }
+        val gen = ++transientGen
+        view.animate().cancel()
+        // 旧 marquee 立即停，避免淡出期间还在改 scrollY。
+        StatusMarquee.cancel(view, scope.mainHandler)
+        view.animate().alpha(0f).setDuration(120).withEndAction {
+            if (gen != transientGen) return@withEndAction
+            applyTabLabel(text)
+            StatusMarquee.show(
+                view,
+                StatusAccent.contentOf(text),
+                durationMs,
+                scope.mainHandler,
+            ) {
+                if (gen == transientGen) onDone()
+            }
+            view.animate().alpha(1f).setDuration(120).start()
+        }.start()
+    }
+
     /** 终端 Tab 不打扰；其余 Tab 展示 2 秒临时提示。 */
     fun showTempStatus(msg: String) {
         if (activity.currentTab == 0) return
         statusGen++
-        setStatusTextAnimated(msg)
-        settingsStatusJob?.let { scope.mainHandler.removeCallbacks(it) }
-        val r = Runnable {
+        showTransientStatus(msg, TEMP_STATUS_MS) {
             statusGen++
             activity.refreshStatusBar()
-            settingsStatusJob = null
         }
-        settingsStatusJob = r
-        scope.mainHandler.postDelayed(r, 2000)
     }
 
     fun showPreviousCrash(rootLayout: FrameLayout) {
@@ -452,10 +508,11 @@ class StatusController(
     }
 
     fun onDestroy() {
-        terminalTempJob?.cancel()
-        terminalTempJob = null
-        settingsStatusJob?.let { scope.mainHandler.removeCallbacks(it) }
-        settingsStatusJob = null
+        transientGen++
+        statusViewOrNull()?.let {
+            it.animate().cancel()
+            StatusMarquee.cancel(it, scope.mainHandler)
+        }
         webTick?.let { scope.mainHandler.removeCallbacks(it) }
         webTick = null
         webIdleCheck?.let { scope.mainHandler.removeCallbacks(it) }
@@ -465,5 +522,8 @@ class StatusController(
     private companion object {
         /** 一次性空闲检查的最长延时；超过就不排了，等下次刷新 status 时再算。 */
         const val MAX_IDLE_CHECK_DELAY_MS = 10 * 60 * 1000L
+
+        /** 临时提示的基础展示时长；长文本会被 StatusMarquee 自动延长。 */
+        const val TEMP_STATUS_MS = 2000L
     }
 }

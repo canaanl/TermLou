@@ -7,6 +7,7 @@
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.10.1** | 6001 | **修状态栏长文本撑高：状态栏高度从创建起锁死一行；Network 选多个 App 的「建议一次只勾一个」等临时提示统一走 `StatusMarquee.show`，整行纵向滚动，不再把下面 ViewPager 顶下去；其他 tab 的常态长文本走新增的 `showPersistentVertical` 循环上下滚，文件 tab 的路径横向跑马灯保持不变。新增 Robolectric 布局测试和真机 instrumentation** |
 | **5.10.0** | 6000 | **termlou-ui 生命周期黑盒化：会话级空闲超时默认 30s、最大 60s；弹窗内点击/输入/选择/滚动重置，程序化 patch 也重置；关闭按钮/返回/点外第二次/超时/--close 统一销毁整个会话并清空队列。`--no-timeout` 移除，脚本默认不再传 timeout。创建和消失动画统一跟随工坊 `--anim`（fade/scale/slide-up），不再只是淡出。新增超时解析、会话空闲、清队列和动画回归测试** |
 | **5.9.81** | 5981 | **浮窗单窗口生命周期：换屏、主题、尺寸、`--canvas-update` 全部原位更新同一个窗口，不再销毁重建；外层窗口只有首次呼出和最终消失有动画。更新时卡片宽高 180ms 平滑过渡，标题/内容 90ms 渐隐、140ms 渐现，外框不淡出；删除标题闪烁和点外部闪烁，第一次点空白区域在浮窗最顶层显示白字「再次点击空白区域关闭」，第二次才关闭。工坊预览与「运行」复用同一窗口并走同一套过渡；新增 Robolectric 单窗口/尺寸/内容/patch 测试和源码扫描锁** |
 | **5.9.80** | 5980 | **修复 5.9.79 弹窗塌成标题条：`ScrollView` 用 `UNSPECIFIED` 测量内容，`CanvasDialogView` 现在按场景宽高比报告 intrinsic height；新增 Robolectric 真实布局回归测试。弹窗工坊真正画布化：移除线性控件列表和独立画布控件，内容统一在 CanvasDesigner 编辑；新增控件按旧表单标准几何落位，按钮仍在画布中** |
@@ -40,6 +41,32 @@
 | **5.9.52** | 5952 | **修：状态栏特征字的立方体转向与页面滑动方向相反** |
 | **5.9.51** | 5951 | **重构：AppPickerDialog 与 NetAppPickerDialog 合并（消掉唯一的重命名级克隆）** |
 | **5.9.50** | 5950 | **弹窗工坊输入框补圆角 · 调色盘预览四处圆角对齐真实控件 + 两框补间隙** |
+
+## 5.10.1
+
+### 状态栏长文本
+
+- 状态栏块② 的高度在 `createStatusWrap()` 里固定为一行（`lineHeight + padding`），
+  不再使用 `WRAP_CONTENT`；任何 tab 的长文本都不会改变状态栏高度。
+- `showTempStatus()`（Network / Notes / Files / Settings / Web / LAN 共用）
+  改走 `showTransientStatus()`：
+  - 更新块① 页签特征字；
+  - 内容区用 `StatusMarquee.show()` 整行纵向滚动；
+  - 滚动结束后恢复当前 tab 的常态状态栏。
+- `showTerminalTemp()` 同样走 `showTransientStatus()`，终端临时反馈也不再撑高。
+- 非文件 tab 的常态长文本新增 `StatusMarquee.showPersistentVertical()`：
+  单行静态；多行锁一行高并循环上下滚。文件 tab 的路径仍用 `showPersistent()` 横向跑马灯。
+- 移除 `showTempStatus` 里手写的 2 秒 `settingsStatusJob`，恢复逻辑统一交给
+  `StatusMarquee` 的 finish 回调；`onDestroy` 取消 marquee。
+- 修复临时提示淡出到一半被切走时可能停在透明状态的问题（`ensureStatusVisible()`）。
+
+### 测试
+
+- `StatusMarqueeLayoutTest`：真实 TextView measure，断言长文本锁一行高、结束后恢复。
+- `StatusMarqueeInstrumentedTest`：真机用实际 Network 警告文本 measure，断言折行、
+  展示期间高度不变、`scrollY` 真的变化、结束后恢复。
+- `RegressionScanTest`：锁死 `showTempStatus` 必须走 marquee、`apply` 必须走
+  `showPersistentVertical`、状态栏高度必须锁一行。
 
 ## 5.10.0
 

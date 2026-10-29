@@ -51,7 +51,7 @@ class FileListManager(
             tv.text = ""
             return
         }
-        StatusMarquee.showPersistent(tv, p)
+        StatusMarquee.showPersistent(tv, p, mainHandler)
     }
     fun setOnExportFolder(listener: (File) -> Unit) { onExportFolder = listener }
     fun setOnExportFile(listener: (File) -> Unit) { onExportFile = listener }

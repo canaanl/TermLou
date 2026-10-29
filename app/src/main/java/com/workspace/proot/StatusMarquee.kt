@@ -86,7 +86,13 @@ object StatusMarquee {
 
     private class Session(
         val animator: ValueAnimator?,
-        val finish: Runnable
+        val finish: Runnable?,
+        /** 该 session 对应的文字；persistent 纵向滚动用它避免同一文本反复重启动画。 */
+        val text: String? = null,
+        /** true = 常态纵向循环滚动；false = show() 的一次性临时滚动。 */
+        val persistent: Boolean = false,
+        /** 判定行数时的 View 宽度；宽度从 0 变成有效值后必须重算，不能误判成单行。 */
+        val measuredWidth: Int = 0,
     )
 
     private fun current(view: TextView): Session? =
@@ -96,7 +102,7 @@ object StatusMarquee {
     fun cancel(view: TextView, handler: Handler?) {
         val s = current(view) ?: return
         s.animator?.cancel()
-        handler?.removeCallbacks(s.finish)
+        s.finish?.let { handler?.removeCallbacks(it) }
         view.setTag(TAG_KEY, null)
     }
 
@@ -124,17 +130,21 @@ object StatusMarquee {
      * 现在：宽度为 0 时**不判定**，直接按"要滚"处理并等一帧重判。
      * 块② 有固定权重(1f)，布局完成后宽度稳定，第二帧就能定准。
      */
-    fun showPersistent(view: TextView?, path: String) {
+    @Suppress("ReturnCount")
+    fun showPersistent(view: TextView?, path: String, handler: Handler? = null) {
         if (view == null) return
+        // 文件页路径和临时提示/常态纵向滚动互斥：同一块②不能同时跑两套滚动。
+        cancel(view, handler)
         val avail = (view.width - view.paddingLeft - view.paddingRight).toFloat()
         if (avail <= 0f) {
             // 宽度未就绪：先按"要滚"摆上，布局完成后重判一次。
             applyMarquee(view, path)
-            view.post { showPersistent(view, path) }
+            view.post { showPersistent(view, path, handler) }
             return
         }
         if (view.paint.measureText(path) <= avail) {
             clearPersistent(view)
+            view.scrollY = 0
             view.text = path
             return
         }
@@ -142,6 +152,7 @@ object StatusMarquee {
     }
 
     private fun applyMarquee(view: TextView, path: String) {
+        view.scrollY = 0
         view.text = path
         view.maxLines = 1
         // ⚠ 5.9.48：**必须显式打开横向滚动**，否则跑马灯根本不启动。
@@ -174,6 +185,90 @@ object StatusMarquee {
     }
 
     /**
+     * 常态长文本的**纵向**循环滚动。
+     *
+     * 文件页路径仍走 [showPersistent] 的横向跑马灯；其余 tab 的常态文字
+     * （网络状态行、终端卡片信息、Web 提示等）走这里：
+     * - 栏高锁死 1 行，单行文字完全静态；
+     * - 多行文字按 [HOLD_MS] / [STEP_MS] 的时间轴一行一行往下走，
+     *   到底后反向回到第一行，循环往复（用户要求“整行上下滚动”）。
+     *
+     * 同一文本重复 apply（例如网络页每秒刷新状态栏）不会重启动画。
+     */
+    @Suppress("ReturnCount", "LongMethod", "ComplexCondition")
+    fun showPersistentVertical(view: TextView?, text: String, handler: Handler?) {
+        if (view == null) return
+        val prev = current(view)
+        if (
+            prev?.persistent == true &&
+            prev.text == text &&
+            view.width > 0 &&
+            prev.measuredWidth == view.width
+        ) {
+            return
+        }
+        cancel(view, handler)
+        clearPersistent(view)
+        if (text.isEmpty()) {
+            view.scrollY = 0
+            view.text = ""
+            view.setTag(TAG_KEY, Session(null, null, text, persistent = true, measuredWidth = view.width))
+            return
+        }
+        // 先锁高再设文字：状态栏高度从创建起就固定，这里也保证外部 TextView 一样不闪。
+        val oneLineH = view.lineHeight + view.paddingTop + view.paddingBottom
+        val lp = view.layoutParams
+        if (lp != null) {
+            lp.height = oneLineH
+            view.layoutParams = lp
+        }
+        view.scrollY = 0
+        view.text = text
+        val pending = Session(null, null, text, persistent = true, measuredWidth = view.width)
+        view.setTag(TAG_KEY, pending)
+        view.post {
+            if (current(view) !== pending) return@post
+            val layout = view.layout
+            val lines = view.lineCount
+            val measuredWidth = view.width
+            if (layout == null || lines <= 1) {
+                view.setTag(
+                    TAG_KEY,
+                    Session(null, null, text, persistent = true, measuredWidth = measuredWidth),
+                )
+                view.scrollY = 0
+                return@post
+            }
+            val base = layout.getLineTop(0)
+            val tops = IntArray(lines) { layout.getLineTop(it) - base }
+            val total = passMs(lines)
+            if (total <= 0L) {
+                view.setTag(
+                    TAG_KEY,
+                    Session(null, null, text, persistent = true, measuredWidth = measuredWidth),
+                )
+                view.scrollY = 0
+                return@post
+            }
+            val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = total
+                interpolator = LinearInterpolator()
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.REVERSE
+                addUpdateListener {
+                    val elapsed = (animatedFraction * total).toLong()
+                    view.scrollY = scrollYAt(elapsed, tops)
+                }
+            }
+            view.setTag(
+                TAG_KEY,
+                Session(animator, null, text, persistent = true, measuredWidth = measuredWidth),
+            )
+            animator.start()
+        }
+    }
+
+    /**
      * 展示长文本。`onDone` = 时间到后的恢复动作（原来那三处"回到 Files | 路径"的逻辑，原样搬进来）。
      *
      * 栏高在展示期间锁死 1 行：先按 1 行高度定死高度**再**设文字，避免设文字到
@@ -203,7 +298,12 @@ object StatusMarquee {
         }
         view.scrollY = 0
         view.text = text
+        // 先占位：如果文字刚设完、post 还没跑，新请求进来时 cancel() 能把这个
+        // 待启动的 session 一起取消，避免旧 post 晚到后把新文字滚走。
+        val pending = Session(null, null, text, persistent = false)
+        view.setTag(TAG_KEY, pending)
         view.post {
+            if (current(view) !== pending) return@post
             val layout = view.layout
             val lines = view.lineCount
             val tops = if (layout != null && lines > 1) {
@@ -233,7 +333,7 @@ object StatusMarquee {
                 onDone()
             }
             if (lines <= 1) {
-                view.setTag(TAG_KEY, Session(null, finish))
+                view.setTag(TAG_KEY, Session(null, finish, text, persistent = false))
                 handler?.postDelayed(finish, total)
                 return@post
             }
@@ -245,7 +345,7 @@ object StatusMarquee {
                     view.scrollY = scrollYAt(elapsed, tops)
                 }
             }
-            view.setTag(TAG_KEY, Session(animator, finish))
+            view.setTag(TAG_KEY, Session(animator, finish, text, persistent = false))
             animator.start()
             handler?.postDelayed(finish, total)
         }

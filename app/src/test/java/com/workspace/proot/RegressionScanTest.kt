@@ -484,6 +484,29 @@ class RegressionScanTest {
         )
     }
 
+    @Test
+    fun `所有 tab 的长状态文字必须继承纵向滚动`() {
+        // 5.10.1 真机回归：Network 选多个 App 时，长警告折成两行把状态栏撑高，
+        // 下面整个 ViewPager 被顶下去。状态栏高度必须从创建起锁一行；
+        // 临时提示和常态文字都必须走 StatusMarquee 的纵向滚动。
+        val c = code("StatusController.kt")
+        val showTemp = c.substringAfter("fun showTempStatus(").substringBefore("\n    }")
+        assertTrue("临时提示必须走公共 marquee 入口：$showTemp", showTemp.contains("showTransientStatus("))
+        assertFalse("临时提示不许再直接 apply 长文本：$showTemp", showTemp.contains("setStatusTextAnimated("))
+
+        val transient = c.substringAfter("private fun showTransientStatus(").substringBefore("\n    }")
+        assertTrue("临时提示必须调用 StatusMarquee.show：$transient", transient.contains("StatusMarquee.show("))
+        assertTrue("临时提示必须只滚内容区：$transient", transient.contains("StatusAccent.contentOf("))
+
+        val apply = c.substringAfter("private fun apply(").substringBefore("\n    }")
+        assertTrue("常态长文本必须走 showPersistentVertical：$apply", apply.contains("showPersistentVertical("))
+
+        assertTrue(
+            "状态栏高度必须从创建起锁一行：$c",
+            c.contains("val oneLineHeight =") && c.contains("statusView.lineHeight"),
+        )
+    }
+
     // ---------- 5.9.34：视口就是窗口，没有缩放；判据与动作分开 ----------
 
     @Test
