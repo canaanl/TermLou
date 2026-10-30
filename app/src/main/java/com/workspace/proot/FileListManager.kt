@@ -24,15 +24,49 @@ class FileListManager(
     private var onExportFolder: ((File) -> Unit)? = null
     private var onExportFile: ((File) -> Unit)? = null
     private var menuHost: FrameLayout? = null
+    private var onDirectoryChanged: (() -> Unit)? = null
     private val braceMenu = BraceMenu(context)
 
-    fun setCurrentDir(dir: File) { currentDir = dir }
+    fun setCurrentDir(dir: File) {
+        currentDir = dir
+        onDirectoryChanged?.invoke()
+    }
     fun getCurrentDir(): File = currentDir ?: File("")
-
     fun setCurrentTab(tab: Int) { currentTab = tab }
     /** 5.9.46：收可空 —— 状态栏可能还没建（lateinit，见 StatusController.statusViewOrNull）。 */
     fun setStatusText(textView: TextView?) { statusText = textView }
     fun setMainHandler(handler: Handler) { mainHandler = handler }
+    fun setOnDirectoryChanged(listener: () -> Unit) { onDirectoryChanged = listener }
+
+    /** 文件页根目录只到 `/workspace`；在那里按返回没有任何可去的上层。 */
+    fun canNavigateUp(): Boolean {
+        val dir = currentDir ?: return false
+        return dir != workspaceRoot()
+    }
+
+    /**
+     * 返回上一级。返回 false 表示已经在 `/workspace`（或目录尚未初始化），
+     * 调用方据此在状态栏给出「没有上层目录」的提示，而不是静默无响应。
+     */
+    fun navigateUp(
+        fileList: LinearLayout,
+        navigateUp: () -> Unit = {},
+        onFileClick: (File) -> Unit = {}
+    ): Boolean {
+        val parent = currentDir
+            ?.takeIf { canNavigateUp() }
+            ?.parentFile
+            ?: return false
+        currentDir = parent
+        onDirectoryChanged?.invoke()
+        refreshFileList(fileList, navigateUp, onFileClick)
+        StatusMarquee.show(statusText, parent.name, StatusMarquee.BASE_MS, mainHandler) {
+            restoreStatusPath()
+        }
+        return true
+    }
+
+    private fun workspaceRoot(): File = File(context.filesDir, "workspace")
 
     /**
      * 回到常态路径显示。
@@ -64,31 +98,6 @@ class FileListManager(
     ) {
         val dir = currentDir ?: return
         fileList.removeAllViews()
-
-        if (dir != File(context.filesDir, "workspace")) {
-            val upRow = TextView(context).apply {
-                text = context.getString(R.string.file_back)
-                setTextColor(if (theme.night) UiTokens.linkCyan else theme.tertiary)
-                textSize = nameTextSize
-                typeface = Typeface.MONOSPACE
-                setPaddingMd(UiTokens.SPACE_4, UiTokens.SPACE_4, UiTokens.SPACE_4, UiTokens.SPACE_4)
-                setBackgroundColor(Color.TRANSPARENT)
-                setOnClickListener {
-                    dir.parentFile?.let { newDir ->
-                        currentDir = newDir
-                        refreshFileList(fileList, navigateUp, onFileClick)
-                        StatusMarquee.show(statusText, newDir.name, StatusMarquee.BASE_MS, mainHandler) {
-                            restoreStatusPath()
-                        }
-                    }
-                }
-            }
-            fileList.addView(upRow)
-            fileList.addView(View(context).apply {
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1)
-                setBackgroundColor(theme.outline)
-            })
-        }
 
         val files = dir.listFiles()?.filter {
             !it.name.startsWith(".") &&
@@ -133,7 +142,7 @@ class FileListManager(
                         row.animate().alpha(1f).setDuration(120).start()
                     }.start()
                     row.postDelayed({
-                        currentDir = f
+                        setCurrentDir(f)
                         refreshFileList(fileList, navigateUp, onFileClick)
                         StatusMarquee.show(statusText, fullName, StatusMarquee.BASE_MS, mainHandler) {
                             restoreStatusPath()

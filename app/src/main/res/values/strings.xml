@@ -120,7 +120,8 @@
 
     <!-- 终端/文件 -->
     <string name="ctrl_reset">Ctrl 超时复位</string>
-    <string name="file_back">↩  返回上级</string>
+    <string name="file_back">返回上级</string>
+    <string name="file_no_parent">已在顶层，没有上层目录</string>
     <string name="file_empty">    （空目录）</string>
     <string name="file_export">导出</string>
     <string name="file_delete">删除</string>

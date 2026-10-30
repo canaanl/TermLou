@@ -38,7 +38,7 @@
     <!-- Tab intro: files -->
     <string name="intro_files_lead">The files tab manages `/workspace`: navigation, import, sharing, and deletion.</string>
     <string name="intro_files_nav_title">Navigation and info</string>
-    <string name="intro_files_nav_body">Browse the `/workspace` tree.\n▸ Tap a folder — enter it (the list fades in)\n▸ The Back row at the top of the list — go up one level (hidden at the root)\n● Folders are highlighted; file rows show their size (B / KB / MB)\n● After entering a folder, the status line briefly shows the current path.</string>
+    <string name="intro_files_nav_body">Browse the `/workspace` tree.\n▸ Tap a folder — enter it (the list fades in)\n▸ The back FAB at bottom right — go up one level; at the root the arrow dims and a tap says there is no parent folder\n● Folders are highlighted; file rows show their size (B / KB / MB)\n● After entering a folder, the status line briefly shows the current path.</string>
     <string name="intro_files_import_title">Import</string>
     <string name="intro_files_import_body">Bring outside content into the current folder.\n▸ The Import file button at the bottom — any format, multiple selection supported\n▸ The Import folder button at the bottom — imports a whole folder recursively\n● Import target = the folder you have open.</string>
     <string name="intro_files_share_title">Share and export</string>

@@ -38,7 +38,7 @@
     <!-- Tab 介绍页：文件 -->
     <string name="intro_files_lead">文件页管理 `/workspace`：导航、导入、分享、删除。</string>
     <string name="intro_files_nav_title">导航与信息</string>
-    <string name="intro_files_nav_body">浏览 `/workspace` 目录树。\n▸ 点按文件夹 —— 进入（列表渐入动画）\n▸ 列表顶部「返回」—— 返回上级（根目录不显示）\n● 文件夹带底色标记，文件行附大小（B / KB / MB）\n● 进目录后状态栏短暂显示当前路径。</string>
+    <string name="intro_files_nav_body">浏览 `/workspace` 目录树。\n▸ 点按文件夹 —— 进入（列表渐入动画）\n▸ 右下角返回 FAB —— 返回上级；根目录时箭头变灰，点按提示没有上层目录\n● 文件夹带底色标记，文件行附大小（B / KB / MB）\n● 进目录后状态栏短暂显示当前路径。</string>
     <string name="intro_files_import_title">导入</string>
     <string name="intro_files_import_body">把外部内容放进当前目录。\n▸ 底部「导入文件」—— 任意格式，可多选\n▸ 底部「导入文件夹」—— 整个文件夹递归导入\n● 导入位置 = 当前打开的目录。</string>
     <string name="intro_files_share_title">分享与导出</string>

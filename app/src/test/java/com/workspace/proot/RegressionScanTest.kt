@@ -507,6 +507,36 @@ class RegressionScanTest {
         )
     }
 
+    @Test
+    fun `文件页返回键必须是右下角 FAB 而不是列表顶行`() {
+        val file = code("FileListManager.kt")
+        assertFalse("顶部返回行必须删除：$file", file.contains("val upRow"))
+        assertFalse("列表里不许再放返回文案：$file", file.contains("R.string.file_back"))
+
+        val workspace = code("WorkspaceController.kt")
+        assertTrue("文件页必须挂返回 FAB：$workspace", workspace.contains("FileBackFab("))
+        assertTrue("FAB 必须固定在列表容器右下角：$workspace", workspace.contains("NeuFab.clearancePx("))
+        assertTrue(
+            "根目录点按必须在状态栏提示：$workspace",
+            workspace.contains("R.string.file_no_parent"),
+        )
+
+        val fab = code("FileBackFab.kt")
+        assertTrue("返回 FAB 必须复用笔记 FAB 材质：$fab", fab.contains("NeuFab.style("))
+        assertTrue("根目录必须用计算出的禁用色：$fab", fab.contains("NeuFab.disabledIconColor("))
+        assertTrue(
+            "禁用态仍要接收点击并给提示：$fab",
+            fab.contains("if (canGoUp) onNavigateUp() else onBlocked()"),
+        )
+    }
+
+    @Test
+    fun `禁用色必须是背景推导而不是写死灰色`() {
+        val c = code("NeuFab.kt")
+        assertTrue("必须调用统一的禁用色推导：$c", c.contains("ColorMath.disabledTint("))
+        assertFalse("不许写死灰色：$c", c.contains("0xFF888888"))
+    }
+
     // ---------- 5.9.34：视口就是窗口，没有缩放；判据与动作分开 ----------
 
     @Test

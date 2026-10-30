@@ -123,6 +123,26 @@ object ColorMath {
         return target
     }
 
+    /** 禁用图标的目标可见度：明显弱于正文，但仍能看出图标轮廓。 */
+    const val DISABLED_CONTRAST = 2.0
+
+    /**
+     * 禁用图标色：从 [face] 朝 [neutral] 混到「刚好看得见」的 [minContrast]。
+     *
+     * 为什么不写死灰色 / 不直接给品牌色加透明度：
+     * - 背景和品牌色都可替换，固定灰在纯黑或纯白底上会消失；
+     * - 半透明品牌色会随底透出来，底色一变就重新变成品牌色，禁用语义丢失。
+     *
+     * [neutral] 通常传主题的 `onSurfaceVariant`（它本身已是随背景推导的中性色）。
+     * 若它与 [face] 的对比度连 [minContrast] 都达不到，则改朝背景反色方向混，
+     * 保证任意背景色下都能得到一颗「看得见但明显弱化」的禁用键。
+     */
+    fun disabledTint(face: Int, neutral: Int, minContrast: Double = DISABLED_CONTRAST): Int {
+        val mixed = mixUntil(face, neutral, minContrast)
+        if (contrast(mixed, face) >= minContrast) return mixed
+        return mixUntil(face, inkOf(face), minContrast)
+    }
+
     /**
      * 品牌色在背景上的可见变体（纯系数推导，无阈值开关）：
      * `推导色 = 品牌色 + k × (反色(背景) − 品牌色)`，k 随两色对比度连续变化——

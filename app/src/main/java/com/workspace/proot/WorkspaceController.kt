@@ -31,6 +31,7 @@ class WorkspaceController(
 ) {
     private lateinit var filesHeader: TextView
     private lateinit var fileList: LinearLayout
+    private lateinit var fileBackFab: FileBackFab
     private var filesListRoot: FrameLayout? = null
 
     /** 鏂囦欢 Tab 鏁村潡 UI锛堝惈搴曟爮锛夛紝鎸傚埌 filesArea 涓嬨€?*/
@@ -45,6 +46,8 @@ class WorkspaceController(
         }
         fileList = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
+            // 最后一行能滚到右下角返回 FAB 上方，不被圆形键盖住。
+            setPadding(0, 0, 0, NeuFab.clearancePx(activity))
         }
         // 5.9.53：同 NetworkController，页签切换交给 ViewPager2，横向回调删掉。
         val filesScroll = TabSwipeScrollView(activity)
@@ -57,7 +60,15 @@ class WorkspaceController(
             addView(filesScroll, FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
             ))
+            fileBackFab = FileBackFab(
+                activity,
+                scope.theme,
+                onNavigateUp = { onFileBackFabUp() },
+                onBlocked = { status.showTempStatus(activity.getString(R.string.file_no_parent)) }
+            )
+            addView(fileBackFab)
         }
+        scope.fileListManager.setOnDirectoryChanged { updateFileBackFab() }
         filesArea.addView(filesHeader)
         filesArea.addView(filesListRoot)
 
@@ -91,6 +102,20 @@ class WorkspaceController(
         scope.fileListManager.setOnExportFolder { shareFolder(it) }
         scope.fileListManager.setOnExportFile { shareFile(it) }
         scope.fileListManager.refreshFileList(fileList, { /* navigateUp callback */ }) { /* onFileClick callback */ }
+        updateFileBackFab()
+    }
+
+    /** 根目录与子目录只差内部符号色/可点语义；FAB 本身始终留在右下角。 */
+    private fun updateFileBackFab() {
+        if (::fileBackFab.isInitialized) {
+            fileBackFab.canGoUp = scope.fileListManager.canNavigateUp()
+        }
+    }
+
+    private fun onFileBackFabUp() {
+        if (!scope.fileListManager.navigateUp(fileList)) {
+            status.showTempStatus(activity.getString(R.string.file_no_parent))
+        }
     }
 
     fun handleShareIntent(intent: Intent?) {

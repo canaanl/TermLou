@@ -2,7 +2,6 @@ package com.workspace.proot
 
 import android.app.AlertDialog
 import android.content.Intent
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -335,53 +334,12 @@ class NotesStandaloneActivity : NotesPageActivity() {
         return row
     }
 
-    private fun buildFab(): TextView {
-        val d = density()
-        val size = (56 * d).toInt()
-        val shadow = (NEU_SHADOW_DP * d).toInt()
-        val face = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(theme.surface)
-        }
-        val darkShadow = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(mixColor(theme.surface, 0xFF000000.toInt(), NEU_DARK_RATIO))
-        }
-        val lightShadow = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(mixColor(theme.surface, 0xFFFFFFFF.toInt(), NEU_LIGHT_RATIO))
-        }
-        return TextView(this).apply {
-            text = "＋"
-            gravity = Gravity.CENTER
-            setTextColor(theme.primaryVisible)
-            textSize = FAB_PLUS_SP
-            background = android.graphics.drawable.LayerDrawable(
-                arrayOf(darkShadow, lightShadow, face)
-            ).apply {
-                setLayerInset(0, shadow, shadow, 0, 0)
-                setLayerInset(1, 0, 0, shadow, shadow)
-            }
-            layoutParams = FrameLayout.LayoutParams(size, size).apply {
-                gravity = Gravity.BOTTOM or Gravity.END
-                marginEnd = (16 * d).toInt()
-                bottomMargin = (16 * d).toInt()
-            }
-            elevation = (6 * d)
-            contentDescription = getString(R.string.notes_new)
-            setOnClickListener { onNewPressed() }
-        }
-    }
-
-    private fun mixColor(base: Int, target: Int, ratio: Float): Int {
-        val r = (android.graphics.Color.red(base) * (1f - ratio) +
-            android.graphics.Color.red(target) * ratio).toInt()
-        val g = (android.graphics.Color.green(base) * (1f - ratio) +
-            android.graphics.Color.green(target) * ratio).toInt()
-        val b = (android.graphics.Color.blue(base) * (1f - ratio) +
-            android.graphics.Color.blue(target) * ratio).toInt()
-        return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-    }
+    private fun buildFab(): TextView = NeuFab.create(
+        this,
+        theme,
+        "＋",
+        getString(R.string.notes_new)
+    ) { onNewPressed() }
 
     private fun refreshEditorTitle() {
         val cur = current ?: return
@@ -672,10 +630,6 @@ class NotesStandaloneActivity : NotesPageActivity() {
     companion object {
         private val ROW_FMT = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
         private val TAG_SPLIT = Regex("[\\s,，、]+")
-        private const val FAB_PLUS_SP = 28f
-        private const val NEU_SHADOW_DP = 3
-        private const val NEU_DARK_RATIO = 0.45f
-        private const val NEU_LIGHT_RATIO = 0.18f
         private const val TAG_AREA_DIVISOR = 3
     }
 }

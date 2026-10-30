@@ -172,7 +172,7 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 
 ### 3. File Manager
 
-- Full `/workspace` navigation: enter/up, folder markers, size display, fade-in
+- Full `/workspace` navigation: enter/up via the bottom-right back FAB (dimmed with a hint at the root), folder markers, size display, fade-in
 - **Import**: files (any format) or recursive folders
 - **Export/share**: files shared directly; folders zipped then shared
 - **Delete**: files deleted directly; non-empty folders ask for confirmation

@@ -118,7 +118,8 @@
 
     <!-- Terminal/files -->
     <string name="ctrl_reset">Ctrl reset</string>
-    <string name="file_back">↩  Back</string>
+    <string name="file_back">Go up</string>
+    <string name="file_no_parent">Already at the top level - no parent folder</string>
     <string name="file_empty">    (empty)</string>
     <string name="file_export">EXPORT</string>
     <string name="file_delete">DELETE</string>
