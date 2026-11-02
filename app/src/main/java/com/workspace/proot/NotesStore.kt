@@ -173,20 +173,23 @@ class NotesStore(
      * 结果与全量逐条打分完全一致）；排序层语义零改动
      * （标题＞标签＞正文＞容错＞拼音＞首字母，BM25 只召回不排序）。
      * 空查询返回全量列表（与 listNotes 同序）。
+     *
+     * 5.10.3：`tag:标签` 走 [NoteQuery] 的字段过滤。纯标签查询直接按
+     * 更新时间顺序过滤 listNotes；标签+文字先跑原全文管线，再按标签 AND 收窄。
      */
     fun searchNotesFull(raw: String): List<NoteEntry> {
-        val terms = NoteMatcher.terms(raw)
-        if (terms.isEmpty()) return listNotes()
+        val query = NoteQuery.parse(raw)
+        if (query.isEmpty) return listNotes()
         val snap = snapshot()
         val entries = snap.entries
         if (entries.isEmpty()) return emptyList()
-        // ① 内存层：标题/标签/待办不查库，逐词精确打分（与精排同一内核），跨词取并
-        val memHits = HashSet<String>()
-        for (term in terms) {
-            for (f in snap.fields) {
-                if (NoteMatcher.termScore(term, f.name, "", f.tags, f.todos) >= 0) memHits.add(f.name)
-            }
+        // 纯标签：不碰正文召回，直接按 listNotes 的顺序（更新时间倒序）筛。
+        if (query.textTerms.isEmpty()) {
+            return entries.filter { query.matchesTags(it.tags) }
         }
+        val terms = query.textTerms
+        // ① 内存层：标题/标签/待办不查库，逐词精确打分（与精排同一内核），跨词取并
+        val memHits = memoryHits(snap.fields, terms)
         // ② 正文召回：同词分支 UNION、跨词 INTERSECT，交集在库内算完、只回传结果行
         val recall = recallIntersect(terms)
         if (recall.isEmpty() && memHits.isEmpty()) return emptyList()
@@ -194,13 +197,35 @@ class NotesStore(
         hitNames.addAll(memHits)
         // ③ 批量取候选正文 → 原打分内核精排：超集里的假阳性在此被精确滤掉，排序不变
         val bodies = fetchBodies(hitNames)
+        return scoreCandidates(snap, hitNames, bodies, terms, query)
+            .sortedBy { it.second }
+            .map { it.first }
+    }
+
+    private fun memoryHits(fields: List<FieldTexts>, terms: List<String>): Set<String> {
+        val hits = HashSet<String>()
+        for (term in terms) {
+            for (f in fields) {
+                if (NoteMatcher.termScore(term, f.name, "", f.tags, f.todos) >= 0) hits.add(f.name)
+            }
+        }
+        return hits
+    }
+
+    private fun scoreCandidates(
+        snap: SearchSnapshot,
+        hitNames: Set<String>,
+        bodies: Map<String, String>,
+        terms: List<String>,
+        query: NoteQuery
+    ): List<Pair<NoteEntry, Int>> {
         val scored = ArrayList<Pair<NoteEntry, Int>>(hitNames.size)
-        for ((e, f) in entries.zip(snap.fields)) {
-            if (e.name !in hitNames) continue
+        for ((e, f) in snap.entries.zip(snap.fields)) {
+            if (e.name !in hitNames || !query.matchesTags(e.tags)) continue
             val s = NoteMatcher.noteScore(e.name, bodies[e.name].orEmpty(), terms, f.tags, f.todos)
             if (s >= 0) scored.add(e to s)
         }
-        return scored.sortedBy { it.second }.map { it.first }
+        return scored
     }
 
     /** 多词正文召回：每个词的分支在库内 UNION（同词多通道去重），词与词 INTERSECT（AND），

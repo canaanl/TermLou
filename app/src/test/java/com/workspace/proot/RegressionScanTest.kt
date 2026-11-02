@@ -306,7 +306,7 @@ class RegressionScanTest {
         // 定的是全大写：只改串，不碰代码（中文串无大小写，不用动）。
         val en = resXml("values-en/strings.xml")
         val buttonKeys = listOf(
-            "notes_todo_tab_btn", "notes_tags_tab_btn", "notes_cal_tab_btn",
+            "notes_todo_tab_btn", "notes_cal_tab_btn",
             "notes_insert_todo", "notes_insert_tag",
             "palette_save",
             "web_btn_start", "web_btn_stop", "web_btn_clear"
@@ -336,14 +336,55 @@ class RegressionScanTest {
         assertTrue(
             "标题栏必须继续用原键",
             code("NotesTodoActivity.kt").contains("R.string.notes_todo_tab)") &&
-                code("NotesTagsActivity.kt").contains("R.string.notes_tags_tab)") &&
                 code("NotesCalendarActivity.kt").contains("R.string.notes_cal_tab)")
         )
         // 中英键必须对齐：英文有 _btn 键，中文默认串里也必须有（否则中文环境取不到会崩）
         val zh = resXml("values/strings.xml")
-        for (key in listOf("notes_todo_tab_btn", "notes_tags_tab_btn", "notes_cal_tab_btn")) {
+        for (key in listOf("notes_todo_tab_btn", "notes_cal_tab_btn")) {
             stringValue(zh, key)
         }
+    }
+
+    @Test
+    fun `笔记两页底部只保留待办和日历`() {
+        for (name in listOf("NotesController.kt", "NotesStandaloneActivity.kt")) {
+            val c = code(name)
+            assertFalse("$name 不许再出现标签页按钮", c.contains("notes_tags_tab_btn"))
+            assertFalse("$name 不许再跳标签页", c.contains("NotesTagsActivity"))
+            assertTrue("$name 必须保留待办键", c.contains("notes_todo_tab_btn"))
+            assertTrue("$name 必须保留日历键", c.contains("notes_cal_tab_btn"))
+        }
+        assertFalse("NotesTagsActivity 已整体删除", fileExists("NotesTagsActivity.kt"))
+        assertFalse(
+            "manifest 不许再注册已删除的标签页",
+            repoFile("app/src/main/AndroidManifest.xml").readText().contains("NotesTagsActivity")
+        )
+        for (file in listOf("values/strings.xml", "values-en/strings.xml")) {
+            val xml = resXml(file)
+            assertFalse("$file 的标签页按钮串已没有调用方", xml.contains("notes_tags_tab_btn"))
+            assertFalse("$file 的标签页搜索串已没有调用方", xml.contains("notes_search_tag"))
+        }
+    }
+
+    @Test
+    fun `笔记搜索必须用胶囊字段而不是普通标签文字`() {
+        for (name in listOf("NotesController.kt", "NotesStandaloneActivity.kt")) {
+            val c = code(name)
+            assertTrue("$name 必须用共享的搜索/筛选协调器", c.contains("NotesTagSearch("))
+            assertTrue("$name 必须把筛选条叠在底部", c.contains("tagSearch.filterRow"))
+            assertTrue("$name 必须从协调器取查询串", c.contains("tagSearch.query()"))
+            assertTrue("$name 必须剪掉已删除的标签", c.contains("tagSearch.refreshTags()"))
+        }
+        val field = code("NotesSearchField.kt")
+        assertTrue("搜索框必须用 NoteQuery 组合字段语法", field.contains("NoteQuery.compose"))
+        assertTrue("胶囊必须可点移除", field.contains("notes_tag_filter_remove_fmt"))
+        val row = code("NotesTagFilterRow.kt")
+        assertTrue("筛选条必须能横向滚动", row.contains("HorizontalScrollView"))
+        assertTrue("筛选标签必须可点", row.contains("onTagClick"))
+        val query = code("NoteQuery.kt")
+        assertTrue("必须生成 tag: 字段", query.contains("tag:"))
+        assertTrue("多标签必须 AND", query.contains("matchesTags"))
+        assertTrue("查询层必须消费字段", code("NotesStore.kt").contains("NoteQuery.parse"))
     }
 
     @Test

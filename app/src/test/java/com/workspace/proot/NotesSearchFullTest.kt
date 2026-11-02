@@ -66,7 +66,7 @@ class NotesSearchFullTest {
     private fun seed() {
         store.createNote("苹果派教程")
         store.saveNote("苹果派教程", "苹果派的做法：先买苹果，再切块烘烤。")
-        store.attachTags("苹果派教程", listOf("烘焙"))
+        store.attachTags("苹果派教程", listOf("烘焙", "教程"))
 
         store.createNote("购物清单")
         store.saveNote("购物清单", "明天去超市买牛奶和面包")
@@ -152,6 +152,38 @@ class NotesSearchFullTest {
         assertTrue(full("pg").contains("苹果派教程"))
         assertEquals(listOf("购物清单"), full("交水电"))
         assertTrue(full("去超市牛").contains("快速记录"))
+    }
+
+    @Test
+    fun `tag field filters notes and ANDs multiple tags`() {
+        assertEquals(listOf("苹果派教程"), full("tag:烘焙"))
+        assertEquals(listOf("工作汇报"), full("tag:重要"))
+        assertEquals(listOf("苹果派教程"), full("tag：教程"))
+        assertEquals(listOf("苹果派教程"), full("tag:烘焙 tag:教程"))
+        assertTrue(full("tag:烘焙 tag:重要").isEmpty())
+        assertTrue(full("tag:不存在").isEmpty())
+    }
+
+    @Test
+    fun `tag field combines with full text search`() {
+        assertEquals(listOf("苹果派教程"), full("tag:烘焙 苹果"))
+        assertTrue(full("tag:重要 苹果").isEmpty())
+        // 普通词仍走原全文管线；标签只负责收窄
+        assertTrue(full("tag:教程 超屎").isEmpty())
+    }
+
+    @Test
+    fun `tag-only query keeps the list order`() {
+        store.attachTags("购物清单", listOf("常用"))
+        store.attachTags("旅行计划", listOf("常用"))
+        val expected = store.listNotes().filter { "常用" in it.tags }.map { it.name }
+        assertEquals(expected, full("tag:常用"))
+    }
+
+    @Test
+    fun `tag filter does not change plain search behavior`() {
+        assertEquals(brute("苹果"), full("苹果"))
+        assertEquals(brute("苹果 超市"), full("苹果 超市"))
     }
 
     @Test

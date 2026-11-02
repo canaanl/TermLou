@@ -17,7 +17,8 @@ import java.util.Locale
 
 /**
  * 笔记 tab 内容区（主界面第 1 位，可滑动切换）：列表态 / 编辑态。
- * 底部单排三键按状态切换，列表 [待办][标签] + 右下角新建 FAB，编辑 [＋待办][＋标签]。
+ * 底部单排两键按状态切换，列表 [待办][日历] + 右下角新建 FAB，编辑 [＋待办][＋标签]。
+ * 搜索框聚焦时底部浮出标签筛选条；标签以胶囊进入搜索框，按 `tag:标签` 字段过滤。
  * 正文退出编辑器时自动落盘（退列表/切笔记/切 tab/后台/跳子页面），无保存键、无草稿。Dialog/跳转全部直调 MainActivity。
  */
 class NotesController(
@@ -44,7 +45,7 @@ class NotesController(
     private lateinit var tagRow: TagFlowLayout
     private lateinit var todoBox: LinearLayout
     private lateinit var body: EditText
-    private lateinit var searchInput: EditText
+    private lateinit var tagSearch: NotesTagSearch
     private var query = ""
     private val searchDebounce = Runnable { renderList() }
 
@@ -57,34 +58,7 @@ class NotesController(
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(theme.surface)
         }
-        val content = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        }
-        searchInput = buildSearchRow()
-        content.addView(searchInput)
-        val scrolled = scrollColumn()
-        listScroll = scrolled.first
-        listInner = scrolled.second
-        content.addView(
-            listScroll,
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { weight = 1f }
-        )
-        editorBox = buildEditorBox()
-        content.addView(
-            editorBox,
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { weight = 1f }
-        )
-        val frame = FrameLayout(activity).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0
-            ).apply { weight = 1f }
-            addView(content)
-            fab = buildFab()
-            addView(fab)
-        }
+        val frame = buildFrame(buildContent())
         root.addView(frame)
         root.addView(divider())
         navRow = buildNavRow()
@@ -98,6 +72,70 @@ class NotesController(
             )
         )
         showList()
+    }
+
+    /** 搜索框、列表、编辑器：三者共享的竖向内容区。 */
+    private fun buildContent(): LinearLayout {
+        val content = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+        tagSearch = NotesTagSearch(activity, theme) {
+            store.allTags().map { it.first }
+        }
+        tagSearch.onQueryChanged = { tagsChanged ->
+            query = tagSearch.query()
+            val input = tagSearch.searchField.input
+            input.removeCallbacks(searchDebounce)
+            if (tagsChanged) {
+                searchDebounce.run()
+            } else {
+                input.postDelayed(searchDebounce, NoteMatcher.SEARCH_DEBOUNCE_MS)
+            }
+        }
+        tagSearch.searchField.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            val d = density()
+            setMargins((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (4 * d).toInt())
+        }
+        content.addView(tagSearch.searchField)
+        val scrolled = scrollColumn()
+        listScroll = scrolled.first
+        listInner = scrolled.second
+        content.addView(
+            listScroll,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { weight = 1f }
+        )
+        editorBox = buildEditorBox()
+        content.addView(
+            editorBox,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { weight = 1f }
+        )
+        return content
+    }
+
+    /** 内容区 + 右下角 FAB + 底部标签筛选浮层。 */
+    private fun buildFrame(content: LinearLayout): FrameLayout = FrameLayout(activity).apply {
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0
+        ).apply { weight = 1f }
+        addView(content)
+        fab = buildFab()
+        addView(fab)
+        tagSearch.filterRow.layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM
+        ).apply {
+            val d = density()
+            marginStart = (12 * d).toInt()
+            marginEnd = (12 * d).toInt()
+            bottomMargin = (10 * d).toInt()
+        }
+        addView(tagSearch.filterRow)
+        tagSearch.attach(listInner, fab)
     }
 
     /**
@@ -139,6 +177,7 @@ class NotesController(
             refreshTagRow()
             refreshTodoBox()
         } else {
+            tagSearch.refreshTags()
             renderList()
         }
     }
@@ -149,7 +188,7 @@ class NotesController(
             showList()
             return true
         }
-        if (activity.currentTab == 1 && NoteMatcher.terms(query).isNotEmpty()) {
+        if (activity.currentTab == 1 && tagSearch.hasQuery()) {
             clearSearch()
             return true
         }
@@ -161,35 +200,10 @@ class NotesController(
         if (storeLazy.isInitialized()) runCatching { store.close() }
     }
 
-    /** 搜索行：样式与标签/待办页一致（outlined + 同间距），200ms 防抖后重渲染列表。 */
-    private fun buildSearchRow(): EditText {
-        val d = density()
-        return EditText(activity).apply {
-            hint = activity.getString(R.string.notes_search_notes)
-            setSingleLine(true)
-            FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
-            setPaddingMd(12, 10, 12, 10)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (4 * d).toInt()) }
-            addTextChangedListener(object : android.text.TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
-                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
-                override fun afterTextChanged(s: android.text.Editable?) {
-                    query = text?.toString().orEmpty()
-                    removeCallbacks(searchDebounce)
-                    postDelayed(searchDebounce, NoteMatcher.SEARCH_DEBOUNCE_MS)
-                }
-            })
-        }
-    }
-
-    /** 返回键在列表态先清搜索词。 */
+    /** 返回键在列表态先清搜索词；标签胶囊与文字一起清空。 */
     private fun clearSearch() {
-        searchInput.removeCallbacks(searchDebounce)
-        searchInput.setText("")
-        query = ""
-        renderList()
+        tagSearch.searchField.input.removeCallbacks(searchDebounce)
+        tagSearch.clear()
     }
 
     private fun buildEditorBox(): LinearLayout {
@@ -253,12 +267,6 @@ class NotesController(
                     android.content.Intent(activity, NotesTodoActivity::class.java)
                 )
             })
-            addView(segButton(activity.getString(R.string.notes_tags_tab_btn)) {
-                flushPendingSave()
-                activity.startActivity(
-                    android.content.Intent(activity, NotesTagsActivity::class.java)
-                )
-            })
             addView(segButton(activity.getString(R.string.notes_cal_tab_btn)) {
                 flushPendingSave()
                 activity.startActivity(
@@ -268,7 +276,7 @@ class NotesController(
         }
         SegmentStyle.applyRow(
             row,
-            listOf(null, null, null),
+            listOf(null, null),
             theme.outline,
             theme.onSurface,
             SegmentStyle.Bar(0f, false)
@@ -325,8 +333,9 @@ class NotesController(
         navRow.visibility = android.view.View.VISIBLE
         editRow.visibility = android.view.View.GONE
         editorBox.visibility = android.view.View.GONE
-        searchInput.visibility = android.view.View.VISIBLE
+        tagSearch.searchField.visibility = android.view.View.VISIBLE
         listScroll.visibility = android.view.View.VISIBLE
+        tagSearch.refreshTags()
         // 5.9.65：退出编辑时笔记已被删空（正文空 + 无待办，标签不算内容）→ 按开关删除或询问。
         // 打字中途不判定（新建的笔记一打开就是空的，实时判定会当场误杀），退出即统一结算。
         if (cur != null && store.isEmptyNote(cur, draft)) {
@@ -367,7 +376,8 @@ class NotesController(
         refreshTagRow()
         refreshTodoBox()
         listScroll.visibility = android.view.View.GONE
-        searchInput.visibility = android.view.View.GONE
+        tagSearch.hideForEditor()
+        tagSearch.searchField.visibility = android.view.View.GONE
         editorBox.visibility = android.view.View.VISIBLE
         fab.visibility = android.view.View.GONE
         navRow.visibility = android.view.View.GONE
@@ -403,13 +413,13 @@ class NotesController(
 
     private fun renderList() {
         listInner.removeAllViews()
-        val terms = NoteMatcher.terms(query)
+        val parsed = NoteQuery.parse(query)
         // 三段式搜索：库索引召回 → 交集 → 批量取正文精排（零 .txt 读盘，排序语义与旧全量扫描一致）
         val notes = store.searchNotesFull(query)
         if (notes.isEmpty()) {
             listInner.addView(TextView(activity).apply {
                 text = activity.getString(
-                    if (terms.isEmpty()) R.string.notes_empty_list else R.string.notes_search_empty
+                    if (parsed.isEmpty) R.string.notes_empty_list else R.string.notes_search_empty
                 )
                 setTextColor(theme.onSurfaceVariant)
                 textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)

@@ -37,7 +37,7 @@ class NotesStandaloneActivity : NotesPageActivity() {
     private lateinit var tagRow: TagFlowLayout
     private lateinit var todoBox: LinearLayout
     private lateinit var body: EditText
-    private lateinit var searchInput: EditText
+    private lateinit var tagSearch: NotesTagSearch
     private var query = ""
     private val searchDebounce = Runnable { renderList() }
 
@@ -48,14 +48,58 @@ class NotesStandaloneActivity : NotesPageActivity() {
             setBackgroundColor(theme.surface)
         }
         root.addView(buildTitleBar(getString(R.string.notes_standalone_title), showBack = false))
+        root.addView(buildFrame(buildContent()))
+        root.addView(divider())
+        navRow = buildNavRow()
+        editRow = buildEditRow()
+        root.addView(navRow)
+        root.addView(editRow)
+        setContentView(root)
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (current != null) {
+                    showList()
+                } else if (tagSearch.hasQuery()) {
+                    clearSearch()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                    isEnabled = true
+                }
+            }
+        })
+        showList()
+        handleOpenExtra(intent)
+    }
+
+    /** 搜索框、列表、编辑器：与主界面笔记 Tab 同构的竖向内容区。 */
+    private fun buildContent(): LinearLayout {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
             )
         }
-        searchInput = buildSearchRow()
-        content.addView(searchInput)
+        tagSearch = NotesTagSearch(this, theme) {
+            store.allTags().map { it.first }
+        }
+        tagSearch.onQueryChanged = { tagsChanged ->
+            query = tagSearch.query()
+            val input = tagSearch.searchField.input
+            input.removeCallbacks(searchDebounce)
+            if (tagsChanged) {
+                searchDebounce.run()
+            } else {
+                input.postDelayed(searchDebounce, NoteMatcher.SEARCH_DEBOUNCE_MS)
+            }
+        }
+        tagSearch.searchField.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            val d = density()
+            setMargins((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (4 * d).toInt())
+        }
+        content.addView(tagSearch.searchField)
         val scrolled = scrollColumn()
         listScroll = scrolled.first
         listInner = scrolled.second
@@ -68,36 +112,28 @@ class NotesStandaloneActivity : NotesPageActivity() {
             editorBox,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { weight = 1f }
         )
-        val frame = FrameLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0
-            ).apply { weight = 1f }
-            addView(content)
-            fab = buildFab()
-            addView(fab)
+        return content
+    }
+
+    /** 内容区 + 右下角 FAB + 底部标签筛选浮层。 */
+    private fun buildFrame(content: LinearLayout): FrameLayout = FrameLayout(this).apply {
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0
+        ).apply { weight = 1f }
+        addView(content)
+        fab = buildFab()
+        addView(fab)
+        tagSearch.filterRow.layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM
+        ).apply {
+            val d = density()
+            marginStart = (12 * d).toInt()
+            marginEnd = (12 * d).toInt()
+            bottomMargin = (10 * d).toInt()
         }
-        root.addView(frame)
-        root.addView(divider())
-        navRow = buildNavRow()
-        editRow = buildEditRow()
-        root.addView(navRow)
-        root.addView(editRow)
-        setContentView(root)
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                if (current != null) {
-                    showList()
-                } else if (NoteMatcher.terms(query).isNotEmpty()) {
-                    clearSearch()
-                } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
-                    isEnabled = true
-                }
-            }
-        })
-        showList()
-        handleOpenExtra(intent)
+        addView(tagSearch.filterRow)
+        tagSearch.attach(listInner, fab)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -123,6 +159,7 @@ class NotesStandaloneActivity : NotesPageActivity() {
             refreshTagRow()
             refreshTodoBox()
         } else {
+            tagSearch.refreshTags()
             renderList()
         }
     }
@@ -150,8 +187,9 @@ class NotesStandaloneActivity : NotesPageActivity() {
         navRow.visibility = View.VISIBLE
         editRow.visibility = View.GONE
         editorBox.visibility = View.GONE
-        searchInput.visibility = View.VISIBLE
+        tagSearch.searchField.visibility = View.VISIBLE
         listScroll.visibility = View.VISIBLE
+        tagSearch.refreshTags()
         // 5.9.65：退出编辑时笔记已被删空（正文空 + 无待办，标签不算内容）→ 按开关删除或询问。
         // 与主界面笔记 Tab 同一套规则；提示沿用独立页现有通道（NoteNotify）。
         if (cur != null && store.isEmptyNote(cur, draft)) {
@@ -192,39 +230,18 @@ class NotesStandaloneActivity : NotesPageActivity() {
         refreshTagRow()
         refreshTodoBox()
         listScroll.visibility = View.GONE
-        searchInput.visibility = View.GONE
+        tagSearch.hideForEditor()
+        tagSearch.searchField.visibility = View.GONE
         editorBox.visibility = View.VISIBLE
         fab.visibility = View.GONE
         navRow.visibility = View.GONE
         editRow.visibility = View.VISIBLE
     }
 
-    /** 搜索行：与标签/待办页同款，200ms 防抖后重渲染。 */
-    private fun buildSearchRow(): EditText {
-        val d = density()
-        val input = EditText(this).apply {
-            hint = getString(R.string.notes_search_notes)
-            setSingleLine(true)
-            FieldStyle.applyOutlined(this, theme, UiTokens.TEXT_BODY)
-            setPaddingMd(12, 10, 12, 10)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (4 * d).toInt()) }
-        }
-        watchText(input) {
-            query = input.text?.toString().orEmpty()
-            input.removeCallbacks(searchDebounce)
-            input.postDelayed(searchDebounce, NoteMatcher.SEARCH_DEBOUNCE_MS)
-        }
-        return input
-    }
-
-    /** 返回键在列表态先清搜索词。 */
+    /** 返回键在列表态先清搜索词；标签胶囊与文字一起清空。 */
     private fun clearSearch() {
-        searchInput.removeCallbacks(searchDebounce)
-        searchInput.setText("")
-        query = ""
-        renderList()
+        tagSearch.searchField.input.removeCallbacks(searchDebounce)
+        tagSearch.clear()
     }
 
     private fun buildEditorBox(): LinearLayout {
@@ -286,13 +303,6 @@ class NotesStandaloneActivity : NotesPageActivity() {
                 flushPendingSave()
                 startActivity(Intent(this@NotesStandaloneActivity, NotesTodoActivity::class.java))
             })
-            addView(segButton(getString(R.string.notes_tags_tab_btn)) {
-                flushPendingSave()
-                startActivity(
-                    Intent(this@NotesStandaloneActivity, NotesTagsActivity::class.java)
-                        .putExtra(EXTRA_FROM_STANDALONE, true)
-                )
-            })
             addView(segButton(getString(R.string.notes_cal_tab_btn)) {
                 flushPendingSave()
                 startActivity(
@@ -303,7 +313,7 @@ class NotesStandaloneActivity : NotesPageActivity() {
         }
         SegmentStyle.applyRow(
             row,
-            listOf(null, null, null),
+            listOf(null, null),
             theme.outline,
             theme.onSurface,
             SegmentStyle.Bar(0f, false)
@@ -370,13 +380,13 @@ class NotesStandaloneActivity : NotesPageActivity() {
 
     private fun renderList() {
         listInner.removeAllViews()
-        val terms = NoteMatcher.terms(query)
+        val parsed = NoteQuery.parse(query)
         // 三段式搜索：库索引召回 → 交集 → 批量取正文精排（零 .txt 读盘，排序语义与旧全量扫描一致）
         val notes = store.searchNotesFull(query)
         if (notes.isEmpty()) {
             listInner.addView(TextView(this).apply {
                 text = getString(
-                    if (terms.isEmpty()) R.string.notes_empty_list else R.string.notes_search_empty
+                    if (parsed.isEmpty) R.string.notes_empty_list else R.string.notes_search_empty
                 )
                 setTextColor(theme.onSurfaceVariant)
                 textMd(UiTokens.TEXT_BODY, UiTokens.LINE_BODY)

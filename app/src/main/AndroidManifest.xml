@@ -82,12 +82,6 @@
             android:theme="@style/Theme.TermLou" />
 
         <activity
-            android:name="com.workspace.proot.NotesTagsActivity"
-            android:screenOrientation="portrait"
-            android:exported="false"
-            android:theme="@style/Theme.TermLou" />
-
-        <activity
             android:name="com.workspace.proot.NotesCalendarActivity"
             android:screenOrientation="portrait"
             android:exported="false"
@@ -98,6 +92,7 @@
             android:screenOrientation="portrait"
             android:exported="false"
             android:launchMode="singleTask"
+            android:windowSoftInputMode="stateHidden|adjustResize"
             android:excludeFromRecents="true"
             android:taskAffinity=".notes"
             android:theme="@style/Theme.TermLou" />

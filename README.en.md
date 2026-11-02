@@ -79,7 +79,7 @@ TermLou
 │   ├── NotesStore            Note bodies as .txt + hidden JSON index (tags/todos/timestamps)
 │   ├── NotesController       Main-UI notes tab (list/editor, decoupled from standalone page)
 │   ├── NotesStandaloneActivity  Standalone notes page (opened by the tile, Linux-independent)
-│   ├── NotesTodoActivity / NotesTagsActivity  Todo kanban / tag filter sub-page
+│   ├── NotesTodoActivity  Todo kanban
 │   ├── ShortcutManager       Shortcut row + wheel assembly + command execution (escape parsing)
 │   ├── WheelController/Adapter  Infinite looping wheel (Int.MAX_VALUE modulo + empty slots) + TUI-aware suggestion
 │   ├── CommandRecommender    Multi-signal ranking (frequency + sequence + recency)
@@ -182,7 +182,7 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 
 - **Two entries**: main-UI notes tab (swipeable) and a tile-launched standalone page (no back header, swipe disabled)
 - **List/editor**: list shows title, update time and tag capsules; editor has body, tag area, todo area, [＋Todo][＋Tag]
-- **Tags**: colored by content hash (same tag always same color); the tags page supports search and filtering
+- **Tag filtering**: tags are colored by content hash (same tag always same color); focusing the search box floats up a translucent horizontal tag row, and a chosen tag enters the search box as a `#tag ×` capsule that filters by the `tag:name` field (multiple tags are ANDed). Tap the capsule to remove it
 - **Todo kanban**: "Done" left | divider | "Open" right, each column scrolls independently with frozen headers and counts; tap a row to toggle — it flies out and the destination row flies in and flashes
 - **Save on exit**: the body is compared and written before leaving the list, switching notes, switching tabs, backgrounding, jumping to sub-pages, renaming — avoiding per-keystroke write amplification
 - **Linux-independent**: plain-file storage; the tile path never boots proot / the terminal session
