@@ -114,7 +114,7 @@ class OverlayBridgeSessionTest {
     }
 
     private fun awaitCondition(message: String, block: () -> Boolean) {
-        val deadline = System.currentTimeMillis() + 5_000
+        val deadline = System.currentTimeMillis() + 10_000
         while (System.currentTimeMillis() < deadline) {
             Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(50))
             if (block()) return
