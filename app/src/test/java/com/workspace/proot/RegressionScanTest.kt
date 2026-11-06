@@ -274,6 +274,22 @@ class RegressionScanTest {
         assertTrue("切走 tab 仍要 hideIme", m.contains("hideIme()"))
     }
 
+    @Test
+    fun `横滑切页落定必须清焦点并收输入法`() {
+        val m = codeOnly("MainActivity.kt")
+        assertTrue("必须监听 ViewPager2 的滑动状态", m.contains("onPageScrollStateChanged"))
+        assertTrue("必须记住滑动起点", m.contains("tabBeforeMove"))
+        assertTrue("必须调用统一的清焦点收输入法", m.contains("ImeFocus.clearAndHide"))
+        assertTrue("必须只在落定时比较起点和终点", m.contains("currentTab != tabBeforeMove"))
+        assertTrue("必须区分拖动中与落定", m.contains("SCROLL_STATE_IDLE"))
+        assertTrue("终端页仍要恢复终端焦点", m.contains("terminalController.terminalView.requestFocus()"))
+        assertTrue("终端恢复焦点后还要压住键盘", m.contains("hideIme()"))
+        assertFalse(
+            "点击 Tab 是打开帮助页，TabIntroController 里不许切页",
+            codeOnly("TabIntroController.kt").contains("showTab(")
+        )
+    }
+
 // ---------- 5.9.21：英文按钮全大写 + 介绍页加双击切输入法 ----------
 
     /** 读 res/values(-en)/xxx.xml 的原始文本（扫源码锁的写法，不走 Android 资源系统）。 */

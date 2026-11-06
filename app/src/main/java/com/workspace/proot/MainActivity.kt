@@ -61,6 +61,13 @@ class MainActivity : AppCompatActivity() {
 
     internal var currentTab = 0
 
+    /**
+     * 切页前的页签。
+     * - 横滑开始（DRAGGING）时记下当前页，落定后只有真的换了页才清焦点；
+     * - 程序化切页（磁贴/打开笔记/换色恢复）置 -1，落定后强制收一次焦点。
+     */
+    private var tabBeforeMove = 0
+
     // 5.9.53：原先这一组手写切换动画的状态（animating / displayedTab / animShow /
     // animHide / animGen）随 ViewPager2 接入整体删除。页面显隐、translationX、
     // 动画收尾、连点时的在途取消，全部由 ViewPager2 内部负责，
@@ -390,7 +397,10 @@ class MainActivity : AppCompatActivity() {
      */
     internal fun showTab(tabIndex: Int) {
         if (tabIndex !in 0..4) return
-        if (tabIndex != 0) hideIme()
+        if (tabIndex != currentTab) {
+            tabBeforeMove = -1
+            if (!isTabIntroShowing()) ImeFocus.clearAndHide(this)
+        }
         terminalController.hideSetup()
         val prev = currentTab
         if (prev == 1 && tabIndex != 1) notesController.flushPendingSave()
@@ -447,11 +457,34 @@ class MainActivity : AppCompatActivity() {
         statusController.setSweepDirection(toLeft = tabIndex > prev)
         refreshStatusBar()
 
-        if (tabIndex == 0) terminalController.terminalView.requestFocus()
+        if (tabIndex == 0 && tabIndex == prev) {
+            // 初始页/同页刷新才在这里抢终端焦点；横滑到终端时由落定后的
+            // settleTabFocus() 统一处理，避免拖动中途经过终端又滑回原页时误抢焦点。
+            terminalController.terminalView.requestFocus()
+        }
         if (tabIndex == 1) notesController.refresh()
         if (tabIndex == 2) workspaceController.refreshFileList()
         if (tabIndex == 3) networkController.refreshNetTab()
     }
+
+    /**
+     * 切页真正落定后清理输入焦点。
+     *
+     * 横滑过程中 onPageSelected 可能报告中间页，不能在那里清；只在滑动结束（IDLE）
+     * 或程序化切页完成后做。旧页的 EditText 不会因为页面滑走自动失焦，必须显式
+     * clearFocus，否则键盘会继续跟着隐藏页的输入框。
+     */
+    private fun settleTabFocus() {
+        if (isTabIntroShowing()) return
+        ImeFocus.clearAndHide(this)
+        if (currentTab == 0 && ::terminalController.isInitialized) {
+            terminalController.terminalView.requestFocus()
+            terminalController.terminalView.post { hideIme() }
+        }
+    }
+
+    private fun isTabIntroShowing(): Boolean =
+        ::tabIntroController.isInitialized && tabIntroController.isShowing()
 
     /** ViewPager2 的唯一状态出口：拖动与代码调用都从这里汇合。 */
     private val pageCallback = object : androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
@@ -469,6 +502,24 @@ class MainActivity : AppCompatActivity() {
             val prev = currentTab
             currentTab = position
             applyTabState(position, prev)
+        }
+
+        override fun onPageScrollStateChanged(state: Int) {
+            when (state) {
+                androidx.viewpager2.widget.ViewPager2.SCROLL_STATE_DRAGGING -> {
+                    tabBeforeMove = currentTab
+                }
+                androidx.viewpager2.widget.ViewPager2.SCROLL_STATE_IDLE -> {
+                    if (currentTab != tabBeforeMove) {
+                        if (isTabIntroShowing()) {
+                            tabBeforeMove = currentTab
+                        } else {
+                            settleTabFocus()
+                            tabBeforeMove = currentTab
+                        }
+                    }
+                }
+            }
         }
     }
 
