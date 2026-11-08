@@ -32,12 +32,12 @@ class NotesStandaloneActivity : NotesPageActivity() {
     private lateinit var editorBox: LinearLayout
     private lateinit var navRow: LinearLayout
     private lateinit var editRow: LinearLayout
-    private lateinit var fab: TextView
     private lateinit var editorTitle: TextView
     private lateinit var tagRow: TagFlowLayout
     private lateinit var todoBox: LinearLayout
     private lateinit var body: EditText
     private lateinit var tagSearch: NotesTagSearch
+    private lateinit var searchOverlay: NotesSearchOverlay
     private var query = ""
     private val searchDebounce = Runnable { renderList() }
 
@@ -57,10 +57,9 @@ class NotesStandaloneActivity : NotesPageActivity() {
         setContentView(root)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                if (::searchOverlay.isInitialized && searchOverlay.handleBack()) return
                 if (current != null) {
                     showList()
-                } else if (tagSearch.hasQuery()) {
-                    clearSearch()
                 } else {
                     isEnabled = false
                     onBackPressedDispatcher.onBackPressed()
@@ -93,13 +92,6 @@ class NotesStandaloneActivity : NotesPageActivity() {
                 input.postDelayed(searchDebounce, NoteMatcher.SEARCH_DEBOUNCE_MS)
             }
         }
-        tagSearch.searchField.layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            val d = density()
-            setMargins((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (4 * d).toInt())
-        }
-        content.addView(tagSearch.searchField)
         val scrolled = scrollColumn()
         listScroll = scrolled.first
         listInner = scrolled.second
@@ -115,25 +107,14 @@ class NotesStandaloneActivity : NotesPageActivity() {
         return content
     }
 
-    /** 内容区 + 右下角 FAB + 底部标签筛选浮层。 */
+    /** 内容区 + 右下角 FAB 组 + 全宽搜索面板 + 内容区遮罩。 */
     private fun buildFrame(content: LinearLayout): FrameLayout = FrameLayout(this).apply {
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, 0
         ).apply { weight = 1f }
         addView(content)
-        fab = buildFab()
-        addView(fab)
-        tagSearch.filterRow.layoutParams = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.BOTTOM
-        ).apply {
-            val d = density()
-            marginStart = (12 * d).toInt()
-            marginEnd = (12 * d).toInt()
-            bottomMargin = (10 * d).toInt()
-        }
-        addView(tagSearch.filterRow)
-        tagSearch.attach(listInner, fab)
+        searchOverlay = NotesSearchOverlay(this@NotesStandaloneActivity, theme, tagSearch) { onNewPressed() }
+        searchOverlay.attach(this)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -183,11 +164,10 @@ class NotesStandaloneActivity : NotesPageActivity() {
         val draft = body.text?.toString().orEmpty()
         flushPendingSave()
         current = null
-        fab.visibility = View.VISIBLE
+        searchOverlay.showMenuCollapsed()
         navRow.visibility = View.VISIBLE
         editRow.visibility = View.GONE
         editorBox.visibility = View.GONE
-        tagSearch.searchField.visibility = View.VISIBLE
         listScroll.visibility = View.VISIBLE
         tagSearch.refreshTags()
         // 5.9.65：退出编辑时笔记已被删空（正文空 + 无待办，标签不算内容）→ 按开关删除或询问。
@@ -224,24 +204,21 @@ class NotesStandaloneActivity : NotesPageActivity() {
             showList()
             return
         }
+        searchOverlay.hideForEditor()
         current = name
         body.setText(store.readNote(name))
         refreshEditorTitle()
         refreshTagRow()
         refreshTodoBox()
         listScroll.visibility = View.GONE
-        tagSearch.hideForEditor()
-        tagSearch.searchField.visibility = View.GONE
         editorBox.visibility = View.VISIBLE
-        fab.visibility = View.GONE
         navRow.visibility = View.GONE
         editRow.visibility = View.VISIBLE
     }
 
-    /** 返回键在列表态先清搜索词；标签胶囊与文字一起清空。 */
-    private fun clearSearch() {
-        tagSearch.searchField.input.removeCallbacks(searchDebounce)
-        tagSearch.clear()
+    override fun onDestroy() {
+        if (::searchOverlay.isInitialized) searchOverlay.cancelAnimations()
+        super.onDestroy()
     }
 
     private fun buildEditorBox(): LinearLayout {
@@ -300,10 +277,12 @@ class NotesStandaloneActivity : NotesPageActivity() {
             setBackgroundColor(theme.surface)
             setPaddingMd(UiTokens.SPACE_1, UiTokens.SPACE_0, UiTokens.SPACE_1, UiTokens.SPACE_0)
             addView(segButton(getString(R.string.notes_todo_tab_btn)) {
+                searchOverlay.collapseAll(animate = false)
                 flushPendingSave()
                 startActivity(Intent(this@NotesStandaloneActivity, NotesTodoActivity::class.java))
             })
             addView(segButton(getString(R.string.notes_cal_tab_btn)) {
+                searchOverlay.collapseAll(animate = false)
                 flushPendingSave()
                 startActivity(
                     Intent(this@NotesStandaloneActivity, NotesCalendarActivity::class.java)
@@ -344,13 +323,6 @@ class NotesStandaloneActivity : NotesPageActivity() {
         return row
     }
 
-    private fun buildFab(): TextView = NeuFab.create(
-        this,
-        theme,
-        "＋",
-        getString(R.string.notes_new)
-    ) { onNewPressed() }
-
     private fun refreshEditorTitle() {
         val cur = current ?: return
         editorTitle.text = cur
@@ -383,6 +355,9 @@ class NotesStandaloneActivity : NotesPageActivity() {
         val parsed = NoteQuery.parse(query)
         // 三段式搜索：库索引召回 → 交集 → 批量取正文精排（零 .txt 读盘，排序语义与旧全量扫描一致）
         val notes = store.searchNotesFull(query)
+        if (::searchOverlay.isInitialized) {
+            searchOverlay.setResultsAvailable(query.isNotBlank() && notes.isNotEmpty())
+        }
         if (notes.isEmpty()) {
             listInner.addView(TextView(this).apply {
                 text = getString(

@@ -415,6 +415,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyTabState(tabIndex: Int, prev: Int) {
         applySetupGuard()
+        // 横滑切 Tab 是最高优先级：离开笔记页时，立即收起 FAB / 搜索框 / 标签栏。
+        if (prev == 1 && tabIndex != 1 && ::notesController.isInitialized) {
+            notesController.onTabSwitch()
+        }
         val tabs = listOf(terminalTab, notesTab, filesTab, settingsTab)
         for (i in tabs.indices) {
             tabs[i].setColorFilter(if (i == tabIndex) scope.cOnSurface else scope.cOnSurfaceVariant)

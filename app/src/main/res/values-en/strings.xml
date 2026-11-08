@@ -562,6 +562,8 @@
     <string name="notes_back">‹</string>
     <string name="notes_empty_list">No notes yet</string>
     <string name="notes_new">New</string>
+    <string name="notes_menu_expand">Expand note actions</string>
+    <string name="notes_menu_collapse">Collapse note actions</string>
     <string name="notes_name_hint">Name (blank = timestamp)</string>
     <string name="notes_rename">Rename</string>
     <string name="notes_delete">Delete</string>

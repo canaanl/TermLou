@@ -2,7 +2,7 @@
 
 > An Android terminal built for **people who don't code** — Debian GNU/Linux, file management, notes & todos and script-driven floating UI, all inside one tap-and-go App.
 
-![Version](https://img.shields.io/badge/version-5.11.0-blue)
+![Version](https://img.shields.io/badge/version-5.11.1-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -57,7 +57,7 @@ Beyond that core, TermLou also grew a complete **notes & todo system** (usable i
 | Files | `androidx.documentfile` (SAF import), `commons-compress` (tar unpacking), `xz` (streaming tar.xz) |
 | Data | `SharedPreferences` + hand-written JSON (command library v2, notes index) |
 | Static analysis | detekt 1.23.1 |
-| Testing | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso (745 unit tests) |
+| Testing | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso (764 unit tests) |
 | CI | GitHub Actions (lint + test + assembleDebug) |
 
 ---
@@ -182,7 +182,7 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 
 - **Two entries**: main-UI notes tab (swipeable) and a tile-launched standalone page (no back header, swipe disabled)
 - **List/editor**: list shows title, update time and tag capsules; editor has body, tag area, todo area, [＋Todo][＋Tag]
-- **Tag filtering**: tags are colored by content hash (same tag always same color); focusing the search box floats up a translucent horizontal tag row, and a chosen tag enters the search box as a `#tag ×` capsule that filters by the `tag:name` field (multiple tags are ANDed). Tap the capsule to remove it
+- **Tag filtering**: tags are colored by content hash (same tag always same color); the bottom-right group FAB expands to a search action, which floats a full-width vertically draggable search panel with the tag row directly beneath. A chosen tag enters the search box as a `#tag ×` capsule that filters by the `tag:name` field (multiple tags are ANDed); tap the capsule to remove it. While expanded the notes content is dimmed and locked; list taps return only when the search has results
 - **Todo kanban**: "Done" left | divider | "Open" right, each column scrolls independently with frozen headers and counts; tap a row to toggle — it flies out and the destination row flies in and flashes
 - **Save on exit**: the body is compared and written before leaving the list, switching notes, switching tabs, backgrounding, jumping to sub-pages, renaming — avoiding per-keystroke write amplification
 - **Linux-independent**: plain-file storage; the tile path never boots proot / the terminal session

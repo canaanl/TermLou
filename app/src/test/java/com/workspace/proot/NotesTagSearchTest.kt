@@ -1,10 +1,7 @@
 package com.workspace.proot
 
 import android.app.Activity
-import android.view.View
 import android.widget.FrameLayout
-import android.widget.LinearLayout
-import android.widget.TextView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -55,40 +52,41 @@ class NotesTagSearchTest {
     }
 
     @Test
-    fun `attach accepts the list and fab used for clearance and fade`() {
+    fun `no tags means focus does not show an empty filter row`() {
         val activity = activity()
         val search = NotesTagSearch(activity, ThemeColors.default(true)) { listOf() }
-        search.attach(LinearLayout(activity), TextView(activity))
-        // 没有标签时聚焦不能显示空筛选条
         search.searchField.input.requestFocus()
         assertFalse(search.filterRow.isShowing)
     }
 
     @Test
-    fun `focus shows the filter row and reserves list clearance`() {
+    fun `focus shows the filter row and hideForEditor closes it`() {
         val activity = activity()
         val tags = mutableListOf("工作")
         val search = NotesTagSearch(activity, ThemeColors.default(true)) { tags }
-        val list = LinearLayout(activity)
-        val fab = TextView(activity).apply { visibility = View.VISIBLE }
         val root = FrameLayout(activity).apply {
             addView(search.searchField)
-            addView(list)
             addView(search.filterRow)
-            addView(fab)
         }
         activity.setContentView(root)
-        search.attach(list, fab)
 
         search.searchField.input.onFocusChangeListener?.onFocusChange(search.searchField.input, true)
         ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
 
         assertTrue(search.filterRow.isShowing)
-        assertTrue("list must reserve room for the floating row", list.paddingBottom > 0)
 
         search.hideForEditor()
         ShadowLooper.runUiThreadTasksIncludingDelayedTasks()
         assertFalse(search.filterRow.isShowing)
-        assertEquals(0, list.paddingBottom)
+    }
+
+    @Test
+    fun `close hides the filter row immediately`() {
+        val activity = activity()
+        val search = NotesTagSearch(activity, ThemeColors.default(true)) { listOf("工作") }
+        search.searchField.input.onFocusChangeListener?.onFocusChange(search.searchField.input, true)
+        assertTrue(search.filterRow.isShowing)
+        search.close()
+        assertFalse(search.filterRow.isShowing)
     }
 }

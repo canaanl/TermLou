@@ -387,10 +387,12 @@ class RegressionScanTest {
         for (name in listOf("NotesController.kt", "NotesStandaloneActivity.kt")) {
             val c = code(name)
             assertTrue("$name 必须用共享的搜索/筛选协调器", c.contains("NotesTagSearch("))
-            assertTrue("$name 必须把筛选条叠在底部", c.contains("tagSearch.filterRow"))
+            assertTrue("$name 必须用 FAB/搜索/遮罩状态机", c.contains("NotesSearchOverlay("))
             assertTrue("$name 必须从协调器取查询串", c.contains("tagSearch.query()"))
             assertTrue("$name 必须剪掉已删除的标签", c.contains("tagSearch.refreshTags()"))
         }
+        val panel = code("NotesSearchPanel.kt")
+        assertTrue("标签筛选条必须紧挨搜索框放进面板", panel.contains("tagSearch.filterRow"))
         val field = code("NotesSearchField.kt")
         assertTrue("搜索框必须用 NoteQuery 组合字段语法", field.contains("NoteQuery.compose"))
         assertTrue("胶囊必须可点移除", field.contains("notes_tag_filter_remove_fmt"))

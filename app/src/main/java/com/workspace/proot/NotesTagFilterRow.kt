@@ -25,6 +25,7 @@ class NotesTagFilterRow(context: Context, private val theme: ThemeColors) : Hori
     private var tags: List<String> = emptyList()
     private var selected: Set<String> = emptySet()
     private var hideToken = 0
+    private var embedded = false
 
     var onTagClick: ((String) -> Unit)? = null
 
@@ -52,6 +53,15 @@ class NotesTagFilterRow(context: Context, private val theme: ThemeColors) : Hori
             row,
             LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
         )
+    }
+
+    /** 放进搜索面板时使用：去掉自己的浮层底/阴影，只保留一行标签。 */
+    fun setEmbedded() {
+        embedded = true
+        background = null
+        elevation = 0f
+        setPaddingMd(0, 0, 0, 0)
+        alpha = 1f
     }
 
     /**
@@ -82,7 +92,7 @@ class NotesTagFilterRow(context: Context, private val theme: ThemeColors) : Hori
         animate().cancel()
         visibility = VISIBLE
         alpha = 0f
-        translationY = 8 * resources.displayMetrics.density
+        translationY = if (embedded) 0f else 8 * resources.displayMetrics.density
         animate()
             .alpha(1f)
             .translationY(0f)
@@ -96,12 +106,21 @@ class NotesTagFilterRow(context: Context, private val theme: ThemeColors) : Hori
         animate().cancel()
         animate()
             .alpha(0f)
-            .translationY(8 * resources.displayMetrics.density)
+            .translationY(if (embedded) 0f else 8 * resources.displayMetrics.density)
             .setDuration(HIDE_MS)
             .start()
         // 用 postDelayed 而不是 withEndAction：Robolectric 下动画结束回调不走 Choreographer，
         // 这条延迟任务能直接被测试的 ShadowLooper 跑完；重新 show 时 token 变了，不会误隐藏。
         postDelayed({ if (token == hideToken) visibility = GONE }, HIDE_MS)
+    }
+
+    /** 面板关闭时立即收起，不等动画；避免键盘/焦点已经走了、标签条还悬着。 */
+    fun hideNow() {
+        hideToken++
+        animate().cancel()
+        alpha = if (embedded) 1f else 0f
+        translationY = 0f
+        visibility = GONE
     }
 
     private fun rebuild() {

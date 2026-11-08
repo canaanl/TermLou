@@ -564,6 +564,8 @@
     <string name="notes_back">‹</string>
     <string name="notes_empty_list">暂无笔记</string>
     <string name="notes_new">新建</string>
+    <string name="notes_menu_expand">展开笔记操作</string>
+    <string name="notes_menu_collapse">收起笔记操作</string>
     <string name="notes_name_hint">名称（留空用时间戳）</string>
     <string name="notes_rename">重命名</string>
     <string name="notes_delete">删除</string>

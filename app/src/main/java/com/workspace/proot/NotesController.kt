@@ -17,8 +17,8 @@ import java.util.Locale
 
 /**
  * 笔记 tab 内容区（主界面第 1 位，可滑动切换）：列表态 / 编辑态。
- * 底部单排两键按状态切换，列表 [待办][日历] + 右下角新建 FAB，编辑 [＋待办][＋标签]。
- * 搜索框聚焦时底部浮出标签筛选条；标签以胶囊进入搜索框，按 `tag:标签` 字段过滤。
+ * 底部单排两键按状态切换，列表 [待办][日历] + 右下角 FAB 组（组/搜索/新建），编辑 [＋待办][＋标签]。
+ * 搜索按 FAB 组状态展开为全宽可拖动面板，标签条紧贴其下；标签以胶囊进入搜索框，按 `tag:标签` 字段过滤。
  * 正文退出编辑器时自动落盘（退列表/切笔记/切 tab/后台/跳子页面），无保存键、无草稿。Dialog/跳转全部直调 MainActivity。
  */
 class NotesController(
@@ -40,12 +40,12 @@ class NotesController(
     private lateinit var editorBox: LinearLayout
     private lateinit var navRow: LinearLayout
     private lateinit var editRow: LinearLayout
-    private lateinit var fab: TextView
     private lateinit var editorTitle: TextView
     private lateinit var tagRow: TagFlowLayout
     private lateinit var todoBox: LinearLayout
     private lateinit var body: EditText
     private lateinit var tagSearch: NotesTagSearch
+    private lateinit var searchOverlay: NotesSearchOverlay
     private var query = ""
     private val searchDebounce = Runnable { renderList() }
 
@@ -95,13 +95,6 @@ class NotesController(
                 input.postDelayed(searchDebounce, NoteMatcher.SEARCH_DEBOUNCE_MS)
             }
         }
-        tagSearch.searchField.layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            val d = density()
-            setMargins((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (4 * d).toInt())
-        }
-        content.addView(tagSearch.searchField)
         val scrolled = scrollColumn()
         listScroll = scrolled.first
         listInner = scrolled.second
@@ -117,25 +110,14 @@ class NotesController(
         return content
     }
 
-    /** 内容区 + 右下角 FAB + 底部标签筛选浮层。 */
+    /** 内容区 + 右下角 FAB 组 + 全宽搜索面板 + 内容区遮罩。 */
     private fun buildFrame(content: LinearLayout): FrameLayout = FrameLayout(activity).apply {
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, 0
         ).apply { weight = 1f }
         addView(content)
-        fab = buildFab()
-        addView(fab)
-        tagSearch.filterRow.layoutParams = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.BOTTOM
-        ).apply {
-            val d = density()
-            marginStart = (12 * d).toInt()
-            marginEnd = (12 * d).toInt()
-            bottomMargin = (10 * d).toInt()
-        }
-        addView(tagSearch.filterRow)
-        tagSearch.attach(listInner, fab)
+        searchOverlay = NotesSearchOverlay(activity, theme, tagSearch) { onNewPressed() }
+        searchOverlay.attach(this)
     }
 
     /**
@@ -182,14 +164,11 @@ class NotesController(
         }
     }
 
-    /** 返回键：编辑态退回列表 → 列表态清搜索词，都没得退再放行。 */
+    /** 返回键：搜索 → 关搜索；FAB → 收起；编辑态 → 回列表；都没得退再放行。 */
     fun handleBack(): Boolean {
+        if (::searchOverlay.isInitialized && searchOverlay.handleBack()) return true
         if (activity.currentTab == 1 && current != null) {
             showList()
-            return true
-        }
-        if (activity.currentTab == 1 && tagSearch.hasQuery()) {
-            clearSearch()
             return true
         }
         return false
@@ -197,13 +176,13 @@ class NotesController(
 
     /** 随主界面销毁关闭笔记库连接（此前从不 close，连接一直泄漏）。 */
     fun onDestroy() {
+        if (::searchOverlay.isInitialized) searchOverlay.cancelAnimations()
         if (storeLazy.isInitialized()) runCatching { store.close() }
     }
 
-    /** 返回键在列表态先清搜索词；标签胶囊与文字一起清空。 */
-    private fun clearSearch() {
-        tagSearch.searchField.input.removeCallbacks(searchDebounce)
-        tagSearch.clear()
+    /** 横滑切走/离开笔记 Tab：立即收起 FAB、搜索框、标签栏和键盘。 */
+    fun onTabSwitch() {
+        if (::searchOverlay.isInitialized) searchOverlay.onTabSwitch()
     }
 
     private fun buildEditorBox(): LinearLayout {
@@ -262,12 +241,14 @@ class NotesController(
             setBackgroundColor(theme.surface)
             setPaddingMd(UiTokens.SPACE_1, UiTokens.SPACE_0, UiTokens.SPACE_1, UiTokens.SPACE_0)
             addView(segButton(activity.getString(R.string.notes_todo_tab_btn)) {
+                searchOverlay.collapseAll(animate = false)
                 flushPendingSave()
                 activity.startActivity(
                     android.content.Intent(activity, NotesTodoActivity::class.java)
                 )
             })
             addView(segButton(activity.getString(R.string.notes_cal_tab_btn)) {
+                searchOverlay.collapseAll(animate = false)
                 flushPendingSave()
                 activity.startActivity(
                     android.content.Intent(activity, NotesCalendarActivity::class.java)
@@ -307,14 +288,6 @@ class NotesController(
         return row
     }
 
-    /** 拟态凸起悬浮新建键：与文件页返回键共用 [NeuFab]，只换符号。 */
-    private fun buildFab(): TextView = NeuFab.create(
-        activity,
-        theme,
-        "＋",
-        activity.getString(R.string.notes_new)
-    ) { onNewPressed() }
-
     /** 退出保存：正文与落盘不一致才写回一次。退列表/切笔记/切 tab/后台前调用。 */
     fun flushPendingSave() {
         val cur = current ?: return
@@ -329,11 +302,10 @@ class NotesController(
         val draft = body.text?.toString().orEmpty()
         flushPendingSave()
         current = null
-        fab.visibility = android.view.View.VISIBLE
+        searchOverlay.showMenuCollapsed()
         navRow.visibility = android.view.View.VISIBLE
         editRow.visibility = android.view.View.GONE
         editorBox.visibility = android.view.View.GONE
-        tagSearch.searchField.visibility = android.view.View.VISIBLE
         listScroll.visibility = android.view.View.VISIBLE
         tagSearch.refreshTags()
         // 5.9.65：退出编辑时笔记已被删空（正文空 + 无待办，标签不算内容）→ 按开关删除或询问。
@@ -370,16 +342,14 @@ class NotesController(
             showList()
             return
         }
+        searchOverlay.hideForEditor()
         current = name
         body.setText(store.readNote(name))
         refreshEditorTitle()
         refreshTagRow()
         refreshTodoBox()
         listScroll.visibility = android.view.View.GONE
-        tagSearch.hideForEditor()
-        tagSearch.searchField.visibility = android.view.View.GONE
         editorBox.visibility = android.view.View.VISIBLE
-        fab.visibility = android.view.View.GONE
         navRow.visibility = android.view.View.GONE
         editRow.visibility = android.view.View.VISIBLE
     }
@@ -416,6 +386,9 @@ class NotesController(
         val parsed = NoteQuery.parse(query)
         // 三段式搜索：库索引召回 → 交集 → 批量取正文精排（零 .txt 读盘，排序语义与旧全量扫描一致）
         val notes = store.searchNotesFull(query)
+        if (::searchOverlay.isInitialized) {
+            searchOverlay.setResultsAvailable(query.isNotBlank() && notes.isNotEmpty())
+        }
         if (notes.isEmpty()) {
             listInner.addView(TextView(activity).apply {
                 text = activity.getString(
