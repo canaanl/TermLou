@@ -8,7 +8,6 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
-import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -27,7 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * 薄宿主 Activity：只负责装配顺序、四个 ActivityResultLauncher、
+ * 薄宿主 Activity：只负责装配顺序、三个 ActivityResultLauncher、
  * Tab 容器切换、生命周期扇出。业务逻辑分布在各 Controller。
  */
 class MainActivity : AppCompatActivity() {
@@ -36,7 +35,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusController: StatusController
     internal lateinit var terminalController: TerminalController
     internal lateinit var workspaceController: WorkspaceController
-    internal lateinit var networkController: NetworkController
     private lateinit var lanController: LanController
     private lateinit var webAutomationController: WebAutomationController
     internal lateinit var overlayCommands: OverlayCommandsController
@@ -49,12 +47,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var terminalTab: ImageView
     private lateinit var filesTab: ImageView
     private lateinit var notesTab: ImageView
-    private lateinit var networkTab: ImageView
     private lateinit var settingsTab: ImageView
     private lateinit var terminalArea: LinearLayout
     private lateinit var filesArea: LinearLayout
     private lateinit var notesArea: LinearLayout
-    private lateinit var networkArea: LinearLayout
     private lateinit var settingsWrapper: LinearLayout
     private lateinit var notesController: NotesController
     private lateinit var tabIntroController: TabIntroController
@@ -87,12 +83,6 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? -> uri?.let { workspaceController.importFolder(it) } }
 
-    private val vpnPrepareLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        networkController.onVpnPrepareResult(result.resultCode == RESULT_OK)
-    }
-
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -123,11 +113,6 @@ class MainActivity : AppCompatActivity() {
             pickFiles = { importLauncher.launch(arrayOf("*/*")) },
             pickFolder = { importFolderLauncher.launch(null) }
         )
-        networkController = NetworkController(this, scope, statusController) {
-            val i = VpnService.prepare(this)
-            if (i != null) vpnPrepareLauncher.launch(i)
-            else networkController.onVpnPrepareResult(true)
-        }
         lanController = LanController(this, scope, statusController)
         webAutomationController = WebAutomationController(this, scope, statusController)
         overlayCommands = OverlayCommandsController(this, scope, statusController)
@@ -181,8 +166,7 @@ class MainActivity : AppCompatActivity() {
         terminalTab = tabViews[0]
         notesTab = tabViews[1]
         filesTab = tabViews[2]
-        networkTab = tabViews[3]
-        settingsTab = tabViews[4]
+        settingsTab = tabViews[3]
         for (tv in tabViews) toolbar.addView(tv)
         tabViews.forEachIndexed { i, iv ->
             iv.setColorFilter(if (i == currentTab) scope.cOnSurface else scope.cOnSurfaceVariant)
@@ -204,11 +188,6 @@ class MainActivity : AppCompatActivity() {
         }
         notesController.buildInto(notesArea)
 
-        networkArea = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        networkController.buildInto(networkArea)
-
         settingsWrapper = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = FrameLayout.LayoutParams(
@@ -223,7 +202,7 @@ class MainActivity : AppCompatActivity() {
         content.addView(terminalController.buildSetupArea())
 
         tabHost.post {
-            val tabW = tabHost.width / 5
+            val tabW = tabHost.width / 4
             if (tabW > 0) {
                 val lp = tabIndicator.layoutParams
                 lp.width = tabW
@@ -236,10 +215,10 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
             )
-            // 五个页面全程保持存活：终端会话、笔记编辑态、文件列表都是"建好就不重建"的，
-            // 丢一个 holder 就等于丢用户状态。offscreenPageLimit 拉到 5 让 RecyclerView
-            // 把五个 item 全部常驻，不回收。
-            offscreenPageLimit = 5
+            // 四个页面全程保持存活：终端会话、笔记编辑态、文件列表都是"建好就不重建"的，
+            // 丢一个 holder 就等于丢用户状态。offscreenPageLimit 拉到 4 让 RecyclerView
+            // 把四个 item 全部常驻，不回收。
+            offscreenPageLimit = 4
             adapter = TabPagerAdapter()
             registerOnPageChangeCallback(pageCallback)
             // 5.9.54：**这里原本有一行"按 setup 是否可见来开关横滑"的赋值，已删除。**
@@ -270,12 +249,13 @@ class MainActivity : AppCompatActivity() {
         // 不要在这里再加任何刷新率代码。
 
         // 5.9.53：原先这里把五个视图全设 GONE、并在 showTab 里手工切 visibility。
+        // 5.11.0：网络 Tab 删除后只剩四个页面。
         // ViewPager2 自己管理 item 的挂载与显隐，不再需要 —— 手工设 GONE 反而会让
         // RecyclerView 认为 item 不可见。
 
-        // Tab 介绍页：只挂主界面顶栏五个图标，不切换 Tab；子 Activity 无此 UI，天然不可触发。
+        // Tab 介绍页：只挂主界面顶栏四个图标，不切换 Tab；子 Activity 无此 UI，天然不可触发。
         tabIntroController = TabIntroController(this, rootLayout, scope.theme, scope.wsFiles)
-        tabIntroController.attach(listOf(terminalTab, notesTab, filesTab, networkTab, settingsTab))
+        tabIntroController.attach(listOf(terminalTab, notesTab, filesTab, settingsTab))
 
         if (swapRestore == null) {
             overlayCommands.handleNewIntent(intent, null, {}, {})
@@ -341,7 +321,6 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         if (overlayCommands.consumeRefreshFlag()) terminalController.refreshAllRows()
         terminalController.onResume()
-        networkController.onResume()
         settingsUiController.onResume()
         notesController.refresh()
         refreshStatusBar()
@@ -354,7 +333,7 @@ class MainActivity : AppCompatActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         tabHost.post {
-            val tabW = tabHost.width / 5
+            val tabW = tabHost.width / 4
             if (tabW > 0) {
                 val lp = tabIndicator.layoutParams
                 lp.width = tabW
@@ -376,7 +355,6 @@ class MainActivity : AppCompatActivity() {
         }
         super.onDestroy()
         scope.mainHandler.removeCallbacksAndMessages(null)
-        networkController.onDestroy()
         terminalController.onDestroy()
         statusController.onDestroy()
         notesController.onDestroy()
@@ -396,7 +374,7 @@ class MainActivity : AppCompatActivity() {
      * 这样手指拖动和代码调用两条路径共用同一套收尾，不会各写一份而错位。
      */
     internal fun showTab(tabIndex: Int) {
-        if (tabIndex !in 0..4) return
+        if (tabIndex !in 0..3) return
         if (tabIndex != currentTab) {
             tabBeforeMove = -1
             if (!isTabIntroShowing()) ImeFocus.clearAndHide(this)
@@ -437,7 +415,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyTabState(tabIndex: Int, prev: Int) {
         applySetupGuard()
-        val tabs = listOf(terminalTab, notesTab, filesTab, networkTab, settingsTab)
+        val tabs = listOf(terminalTab, notesTab, filesTab, settingsTab)
         for (i in tabs.indices) {
             tabs[i].setColorFilter(if (i == tabIndex) scope.cOnSurface else scope.cOnSurfaceVariant)
         }
@@ -464,7 +442,6 @@ class MainActivity : AppCompatActivity() {
         }
         if (tabIndex == 1) notesController.refresh()
         if (tabIndex == 2) workspaceController.refreshFileList()
-        if (tabIndex == 3) networkController.refreshNetTab()
     }
 
     /**
@@ -524,15 +501,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 五个页面各自的 ViewHolder。
+     * 四个页面各自的 ViewHolder。
      *
-     * 直接复用**已经建好的那五个 View**，不新建、不重建 —— 终端会话、笔记编辑态、
+     * 直接复用**已经建好的那四个 View**，不新建、不重建 —— 终端会话、笔记编辑态、
      * 文件列表都必须跨页签存活，RecyclerView 回收 holder 等于丢状态。
      */
     private inner class TabPagerAdapter : androidx.recyclerview.widget.RecyclerView.Adapter<PageHolder>() {
-        override fun getItemCount() = 5
+        override fun getItemCount() = 4
 
-        // 一页一个 viewType：保证五个 holder 互不复用，天然不会抢同一个 View
+        // 一页一个 viewType：保证四个 holder 互不复用，天然不会抢同一个 View
         override fun getItemViewType(position: Int) = position
 
         override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): PageHolder {
@@ -540,7 +517,6 @@ class MainActivity : AppCompatActivity() {
                 0 -> terminalArea
                 1 -> notesArea
                 2 -> filesArea
-                3 -> networkArea
                 else -> settingsWrapper
             }
             // 保险：万一还挂在别的 holder 上（换色重建等异常路径），先摘掉，
@@ -556,7 +532,7 @@ class MainActivity : AppCompatActivity() {
         // View 是预先建好的，绑定时无需做任何事
         override fun onBindViewHolder(holder: PageHolder, position: Int) = Unit
 
-        // 五个 View 由 Activity 持有，生命周期跟着 Activity，不随 holder 回收
+        // 四个 View 由 Activity 持有，生命周期跟着 Activity，不随 holder 回收
         override fun onViewRecycled(holder: PageHolder) = Unit
     }
 
@@ -574,7 +550,7 @@ class MainActivity : AppCompatActivity() {
     internal fun isSetupVisible(): Boolean = terminalController.isSetupVisible()
 
     private fun animateTabIndicator(tabIndex: Int) {
-        val tabW = tabHost.width / 5
+        val tabW = tabHost.width / 4
         if (tabW <= 0) return
         tabIndicator.animate()
             .translationX((tabIndex * tabW).toFloat())
@@ -616,8 +592,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             statusController.setStatusText(when (currentTab) {
                 1 -> "Notes"
-                3 -> networkController.netStatusLine()
-                4 -> "Settings"
+                3 -> "Settings"
                 else -> statusController.terminalBaseText()
             })
         }

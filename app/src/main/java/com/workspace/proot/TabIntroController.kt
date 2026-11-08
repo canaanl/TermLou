@@ -16,7 +16,7 @@ import java.io.File
 
 /**
  * Tab 介绍页叠加层：纯模态实心页，不切换 Tab、不改 currentTab/指示器/页面显隐。
- * 只挂在 MainActivity 顶栏五个 Tab 图标上；子 Activity 与磁贴独立笔记页没有这套 UI，
+ * 只挂在 MainActivity 顶栏四个 Tab 图标上；子 Activity 与磁贴独立笔记页没有这套 UI，
  * 天然不可触发。打开时拦截全部触摸，返回键逆向关闭。
  *
  * 页眉只有标题（无 hero icon），正文独立滚动；打开=淡入+内容 stagger，关闭=逆向淡出。

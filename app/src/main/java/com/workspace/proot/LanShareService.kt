@@ -35,7 +35,7 @@ class LanShareService : Service() {
             "failed_msg" -> getString(R.string.lan_failed_fmt, stateArg)
             "running_open" -> getString(R.string.lan_running_open)
             "running_auth" -> getString(R.string.lan_running_auth)
-            "stopped" -> getString(R.string.vpn_stopped)
+            "stopped" -> getString(R.string.lan_stopped)
             else -> ""
         }
     }

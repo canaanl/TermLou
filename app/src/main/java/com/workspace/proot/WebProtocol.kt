@@ -36,7 +36,8 @@ object WebProtocol {
      * 产物目录在 Linux 侧的路径。
      *
      * 5.9.38 起这个目录里**只有 `web.env`**（端口 + 令牌，仅服务运行时存在）——
-     * 不再导出 cookie、不再有截图。设置里的「清除缓存」清的就是它。
+     * 不再导出 cookie、不再有截图。设置里的「清理缓存」清的就是它，
+     * 同时会清浏览器 cookie / 站点存储 / 表单（5.11.0）。
      */
     const val WEB_DIR = "$WORKSPACE_MOUNT/web"
 
@@ -265,7 +266,7 @@ object WebProtocol {
         appendLine("                                          回车后返回 navigated/ready，别当成没跳")
         appendLine("  {\"op\":\"select\",\"selector\":\"…\",\"value\":\"…\"}   选 <select> 的一项")
         appendLine("  {\"op\":\"reload\"}                    重载当前页")
-        appendLine("  {\"op\":\"clear\"} / {\"op\":\"close\"}      清 cookie/缓存/localStorage 并结束会话")
+        appendLine("  {\"op\":\"clear\"} / {\"op\":\"close\"}      清缓存/localStorage 并结束会话（cookie 保留）")
         appendLine("  {\"op\":\"ping\"}                        探活")
         appendLine("  {\"op\":\"diag\"}                        诊断：窗口几何 / 缩放 / 页面可见性 / 最近错误码")
         appendLine()
@@ -350,10 +351,11 @@ object WebProtocol {
         appendLine("  · 客户端中途断开（命令被超时杀掉）时，服务端立刻放弃等待，不会留下卡住的会话。")
         appendLine("  · 推荐节奏：open → wait → extract → 再动手。单条 wait 上限 30 秒。")
         appendLine("  · 不带 wait 的 click 若已点出新导航，一律报 ready:false（不会拿上一页冒充）。")
-        appendLine("  · **本浏览器不保留 cookie、不留缓存**（用户要求）：")
-        appendLine("    没有导出 cookie 的指令；cookie 与 localStorage 在 app 启动、服务启动、")
-        appendLine("    会话结束三处都会清掉；缓存由加载时绕开 + 每次开关清空两道保证。")
-        appendLine("    所以换个站点就得重新登录 —— 这是设计，不是故障。")
+        appendLine("  · **本浏览器保留 cookie、不保留缓存**（5.11.0）：")
+        appendLine("    cookie 跨服务/会话保留，用于登录态；没有导出 cookie 的指令。")
+        appendLine("    localStorage 在服务启动、会话结束时清；缓存由加载时绕开 + 每次开关清空两道保证。")
+        appendLine("    要清 cookie 只能在 App 设置 → 高级 → 浏览器的「清理缓存」里手动清。")
+        appendLine("  · UA 是通用移动 Chrome（去掉了 WebView 的 `; wv` 与 `Version/4.0`）。")
         appendLine("  · Open a page, then extract it - that is how you see what is on it without guessing.")
         appendLine("    inputs and buttons are never truncated, so the search box is always there.")
         appendLine("    Truncated links say so (links_truncated / links_total / note); they are not hidden.")
@@ -368,9 +370,11 @@ object WebProtocol {
         appendLine("    then is scaled down into the small floating window - so the layout is a normal one.")
         appendLine("  · The user watches the same window: opening, typing, Enter, clicking and loading are")
         appendLine("    all visible. Do what a person would do, not what is cheapest to automate.")
-        appendLine("  · This browser keeps no cookies and no cache at all: cookies and localStorage are wiped")
-        appendLine("    on app start, on service start and when the session ends, and caching is off.")
-        appendLine("    Logging in again for a different site is by design, not a failure.")
+        appendLine("  · This browser keeps cookies but no cache (5.11.0): cookies survive service")
+        appendLine("    restarts and page sessions so login state works; there is no cookie export command.")
+        appendLine("    localStorage is still cleared on service start / session end, and caching stays off.")
+        appendLine("    Cookies can only be cleared manually in Settings -> Advanced -> Browser -> Clear cache.")
+        appendLine("  · The UA is a generic mobile Chrome UA (the WebView `; wv` and `Version/4.0` markers are removed).")
         appendLine("  · There is no back command (removed in 5.9.39): Android's back keeps saying")
         appendLine("    there is nothing to go back to in a window that was never touched, while the")
         appendLine("    history is actually fine. To return to a previous page, just open its url -")

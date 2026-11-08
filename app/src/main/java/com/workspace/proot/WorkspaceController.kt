@@ -49,7 +49,7 @@ class WorkspaceController(
             // 最后一行能滚到右下角返回 FAB 上方，不被圆形键盖住。
             setPadding(0, 0, 0, NeuFab.clearancePx(activity))
         }
-        // 5.9.53：同 NetworkController，页签切换交给 ViewPager2，横向回调删掉。
+        // 5.9.53：页签切换交给 ViewPager2，横向回调删掉。
         val filesScroll = TabSwipeScrollView(activity)
         filesScroll.addView(fileList)
 

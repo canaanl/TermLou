@@ -37,8 +37,8 @@ package com.workspace.proot
  */
 object StatusAccent {
 
-    /** 五个页签的特征字。全项目拼状态栏文字的地方都必须用这几个词。 */
-    val TAB_NAMES = listOf("Terminal", "Notes", "Files", "Network", "Settings")
+    /** 四个页签的特征字。全项目拼状态栏文字的地方都必须用这几个词。 */
+    val TAB_NAMES = listOf("Terminal", "Notes", "Files", "Settings")
 
     /**
      * 取特征字部分；不是页签名时返回 null（调用方据此保持块① 不动）。

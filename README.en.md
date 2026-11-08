@@ -1,8 +1,8 @@
 # TermLou
 
-> An Android terminal built for **people who don't code** — Debian GNU/Linux, file management, notes & todos, network inspection and script-driven floating UI, all inside one tap-and-go App.
+> An Android terminal built for **people who don't code** — Debian GNU/Linux, file management, notes & todos and script-driven floating UI, all inside one tap-and-go App.
 
-![Version](https://img.shields.io/badge/version-5.4.0-blue)
+![Version](https://img.shields.io/badge/version-5.11.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -19,9 +19,9 @@ Terminals are powerful, but the barrier is memorizing commands, syntax and paths
 - **Command Wheel** — scroll and tap; the most likely command rolls to the center, no need to know how to type it.
 - **Command Groups** — compress a set of common commands into one card; "tasks" replace "remembering command hierarchy".
 - **Script Dialog** — a shell script can pop a native Android dialog with a single `termlou-ui` call, giving scripts a UI.
-- **Zero-XML UI** — the whole interface is built programmatically in Kotlin, five tabs with swipe switching, consistent style and palette-driven colors.
+- **Zero-XML UI** — the whole interface is built programmatically in Kotlin, four tabs with swipe switching, consistent style and palette-driven colors.
 
-Beyond that core, TermLou also grew a complete **notes & todo system** (usable independently of Linux) and **network capture/analysis** (per-App capture, DNS mapping, domain/IP blocking), plus bilingual UI.
+Beyond that core, TermLou also grew a complete **notes & todo system** (usable independently of Linux) and a **built-in browser for AI agents** (loopback HTTP commands, visible floating window), plus bilingual UI.
 
 ---
 
@@ -35,9 +35,9 @@ Beyond that core, TermLou also grew a complete **notes & todo system** (usable i
 | 📝 **Notes & Todos** | Notes tab and standalone notes page; list/editor, tag capsules, todo kanban, save-on-exit; plain-file storage, Linux-independent |
 | 📌 **Notes Tile** | One tap from Quick Settings to the standalone notes page; bypasses the main UI, does not boot Linux, leaves nothing in the background |
 | 💬 **Script-driven Dialogs** | One line of shell (`termlou-ui --title "Confirm" --button "OK"`) pops a native overlay: input/single-choice/multi-choice/toggle/ANSI-colored output |
-| 🌐 **VPN Capture & Filtering** | Built-in `VpnService` + SOCKS5 proxy + DNS interception + domain/IP blocking + live flow log, per-App capture |
+| 🌐 **Browser for AI agents** | System WebView + loopback HTTP command API; generic mobile Chrome UA, persistent cookies, visible floating window |
 | 🎨 **Splash Pixel Workshop** | Hand-drawn 96×80 dot matrix + photo-to-pixels (grayscale quantization, auto orientation + resident invert) + particle fly-in animation |
-| 🧱 **Zero-XML Layout** | Entire UI constructed programmatically in Kotlin, five-tab architecture |
+| 🧱 **Zero-XML Layout** | Entire UI constructed programmatically in Kotlin, four-tab architecture |
 | ⚙️ **Native PTY** | Custom JNI `libtermux.so` (`termux_pty.cpp`) as the PTY backend for the Termux `terminal-view` renderer |
 | 🛡️ **Hardening** | Path-escape guards, 128KB output truncation, command timeout kill, resource caps |
 | 🌍 **Bilingual** | Chinese/English switch, applied on restart |
@@ -57,7 +57,7 @@ Beyond that core, TermLou also grew a complete **notes & todo system** (usable i
 | Files | `androidx.documentfile` (SAF import), `commons-compress` (tar unpacking), `xz` (streaming tar.xz) |
 | Data | `SharedPreferences` + hand-written JSON (command library v2, notes index) |
 | Static analysis | detekt 1.23.1 |
-| Testing | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso (235 unit tests) |
+| Testing | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso (745 unit tests) |
 | CI | GitHub Actions (lint + test + assembleDebug) |
 
 ---
@@ -69,9 +69,9 @@ Beyond that core, TermLou also grew a complete **notes & todo system** (usable i
 ```text
 TermLou
 ├── app/        (com.workspace.proot)  Product layer — the user-facing App
-│   ├── MainActivity          Single-Activity five-tab shell, implements TerminalSessionClient / TerminalViewClient
-│   ├── AppScope + *Controller  State & feature controllers (Terminal/Notes/Workspace/Network/Lan/Settings/Status)
-│   ├── UiBuilder             Programmatic UI factory (status bar / five tabs / wheel / settings / file list)
+│   ├── MainActivity          Single-Activity four-tab shell, implements TerminalSessionClient / TerminalViewClient
+│   ├── AppScope + *Controller  State & feature controllers (Terminal/Notes/Workspace/Lan/Settings/Status)
+│   ├── UiBuilder             Programmatic UI factory (status bar / four tabs / wheel / settings / file list)
 │   ├── TerminalManager       proot session assembly, idempotent .bashrc injection, Ctrl mode, runInProot
 │   ├── TermlouDirs           .termlou IPC dir definition (filesDir/.termlou → /termlou)
 │   ├── DistroVersion         Parses distro codename (trixie) from rootfs /etc/os-release
@@ -89,7 +89,7 @@ TermLou
 │   ├── DialogMakerActivity   Dialog workshop (design termlou-ui dialogs graphically)
 │   ├── OverlayBridge / ClipboardBridge  File IPC bridge (req/res + FileObserver + polling fallback)
 │   ├── SplashView/Letters/Tokens/Maker  Splash rendering + pixel workshop (drawing + grayscale quantization)
-│   ├── NetVpnService / MiniSocks5Server / DnsParser / DnsMap / BlockRules  VPN capture stack
+│   ├── WebAutomationService / WebProtocol  Built-in browser for AI agents (loopback HTTP + visible floating window)
 │   ├── CommandTileService / LauncherTileService / NotesTileService  Quick Settings tiles
 │   ├── TermlouCommandRunner  Headless tile-command execution service
 │   └── TermKeepAliveService / KeepAliveWakeLock  Foreground keep-alive
@@ -146,7 +146,7 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 - **Output truncation**: stdout/stderr capped at 128KB to prevent OOM
 - **Timeout kill**: commands are `destroyForcibly()`-ed on timeout; collector threads joined on cancellation
 - **Injection safety**: in-proot commands are passed as positional args (`cd -- "$1" && eval "$2"`), eliminating shell quoting/escaping issues
-- **Headless browser listens on loopback only**: the headless browser (5.9.0) binds `127.0.0.1` explicitly, so other devices on the same WiFi cannot reach it; the token is generated once per install, never changes, and lives only in TermLou's private directory. Page actions run through `evaluateJavascript`, and every user-supplied string is escaped by `WebSelector.jsString` before being embedded in a JS literal
+- **Browser listens on loopback only**: the browser service binds `127.0.0.1` explicitly, so other devices on the same WiFi cannot reach it; the token is generated once per install, never changes, and lives only in TermLou's private directory. Page actions run through `evaluateJavascript`, and every user-supplied string is escaped by `WebSelector.jsString` before being embedded in a JS literal
 
 ---
 
@@ -203,27 +203,19 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 - **Dialog workshop** (`DialogMakerActivity`): now only the shell (title, theme, accent, radius, position, animation, live preview, run, export). The linear control list and standalone Canvas control are gone; content is edited entirely in the CanvasDesigner dialog canvas, whose layers/properties/timeline are the workshop hierarchy. The workshop exports one `--canvas` scene; live preview updates in place without `removeAllViews`, Run reuses the same overlay, and the real-overlay result JSON and clipboard export stay the same
 - **Clipboard bridge**: `termlou-clipboard "text"` or `echo "text" | termlou-clipboard`
 
-### 6. Network Capture & Filtering
-
-- **Per-App capture**: `VpnService` + `addAllowedApplication`
-- **DNS**: system DNS pushed to the VPN (falls back to public DNS only if unavailable); queries/responses parsed into a domain↔IP map
-- **SOCKS5 proxy**: built-in `MiniSocks5Server` (TCP CONNECT + UDP ASSOCIATE), optional upstream proxy
-- **Blocking rules**: by IP / domain suffix, effective immediately
-- **Flow log**: live list (domain/IP, protocol, port, up/down bytes, state) with per-entry blocking
-
-### 7. Splash Workshop
+### 6. Splash Workshop
 
 - **Hand-drawn matrix**: 96 columns × as many rows as actually fit, draw with your finger; saves exactly what is displayed, no scaling, no fixed 160 rows
 - **Photo to pixels**: grayscale quantized into 2–20 levels by percentile (clarity slider remaps live), auto light/dark orientation against background vs brand colors to eliminate negatives, resident invert switch to flip again, pinch to zoom/crop
 - **Particle animation**: dots fly in from random edges, brand-green→cyan gradient (palette mode derives from the visibility color)
 
-### 8. Quick Settings Tiles
+### 7. Quick Settings Tiles
 
 - **Command tile**: run a preset command from the notification shade (cold-start tolerant, atomic pending files, dedup by ID)
 - **Launcher tile**: open favorite Apps (direct when one, drawer when many)
 - **Notes tile**: jump straight to the standalone notes page; separate task, `excludeFromRecents`, leaves nothing behind
 
-### 9. Settings
+### 8. Settings
 
 | Setting | Description |
 |---------|-------------|
@@ -234,7 +226,7 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 | Tile command | Command run when the Quick Settings tile is tapped |
 | Quick launch | Pick favorite Apps for one-tap launch (tile drawer) |
 | Dialog/Splash workshop | Graphical script-dialog design / custom splash |
-| Network upstream proxy | SOCKS5 upstream (empty = built-in direct + capture/blocking) |
+| Browser | Start/stop the AI-agent browser, copy connection info, clear cache/cookies |
 | Background keep-alive | Foreground notification service (low priority, silent) |
 | System info | Moved to the terminal intro (tap the terminal tab icon) |
 
@@ -253,7 +245,7 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 
 | Action | Gesture |
 |--------|---------|
-| Tab switching | Terminal ↔ Notes ↔ Files ↔ Network ↔ Settings, swipe left/right |
+| Tab switching | Terminal ↔ Notes ↔ Files ↔ Settings, swipe left/right |
 | Tab intro pages | Tap a top tab icon (Back closes it, tabs never switch) |
 | Open the command wheel | **Swipe vertically** on the shortcut row |
 | Open library management | **Long-press** the wheel gray area |

@@ -20,7 +20,7 @@ import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.slider.Slider
 
 /**
- * 设置域：整页设置内容构建（字号/命令/磁贴/快捷/工坊/上游/LAN/保活/语言）。
+ * 设置域：整页设置内容构建（字号/命令/磁贴/快捷/工坊/LAN/浏览器/保活/语言）。
  * 系统信息已搬到终端 Tab 介绍页顶部，这里不再设入口。
  * 原 MainActivity buildSettingsContent（~545 行）收归此处。
  */
@@ -74,7 +74,7 @@ class SettingsUiController(
             activity.getString(R.string.settings_splash_title)
         ) { overlay.openSplashMaker() }
         settingsInner.addView(divider())
-        buildUpstreamSection(settingsInner, density)
+        sectionTitle(settingsInner, activity.getString(R.string.settings_advanced))
         lan.buildSettingsBlock(settingsInner)
         web.buildSettingsBlock(settingsInner)
         buildKeepAliveRow(settingsInner)
@@ -356,55 +356,6 @@ private fun divider(): View = View(activity).apply {
             })
         })
     }
-
-    private fun buildUpstreamSection(parent: LinearLayout, density: Float) {
-        sectionTitle(parent, activity.getString(R.string.settings_advanced))
-        sectionTitle(parent, activity.getString(R.string.upstream_title), body = true)
-        val upEdit = EditText(activity).apply {
-            setText(scope.settingsManager.netUpstream())
-            setHint("socks5://127.0.0.1:1080")
-            setSingleLine(true)
-            setPaddingMd(12, 10, 12, 10)
-        }.also {
-            FieldStyle.applyOutlined(it, scope.theme, UiTokens.TEXT_BODY)
-        }
-        parent.addView(upEdit)
-        parent.addView(buildUpstreamButtons(upEdit, density), pairRowParams())
-    }
-
-    private fun buildUpstreamButtons(upEdit: EditText, density: Float): LinearLayout =
-        LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPaddingMd(UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0, UiTokens.SPACE_0)
-            addView(actionButton(activity.getString(R.string.save), primary = true) {
-                scope.settingsManager.setNetUpstream(upEdit.text.toString().trim())
-                status.showTempStatus(activity.getString(R.string.upstream_saved))
-                activity.hideIme()
-            }.also { b ->
-                b.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginEnd = activity.dp(UiTokens.SPACE_1) 
-                }
-            })
-            addView(actionButton(activity.getString(R.string.clear), primary = false) {
-                upEdit.setText("")
-                scope.settingsManager.setNetUpstream("")
-                status.showTempStatus(activity.getString(R.string.upstream_cleared))
-                activity.hideIme()
-            }.also { b ->
-                b.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = activity.dp(UiTokens.SPACE_1) 
-                }
-            })
-            SegmentStyle.applyRow(
-                this,
-                listOf(
-                    null,
-                    null
-                ),
-                scope.cOutline,
-                scope.cOnSurface
-            )
-        }
 
     private fun buildKeepAliveRow(parent: LinearLayout) {
         parent.addView(LinearLayout(activity).apply {

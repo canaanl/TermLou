@@ -30,7 +30,7 @@ object SessionTerminator {
     fun terminate(pid: Int) {
         if (pid <= 0) return
         killTree(pid)
-        Thread({ runCatching { TunSpawner.waitPid(pid) } }, "session-reaper-$pid").apply {
+        Thread({ runCatching { ProcessJni.waitPid(pid) } }, "session-reaper-$pid").apply {
             isDaemon = true
         }.start()
     }

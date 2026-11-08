@@ -117,10 +117,10 @@ class WebAutomationController(
         toggleBtn.text = activity.getString(
             if (running) R.string.web_btn_stop else R.string.web_btn_start
         )
-        // 5.9.6：服务在跑时**不给删**。置灰而不是"点了报错"，和网络上那个
-        // 抓包按钮没选应用时一个样（见 NetworkController.refreshNetTab）。
+        // 5.9.6：服务在跑时**不给删**。置灰而不是"点了报错"。
         // 顺带把"agent 往 web/ 里写的东西会被清掉"这个顾虑一并消掉：
         // 服务运行中这个按钮按不到，只有停止后的残留物会被清。
+        // 5.11.0：这个按钮同时是**唯一**会清 cookie 的入口（正常开关/退出都不清）。
         clearBtn.isEnabled = !running
         clearBtn.alpha = if (running) 0.5f else 1f
         applySegments()
@@ -173,7 +173,7 @@ class WebAutomationController(
         status.showTempStatus(activity.getString(R.string.web_copied))
     }
 
-    /** 清除缓存要二次确认：删的是工作区里的文件（主要是强杀后残留的旧 web.env），误删就没了。 */
+    /** 清除浏览器数据要二次确认：会删工作区产物 + cookie + 站点存储，误删就没了。 */
     private fun confirmClear() {
         AlertDialog.Builder(activity)
             .setMessage(activity.getString(R.string.web_clear_confirm))
@@ -185,6 +185,7 @@ class WebAutomationController(
                     return@setPositiveButton
                 }
                 val removed = WebArtifacts.clearArtifacts(activity)
+                WebAutomationService.clearBrowserData(activity)
                 status.showTempStatus(
                     if (removed > 0) {
                         activity.getString(R.string.web_cleared_fmt, removed)

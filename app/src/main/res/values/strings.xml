@@ -28,7 +28,6 @@
     <string name="tab_terminal">终端</string>
     <string name="tab_files">文件</string>
     <string name="tab_notes">笔记</string>
-    <string name="tab_network">网络</string>
     <string name="tab_settings">设置</string>
 
     <!-- 设置：字号/命令 -->
@@ -73,11 +72,6 @@
     <string name="palette_saved">已保存，正在应用新配色…</string>
     <string name="palette_reset_done">已恢复默认配色</string>
     <string name="settings_advanced">高级</string>
-
-    <!-- 设置：上游代理 -->
-    <string name="upstream_title">上游代理</string>
-    <string name="upstream_saved">上游已保存，重启抓包后生效</string>
-    <string name="upstream_cleared">已恢复内置直连</string>
 
     <!-- 设置：LAN -->
     <string name="lan_title">LAN 服务</string>
@@ -142,80 +136,16 @@
     <string name="splash_starting">启动终端...</string>
     <string name="share_to">分享到...</string>
     <string name="crash_snack_fmt">上次崩溃：%1$s</string>
-    <string name="vpn_auth_cancelled">VPN 授权已取消</string>
-
-    <!-- 网络 Tab -->
-    <string name="net_capture_start">启动抓包</string>
-    <string name="net_capture_stop">停止抓包</string>
-    <string name="net_pick_apps">选择应用</string>
-    <string name="net_clear">清空记录</string>
-    <string name="net_cleared">已清空连接记录</string>
-    <string name="net_empty">暂无记录</string>
-    <string name="net_no_apps">Network | 未选择应用，请先在「选择应用」中勾选</string>
-    <string name="flow_blocked">已屏蔽</string>
-    <string name="flow_state_open">进行中</string>
-    <string name="flow_state_udp">活跃</string>
-    <string name="flow_state_closed">已结束</string>
-    <string name="flow_server_fmt">服务器地址 %1$s</string>
-    <string name="flow_no_domain">无域名记录（本次会话未解析到域名）</string>
-    <string name="flow_unblock">解除屏蔽</string>
-    <string name="flow_unblocked">已解除屏蔽</string>
-    <string name="flow_block_all_fmt">已屏蔽 %1$s 全部连接</string>
-    <string name="flow_block_ip">屏蔽此IP</string>
-    <string name="flow_blocked_ip_fmt">已屏蔽 %1$s</string>
-    <string name="net_pick_first">请先在「选择应用」中勾选要抓包的应用</string>
-    <string name="net_stopped">已停止抓包</string>
-    <string name="net_search_hint">搜索：域名 / SNI / IP / 端口</string>
-    <string name="net_rank">排行</string>
-    <string name="net_rank_title">流量排行</string>
-    <string name="net_rank_empty">暂无数据</string>
-    <string name="net_rank_domain">按域名</string>
-    <string name="net_rank_port">按端口</string>
-    <string name="net_multi_app_warn">同时抓取多个 App 无法区分各自流量，建议一次只勾一个</string>
-    <string name="flow_tag_media">大流量媒体</string>
-    <string name="flow_tag_heartbeat">挂起心跳</string>
-    <string name="flow_tag_upload">上行传输</string>
-    <string name="flow_tag_dns">DNS 解析</string>
-    <string name="flow_tag_other">其他</string>
-    <string name="net_dash_rate">实时速率</string>
-    <string name="net_dash_total">会话总量</string>
-    <string name="net_dash_counters">状态计数</string>
-    <string name="net_dash_active">活跃</string>
-    <string name="net_dash_blocked">屏蔽</string>
-    <string name="net_dash_dns">DNS</string>
-    <string name="net_dash_idle">实时数据展示区</string>
-    <string name="net_others">其他</string>
-    <string name="net_detail_sni">SNI %1$s</string>
-    <string name="net_detail_http">HTTP %1$s</string>
-    <string name="net_detail_dur">时长 %1$s</string>
 
     <!-- 应用选择 -->
     <string name="picker_search">搜索应用</string>
     <string name="picker_system">包含系统应用</string>
-    <string name="picker_capture_title">选择抓包应用</string>
 
     <!-- 存储弹窗 -->
     <string name="storage_file_fmt">■  文件占用  %1$s</string>
     <string name="storage_sys_fmt">■  系统占用  %1$s</string>
     <string name="storage_total_fmt">总计  %1$s</string>
     <string name="storage_failed_fmt">统计失败: %1$s</string>
-
-    <!-- VPN 服务 -->
-    <string name="vpn_channel">网络抓包</string>
-    <string name="vpn_fail_fg_fmt">启动失败: 无法启动前台服务（%1$s）</string>
-    <string name="vpn_fail_fmt">启动失败: %1$s</string>
-    <string name="vpn_session">TermLou 网络</string>
-    <string name="vpn_no_apps">未选择抓包应用，请先在「选择应用」中勾选</string>
-    <string name="vpn_no_auth">未获得 VPN 授权，请先授权</string>
-    <string name="vpn_establish_fail">建立 VPN 接口失败（未授权或系统拒绝），请先走「启动抓包」的授权流程</string>
-    <string name="vpn_upstream_direct">内置直连</string>
-    <string name="vpn_tun_fail">启动 tun2socks 失败</string>
-    <string name="vpn_running_direct_fmt">运行中 · 直连上游 127.0.0.1:%1$d</string>
-    <string name="vpn_running_upstream_fmt">运行中 · 上游 %1$s</string>
-    <string name="vpn_dead_fmt">已停止（tun2socks 退出码 %1$d）%2$s</string>
-    <string name="vpn_stopped">已停止</string>
-    <string name="vpn_notif">网络抓包运行中</string>
-    <string name="vpn_idle">未启动</string>
 
     <!-- 保活 -->
     <string name="keepalive_notif">后台保活中</string>
@@ -698,11 +628,11 @@
     <string name="web_btn_clear">清除缓存</string>
     <string name="web_copy_hint">点击复制：端口 %1$d · 令牌 + 首条命令</string>
     <string name="web_copied">已复制连接信息</string>
-    <string name="web_clear_confirm">清空 /workspace/web/ 下的全部文件？\n主要是强杀后残留的旧端口与令牌文件（服务已停止）。</string>
+    <string name="web_clear_confirm">清除浏览器 Cookie、站点存储、表单以及 /workspace/web/ 下的全部文件？\n正常开关服务不会清 Cookie；这里会一并清掉，之后需要重新登录。服务已停止。</string>
     <!-- 运行中按了清除，或确认框开着时服务被启动 -->
     <string name="web_clear_busy">服务运行中，不能清除。先关闭浏览器。</string>
-    <string name="web_cleared_fmt">已清除 %1$d 个文件</string>
-    <string name="web_cleared_none">没有可清除的文件</string>
+    <string name="web_cleared_fmt">已清除浏览器数据（%1$d 个文件）</string>
+    <string name="web_cleared_none">已清除浏览器 Cookie 与站点存储</string>
     <string name="web_notice_blink">浏览器空闲，请关闭！</string>
     <string name="web_starting_toast">正在启动浏览器…</string>
     <string name="web_stopped_toast">浏览器已关闭</string>
@@ -718,10 +648,10 @@
 <!-- 浏览器 5.9.3 · Tab 说明：条目一律独立成行（换行必须用 \n，&#10; 会被 aapt2 清掉） -->
 
 <!-- 浏览器 5.9.4 · 设置项：不再放长段说明（细节在终端 Tab 说明页） -->
-    <string name="web_intro_conn_body">给 Linux 里的 AI agent 用的浏览器。内核是安卓自带的，\nagent 的每一步操作都在屏幕上的小窗里看得见，也不留任何历史。\n▸ 开启：设置 → 高级 → 浏览器\n▸ 连接：点那行「点击复制」，端口、令牌与首条命令一次带走\n● 端口固定 39080，令牌安装时生成一次\n● 只监听 127.0.0.1，同一网络下别的设备连不上\n● 每次开启都会清空 cookie 与缓存，不留任何浏览痕迹\n● 开启后会弹出一个小窗，按住窗体任意位置就能拖走，点不动它\n● 网页按正常手机宽度排版，再缩进小窗显示：版式和坐标都跟真手机一致</string>
+    <string name="web_intro_conn_body">给 Linux 里的 AI agent 用的浏览器。内核是安卓自带的，\nagent 的每一步操作都在屏幕上的小窗里看得见，也不留任何历史。\n▸ 开启：设置 → 高级 → 浏览器\n▸ 连接：点那行「点击复制」，端口、令牌与首条命令一次带走\n● 端口固定 39080，令牌安装时生成一次\n● 只监听 127.0.0.1，同一网络下别的设备连不上\n● Cookie 会保留（登录态跨服务/会话有效）；缓存每次开关仍会清空\n● UA 是通用移动 Chrome（去掉 WebView 的 wv 标记与 Version/4.0）\n● 开启后会弹出一个小窗，按住窗体任意位置就能拖走，点不动它\n● 网页按正常手机宽度排版，再缩进小窗显示：版式和坐标都跟真手机一致</string>
     <!-- 5.9.27：没给悬浮窗权限时用（自检与屏外兜底已删除，权限变成硬需求） -->
     <string name="web_overlay_fallback">需要悬浮窗权限才能显示浏览器小窗，请在系统设置里给 TermLou 打开「显示在其他应用上层」</string>
     <string name="web_intro_ops_body">指令清单随时可取，agent 读一次就够。\n▸ GET /help —— 全部指令、选择器写法与排错\n▸ cat /workspace/web/web.env —— 端口与令牌，可直接 source\n▸ 写进 skill：固定端口 39080 + 令牌\n● 读完它就能自己开网页、搜索、点链接、填表单\n⚠ 服务没开时连接被拒，先在上面开启</string>
-    <string name="web_intro_notes_body">▸ 一次只开一个页面，反复 open 即复用\n▸ agent 打开网页后会先 extract 一次，看清页面上有什么再动手\n● extract 能找到搜索框的输入框、按钮和全部链接，不用猜选择器\n▸ 不保留 cookie 也不留缓存：开了关了就干净，落盘只有 /workspace/web/ 里的端口与令牌\n● 闲置满 10 分钟，状态栏会闪一句提醒\n⚠ 个别站点会拒绝内嵌浏览器，换站即可</string>
+    <string name="web_intro_notes_body">▸ 一次只开一个页面，反复 open 即复用\n▸ agent 打开网页后会先 extract 一次，看清页面上有什么再动手\n● extract 能找到搜索框的输入框、按钮和全部链接，不用猜选择器\n▸ 不保留缓存：开了关了都干净；Cookie 会保留用于登录\n▸ 要清 Cookie 与站点存储：设置 → 高级 → 浏览器 →「清除缓存」\n● 闲置满 10 分钟，状态栏会闪一句提醒\n⚠ 个别站点会拒绝内嵌浏览器，换站即可</string>
     <string name="web_intro_settings_body">给 Linux 里的 AI agent 用的浏览器：\n在下面开启服务，屏幕上会弹出一个可以拖动的小窗，\nagent 的每一步操作你都能看见；\n点那行「点击复制」带走端口、令牌与首条命令；\n端口与全部指令见终端 Tab 的说明。</string>
 </resources>

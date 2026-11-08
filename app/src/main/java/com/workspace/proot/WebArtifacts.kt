@@ -13,17 +13,19 @@ import java.io.File
  * 物理位置 = `filesDir/workspace/web`；Linux 侧是 `/workspace/web/...`（不是 `~`，见 WORKSPACE_MOUNT）。
  * 纯文件操作，不碰安卓 UI，可单测。
  *
- * ## 这个功能不保留 cookie、不留缓存（5.9.38）
+ * ## Cookie 与缓存的边界（5.11.0）
  *
- * - **不再导出 cookie**：cookie 是登录态，用户明确要求"都删，不保留"，
- *   于是 `cookies` 指令、导出函数、以及只服务于它的 [linuxPath] 全部删掉。
- * - 网页自己的存储（cookie 库 / localStorage / 缓存）在 `app_webview/`（app 私有目录），
- *   **安卓不允许把它指定到工作区** —— 那一块靠"每次开关都清空"来保证不留痕，
- *   见 `WebAutomationService.destroySession`。
+ * - **cookie 不再由这里管理**：它由 WebView 自己持久化（`app_webview/`），
+ *   正常开关服务、销毁会话、进程重启都**不会**清；只有设置里的「清理缓存」
+ *   会调用 [WebAutomationService.clearBrowserData] 把它清掉。
+ * - **缓存仍不持久**：网页实例创建/销毁时都会 `clearCache(true)`，
+ *   加载时还有 `LOAD_NO_CACHE`；设置清理按钮不直接删缓存（没有 WebView 实例时
+ *   安卓没有静态接口），但下一次打开页面一定是干净的。
  * - 所以这个目录在服务运行时**只有 `web.env` 一个文件**，关闭服务时被删掉；
- *   设置里的「清除缓存」按钮清的是这个目录（主要用来清强杀后残留的旧 `web.env`）。
+ *   设置里的「清理缓存」按钮清的是这个目录（主要用来清强杀后残留的旧 `web.env`），
+ *   并同时清 cookie / localStorage / 表单。
  *
- * ⚠ **`web.env` 是这个功能的地基，不许动。** 5.9.37 删截图、5.9.38 删 cookie 时，
+ * ⚠ **`web.env` 是这个功能的地基，不许动。** 5.9.37 删截图、5.9.38 删 cookie 导出时，
  * 它们都跟它写在同一个文件里，一并删掉时手滑就会把令牌也删了 ——
  * 那样 agent 连不上，什么都做不了。
  */

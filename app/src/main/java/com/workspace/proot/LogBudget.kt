@@ -16,7 +16,6 @@ object LogBudget {
 
     const val MAX_BYTES = 1024L * 1024L
     const val APPEND_CAP_BYTES = 128 * 1024
-    const val VPN_LOG_CAP_BYTES = 256 * 1024
 
     private const val DEV_NULL = "/dev/null"
 
@@ -115,9 +114,6 @@ object LogBudget {
 
         addTree(linuxLogDir(filesDir))
         add(File(filesDir, "crash.log"))
-        add(File(filesDir, "net/tun2socks.log"))
-        add(File(filesDir, "net/start.log"))
-        add(File(filesDir, "net/minisocks.log"))
         add(File(filesDir, "lan/error.log"))
         add(File(filesDir, ".termlou/tile.log"))
         return files.distinct()

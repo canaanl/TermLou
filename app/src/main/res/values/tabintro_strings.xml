@@ -48,17 +48,6 @@
     <string name="intro_files_types_title">类型识别</string>
     <string name="intro_files_types_body">按扩展名识别常见类型。\n● 自动区分：文本｜图片｜压缩包｜代码｜文档</string>
 
-    <!-- Tab 介绍页：网络 -->
-    <string name="intro_network_lead">网络页做按 App 抓包与流量分析：先选 App，再看日志、排行与阻断。</string>
-    <string name="intro_network_capture_title">按 App 抓包</string>
-    <string name="intro_network_capture_body">通过 VPN 圈定要抓包的 App。\n▸ 挑选目标 App —— 在选择列表里点选（支持搜索）\n● DNS 按系统下发，取不到才回退公共 DNS。</string>
-    <string name="intro_network_log_title">流量日志</string>
-    <string name="intro_network_log_body">实时连接明细：点按展开，长按操作。\n● 每行显示：域名或 IP｜协议｜端口｜上行｜下行｜状态\n● 顶部搜索框 —— 按域名 / IP / 端口 / 协议过滤\n▸ 点按某行 —— 展开该连接详情\n▸ 长按某行 —— 弹出阻断菜单：阻断该 IP、阻断该域名（含全部子域）；已阻断的行可一键解除\n● 行内标签按流量大小、方向、时长自动判定，不解析内容。</string>
-    <string name="intro_network_rank_title">排行与 DNS</string>
-    <string name="intro_network_rank_body">从明细汇总出的全局视图。\n● 流量排行 —— 按域名或端口分组统计\n● DNS 历史 —— 查询与响应一一对应，可回查</string>
-    <string name="intro_network_proxy_title">代理与阻断</string>
-    <string name="intro_network_proxy_body">流量出口与拦截规则。\n● 内置 SOCKS5 —— 上游留空即直连，可填上游代理（支持 socks5）\n● 阻断规则 —— 添加即刻生效，无需重启\n⚠ 只解析明文流量，不做 TLS 中间人，HTTPS 内容不可见。</string>
-
     <!-- Tab 介绍页：设置 -->
     <string name="intro_settings_lead">设置页是全部开关与命令的入口；改语言需重开生效，调色盘保存后即时换色。</string>
     <string name="intro_settings_ui_title">界面</string>
@@ -69,6 +58,6 @@
     <string name="intro_settings_commands_body">预设命令的填写入口（说明见终端页）。\n● 启动命令 —— 终端启动时自动执行\n● 磁贴命令 —— 磁贴启动时执行\n● 快捷启动 —— 挑选常用 App 一键打开</string>
     <string name="intro_settings_workshop_title">工坊</string>
     <string name="intro_settings_workshop_body">两个工坊的入口（说明见终端页）。\n● 弹窗工坊 —— 图形化设计脚本浮窗并导出命令\n● 启动页工坊 —— 手绘或导入图片，自定义开屏画面</string>
-    <string name="intro_settings_net_title">网络与保活</string>
-    <string name="intro_settings_net_body">代理、分享与后台驻留。\n● 上游代理 —— 留空走内置直连，支持 socks5（详见网络页）\n● LAN 分享 —— 局域网共享文件与终端\n● 后台保活 —— 低优先级前台服务维持运行</string>
+    <string name="intro_settings_conn_title">分享、浏览器与保活</string>
+    <string name="intro_settings_conn_body">局域网共享、内置浏览器和后台驻留。\n● LAN 分享 —— 局域网共享文件与终端\n● 浏览器 —— 给 Linux 里的 AI agent 驱动网页；通用移动 UA，Cookie 会保留用于登录\n● 后台保活 —— 低优先级前台服务维持运行</string>
 </resources>

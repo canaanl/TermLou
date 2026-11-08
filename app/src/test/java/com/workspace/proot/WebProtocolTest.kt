@@ -193,9 +193,9 @@ class WebProtocolTest {
         assertFalse("说明书不该再有 shot 指令", help.contains("\"shot\""))
         assertFalse("说明书不该再有 shots 目录", help.contains("shots/"))
         // 5.9.38 删掉 cookie 导出（用户要求：cookie 全删、不保留）。
-        assertFalse("说明书不该再有 cookies 指令", help.contains("\"cookies\""))
+        assertFalse("说明书不该再有 cookie 导出（保留不等于导出）", help.contains("\"cookies\""))
         assertFalse("说明书不该再提 cookie 文件路径", help.contains("cookies.txt"))
-        assertTrue("但要说清这个浏览器不留 cookie/缓存", help.contains("不保留 cookie"))
+        assertTrue("但要说清这个浏览器保留 cookie、不保留缓存", help.contains("保留 cookie"))
         // 5.9.5：此前这里断言的是 `~/web/web.env` —— 把错路径锁住了。Linux 里工作区挂在
         // /workspace，`~` 是 rootfs 里的 /root，所以那条路径 agent 根本打不开。
         assertTrue(help.contains("${WebProtocol.WEB_DIR}/web.env"))
@@ -208,8 +208,8 @@ class WebProtocolTest {
         val help = WebProtocol.help(39080)
         assertTrue("中文名要同步：$help", help.contains("TermLou 浏览器"))
         assertTrue("英文名要同步：$help", help.contains("TermLou Browser"))
-        // 5.9.38：原来看的是 "No history"（那句在讲无痕），现在无痕的说法改过了
-        assertTrue("英文那段也要留下：$help", help.contains("keeps no cookies and no cache at all"))
+        // 5.11.0：cookie 改为持久，英文说明同步改成 "keeps cookies but no cache"
+        assertTrue("英文那段也要留下：$help", help.contains("keeps cookies but no cache"))
     }
 
     @Test
@@ -230,18 +230,18 @@ class WebProtocolTest {
         assertTrue(WebProtocol.VIEWPORT_H_DP in 700..1000)
     }
     @Test
-    fun `说明书写明只监听回环与不留 cookie`() {
+    fun `说明书写明只监听回环与 cookie 保留`() {
         val help = WebProtocol.help(39080)
         assertTrue("应说明只听 127.0.0.1", help.contains("127.0.0.1"))
         // 5.9.37 断言过"截图不会给白图"；5.9.38 断言过 cookie 只覆盖当前页 ——
-        // 截图与 cookie 都没了，换成对应的两条现在成立的话。
+        // 截图与 cookie 导出都没了，换成对应的两条现在成立的话。
         assertTrue(
             "应说明 extract 扫不到时会直说",
             help.contains("扫不到东西时 note 会直说")
         )
         assertTrue(
-            "应说明这个浏览器不留 cookie / 缓存（换个站点要重新登录是设计）",
-            help.contains("不保留 cookie") && help.contains("这是设计，不是故障")
+            "应说明这个浏览器保留 cookie、不保留缓存",
+            help.contains("保留 cookie") && help.contains("不保留缓存")
         )
     }
 

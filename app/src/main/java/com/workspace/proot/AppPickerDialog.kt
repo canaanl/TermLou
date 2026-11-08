@@ -7,7 +7,6 @@ import android.app.Activity
  *
  * 语义：**勾选即落盘** —— 点一下行就立刻写 SharedPreferences，
  * 所以关掉弹窗不点"确定"也已经是保存过的。
- * （抓包版 [NetAppPickerDialog] 相反，只改内存、确定时才存。）
  *
  * 构造函数签名与重构前**逐字一致**，调用方 `OverlayCommandsController.showAppPicker` 无需改动。
  */

@@ -543,7 +543,7 @@ class RegressionScanTest {
 
     @Test
     fun `所有 tab 的长状态文字必须继承纵向滚动`() {
-        // 5.10.1 真机回归：Network 选多个 App 时，长警告折成两行把状态栏撑高，
+        // 5.10.1 真机回归：一条超长状态文本折成两行会把状态栏撑高，
         // 下面整个 ViewPager 被顶下去。状态栏高度必须从创建起锁一行；
         // 临时提示和常态文字都必须走 StatusMarquee 的纵向滚动。
         val c = code("StatusController.kt")
@@ -832,7 +832,8 @@ class RegressionScanTest {
         // 5.9.37 的病：opClose 写成"先销毁、再清数据"，而清数据读的是 webView?. ——
         // 那时它已经是 null，于是"清缓存"从来没执行过。
         // 根因不是顺序写反，而是**把顺序交给调用方记着**。现在清在销毁内部。
-        val src = source("WebAutomationService.kt")
+        //
+        // 5.11.0：清的是缓存/历史/表单 + localStorage；cookie 保留，只在关闭前 flush。
         val svc = code("WebAutomationService.kt")
         assertFalse(
             "不许再出现 `webView?.clearCache(...)` —— 那行的执行时机永远不对：\n$svc",
@@ -842,28 +843,27 @@ class RegressionScanTest {
             "清缓存/历史/表单必须在 WebView 还活着的时候调：\n$svc",
             svc.contains("private fun wipeWebViewData(")
         )
-        // destroySession 里必须先清后销毁
         val ds = svc.substringAfter("private fun destroySession()")
             .substringBefore("private fun wipeWebViewData(")
         assertTrue("没抓到 destroySession 的函数体", ds.length > 200)
         val clearAt = ds.indexOf("wipeWebViewData(wv)")
         val destroyAt = ds.indexOf("wv.destroy()")
         assertTrue("destroySession 里必须先清数据", clearAt in 0 until destroyAt)
-        assertTrue(
-            "不依赖 WebView 的那两样（cookie / localStorage）也要在这里清：\n$ds",
-            ds.contains("clearCookiesAndStorage()")
-        )
+        assertTrue("localStorage/IndexedDB 仍要在这里清：\n$ds", ds.contains("clearWebStorage()"))
+        assertTrue("cookie 保留但要落盘：\n$ds", ds.contains("flushCookies()"))
+        assertFalse("cookie 不许在会话销毁时清：\n$ds", ds.contains("removeAllCookies"))
     }
 
     @Test
-    fun `关掉服务也要清数据`() {
-        // 用户要求：服务"每次开关都要清空"。关闭走 teardown → destroySession，
-        // 所以清数据必须是 destroySession 的一部分（上一条锁着），
-        // 而 teardown 必须真的调它。
+    fun `关掉服务也要清数据并落盘 cookie`() {
+        // 用户要求：缓存每次开关都要清空；cookie 则要保留。
+        // 关闭走 teardown → destroySession，所以清数据必须是 destroySession 的一部分，
+        // 而 teardown 必须真的调它，并在关闭前 flush cookie。
         val svc = code("WebAutomationService.kt")
         val td = svc.substringAfter("private fun teardown()").substringBefore("// ---------- HTTP 分发")
         assertTrue("没抓到 teardown 的函数体", td.length > 100)
-        assertTrue("关闭服务必须销毁会话（清数据在里面）：\n$td", td.contains("destroySession()"))
+        assertTrue("关闭服务必须销毁会话（清缓存在里面）：\n$td", td.contains("destroySession()"))
+        assertTrue("关闭前必须落盘 cookie：\n$td", td.contains("flushCookies()"))
         assertTrue("陈旧令牌文件也要删：\n$td", td.contains("clearEnv(this)"))
     }
 
@@ -935,9 +935,9 @@ class RegressionScanTest {
     }
 
     @Test
-    fun `cookie 不许再有任何出口`() {
-        // 用户决定：cookie 全删、不保留。清 cookie 的动作保留（那是无痕），
-        // 但不许再有"读出来 / 存成文件"的路。
+    fun `cookie 可以保留但不许导出`() {
+        // 5.11.0：用户要求 cookie 持久化（登录态），但**仍然不许**把它读出来/存成文件。
+        // 能清的只有设置里的「清理缓存」这一条路径。
         for (f in listOf(
             "WebAutomationService.kt", "WebArtifacts.kt", "WebProtocol.kt",
             "WebOpScripts.kt", "WebSelector.kt", "WebExtract.kt",
@@ -950,11 +950,12 @@ class RegressionScanTest {
         }
         val h = WebProtocol.help(39080)
         assertFalse("说明书里不许再有 cookies 指令", h.contains("\"cookies\""))
-        // 但"清 cookie"必须留着（这是无痕，不是保留）
-        assertTrue(
-            "清 cookie 的动作必须还在",
-            code("WebAutomationService.kt").contains("removeAllCookies(null)")
-        )
+        // 清 cookie 的动作必须还在，而且只能在设置清理里
+        val svc = code("WebAutomationService.kt")
+        val clear = svc.substringAfter("fun clearBrowserData(context: Context)")
+            .substringBefore("private const val PREFS")
+        assertTrue("设置清理必须能删 cookie", clear.contains("removeAllCookies(null)"))
+        assertTrue("说明书要说清 cookie 会保留", h.contains("保留 cookie"))
     }
 
     @Test

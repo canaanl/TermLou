@@ -28,7 +28,6 @@
     <string name="tab_terminal">TERMINAL</string>
     <string name="tab_files">FILES</string>
     <string name="tab_notes">NOTES</string>
-    <string name="tab_network">NETWORK</string>
     <string name="tab_settings">SETTINGS</string>
 
     <!-- Settings: font/command -->
@@ -73,11 +72,6 @@
     <string name="palette_saved">Saved — applying new colors…</string>
     <string name="palette_reset_done">Default colors restored</string>
     <string name="settings_advanced">ADVANCED</string>
-
-    <!-- Settings: upstream -->
-    <string name="upstream_title">UPSTREAM PROXY</string>
-    <string name="upstream_saved">Upstream saved, takes effect after restart</string>
-    <string name="upstream_cleared">Restored built-in direct</string>
 
     <!-- Settings: LAN -->
     <string name="lan_title">LAN SHARE</string>
@@ -140,80 +134,16 @@
     <string name="splash_starting">Starting terminal...</string>
     <string name="share_to">SHARE VIA...</string>
     <string name="crash_snack_fmt">Last crash: %1$s</string>
-    <string name="vpn_auth_cancelled">VPN authorization cancelled</string>
-
-    <!-- Network tab -->
-    <string name="net_capture_start">START CAPTURE</string>
-    <string name="net_capture_stop">STOP CAPTURE</string>
-    <string name="net_pick_apps">CHOOSE APPS</string>
-    <string name="net_clear">CLEAR RECORDS</string>
-    <string name="net_cleared">Connection records cleared</string>
-    <string name="net_empty">No records</string>
-    <string name="net_no_apps">Network | no apps selected, choose apps first</string>
-    <string name="flow_blocked">Blocked</string>
-    <string name="flow_state_open">Active</string>
-    <string name="flow_state_udp">Live</string>
-    <string name="flow_state_closed">Closed</string>
-    <string name="flow_server_fmt">Server %1$s</string>
-    <string name="flow_no_domain">No domain record this session</string>
-    <string name="flow_unblock">UNBLOCK</string>
-    <string name="flow_unblocked">Unblocked</string>
-    <string name="flow_block_all_fmt">Blocked all %1$s connections</string>
-    <string name="flow_block_ip">BLOCK THIS IP</string>
-    <string name="flow_blocked_ip_fmt">Blocked %1$s</string>
-    <string name="net_pick_first">Choose capture apps first</string>
-    <string name="net_stopped">Capture stopped</string>
-    <string name="net_search_hint">Search: domain / SNI / IP / port</string>
-    <string name="net_rank">RANKING</string>
-    <string name="net_rank_title">TRAFFIC RANKING</string>
-    <string name="net_rank_empty">No data</string>
-    <string name="net_rank_domain">BY DOMAIN</string>
-    <string name="net_rank_port">BY PORT</string>
-    <string name="net_multi_app_warn">Multiple apps share the session; per-app traffic cannot be distinguished. Pick one app for precise results</string>
-    <string name="flow_tag_media">MEDIA</string>
-    <string name="flow_tag_heartbeat">HEARTBEAT</string>
-    <string name="flow_tag_upload">UPLOAD</string>
-    <string name="flow_tag_dns">DNS</string>
-    <string name="flow_tag_other">OTHER</string>
-    <string name="net_dash_rate">REAL-TIME RATE</string>
-    <string name="net_dash_total">SESSION TOTAL</string>
-    <string name="net_dash_counters">COUNTERS</string>
-    <string name="net_dash_active">Active</string>
-    <string name="net_dash_blocked">Blocked</string>
-    <string name="net_dash_dns">DNS</string>
-    <string name="net_dash_idle">Live dashboard</string>
-    <string name="net_others">Others</string>
-    <string name="net_detail_sni">SNI %1$s</string>
-    <string name="net_detail_http">HTTP %1$s</string>
-    <string name="net_detail_dur">Dur %1$s</string>
 
     <!-- Pickers -->
     <string name="picker_search">Search apps</string>
     <string name="picker_system">Include system apps</string>
-    <string name="picker_capture_title">CHOOSE CAPTURE APPS</string>
 
     <!-- Storage dialog -->
     <string name="storage_file_fmt">■  Files  %1$s</string>
     <string name="storage_sys_fmt">■  System  %1$s</string>
     <string name="storage_total_fmt">Total  %1$s</string>
     <string name="storage_failed_fmt">Stats failed: %1$s</string>
-
-    <!-- VPN service -->
-    <string name="vpn_channel">NETWORK CAPTURE</string>
-    <string name="vpn_fail_fg_fmt">Start failed: cannot start foreground service (%1$s)</string>
-    <string name="vpn_fail_fmt">Start failed: %1$s</string>
-    <string name="vpn_session">TermLou VPN</string>
-    <string name="vpn_no_apps">No capture apps chosen, tick apps in Choose apps first</string>
-    <string name="vpn_no_auth">VPN authorization missing, authorize first</string>
-    <string name="vpn_establish_fail">Failed to establish VPN interface (unauthorized or denied). Run the Start capture auth flow first</string>
-    <string name="vpn_upstream_direct">Built-in direct</string>
-    <string name="vpn_tun_fail">Failed to start tun2socks</string>
-    <string name="vpn_running_direct_fmt">Running · direct upstream 127.0.0.1:%1$d</string>
-    <string name="vpn_running_upstream_fmt">Running · upstream %1$s</string>
-    <string name="vpn_dead_fmt">Stopped (tun2socks exit %1$d) %2$s</string>
-    <string name="vpn_stopped">Stopped</string>
-    <string name="vpn_notif">Network capture running</string>
-    <string name="vpn_idle">Idle</string>
 
     <!-- Keep-alive -->
     <string name="keepalive_notif">Keeping alive in background</string>
@@ -696,11 +626,11 @@
     <string name="web_btn_clear">CLEAR CACHE FILES</string>
     <string name="web_copy_hint">Tap to copy: port %1$d · token + first command</string>
     <string name="web_copied">Connection info copied</string>
-    <string name="web_clear_confirm">Delete everything under /workspace/web/?\nShots, cookies, the port and the token file all go (the service is off).</string>
+    <string name="web_clear_confirm">Clear browser cookies, site storage, form data and everything under /workspace/web/?\nNormal start/stop keeps cookies; this button wipes them too, so you will need to log in again. The service is off.</string>
     <!-- running when pressed, or the service started while the dialog was open -->
     <string name="web_clear_busy">Service is running; stop the browser first.</string>
-    <string name="web_cleared_fmt">Removed %1$d file(s)</string>
-    <string name="web_cleared_none">Nothing to clear</string>
+    <string name="web_cleared_fmt">Browser data cleared (%1$d file(s))</string>
+    <string name="web_cleared_none">Browser cookies and site storage cleared</string>
     <string name="web_notice_blink">Browser idle, please close it!</string>
     <string name="web_starting_toast">Starting browser…</string>
     <string name="web_stopped_toast">Browser stopped</string>
@@ -716,10 +646,10 @@
 <!-- Browser 5.9.3 · tab help: one item per line (must use \n, aapt2 strips &#10;) -->
 
 <!-- Browser 5.9.4 · tab help: plain statements, no filler -->
-    <string name="web_intro_conn_body">A browser for AI agents inside Linux. The engine is the one built into\nAndroid; every step the agent takes shows in a small window on screen, and no history is kept.\n▸ On: Settings → Advanced → Browser\n▸ Connect: tap the &quot;Tap to copy&quot; line to take port, token and first command\n● Fixed port 39080, token generated once at install\n● Listens on 127.0.0.1 only\n● Cookies and cache are wiped on every start\n● A small window pops up on start — drag it anywhere, it cannot be clicked\n● It shows the page at full size, no scaling: text is large and clear, pages get longer</string>
+    <string name="web_intro_conn_body">A browser for AI agents inside Linux. The engine is the one built into\nAndroid; every step the agent takes shows in a small window on screen, and no history is kept.\n▸ On: Settings → Advanced → Browser\n▸ Connect: tap the &quot;Tap to copy&quot; line to take port, token and first command\n● Fixed port 39080, token generated once at install\n● Listens on 127.0.0.1 only\n● Cookies persist across service restarts and page sessions; cache is still wiped on every start/stop\n● The UA is a generic mobile Chrome UA (WebView `; wv` and `Version/4.0` removed)\n● A small window pops up on start — drag it anywhere, it cannot be clicked\n● It shows the page at full size, no scaling: text is large and clear, pages get longer</string>
     <!-- 5.9.27: needed when the overlay permission is missing -->
     <string name="web_overlay_fallback">The overlay permission is required to show the browser window; enable &quot;Display over other apps&quot; for TermLou in system settings</string>
     <string name="web_intro_ops_body">The service serves the full list; one read is enough for the agent.\n▸ GET /help — all commands, selectors and troubleshooting\n▸ cat /workspace/web/web.env — port and token, source it\n▸ Put port 39080 + token in the skill\n● Then it can browse, click, fill forms and screenshot\n⚠ Connection refused means the service is off</string>
-    <string name="web_intro_notes_body">▸ One page at a time, repeated opens reuse it\n▸ Shots and cookies land in /workspace/web/\n● Long pages are shot by scrolling — you can watch it scroll\n● One file per screen, numbered in order, never stitched into one tall image\n● Idle for 10 minutes: the status bar blinks\n⚠ A few sites refuse embedded browsers</string>
+    <string name="web_intro_notes_body">▸ One page at a time, repeated opens reuse it\n▸ No cache: start/stop leaves it clean; cookies persist for login\n▸ To clear cookies and site storage: Settings → Advanced → Browser → Clear cache\n● Idle for 10 minutes: the status bar blinks\n⚠ A few sites refuse embedded browsers</string>
     <string name="web_intro_settings_body">A browser for AI agents inside Linux:\nstart the service below and a small draggable window pops up on screen —\nyou can watch every step the agent takes;\ntap the &quot;Tap to copy&quot; line to take the port, token and first command;\nthe port and the full command list see the intro page in the terminal tab.</string>
 </resources>

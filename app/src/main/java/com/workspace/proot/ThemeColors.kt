@@ -34,7 +34,7 @@ data class ThemeColors(
      *  描边/文字/图标/粒子等需在背景上可辨的场合用它；品牌填充仍用 primary。 */
     val primaryVisible: Int = primary,
     /**
-     * 5.9.45：状态栏**特征字**专用色（Terminal/Notes/Files/Network/Settings）。
+     * 5.9.45：状态栏**特征字**专用色（Terminal/Notes/Files/Settings）。
      *
      * 与 [primaryVisible] 的区别只有一个，但很关键 —— **拿状态栏自己的底色算**：
      * 状态栏铺的是 `surfaceContainer`，比 `surface` 略深/略浅，"这色在页面底上看得见"

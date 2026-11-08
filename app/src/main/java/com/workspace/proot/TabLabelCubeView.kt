@@ -108,15 +108,15 @@ class TabLabelCubeView @JvmOverloads constructor(
     /**
      * 切换特征字。
      *
-     * @param name 新词（Terminal/Notes/Files/Network/Settings）
+     * @param name 新词（Terminal/Notes/Files/Settings）
      * @param animate 是否放翻转动画。切页签时 true；同页签刷新时 false。
      * @param toLeft 页面是否向左滑（= 切到后面的页签），决定立方体往哪边转。
      */
     fun setTabName(name: String, animate: Boolean, toLeft: Boolean = true) {
         // ⚠ 名字没变 → **直接返回，绝不取消在途动画**。
         //
-        // 这是"网络页看不到动画"的根因：切到网络页时 refreshStatusBar() 会被调用两次
-        // （showTab 一次、网络页自己的刷新再一次）。第二次名字没变，而旧写法把
+        // 这是"切到同一个页签时看不到动画"的根因：refreshStatusBar() 会被调用两次
+        // （showTab 一次、页面自己的刷新再一次）。第二次名字没变，而旧写法把
         // `animator.cancel()` 放在"名字相同"的分支里 —— 等于把刚起步的动画当场掐死。
         // 名字没变时的正确行为是"什么都不做"。
         if (name == current) return

@@ -48,7 +48,7 @@ class StatusController(
     private var statusWrap: LinearLayout? = null
 
     /**
-     * 5.9.47：块① 特征字（Terminal/Notes/Files/Network/Settings），固定宽度 + 特征色。
+     * 5.9.47：块① 特征字（Terminal/Notes/Files/Settings），固定宽度 + 特征色。
      *
      * 5.9.48：从 `TextView` 换成 [TabLabelCubeView] —— 换页签时旧词被白色激光扫掉、
      * 露出新词（激光打标效果）。两个词**都左对齐、永不平移**。
@@ -87,7 +87,7 @@ class StatusController(
      * ```
      *
      * - **视觉上是一整条**：背景色画在父容器上，两个子块都透明；无线、无缝、零分块感。
-     * - **逻辑上是两块**：块① 只放特征字，宽度固定（取五个词里最宽的），左对齐，永不滚动；
+     * - **逻辑上是两块**：块① 只放特征字，宽度固定（取四个词里最宽的），左对齐，永不滚动；
      *   块② 放实际内容，自己跑自己的横向跑马灯。
      *
      * ## 为什么这么改（一次性解决三件用户实机报的事）
@@ -126,7 +126,7 @@ class StatusController(
             // 左内距 16dp 让特征字离屏幕边缘有呼吸；右侧不留内距 ——
             // 块① 的**宽度**里已经含了到块② 的间隔（见 measureTabWidth）。
             setPadding(activity.dp(UiTokens.SPACE_4), STATUS_V_PAD, 0, STATUS_V_PAD)
-            // 宽度由 measureTabWidth() 定死（五个词里最宽的），换页签不跳
+            // 宽度由 measureTabWidth() 定死（四个词里最宽的），换页签不跳
             layoutParams = LinearLayout.LayoutParams(measureTabWidth(), LinearLayout.LayoutParams.WRAP_CONTENT)
         }
 
@@ -140,9 +140,8 @@ class StatusController(
         // 5.9.47：间隔已含在块① 的宽度里，这里**不再加 marginStart**，免得翻倍。
         //
         // 5.10.1：块② 高度**从创建起就锁死一行**，不再 WRAP_CONTENT。
-        // 之前 Network 选多个 App 的「建议一次只勾一个」折成两行，statusView 变高，
-        // 父容器 statusWrap 跟着变高，下面整个 ViewPager 被顶下去。
-        // 现在任何长文本都不会改变状态栏高度；超长内容由 StatusMarquee 纵向滚动。
+        // 任何长文本都不能把 statusView 撑高，否则父容器变高、下面整个 ViewPager 被顶下去。
+        // 现在超长内容由 StatusMarquee 纵向滚动。
         val oneLineHeight = (statusView.lineHeight + statusView.paddingTop + statusView.paddingBottom)
             .coerceAtLeast(1)
         statusView.layoutParams = LinearLayout.LayoutParams(
@@ -157,7 +156,7 @@ class StatusController(
     }
 
     /**
-     * 块① 的固定宽度 = 五个特征字里最宽的那个。
+     * 块① 的固定宽度 = 四个特征字里最宽的那个。
      *
      * 用同一字号量一遍取最大值（`Settings`/`Terminal` 最宽），一次性定死，
      * 之后换页签**宽度不变**，所以视觉上不会出现"文字跳一下"。
@@ -438,8 +437,8 @@ class StatusController(
     /**
      * 临时提示的统一展示：淡出 -> 锁一行高并纵向滚动 -> 淡入。
      *
-     * 5.10.1：不再直接 `statusView.text = msg`。Network 选多个 App 的警告、
-     * LAN/Web 的复制提示、终端按键反馈等长文本都走这里，状态栏高度保持不变。
+     * 5.10.1：不再直接 `statusView.text = msg`。LAN/Web 的复制提示、
+     * 终端按键反馈等长文本都走这里，状态栏高度保持不变。
      * `durationMs` 只是最短展示时间；行数多时 [StatusMarquee.show] 会自动延长到滚完一遍。
      */
     private fun showTransientStatus(text: String, durationMs: Long, onDone: () -> Unit) {

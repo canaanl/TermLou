@@ -12,7 +12,7 @@ data class TabIntroPage(
 )
 
 object TabIntroContent {
-    /** 下标与主界面 Tab 顺序一致：0 终端 / 1 笔记 / 2 文件 / 3 网络 / 4 设置。 */
+    /** 下标与主界面 Tab 顺序一致：0 终端 / 1 笔记 / 2 文件 / 3 设置。 */
     fun page(index: Int): TabIntroPage = when (index) {
         0 -> TabIntroPage(
             iconRes = R.drawable.ic_tab_terminal,
@@ -61,18 +61,6 @@ object TabIntroContent {
             )
         )
         3 -> TabIntroPage(
-            iconRes = R.drawable.ic_tab_network,
-            titleRes = R.string.tab_network,
-            leadRes = R.string.intro_network_lead,
-            showSystemInfo = false,
-            sections = listOf(
-                TabIntroSection(R.string.intro_network_capture_title, R.string.intro_network_capture_body),
-                TabIntroSection(R.string.intro_network_log_title, R.string.intro_network_log_body),
-                TabIntroSection(R.string.intro_network_rank_title, R.string.intro_network_rank_body),
-                TabIntroSection(R.string.intro_network_proxy_title, R.string.intro_network_proxy_body)
-            )
-        )
-        else -> TabIntroPage(
             iconRes = R.drawable.ic_tab_settings,
             titleRes = R.string.tab_settings,
             leadRes = R.string.intro_settings_lead,
@@ -82,9 +70,10 @@ object TabIntroContent {
                 TabIntroSection(R.string.intro_settings_notes_title, R.string.intro_settings_notes_body),
                 TabIntroSection(R.string.intro_settings_commands_title, R.string.intro_settings_commands_body),
                 TabIntroSection(R.string.intro_settings_workshop_title, R.string.intro_settings_workshop_body),
-                TabIntroSection(R.string.intro_settings_net_title, R.string.intro_settings_net_body),
+                TabIntroSection(R.string.intro_settings_conn_title, R.string.intro_settings_conn_body),
                 TabIntroSection(R.string.web_settings_title, R.string.web_intro_settings_body)
             )
         )
+        else -> page(3)
     }
 }

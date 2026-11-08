@@ -19,7 +19,7 @@ import org.junit.runner.RunWith
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * 5.10.1 真机回归：用真实 Android 字体把 Network 多 App 警告按手机宽度 measure，
+ * 5.10.1 真机回归：用真实 Android 字体把一条超长状态文本按手机宽度 measure，
  * 确认它确实折行、展示期间状态栏高度锁一行、scrollY 真的在动。
  */
 @RunWith(AndroidJUnit4::class)
@@ -29,7 +29,7 @@ class StatusMarqueeInstrumentedTest {
     val timeout: Timeout = Timeout.seconds(40)
 
     @Test
-    fun networkWarningScrollsWithoutGrowingStatusBar() {
+    fun longStatusScrollsWithoutGrowingStatusBar() {
         val instr = InstrumentationRegistry.getInstrumentation()
         val done = AtomicBoolean(false)
         var handler: Handler? = null
@@ -47,7 +47,7 @@ class StatusMarqueeInstrumentedTest {
                     textSize = 13f
                     includeFontPadding = false
                     setPadding(16, 4, 16, 4)
-                    text = activity.getString(R.string.net_multi_app_warn)
+                    text = "A very long status message that must wrap across several lines. ".repeat(6)
                 }
                 root.addView(
                     view,

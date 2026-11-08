@@ -7,7 +7,7 @@ import android.view.inputmethod.InputMethodManager
 /**
  * 输入焦点与输入法的统一收口。
  *
- * ViewPager2 的五个页面全程常驻，旧页里的 EditText 不会因为页面滑走自动失焦；
+ * ViewPager2 的四个页面全程常驻，旧页里的 EditText 不会因为页面滑走自动失焦；
  * 只调 hideSoftInput 只能暂时收键盘，焦点仍在隐藏页上，键盘可能再次跟出来。
  * 切页真正落定时必须先 clearFocus，再收输入法。
  */

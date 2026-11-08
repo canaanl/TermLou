@@ -6,19 +6,15 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 会话生命周期规则锁定测试（5.9.0 建立，5.9.38 重写）。
+ * 浏览器会话策略锁定测试（5.9.0 建立；5.11.0 按"Cookie 持久 + 缓存仍清"重写）。
  *
- * ## 5.9.38：把三条**假锁**换成了真的
+ * 5.11.0 用户要求：
+ * - UA 改成通用移动 Chrome（去掉 `; wv` / `Version/4.0`）；
+ * - Cookie 持久化，正常开关服务/销毁会话/进程启动都不清；
+ * - 只有设置里「清除缓存」这一条路径清 Cookie；
+ * - 缓存策略不变（`LOAD_NO_CACHE` + 实例创建/销毁时 `clearCache`）。
  *
- * 原来这个文件里有一个自造的 `enum Trigger` 和一个 `shouldWipe()`（恒返回 true），
- * 然后断言"它返回 true"、"触发点刚好 3 个" —— **测的是它自己，不是产品**。
- * 服务里到底有没有在那三个时点清数据，它一个字都没管。
- *
- * 那种锁比没有更糟：它让"无痕"这件事看起来有人盯着，实际上没有 ——
- * 而 5.9.38 真的查出"清缓存"那三行**从来没执行过**（写在销毁之后，读到的是 null）。
- *
- * 现在改成**扫真代码里的调用点**：清数据的每个时点都必须在源码里找得到位置，
- * 而且必须落在"能真的清到"的地方（清 WebView 相关的东西时，WebView 必须还活着）。
+ * 这里扫真代码的调用点，避免"锁住一个自造的布尔值"那种假锁（5.9.38 的教训）。
  */
 class WebSessionPolicyTest {
 
@@ -38,51 +34,68 @@ class WebSessionPolicyTest {
         throw AssertionError("找不到 $name，这条检查等于没跑")
     }
 
-    // ---------- 三个时点：进程启动 / 服务启动 / 会话销毁 ----------
-
     @Test
-    fun `进程启动要清 cookie 与 localStorage`() {
-        assertTrue(
-            "进程启动必须清（见 TermLouApp.onCreate）：\n" + code("TermLouApp.kt"),
-            code("TermLouApp.kt").contains("wipeOnProcessStart(this)")
+    fun `进程启动不再清 cookie`() {
+        val app = code("TermLouApp.kt")
+        assertFalse(
+            "进程启动不许再清浏览器数据（cookie 要跨进程保留）：\n$app",
+            app.contains("wipeOnProcessStart")
         )
-        val svc = code("WebAutomationService.kt")
-        val wipe = svc.substringAfter("fun wipeOnProcessStart(").substringBefore("private const val PREFS")
-        assertTrue("process-start 清理没抓到", wipe.length > 100)
-        assertTrue("要清 cookie：\n$wipe", wipe.contains("removeAllCookies(null)"))
-        assertTrue("要清 localStorage/IndexedDB：\n$wipe", wipe.contains("deleteAllData()"))
+        assertFalse(
+            "进程启动不许直接调 removeAllCookies：\n$app",
+            app.contains("removeAllCookies")
+        )
     }
 
     @Test
-    fun `服务启动要清 cookie 与 localStorage`() {
+    fun `服务启动只清 web storage 并开启 cookie`() {
         val svc = code("WebAutomationService.kt")
         val start = svc.substringAfter("private fun startServer()").substringBefore("private fun acceptLoop(")
         assertTrue("没抓到 startServer", start.length > 200)
-        assertTrue(
-            "服务启动即无痕，必须清：\n$start",
-            start.contains("clearCookiesAndStorage()")
+        assertTrue("服务启动要显式接受 cookie：\n$start", start.contains("setAcceptCookie(true)"))
+        assertTrue("服务启动仍清 localStorage/IndexedDB：\n$start", start.contains("clearWebStorage()"))
+        assertFalse(
+            "服务启动绝不许清 cookie：\n$start",
+            start.contains("removeAllCookies")
         )
     }
 
     @Test
-    fun `会话销毁要清 而且必须在 WebView 还活着的时候清`() {
+    fun `UA 必须是通用移动 Chrome`() {
+        val svc = code("WebAutomationService.kt")
+        assertTrue(
+            "ensureWebView 必须从默认 UA 派生通用移动 UA：\n$svc",
+            svc.contains("WebUserAgent.genericMobile(")
+        )
+        assertTrue(
+            "派生结果必须写回 WebSettings：\n$svc",
+            svc.contains("userAgentString = genericUa")
+        )
+        val ua = code("WebUserAgent.kt")
+        assertTrue("必须去掉 ; wv：\n$ua", ua.contains("wv"))
+        assertTrue("必须去掉 Version/4.0：\n$ua", ua.contains("Version/4"))
+    }
+
+    @Test
+    fun `会话销毁清缓存但不许清 cookie`() {
         val svc = code("WebAutomationService.kt")
         val destroy = svc.substringAfter("private fun destroySession()")
             .substringBefore("private fun wipeWebViewData(")
         assertTrue("没抓到 destroySession", destroy.length > 200)
-        // 不依赖 WebView 的两样
-        assertTrue("要清 cookie/localStorage：\n$destroy", destroy.contains("clearCookiesAndStorage()"))
-        // 依赖 WebView 的一样 —— 必须**先清后销毁**（5.9.37 就是反了，那三行从没跑过）
+        // 依赖 WebView 的缓存/历史/表单 —— 必须**先清后销毁**
         val clearAt = destroy.indexOf("wipeWebViewData(wv)")
         val destroyAt = destroy.indexOf("wv.destroy()")
         assertTrue("销毁前必须先清 WebView 的缓存/历史/表单：\n$destroy", clearAt in 0 until destroyAt)
+        assertTrue("localStorage/IndexedDB 仍按旧策略清：\n$destroy", destroy.contains("clearWebStorage()"))
+        assertTrue("关闭前要 flush cookie：\n$destroy", destroy.contains("flushCookies()"))
+        assertFalse("会话销毁绝不许清 cookie：\n$destroy", destroy.contains("removeAllCookies"))
     }
 
     @Test
     fun `关闭服务与 close 指令都走同一个销毁路径`() {
         val svc = code("WebAutomationService.kt")
         assertTrue(
-            "关闭服务必须销毁会话（清数据在里面）：\n$svc",
+            "关闭服务必须销毁会话：\n$svc",
             svc.substringAfter("private fun teardown()").substringBefore("// ---------- HTTP 分发")
                 .contains("destroySession()")
         )
@@ -93,7 +106,29 @@ class WebSessionPolicyTest {
         )
     }
 
-    // ---------- 空窗提示的仲裁（这几条本来就是真的） ----------
+    @Test
+    fun `设置清理是唯一清 cookie 的路径`() {
+        val ctl = code("WebAutomationController.kt")
+        val clear = ctl.substringAfter("private fun confirmClear()").substringBefore("\n    }")
+        assertTrue("设置清理必须调用 clearBrowserData：\n$clear", clear.contains("clearBrowserData"))
+
+        val svc = code("WebAutomationService.kt")
+        val cleanup = svc.substringAfter("fun clearBrowserData(context: Context)")
+            .substringBefore("private const val PREFS")
+        assertTrue("clearBrowserData 没抓到", cleanup.length > 100)
+        assertTrue("设置清理要删 cookie：\n$cleanup", cleanup.contains("removeAllCookies(null)"))
+        assertTrue("设置清理要删站点存储：\n$cleanup", cleanup.contains("deleteAllData()"))
+        assertTrue("设置清理要清表单：\n$cleanup", cleanup.contains("clearFormData()"))
+    }
+
+    @Test
+    fun `缓存策略保持不变`() {
+        val svc = code("WebAutomationService.kt")
+        assertTrue("缓存仍不持久：\n$svc", svc.contains("cacheMode = WebSettings.LOAD_NO_CACHE"))
+        assertTrue("实例销毁/创建时仍清缓存：\n$svc", svc.contains("wv.clearCache(true)"))
+    }
+
+    // ---------- 空窗提示的仲裁 ----------
 
     @Test
     fun `服务关着不闪`() {

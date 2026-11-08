@@ -1,8 +1,8 @@
 # TermLou
 
-> 一个为**不写代码的人**打造的 Android 终端 —— 把 Debian GNU/Linux、文件管理、笔记待办、网络抓包和脚本浮窗，全部塞进一个"点一下就能用"的 App。
+> 一个为**不写代码的人**打造的 Android 终端 —— 把 Debian GNU/Linux、文件管理、笔记待办和脚本浮窗，全部塞进一个"点一下就能用"的 App。
 
-![Version](https://img.shields.io/badge/version-5.4.0-blue)
+![Version](https://img.shields.io/badge/version-5.11.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -19,9 +19,9 @@
 - **命令拨轮**：滚一滚、点一下，最可能用到的命令自动滚到中央，不需要知道命令怎么写。
 - **命令组**：把一组常用命令压成一张卡片，用"任务"代替"记忆命令层级"。
 - **脚本浮窗**：Shell 脚本一句 `termlou-ui` 就能弹出原生 Android 对话框，脚本从此有了界面。
-- **零 XML 界面**：全部 UI 由 Kotlin 程序化构建，五 Tab 滑动切换，风格统一、随调色盘换色。
+- **零 XML 界面**：全部 UI 由 Kotlin 程序化构建，四 Tab 滑动切换，风格统一、随调色盘换色。
 
-在这个内核之外，TermLou 还长出了完整的**笔记与待办体系**（可独立于 Linux 使用）和**网络抓包分析**（按 App 抓包、DNS 映射、域名/IP 阻断），并支持中英双语。
+在这个内核之外，TermLou 还长出了完整的**笔记与待办体系**（可独立于 Linux 使用）和给 AI agent 的**内置浏览器**（回环 HTTP 指令、可见悬浮窗），并支持中英双语。
 
 ---
 
@@ -35,9 +35,9 @@
 | 📝 **笔记与待办** | 主界面笔记 Tab 与独立笔记页双入口；列表/编辑、标签胶囊、待办看板、退出自动保存；纯文件存储，不依赖 Linux |
 | 📌 **笔记磁贴** | 通知栏一键直达独立笔记页，绕开主界面、不唤醒 Linux 会话，用完即走、后台无残留 |
 | 💬 **脚本驱动浮窗** | Shell 一句 `termlou-ui --title "确认" --button "OK"` 即弹出原生浮窗，支持输入/单选/多选/开关/ANSI 彩色输出 |
-| 🌐 **VPN 抓包与过滤** | 内置 `VpnService` + SOCKS5 代理 + DNS 拦截 + 域名/IP 阻断 + 实时流量日志，按 App 抓包 |
+| 🌐 **给 AI agent 的内置浏览器** | 系统 WebView + 回环 HTTP 指令接口；通用移动 Chrome UA、Cookie 持久，悬浮小窗可见 |
 | 🎨 **启动像素工坊** | 手绘 96×80 点阵 + 照片转像素（灰阶分位量化，自动判向＋常驻反选）+ 粒子飞入动画，自定义启动画面 |
-| 🧱 **零 XML 布局** | 全部 UI 由 Kotlin 程序化构建，五 Tab 架构 |
+| 🧱 **零 XML 布局** | 全部 UI 由 Kotlin 程序化构建，四 Tab 架构 |
 | ⚙️ **原生 PTY 组件** | 自写 JNI `libtermux.so`（`termux_pty.cpp`），作为 Termux `terminal-view` 渲染器的 PTY 后端 |
 | 🛡️ **安全加固** | 路径逃逸防护、输出流 128KB 截断、命令超时强杀、资源上限 |
 | 🌍 **双语** | 中英双语一键切换，重开即生效 |
@@ -57,7 +57,7 @@
 | 文件 | `androidx.documentfile`（SAF 导入）、`commons-compress`（tar 解包）、`xz`（tar.xz 流式解压） |
 | 数据 | `SharedPreferences` + 自写 JSON（命令库 v2、笔记索引） |
 | 静态分析 | detekt 1.23.1 |
-| 测试 | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso（235 个单元测试） |
+| 测试 | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso（745 个单元测试） |
 | CI | GitHub Actions（lint + test + assembleDebug） |
 
 ---
@@ -69,9 +69,9 @@
 ```text
 TermLou
 ├── app/        (com.workspace.proot)  产品层 —— 面向用户的 App
-│   ├── MainActivity          单 Activity 五 Tab 壳，实现 TerminalSessionClient / TerminalViewClient
-│   ├── AppScope + *Controller 状态与业务控制器（Terminal/Notes/Workspace/Network/Lan/Settings/Status）
-│   ├── UiBuilder             程序化 UI 工厂（状态栏 / 五 Tab / 拨轮 / 设置 / 文件列表）
+│   ├── MainActivity          单 Activity 四 Tab 壳，实现 TerminalSessionClient / TerminalViewClient
+│   ├── AppScope + *Controller 状态与业务控制器（Terminal/Notes/Workspace/Lan/Settings/Status）
+│   ├── UiBuilder             程序化 UI 工厂（状态栏 / 四 Tab / 拨轮 / 设置 / 文件列表）
 │   ├── TerminalManager       proot 会话装配、.bashrc 幂等注入、Ctrl 模式、runInProot
 │   ├── TermlouDirs           .termlou IPC 目录定义（filesDir/.termlou → /termlou）
 │   ├── DistroVersion         从 rootfs /etc/os-release 解析发行版 codename（trixie）
@@ -89,7 +89,7 @@ TermLou
 │   ├── DialogMakerActivity   弹窗工坊（图形化设计 termlou-ui 对话框）
 │   ├── OverlayBridge / ClipboardBridge  文件 IPC 桥（req/res + FileObserver + 轮询兜底）
 │   ├── SplashView/Letters/Tokens/Maker  启动画面渲染 + 像素工坊（手绘 + 灰阶量化）
-│   ├── NetVpnService / MiniSocks5Server / DnsParser / DnsMap / BlockRules  VPN 抓包栈
+│   ├── WebAutomationService / WebProtocol  给 AI agent 的内置浏览器（回环 HTTP + 可见悬浮窗）
 │   ├── CommandTileService / LauncherTileService / NotesTileService  快捷设置磁贴
 │   ├── TermlouCommandRunner  磁贴命令无头执行服务
 │   └── TermKeepAliveService / KeepAliveWakeLock  前台保活
@@ -130,7 +130,7 @@ MainActivity.onCreate
 
 ### 日志与体积 Logs & footprint
 
-Linux 的 `/var/log` 不写进 rootfs：通过 proot bind 到 `filesDir/logs/linux`，apt/dpkg 的已知无界日志指向 `/dev/null`。Linux 日志与应用日志（`crash.log`、`net/*.log`、`lan/error.log` 等）合计预算 **1MB**，只在进程启动时裁剪一次，不做定时轮询。Bash 历史写 `/dev/null`，只在当前会话内存里保留；release 包通过 R8 移除 TermLou 的 Android Logcat 调用。终端 transcript 只在内存，不落盘。
+Linux 的 `/var/log` 不写进 rootfs：通过 proot bind 到 `filesDir/logs/linux`，apt/dpkg 的已知无界日志指向 `/dev/null`。Linux 日志与应用日志（`crash.log`、`lan/error.log` 等）合计预算 **1MB**，只在进程启动时裁剪一次，不做定时轮询。Bash 历史写 `/dev/null`，只在当前会话内存里保留；release 包通过 R8 移除 TermLou 的 Android Logcat 调用。终端 transcript 只在内存，不落盘。
 
 ### 笔记与 Linux 解耦 Notes are Linux-independent
 
@@ -146,7 +146,7 @@ Linux 的 `/var/log` 不写进 rootfs：通过 proot bind 到 `filesDir/logs/lin
 - **输出截断**：stdout/stderr 各限 128KB，防止 OOM 与上下文爆炸
 - **超时强杀**：命令超时 `destroyForcibly()`，协程取消时 join 收集线程防泄漏
 - **注入安全**：proot 内命令以位置参数传递（`cd -- "$1" && eval "$2"`），杜绝 shell 引号/转义问题
-- **无头浏览器只听回环**：无头浏览器（5.9.0）显式绑 `127.0.0.1`，同一 WiFi 下别的设备连不上；令牌每次安装随机生成后固定，且只存 TermLou 私有目录。页面操作全部经 `evaluateJavascript` 执行，用户输入先由 `WebSelector.jsString` 转义再拼进 JS 字面量
+- **浏览器只听回环**：浏览器服务显式绑 `127.0.0.1`，同一 WiFi 下别的设备连不上；令牌每次安装随机生成后固定，且只存 TermLou 私有目录。页面操作全部经 `evaluateJavascript` 执行，用户输入先由 `WebSelector.jsString` 转义再拼进 JS 字面量
 
 ---
 
@@ -203,27 +203,19 @@ Linux 的 `/var/log` 不写进 rootfs：通过 proot bind 到 `filesDir/logs/lin
 - **弹窗工坊**（`DialogMakerActivity`）：只保留外壳（标题、主题、主色、圆角、位置、动画、预览、运行、导出）；线性控件列表和独立「画布」控件已移除。内容统一在 CanvasDesigner 的弹窗内容画布中编辑，图层/属性/时间轴就是工坊的层级结构。工坊只生成一个 `--canvas` 内容场景；实时预览原位更新，不再 `removeAllViews`；「运行」复用同一个浮窗，真机运行结果 JSON 和导出命令保持不变
 - **剪贴板桥**：`termlou-clipboard "文本"` 或 `echo "文本" | termlou-clipboard` 直写系统剪贴板
 
-### 6. 网络抓包与过滤 Network
-
-- **按 App 抓包**：`VpnService` + `addAllowedApplication` 精选要抓的 App
-- **DNS**：按系统 DNS 下发给 VPN（取不到才回退公共 DNS）；解析查询/响应建立域名↔IP 映射
-- **SOCKS5 代理**：内置 `MiniSocks5Server`（TCP CONNECT + UDP ASSOCIATE），可选上游代理
-- **阻断规则**：按 IP / 域名后缀阻断，实时生效
-- **流量日志**：实时列表（域名/IP、协议、端口、上下行字节、状态），支持按 IP/域名阻断
-
-### 7. 启动工坊 Splash Workshop
+### 6. 启动工坊 Splash Workshop
 
 - **手绘点阵**：96 列 × 实际可用行数，手指绘制像素；显示多少行就保存多少行，不缩放，不再固定 160 行
 - **照片转像素**：灰阶按分位量化成 2~20 档（清晰度滑块实时重映射），背景 vs 主题色**自动判向**杜绝负片，常驻反选开关可再翻转，捏合缩放取景
 - **粒子动画**：亮点从随机边缘飞入，品牌绿→青渐变（调色盘档按可见性推导色生成）
 
-### 8. 快速设置磁贴 Quick Settings Tiles
+### 7. 快速设置磁贴 Quick Settings Tiles
 
 - **命令磁贴**：通知栏一键执行预设命令（冷启动容错、原子 pending 文件、按 ID 去重）
 - **启动器磁贴**：一键打开常用 App（单收藏直启，多收藏弹出抽屉）
 - **笔记磁贴**：一键直达独立笔记页；独立任务、`excludeFromRecents`，退出即回桌面、后台无残留
 
-### 9. 设置 Settings
+### 8. 设置 Settings
 
 | 设置项 | 说明 |
 |--------|------|
@@ -234,7 +226,7 @@ Linux 的 `/var/log` 不写进 rootfs：通过 proot bind 到 `filesDir/logs/lin
 | 磁贴命令 | Quick Settings Tile 点击执行的命令 |
 | 快捷启动 | 选择常用 App，一键启动（磁贴抽屉） |
 | 弹窗工坊 / 启动工坊 | 图形化设计脚本浮窗 / 自定义启动画面 |
-| 网络上游代理 | SOCKS5 上游（留空走内置直连 + 抓包/阻断） |
+| 浏览器 | 给 AI agent 的浏览器服务开关、复制连接信息、清理缓存/Cookie |
 | 后台持久化 | 前台通知服务保活（低优先级、无声无震动） |
 | 系统信息 | 已移至终端介绍页（点终端 Tab 图标查看） |
 
@@ -253,7 +245,7 @@ Linux 的 `/var/log` 不写进 rootfs：通过 proot bind 到 `filesDir/logs/lin
 
 | 操作 | 手势 |
 |------|------|
-| Tab 切换 | 终端 ↔ 笔记 ↔ 文件 ↔ 网络 ↔ 设置 左右滑动 |
+| Tab 切换 | 终端 ↔ 笔记 ↔ 文件 ↔ 设置 左右滑动 |
 | Tab 介绍页 | 点击顶部 Tab 图标（返回键关闭，不切换 Tab） |
 | 打开命令拨轮 | 快捷栏**上下滑动**切换 |
 | 打开命令库管理 | 拨轮灰色区域**长按** |

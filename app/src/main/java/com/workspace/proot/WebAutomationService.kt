@@ -21,6 +21,7 @@ import android.webkit.WebSettings
 import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebViewDatabase
 import java.io.BufferedInputStream
 import java.io.PushbackInputStream
 import java.io.ByteArrayOutputStream
@@ -52,14 +53,13 @@ import java.util.concurrent.locks.ReentrantLock
  *    缩放挂在容器上（[WebFloatWindowHost.ScaleFrameLayout]），WebView 自己恒为 1:1；
  *  - **懒加载**：服务常驻，WebView 只在第一条 `open` 时创建，会话结束即 destroy——
  *    闲置时只有一个空壳进程；
- *  - **不留痕，也不留缓存**（5.9.38 修好）：进程启动、会话销毁（`close` 与**关闭服务**
- *    都走这里）、以及网页实例刚建好那一刻，都会清 cookie / localStorage / 缓存 / 历史 / 表单。
- *    ⚠ 5.9.37 之前那三行"清缓存"写在"销毁之后"，而那时网页已经是 null ——
- *    **从来没执行过**。现在"清数据"是销毁会话的**第一步**，调用方不可能再漏。
- *    加载另有一道：`cacheMode = LOAD_NO_CACHE`（不去用缓存）；
+ *  - **Cookie 持久**（5.11.0 起）：登录态跨进程/服务/会话保留，只在设置里的
+ *    「清理缓存」手动清一次。这是给 agent 用的浏览器，反复掉登录会让大量站点不可用；
+ *  - **缓存仍然不留**：网页实例刚建好、销毁之前都会清缓存/历史/表单，
+ *    加载另有一道 `cacheMode = LOAD_NO_CACHE`；localStorage/IndexedDB 也仍按
+ *    原策略在服务启动、会话销毁时清（用户只要求保留 cookie）；
  *  - **唯一产物是 `web.env`**（端口 + 令牌，**仅服务运行时存在**，供 agent 自发现），
- *    落在 Linux 可见的 `/workspace/web/`。5.9.38 起不再导出 cookie、不再有任何截图 ——
- *    这个功能**不保留 cookie**，也不往磁盘上留任何浏览痕迹；
+ *    落在 Linux 可见的 `/workspace/web/`。不导出 cookie、没有任何截图；
  *  - **不占队头**：请求线程池多条线程并发；只有**碰 WebView 的指令**才抢 [pageLock] 串行，
  *    `ping` 之类的轻量指令不会被一条卡住的 `open` 堵在后面；
  *  - **断开即收手**：客户端被杀掉（超时/中断）时，等待循环每 100ms 探一次 socket，
@@ -246,11 +246,11 @@ class WebAutomationService : Service() {
     private fun startServer() {
         if (running) return
         stopping = false
-        // 服务启动即无痕：清 cookie 与 localStorage/IndexedDB。
-        //
-        // ⚠ 这里清不了缓存 —— 网页实例是懒加载的，此刻还没有 WebView。
-        // 缓存由另外两处负责：实例刚建好的瞬间、以及会话销毁之前（见 [wipeWebViewData]）。
-        clearCookiesAndStorage()
+        // 5.11.0：cookie 保留（登录态要跨会话），只清 localStorage/IndexedDB。
+        // 缓存仍由另外两处负责：实例刚建好、以及会话销毁之前（见 [wipeWebViewData]）。
+        runCatching { CookieManager.getInstance().setAcceptCookie(true) }
+            .onFailure { Log.w(TAG, "enable cookies failed", it) }
+        clearWebStorage()
         val port = WebProtocol.DEFAULT_PORT
         val socket = try {
             // 只听回环：别的设备/别的 app 不该能通过 WiFi 连上这台手机
@@ -323,6 +323,9 @@ class WebAutomationService : Service() {
         runCatching { workers.shutdownNow() }
         // 先摘 WebView 再拆窗（反了会在 removeViewImmediate 时留下野指针）
         destroySession()
+        // destroySession 的清理是异步投递到主线程的；这里再同步 flush 一次，
+        // 保证即使服务马上被杀，cookie 也已经落盘。
+        flushCookies()
         postToMain { floatWindow.hide() }
         WebArtifacts.clearEnv(this)
         runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
@@ -513,6 +516,9 @@ class WebAutomationService : Service() {
         //
         // 5.9.37 删掉整页截图功能，`wv.draw()` 这条路**整个没了**，
         // 硬件加速照原样保留 —— 小窗正常显示、不卡。
+        // 5.11.0：从系统默认 UA 派生通用移动 Chrome UA（去掉 `; wv` 与
+        // `Version/4.0`，Chrome 版本仍与真实 WebView 引擎一致）。
+        val genericUa = WebUserAgent.genericMobile(wv.settings.userAgentString)
         wv.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -520,6 +526,7 @@ class WebAutomationService : Service() {
             useWideViewPort = true
             builtInZoomControls = false
             displayZoomControls = false
+            if (genericUa.isNotBlank()) userAgentString = genericUa
             cacheMode = WebSettings.LOAD_NO_CACHE
             // ⚠ 5.9.38：**必须显式打开多窗口**，否则"开新窗口"的请求被安卓整个丢掉。
             //
@@ -551,6 +558,10 @@ class WebAutomationService : Service() {
             @Suppress("DEPRECATION")
             saveFormData = false
         }
+        // 5.11.0：允许第三方 cookie。很多登录/支付流程会跨域取 cookie；
+        // 默认值在 WebView 上是 false，会让这类页面静默失败。
+        runCatching { CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true) }
+            .onFailure { Log.w(TAG, "third-party cookies failed", it) }
         wv.webViewClient = pageClient
         wv.webChromeClient = object : android.webkit.WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
@@ -697,7 +708,7 @@ class WebAutomationService : Service() {
     }
 
     /**
-     * 销毁页面会话。**"清数据"是它的第一步**（5.9.38 修）。
+     * 销毁页面会话。**清缓存/历史/表单是它的第一步**（5.9.38 修）。
      *
      * ## 为什么清数据必须在这里，而不是让调用方记得先调
      *
@@ -709,6 +720,12 @@ class WebAutomationService : Service() {
      * `close` 与**关闭服务**（[teardown]）两条路都不可能漏 —— 两条路都只走这一个函数。
      *
      * 清与销毁在**同一个主线程任务**里，顺序天然成立（不用赌 handler 的排队顺序）。
+     *
+     * ## 5.11.0：cookie 不在这里清
+     *
+     * 用户要求 cookie 持久化（登录态跨会话保留）。这里只清 localStorage/IndexedDB，
+     * 并在销毁前 flush 一次 cookie，保证关闭服务/进程被杀前已经落盘。
+     * 清 cookie 只发生在设置里的「清理缓存」（[clearBrowserData]）。
      */
     private fun destroySession() {
         val wv = webView
@@ -719,9 +736,10 @@ class WebAutomationService : Service() {
         postToMain {
             runCatching {
                 if (wv != null) {
-                    wipeWebViewData(wv)        // ← 先清
+                    wipeWebViewData(wv)        // ← 先清缓存/历史/表单
                 }
-                clearCookiesAndStorage()      // ← 不依赖 WebView 的那两样，任何时候都清
+                clearWebStorage()              // ← localStorage/IndexedDB 仍按旧策略清
+                flushCookies()                 // ← cookie 保留，但关闭前落盘
                 if (wv != null) {
                     wv.stopLoading()
                     // 5.9.27：先把 WebView 从**悬浮窗**里摘下来。
@@ -750,19 +768,20 @@ class WebAutomationService : Service() {
     }
 
     /**
-     * 清 cookie 与 localStorage/IndexedDB（**不依赖 WebView 实例**）。
+     * 清 localStorage/IndexedDB（**不依赖 WebView 实例**）。
      *
-     * 这两样是"不留痕、不留缓存"里最要紧的：cookie 是登录态，localStorage 是网站
-     * 往你手机里塞的数据。它们在进程启动、服务启动、会话销毁三处都要清。
+     * 5.11.0 起只保留 cookie；站点其它本地存储仍按旧策略在服务启动、
+     * 会话销毁两处清掉。
      */
-    private fun clearCookiesAndStorage() {
-        runCatching {
-            val cm = CookieManager.getInstance()
-            cm.removeAllCookies(null)
-            cm.flush()
-        }.onFailure { Log.w(TAG, "clear cookies failed", it) }
+    private fun clearWebStorage() {
         runCatching { WebStorage.getInstance().deleteAllData() }
             .onFailure { Log.w(TAG, "clear web storage failed", it) }
+    }
+
+    /** 把内存里的 cookie 落盘。关闭服务/销毁会话前调用，避免进程被杀时丢登录态。 */
+    private fun flushCookies() {
+        runCatching { CookieManager.getInstance().flush() }
+            .onFailure { Log.w(TAG, "flush cookies failed", it) }
     }
 
     /** 投递到主线程，不等待（等待绝不能发生在主线程上——见 [UiEval]）。 */
@@ -1597,17 +1616,29 @@ class WebAutomationService : Service() {
         }
 
         /**
-         * 进程启动即无痕：清 cookie 与 localStorage/IndexedDB。
+         * 设置里「清理缓存」的浏览器数据清理路径（5.11.0）。
          *
-         * （app 里没有第二个 WebView，故"清全部 WebView 数据"只影响浏览器。
-         * 缓存清不了 —— 那需要 WebView 实例，由服务开启时、实例刚建好那一刻负责。）
+         * 这是**唯一**会主动删 cookie 的地方：清 cookie、localStorage/IndexedDB、
+         * 表单与 HTTP 认证信息。HTTP 缓存不在这里直接删（没有 WebView 实例时
+         * 安卓不提供静态接口），但每次 WebView 实例创建/销毁都会 `clearCache(true)`，
+         * 所以下次打开页面时缓存一定是干净的。
+         *
+         * 调用方必须保证服务已停止（[isRunning] == false），否则会清掉正在用的登录态。
          */
-        fun wipeOnProcessStart(context: Context) {
+        fun clearBrowserData(context: Context) {
             runCatching {
-                CookieManager.getInstance().removeAllCookies(null)
-                CookieManager.getInstance().flush()
-                WebStorage.getInstance().deleteAllData()
-            }.onFailure { Log.w(TAG, "wipe failed", it) }
+                val cm = CookieManager.getInstance()
+                cm.setAcceptCookie(true)
+                cm.removeAllCookies(null)
+                cm.flush()
+            }.onFailure { Log.w(TAG, "clear cookies failed", it) }
+            runCatching { WebStorage.getInstance().deleteAllData() }
+                .onFailure { Log.w(TAG, "clear web storage failed", it) }
+            runCatching {
+                val db = WebViewDatabase.getInstance(context)
+                db.clearFormData()
+                db.clearHttpAuthUsernamePassword()
+            }.onFailure { Log.w(TAG, "clear webview database failed", it) }
         }
 
         private const val PREFS = "term-lou-web"

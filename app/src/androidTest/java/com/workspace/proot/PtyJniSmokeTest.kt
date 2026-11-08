@@ -69,11 +69,11 @@ class PtyJniSmokeTest {
 
             // 5) 杀整棵树 + 同步收割：waitpid 返回 137 即无僵尸残留
             SessionTerminator.killTree(pid)
-            val exit = TunSpawner.waitPid(pid)
+            val exit = ProcessJni.waitPid(pid)
             assertTrue("exit=$exit, expect 137 (SIGKILL)", exit == 137)
         } finally {
             runCatching { SessionTerminator.killTree(pid) }
-            runCatching { TunSpawner.waitPid(pid) }
+            runCatching { ProcessJni.waitPid(pid) }
             runCatching { pfd.close() }
         }
     }

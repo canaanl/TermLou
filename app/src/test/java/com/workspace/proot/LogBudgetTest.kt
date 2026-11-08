@@ -65,7 +65,7 @@ class LogBudgetTest {
 
     @Test
     fun `cap file truncates from the front and keeps the tail`() {
-        val file = File(filesDir, "net/tun2socks.log")
+        val file = File(filesDir, "misc/append.log")
         file.parentFile?.mkdirs()
         file.writeText("0123456789")
 

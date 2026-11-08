@@ -480,8 +480,8 @@ class UiDimsScanTest {
             showTab.contains("animateTabIndicator") || showTab.contains("setSweepDirection")
         )
 
-        // 四个页面容器不再自己认横向手势
-        for (name in listOf("NetworkController.kt", "WorkspaceController.kt", "SettingsUiController.kt")) {
+        // 其余页面容器不再自己认横向手势
+        for (name in listOf("NotesController.kt", "WorkspaceController.kt", "SettingsUiController.kt")) {
             val f = File(srcDir, name)
             assertTrue("$name 不见了", f.isFile)
             val c = read(f)

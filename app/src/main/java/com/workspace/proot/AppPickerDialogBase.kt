@@ -21,32 +21,10 @@ private const val COLOR_ALPHA = 0x66
 private const val ALPHA_SHIFT = 24
 
 /**
- * 应用选择弹窗的共用外壳（5.9.51 重构，纯移动：主体逐字取自原 `AppPickerDialog`）。
+ * 应用选择弹窗的共用外壳（5.9.51 重构）。
  *
- * ## 为什么要拆
- *
- * `AppPickerDialog` 与 `NetAppPickerDialog` 原本是两份 178 行的文件，
- * 逐行比对只有 **5 处**不同（git 一度把它们判为同一个文件的重命名）。
- * 同一份布局、同一份渲染、同一份搜索/系统应用过滤逻辑被抄了两遍 ——
- * 改一处外观就要记得改两处，漏一处就是两个弹窗长得不一样。
- *
- * ## 5 处差异如何收敛（**行为逐一对齐，不改任何逻辑**）
- *
- * | 差异点 | 收藏夹版 `AppPickerDialog` | 抓包版 `NetAppPickerDialog` | 本文件的做法 |
- * |---|---|---|---|
- * | 标题 | `R.string.pick_app` | `R.string.picker_capture_title` | 构造参数 `titleRes` |
- * | 初始勾选 | `loadFavoriteApps().associateBy{pkg}.keys` | `loadCaptureApps()` | 构造参数 `selected`（在子类构造时算好，时机与原来完全一致） |
- * | 勾选落盘 | **点了就存**（`addFavoriteApp`/`removeFavoriteApp`） | **点了只改内存**，确定时才 `saveCaptureApps` | `onTogglePersist` 钩子，收藏夹版覆写、抓包版留空实现 |
- * | 确定按钮 | 只 `dismiss()` | 先 `saveCaptureApps` + `onChanged(size)`，再 `dismiss()` | `onDone` 钩子（**仍在 dismiss 之前调用**） |
- * | 构造函数 | 6 个参数 | 多一个 `onChanged` | 两个子类的签名**原样保留**，调用方零改动 |
- *
- * 集合的增删仍留在共用代码里（收藏夹版那段的原有结构），只把"往存储里写"抽出去 ——
- * 所以抓包版"只改内存"的语义没有被改成"也落盘"。
- *
- * ## 锁
- *
- * 两个子类构造函数签名由 `UiDimsScanTest` 之外的调用点保证（`OverlayCommandsController` /
- * `NetworkController`），任何签名改动都会在那两处编译失败。
+ * 布局、搜索、系统应用过滤、勾选渲染都在这里；具体语义由子类决定。
+ * 目前只有收藏夹版 [AppPickerDialog]：勾选即落盘。
  */
 open class AppPickerDialogBase(
     protected val ctx: Activity,
@@ -62,10 +40,10 @@ open class AppPickerDialogBase(
     private lateinit var searchInput: EditText
     private lateinit var sysSwitch: MaterialSwitch
 
-    /** 勾选变化时是否立刻落盘。默认不落盘（抓包版语义）。 */
+    /** 勾选变化时是否立刻落盘。默认不落盘；收藏夹版覆写成"点了就存"。 */
     protected open fun onTogglePersist(pkg: String, label: String, nowSelected: Boolean) {}
 
-    /** 点"确定"时、在 `dismiss()` 之前调用。默认什么都不做（收藏夹版语义）。 */
+    /** 点"确定"时、在 `dismiss()` 之前调用。默认什么都不做。 */
     protected open fun onDone(selected: Set<String>) {}
 
     fun show() {

@@ -9,7 +9,7 @@ project("workspace")
 
 add_library(termux SHARED
         termux_pty.cpp
-        net_spawn.cpp)
+        process_jni.cpp)
 
 target_link_libraries(termux
         log)

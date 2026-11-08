@@ -10,7 +10,6 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="android.permission.BIND_VPN_SERVICE" />
 
     <application
         android:name="com.workspace.proot.TermLouApp"
@@ -129,19 +128,6 @@
             <property
                 android:name="android.app.PROPERTY_FOREGROUND_SERVICE_SPECIAL_USE"
                 android:value="Keep terminal session alive in background" />
-        </service>
-
-        <service
-            android:name=".NetVpnService"
-            android:permission="android.permission.BIND_VPN_SERVICE"
-            android:foregroundServiceType="specialUse"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.net.VpnService" />
-            </intent-filter>
-            <property
-                android:name="android.app.PROPERTY_FOREGROUND_SERVICE_SPECIAL_USE"
-                android:value="Capture and forward device traffic through a TUN interface" />
         </service>
 
         <service

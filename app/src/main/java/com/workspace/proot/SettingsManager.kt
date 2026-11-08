@@ -463,27 +463,6 @@ class SettingsManager(private val prefs: SharedPreferences) {
         prefs.edit().putBoolean("autoDeleteEmptyNote", v).apply()
     }
 
-    fun loadCaptureApps(): Set<String> {
-        val set = linkedSetOf<String>()
-        try {
-            val arr = org.json.JSONArray(prefs.getString("netCaptureApps", "[]"))
-            for (i in 0 until arr.length()) set.add(arr.getString(i))
-        } catch (_: Exception) {}
-        return set
-    }
-
-    fun saveCaptureApps(set: Set<String>) {
-        val arr = org.json.JSONArray()
-        for (s in set) arr.put(s)
-        prefs.edit().putString("netCaptureApps", arr.toString()).apply()
-    }
-
-    fun netUpstream(): String = prefs.getString("netUpstream", "") ?: ""
-
-    fun setNetUpstream(v: String) {
-        prefs.edit().putString("netUpstream", v).apply()
-    }
-
     fun langExplicit(): String = prefs.getString("langExplicit", "") ?: ""
 
     fun setLangExplicit(v: String) {

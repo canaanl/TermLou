@@ -43,9 +43,6 @@ class TermLouApp : Application() {
         AppLang.apply(this)
         LogBudget.trim(this)
         createCrashChannel()
-        // 浏览器无痕保证之一：进程一启动就清 cookie/缓存/localStorage
-        // （app 里没有第二个 WebView，故"清全部 WebView 数据"只影响浏览器）
-        WebAutomationService.wipeOnProcessStart(this)
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             val report = buildString {
                 append(getString(R.string.crash_title) + "\n\n")
@@ -226,7 +223,7 @@ class TermLouApp : Application() {
 
     companion object {
         private const val CRASH_CHANNEL = "term-lou-crash"
-        // 1=保活 2=命令 runner 3=VPN 4=LAN，崩溃通知独占 5，避免与 VPN 通知互相顶掉。
+        // 1=保活 2=命令 runner 3=LAN，崩溃通知独占 5，避免与前台服务通知互相顶掉。
         private const val CRASH_NOTIFICATION_ID = 5
         private const val OVERLAY_ATTACH_TIMEOUT_MS = 3000L
 

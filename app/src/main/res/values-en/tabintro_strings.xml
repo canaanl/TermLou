@@ -48,17 +48,6 @@
     <string name="intro_files_types_title">Type recognition</string>
     <string name="intro_files_types_body">Recognized by file extension.\n● Automatically told apart: text | images | archives | code | documents</string>
 
-    <!-- Tab intro: network -->
-    <string name="intro_network_lead">The network tab captures per-app traffic and analyzes flows: choose apps first, then read logs, rankings, and blocks.</string>
-    <string name="intro_network_capture_title">Per-app capture</string>
-    <string name="intro_network_capture_body">Capture traffic only for the apps you pick, over a VPN.\n▸ Pick target apps — tap them in the picker (search supported)\n● DNS follows the system; public DNS is only a fallback.</string>
-    <string name="intro_network_log_title">Flow log</string>
-    <string name="intro_network_log_body">Live connection details: tap to expand, long-press to act.\n● Each row shows: domain or IP | protocol | port | up | down | state\n● The search box at the top — filter by domain / IP / port / protocol\n▸ Tap a row — expand its details\n▸ Long-press a row — block menu: block this IP, block this domain (all subdomains); blocked rows can be unblocked in one tap\n● Row tags are judged by traffic size, direction and duration, not by content parsing.</string>
-    <string name="intro_network_rank_title">Rankings and DNS</string>
-    <string name="intro_network_rank_body">The big picture, aggregated from the log.\n● Traffic rankings — grouped by domain or port\n● DNS history — queries mapped to their responses, easy to look up</string>
-    <string name="intro_network_proxy_title">Proxy and blocking</string>
-    <string name="intro_network_proxy_body">Where traffic exits and what gets blocked.\n● Built-in SOCKS5 — leave the upstream empty for direct mode, or fill in an upstream (socks5 supported)\n● Block rules — take effect immediately, no restart\n⚠ Only plaintext is parsed; no TLS man-in-the-middle, so HTTPS content stays invisible.</string>
-
     <!-- Tab intro: settings -->
     <string name="intro_settings_lead">Settings holds all switches and commands; language needs a restart, the palette applies instantly.</string>
     <string name="intro_settings_ui_title">Display</string>
@@ -69,6 +58,6 @@
     <string name="intro_settings_commands_body">Where the preset commands are filled in (see the terminal tab).\n● Startup command — runs when the terminal starts\n● Tile command — runs when launched from the tile\n● Quick launch — pick favorite apps for one-tap opening</string>
     <string name="intro_settings_workshop_title">Workshops</string>
     <string name="intro_settings_workshop_body">Entries to the two workshops (see the terminal tab).\n● Dialog workshop — design script dialogs and export commands\n● Splash workshop — draw freely or import an image for the boot screen</string>
-    <string name="intro_settings_net_title">Network and keep-alive</string>
-    <string name="intro_settings_net_body">Proxy, sharing and keep-alive.\n● Upstream proxy — empty means built-in direct mode; socks5 supported (see the network tab)\n● LAN share — share files and the terminal over the local network\n● Keep-alive — a low-priority foreground service keeps the app alive</string>
+    <string name="intro_settings_conn_title">Sharing, browser and keep-alive</string>
+    <string name="intro_settings_conn_body">LAN sharing, the built-in browser and background residency.\n● LAN share — share files and the terminal over the local network\n● Browser — drives web pages for the Linux-side AI agent; generic mobile UA, cookies persist for login\n● Keep-alive — a low-priority foreground service keeps the app alive</string>
 </resources>
