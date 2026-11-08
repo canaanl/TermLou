@@ -1,11 +1,17 @@
+@file:Suppress("MagicNumber", "ReturnCount")
+
 package com.workspace.proot
 
 import android.content.Context
+import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.view.Gravity
+import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
+import kotlin.math.roundToInt
 
 /**
  * 拟态悬浮圆键的**唯一视觉出处**。
@@ -66,6 +72,7 @@ internal object NeuFab {
         view.apply {
             text = glyph
             gravity = Gravity.CENTER
+            includeFontPadding = false
             setTextColor(theme.primaryVisible)
             textSize = UiTokens.TEXT_DISPLAY
             background = LayerDrawable(arrayOf(darkShadow, lightShadow, face)).apply {
@@ -80,6 +87,66 @@ internal object NeuFab {
             elevation = ELEVATION_DP * d
             this.contentDescription = contentDescription
             setOnClickListener { onClick() }
+        }
+        centerGlyph(view)
+    }
+
+    /**
+     * 把字形**墨迹**（而不是字体行盒）垂直居中到 FAB 圆心。
+     *
+     * `TextView` 的 `Gravity.CENTER` 居中行盒；乘法号 `×` 的墨迹本身偏下，
+     * 所以看起来会“掉下去”。这里用 `Paint.getTextBounds` 量出墨迹中心，
+     * 用上下 padding 补偿（不移动 FAB 背景），并关掉字体额外留白。
+     * 每种字体/字号都重新计算，不写死 dp 偏移。
+     */
+    internal fun centerGlyph(view: TextView) {
+        view.includeFontPadding = false
+        val apply = object : View.OnLayoutChangeListener {
+            override fun onLayoutChange(
+                v: View,
+                left: Int,
+                top: Int,
+                right: Int,
+                bottom: Int,
+                oldLeft: Int,
+                oldTop: Int,
+                oldRight: Int,
+                oldBottom: Int,
+            ) {
+                if (v.width <= 0 || v.height <= 0) return
+                v.removeOnLayoutChangeListener(this)
+                applyGlyphPadding(view)
+            }
+        }
+        view.addOnLayoutChangeListener(apply)
+        view.post {
+            if (view.width > 0 && view.height > 0) {
+                view.removeOnLayoutChangeListener(apply)
+                applyGlyphPadding(view)
+            }
+        }
+    }
+
+    private fun applyGlyphPadding(view: TextView) {
+        val text = view.text?.toString().orEmpty()
+        view.setPadding(0, 0, 0, 0)
+        if (text.isEmpty()) return
+        val paint = view.paint
+        if (paint.textSize <= 0f) return
+        val fm = paint.fontMetrics
+        // Robolectric 的 Paint 不实现字体度量；真机上正常。没有度量时不乱加 padding。
+        if (fm.ascent == 0f && fm.descent == 0f) return
+        val bounds = Rect()
+        paint.getTextBounds(text, 0, text.length, bounds)
+        val lineCenter = (fm.ascent + fm.descent) / 2f
+        val inkCenter = bounds.centerY().toFloat()
+        val pad = ((inkCenter - lineCenter) * 2f).roundToInt()
+        val maxPad = (4 * view.resources.displayMetrics.density).toInt().coerceAtLeast(1)
+        when {
+            pad > maxPad -> view.setPadding(0, 0, 0, maxPad)
+            pad < -maxPad -> view.setPadding(0, maxPad, 0, 0)
+            pad > 0 -> view.setPadding(0, 0, 0, pad)
+            pad < 0 -> view.setPadding(0, -pad, 0, 0)
         }
     }
 

@@ -39,7 +39,8 @@ class NotesFabMenu(
 
     private val d = resources.displayMetrics.density
     private val mainSize = (56 * d).toInt()
-    private val miniSize = (48 * d).toInt()
+    /** 展开后的搜索/新建必须与收起时那颗完全同尺寸，不能小一号。 */
+    private val miniSize = mainSize
     private val endMargin = (16 * d).toInt()
     private val mainBottom = (16 * d).toInt()
     private val gap = (10 * d).toInt()
@@ -93,7 +94,7 @@ class NotesFabMenu(
             desc = context.getString(R.string.notes_new),
             size = miniSize,
             bottom = addBottom,
-            end = endMargin + (mainSize - miniSize) / 2,
+            end = endMargin,
             onClick = onNewNote,
         ).apply {
             visibility = View.GONE
@@ -104,7 +105,7 @@ class NotesFabMenu(
             desc = context.getString(R.string.notes_search_notes),
             size = miniSize,
             bottom = searchBottom,
-            end = endMargin + (mainSize - miniSize) / 2,
+            end = endMargin,
             onClick = onSearch,
         ).apply {
             visibility = View.GONE
@@ -129,7 +130,7 @@ class NotesFabMenu(
             marginEnd = end
             bottomMargin = bottom
         }
-        textSize = if (size == mainSize) UiTokens.TEXT_DISPLAY else UiTokens.TEXT_TITLE
+        textSize = UiTokens.TEXT_DISPLAY
     }
 
     /** 组 FAB 圆心（相对本 View，也就是相对内容区）。 */
@@ -164,6 +165,7 @@ class NotesFabMenu(
             prepareStarts()
             main.text = "×"
             main.contentDescription = context.getString(R.string.notes_menu_collapse)
+            NeuFab.centerGlyph(main)
         }
 
         val from = progress
@@ -184,6 +186,7 @@ class NotesFabMenu(
                         search.visibility = View.GONE
                         main.text = "☰"
                         main.contentDescription = context.getString(R.string.notes_menu_expand)
+                        NeuFab.centerGlyph(main)
                     }
                 }
             })
@@ -204,6 +207,7 @@ class NotesFabMenu(
         main.contentDescription = context.getString(
             if (expanded) R.string.notes_menu_collapse else R.string.notes_menu_expand
         )
+        NeuFab.centerGlyph(main)
     }
 
     fun cancelAnimation() {

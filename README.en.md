@@ -57,7 +57,7 @@ Beyond that core, TermLou also grew a complete **notes & todo system** (usable i
 | Files | `androidx.documentfile` (SAF import), `commons-compress` (tar unpacking), `xz` (streaming tar.xz) |
 | Data | `SharedPreferences` + hand-written JSON (command library v2, notes index) |
 | Static analysis | detekt 1.23.1 |
-| Testing | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso (764 unit tests) |
+| Testing | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso (766 unit tests) |
 | CI | GitHub Actions (lint + test + assembleDebug) |
 
 ---

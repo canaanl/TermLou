@@ -57,7 +57,7 @@
 | 文件 | `androidx.documentfile`（SAF 导入）、`commons-compress`（tar 解包）、`xz`（tar.xz 流式解压） |
 | 数据 | `SharedPreferences` + 自写 JSON（命令库 v2、笔记索引） |
 | 静态分析 | detekt 1.23.1 |
-| 测试 | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso（764 个单元测试） |
+| 测试 | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso（766 个单元测试） |
 | CI | GitHub Actions（lint + test + assembleDebug） |
 
 ---
