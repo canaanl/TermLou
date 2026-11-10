@@ -35,6 +35,7 @@ class TermlouCommandRunner : Service() {
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, getString(R.string.tile_runner_channel), NotificationManager.IMPORTANCE_LOW)
         )
+        TermlouServiceBridge.acquire(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -133,6 +134,7 @@ class TermlouCommandRunner : Service() {
     override fun onDestroy() {
         scope.cancel()
         releaseOnce()
+        TermlouServiceBridge.release()
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }

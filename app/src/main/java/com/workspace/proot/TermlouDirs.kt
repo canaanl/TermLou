@@ -8,6 +8,7 @@ import java.io.File
  * 从 workspace 迁出到 app 私有 files 根，避免污染用户可见的工作区。
  * 物理路径: filesDir/.termlou（proot 内通过 -b filesDir/.termlou:/termlou 映射为 /termlou）
  */
+@Suppress("TooManyFunctions")
 object TermlouDirs {
 
     fun base(context: Context): File = File(context.filesDir, ".termlou")
@@ -19,6 +20,10 @@ object TermlouDirs {
     fun clipboardReq(context: Context): File = File(base(context), "clipboard/req")
 
     fun clipboardRes(context: Context): File = File(base(context), "clipboard/res")
+
+    fun serviceReq(context: Context): File = File(base(context), "service/req")
+
+    fun serviceRes(context: Context): File = File(base(context), "service/res")
 
     fun pending(context: Context): File =
         File(base(context), CommandTileService.PENDING_FILE_PREFIX + System.currentTimeMillis() + ".json")

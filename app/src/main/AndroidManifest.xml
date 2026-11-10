@@ -122,6 +122,15 @@
         </service>
 
         <service
+            android:name=".TermlouBackgroundService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_FOREGROUND_SERVICE_SPECIAL_USE"
+                android:value="Host long-running Linux services started by termlou-ui service" />
+        </service>
+
+        <service
             android:name=".TermKeepAliveService"
             android:foregroundServiceType="specialUse"
             android:exported="false">

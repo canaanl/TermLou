@@ -115,6 +115,7 @@ object LogBudget {
         addTree(linuxLogDir(filesDir))
         add(File(filesDir, "crash.log"))
         add(File(filesDir, "lan/error.log"))
+        addTree(File(filesDir, ".termlou/services"))
         add(File(filesDir, ".termlou/tile.log"))
         return files.distinct()
     }

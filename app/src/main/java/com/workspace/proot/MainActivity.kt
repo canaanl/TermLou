@@ -31,6 +31,9 @@ import kotlinx.coroutines.launch
  */
 class MainActivity : AppCompatActivity() {
 
+    /** TermlouServiceBridge 引用计数是否由本实例持有（ThemeSwap 时跨实例移交）。 */
+    private var serviceBridgeHeld = false
+
     internal lateinit var scope: AppScope
     private lateinit var statusController: StatusController
     internal lateinit var terminalController: TerminalController
@@ -147,6 +150,11 @@ class MainActivity : AppCompatActivity() {
         }
         OverlayBridge.acquire(this, TermlouDirs.base(this))
         ClipboardBridge.acquire(this, TermlouDirs.base(this))
+        // ThemeSwap 重建时旧实例不释放、新实例不重复 acquire，保证换色期间
+        // 正在等待响应的 service 命令不会因 IPC 引用计数归零被中断。
+        if (swapRestore == null) TermlouServiceBridge.acquire(this)
+        serviceBridgeHeld = true
+        TermlouServiceManager.attach(applicationContext)
         TermlouDirs.migrateFromWorkspace(this, scope.wsFiles)
 
         val content = LinearLayout(this).apply {
@@ -361,6 +369,11 @@ class MainActivity : AppCompatActivity() {
         if (::tabIntroController.isInitialized) tabIntroController.onDestroy()
         OverlayBridge.release()
         ClipboardBridge.release()
+        // 换色重建：引用移交给新实例；其它销毁路径（含重建途中被 finish）才真正释放。
+        if ((!ThemeSwap.hasRestore() || isFinishing) && serviceBridgeHeld) {
+            TermlouServiceBridge.release()
+            serviceBridgeHeld = false
+        }
     }
 
     /**

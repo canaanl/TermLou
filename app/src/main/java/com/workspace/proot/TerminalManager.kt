@@ -193,13 +193,34 @@ class TerminalManager(
         drain.join(DRAIN_JOIN_MS)
     }
 
+    /**
+     * 启动一个**长期后台进程**（服务托管模式），与 [runInProot] 的一次性执行完全分开。
+     *
+     * - 不设超时，不加同步等待；
+     * - 使用调用方给的独立 [wsTmp]，不碰主终端的 /tmp；
+     * - 仍保留 proot 的 `--kill-on-exit`；
+     * - argv 通过 `bash -lc 'exec "$@"'` 传递，避免 shell 引号/空格二次解析。
+     */
+    fun startBackground(argv: List<String>): java.lang.Process {
+        require(argv.isNotEmpty()) { "empty service command" }
+        wsTmp.mkdirs()
+        val shell = findShellInRootfs() ?: throw Exception(context.getString(R.string.shell_not_found))
+        val args = buildProotArgs(shell) +
+            listOf("-lc", "exec \"$@\"", "termlou-service") +
+            argv
+        return startProotProcessArgs(args)
+    }
+
     private fun startProotProcess(command: String): java.lang.Process {
+        val shell = findShellInRootfs() ?: throw Exception(context.getString(R.string.shell_not_found))
+        val args = buildProotArgs(shell) + listOf("-c", command)
+        return startProotProcessArgs(args)
+    }
+
+    private fun startProotProcessArgs(args: List<String>): java.lang.Process {
         TermlouDirs.base(context).mkdirs()
         val prootBin = File(context.applicationInfo.nativeLibraryDir, "libproot_exec.so")
         val loader = File(context.applicationInfo.nativeLibraryDir, "libproot_loader.so")
-        val shell = findShellInRootfs() ?: throw Exception(context.getString(R.string.shell_not_found))
-
-        val args = (buildProotArgs(shell) + listOf("-c", command)).toMutableList()
 
         val pb = ProcessBuilder(listOf(prootBin.absolutePath) + args)
         pb.directory(wsFiles)

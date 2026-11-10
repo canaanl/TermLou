@@ -47,6 +47,7 @@ class LanShareService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        TermlouServiceBridge.acquire(this)
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL_ID, getString(R.string.lan_channel), NotificationManager.IMPORTANCE_LOW)
         )
@@ -74,6 +75,7 @@ class LanShareService : Service() {
 
     override fun onDestroy() {
         teardown()
+        TermlouServiceBridge.release()
         synchronized(lock) { if (instance === this) instance = null }
         super.onDestroy()
     }

@@ -156,6 +156,10 @@
 
     <!-- LAN service -->
     <string name="lan_channel">LAN SHARE</string>
+    <!-- Long-running Linux services -->
+    <string name="service_channel">Linux background services</string>
+    <string name="service_notif_title">TermLou background services</string>
+    <string name="service_notif_fmt">%1$d Linux service(s) managed</string>
     <string name="lan_starting_short">Starting…</string>
     <string name="lan_failed">Start failed</string>
     <string name="lan_failed_fmt">Start failed: %1$s</string>

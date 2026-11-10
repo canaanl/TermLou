@@ -2,7 +2,7 @@
 
 > 一个为**不写代码的人**打造的 Android 终端 —— 把 Debian GNU/Linux、文件管理、笔记待办和脚本浮窗，全部塞进一个"点一下就能用"的 App。
 
-![Version](https://img.shields.io/badge/version-5.11.1-blue)
+![Version](https://img.shields.io/badge/version-5.12.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -35,6 +35,7 @@
 | 📝 **笔记与待办** | 主界面笔记 Tab 与独立笔记页双入口；列表/编辑、标签胶囊、待办看板、退出自动保存；纯文件存储，不依赖 Linux |
 | 📌 **笔记磁贴** | 通知栏一键直达独立笔记页，绕开主界面、不唤醒 Linux 会话，用完即走、后台无残留 |
 | 💬 **脚本驱动浮窗** | Shell 一句 `termlou-ui --title "确认" --button "OK"` 即弹出原生浮窗，支持输入/单选/多选/开关/ANSI 彩色输出 |
+| 🚀 **后台服务托管** | `termlou-ui service start --name NAME -- CMD` 让长任务在独立 PRoot 会话中常驻，关浮窗/切后台不中断；主 PRoot 退出自动停止，未启动时先进入 WAITING 等待绑定 |
 | 🌐 **给 AI agent 的内置浏览器** | 系统 WebView + 回环 HTTP 指令接口；通用移动 Chrome UA、Cookie 持久，悬浮小窗可见 |
 | 🎨 **启动像素工坊** | 手绘 96×80 点阵 + 照片转像素（灰阶分位量化，自动判向＋常驻反选）+ 粒子飞入动画，自定义启动画面 |
 | 🧱 **零 XML 布局** | 全部 UI 由 Kotlin 程序化构建，四 Tab 架构 |
@@ -57,7 +58,7 @@
 | 文件 | `androidx.documentfile`（SAF 导入）、`commons-compress`（tar 解包）、`xz`（tar.xz 流式解压） |
 | 数据 | `SharedPreferences` + 自写 JSON（命令库 v2、笔记索引） |
 | 静态分析 | detekt 1.23.1 |
-| 测试 | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso（766 个单元测试） |
+| 测试 | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso（785 个单元测试） |
 | CI | GitHub Actions（lint + test + assembleDebug） |
 
 ---
@@ -88,6 +89,9 @@ TermLou
 │   ├── CanvasDesignerActivity            Canvas 图形化设计器（图层/时间线/路径/导出）
 │   ├── DialogMakerActivity   弹窗工坊（图形化设计 termlou-ui 对话框）
 │   ├── OverlayBridge / ClipboardBridge  文件 IPC 桥（req/res + FileObserver + 轮询兜底）
+│   ├── TermlouServiceManager    后台服务状态机（主 PRoot token 绑定 / 60s 兜底 / 进程树清理）
+│   ├── TermlouBackgroundService 长期服务前台宿主（START_NOT_STICKY）
+│   ├── TermlouServiceBridge / TermlouServiceProtocol  服务命令独立 IPC + JSON 协议
 │   ├── SplashView/Letters/Tokens/Maker  启动画面渲染 + 像素工坊（手绘 + 灰阶量化）
 │   ├── WebAutomationService / WebProtocol  给 AI agent 的内置浏览器（回环 HTTP + 可见悬浮窗）
 │   ├── CommandTileService / LauncherTileService / NotesTileService  快捷设置磁贴
@@ -130,7 +134,7 @@ MainActivity.onCreate
 
 ### 日志与体积 Logs & footprint
 
-Linux 的 `/var/log` 不写进 rootfs：通过 proot bind 到 `filesDir/logs/linux`，apt/dpkg 的已知无界日志指向 `/dev/null`。Linux 日志与应用日志（`crash.log`、`lan/error.log` 等）合计预算 **1MB**，只在进程启动时裁剪一次，不做定时轮询。Bash 历史写 `/dev/null`，只在当前会话内存里保留；release 包通过 R8 移除 TermLou 的 Android Logcat 调用。终端 transcript 只在内存，不落盘。
+Linux 的 `/var/log` 不写进 rootfs：通过 proot bind 到 `filesDir/logs/linux`，apt/dpkg 的已知无界日志指向 `/dev/null`。Linux 日志、应用日志（`crash.log`、`lan/error.log` 等）与后台服务日志（`.termlou/services/<name>.log`）合计预算 **1MB**，只在进程启动时裁剪一次，不做定时轮询。Bash 历史写 `/dev/null`，只在当前会话内存里保留；release 包通过 R8 移除 TermLou 的 Android Logcat 调用。终端 transcript 只在内存，不落盘。
 
 ### 笔记与 Linux 解耦 Notes are Linux-independent
 
@@ -202,6 +206,7 @@ Linux 的 `/var/log` 不写进 rootfs：通过 proot bind 到 `filesDir/logs/lin
 - **Canvas 点击提交**：节点动作 `submit:ID` 点按后写回 `{"id":"ID","values":{...}}` 并关窗；`submit:ID:keep` 写同样结果但保持浮窗，等待下一次请求。App 只写结果、不执行命令，由调用方 shell 读取 JSON 后自行执行
 - **弹窗工坊**（`DialogMakerActivity`）：只保留外壳（标题、主题、主色、圆角、位置、动画、预览、运行、导出）；线性控件列表和独立「画布」控件已移除。内容统一在 CanvasDesigner 的弹窗内容画布中编辑，图层/属性/时间轴就是工坊的层级结构。工坊只生成一个 `--canvas` 内容场景；实时预览原位更新，不再 `removeAllViews`；「运行」复用同一个浮窗，真机运行结果 JSON 和导出命令保持不变
 - **剪贴板桥**：`termlou-clipboard "文本"` 或 `echo "文本" | termlou-clipboard` 直写系统剪贴板
+- **后台服务托管**：`termlou-ui service start --name NAME -- CMD [ARGS...]` 在独立 PRoot 会话中启动长任务，命令结束、浮窗关闭、Activity 切后台都不会退出；`service status NAME` / `service list` / `service stop NAME` 返回稳定 JSON。主 PRoot 未启动时进入 `WAITING`，主 PRoot 出现后绑定为 `RUNNING`；主 PRoot 退出（包括按返回键 finish Activity）时停止已绑定服务，`WAITING` 服务保留等待下一次。最多同时托管 4 个，同名活动服务拒绝重复启动；参数按 argv 数组传递，不丢空格/引号。服务日志写入 `/termlou/services/<name>.log`，纳入 1MB 日志预算。普通磁贴命令仍保持一次性执行
 
 ### 6. 启动工坊 Splash Workshop
 
@@ -327,6 +332,7 @@ App 不执行命令：`termlou-ui` 只输出结果 JSON，`case` 里的命令由
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.12.0** | 6200 | **Linux 后台服务托管（方案 A）**：`termlou-ui service start/status/list/stop` 让长任务在独立 PRoot 会话中常驻；主 PRoot 未启动时 WAITING，出现后绑定 RUNNING；主 PRoot 退出时停止已绑定服务，WAITING 保留；最多 4 个、同名拒绝、参数数组无损、进程树清理、`--kill-on-exit` 保留、服务日志纳入 1MB 预算；普通磁贴命令行为不变；中英文 help 同步 |
 | **5.4.0** | 5400 | 五个 Tab 说明页改版为说明书体：用途/操作/规则/注意四段式，一行一动作（手势→效果）、清单一行一项；笔记页新增「搜索」说明；条目悬挂缩进；手势对照代码核实，中英同步 |
 | **5.3.0** | 5300 | 笔记搜索架构收口：写入即建索引、查询零文件读取；召回交集库内算完只回传结果；万条笔记典型查询锁定 50ms 内（实测 1~33ms）；排序语义与结果不变（新旧对拍测试锁定）；入库 O(N²) 修复（万条 187s→2.7s）；删库从 txt 恢复照旧 |
 | **5.2.1** | 5201 | 笔记列表搜索升级全字段：标题＋标签＋正文＋所属待办一起搜，多词跨字段互补命中 |

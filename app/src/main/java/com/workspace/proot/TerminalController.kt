@@ -580,6 +580,7 @@ class TerminalController(
     fun restoreSession(session: TerminalSession) {
         setSetupVisible(false)
         scope.terminalManager.setSession(session)
+        TermlouServiceManager.onMainSessionStarted(activity.applicationContext, session)
         session.updateTerminalSessionClient(this)
         terminalView.attachSession(session)
         ensureThemeScheme(session)
@@ -901,6 +902,7 @@ class TerminalController(
                         this@TerminalController
                     )
                     tm.setSession(newSession)
+                    TermlouServiceManager.onMainSessionStarted(activity.applicationContext, newSession)
                     // 调色盘档无论明暗都要刷三槽（昼档/浅底由 !night 分支同一函数覆盖）。
                     if (!scope.theme.night || scope.theme.palette) ensureDayScheme(newSession)
                     terminalView.attachSession(newSession)
@@ -994,6 +996,9 @@ class TerminalController(
         // 换色重建（ThemeSwap 已暂存活会话，见 MainActivity.recreate）只换视图不杀 shell；
         // 其余销毁路径维持原行为：先 destroy（此时 session 还在，杀树 + finishIfRunning 才有效），再摘引用。
         if (!ThemeSwap.hasRestore()) {
+            scope.terminalManager.session?.let {
+                TermlouServiceManager.onMainSessionFinished(activity.applicationContext, it)
+            }
             scope.terminalManager.destroy()
             scope.terminalManager.setSession(null)
         }
@@ -1015,7 +1020,11 @@ class TerminalController(
 
     override fun onTitleChanged(changedSession: TerminalSession?) = Unit
 
-    override fun onSessionFinished(finishedSession: TerminalSession?) = Unit
+    override fun onSessionFinished(finishedSession: TerminalSession?) {
+        if (finishedSession != null) {
+            TermlouServiceManager.onMainSessionFinished(activity.applicationContext, finishedSession)
+        }
+    }
 
     override fun onCopyTextToClipboard(session: TerminalSession?, text: String?) {
         val clip = android.content.ClipData.newPlainText("terminal", text)

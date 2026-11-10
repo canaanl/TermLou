@@ -110,6 +110,107 @@ _t() {
   if [ "$TL_LANG" = "en" ]; then printf '%s' "$2"; else printf '%s' "$1"; fi
 }
 
+# 服务命令分支在 UI 参数解析之前，避免 service 被当成未知 UI 选项。
+# 只做 JSON 字符串转义；参数保持数组，不经过 shell 二次拼接。
+svc_json_str() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\t'/\\t}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/\\r}"
+  s="${s//$'\b'/\\b}"
+  s="${s//$'\f'/\\f}"
+  printf '%s' "$s"
+}
+
+if [ "${1:-}" = "service" ]; then
+  shift
+  action="${1:-}"
+  [ $# -gt 0 ] && shift
+  name=""
+  argv=()
+  case "$action" in
+    start)
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --name)
+            shift
+            [ $# -gt 0 ] || die "$(_t "service start 缺少 --name 的值" "service start needs a value for --name")"
+            name="$1"
+            shift
+            ;;
+          --)
+            shift
+            argv=("$@")
+            break
+            ;;
+          *)
+            die "$(_t "未知的 service start 参数: $1" "unknown service start option: $1")"
+            ;;
+        esac
+      done
+      [ -n "$name" ] || die "$(_t "service start 需要 --name 名称" "service start needs --name NAME")"
+      [ ${#argv[@]} -gt 0 ] || die "$(_t "service start 需要 -- 命令参数" "service start needs -- COMMAND [ARGS...]")"
+      [ -n "${argv[0]}" ] || die "$(_t "service start 的命令不能为空" "service start command must not be empty")"
+      ;;
+    status|stop)
+      name="${1:-}"
+      [ -n "$name" ] || die "$(_t "service $action 需要服务名" "service $action needs a service name")"
+      ;;
+    list)
+      ;;
+    *)
+      die "$(_t "用法: termlou-ui service start --name NAME -- CMD [ARGS...] | status NAME | list | stop NAME" \
+             "usage: termlou-ui service start --name NAME -- CMD [ARGS...] | status NAME | list | stop NAME")"
+      ;;
+  esac
+
+  if [ "$action" != "list" ]; then
+    if [ "$name" = "." ] || [ "$name" = ".." ] || ! [[ "$name" =~ ^[A-Za-z0-9._-]{1,64}$ ]]; then
+      die "$(_t "服务名只能包含字母、数字、点、下划线、连字符，长度 1..64" \
+             "service name must be 1..64 chars of A-Z a-z 0-9 . _ -")"
+    fi
+  fi
+
+  argv_json=""
+  if [ ${#argv[@]} -gt 0 ]; then
+    for a in "${argv[@]}"; do
+      argv_json="${argv_json}${argv_json:+,}\"$(svc_json_str "$a")\""
+    done
+  fi
+
+  svc_id="svc_$$_$(date +%s%N 2>/dev/null || date +%s)_$RANDOM"
+  svc_req_dir="$DIR/service/req"
+  svc_res_dir="$DIR/service/res"
+  mkdir -p "$svc_req_dir" "$svc_res_dir" 2>/dev/null
+  svc_req="$svc_req_dir/$svc_id.json"
+  svc_res="$svc_res_dir/$svc_id.json"
+  svc_json="{\"op\":\"service\",\"id\":\"$svc_id\",\"action\":\"$action\""
+  if [ -n "$name" ]; then svc_json="$svc_json,\"name\":\"$(svc_json_str "$name")\""; fi
+  if [ "$action" = "start" ]; then svc_json="$svc_json,\"argv\":[$argv_json]"; fi
+  svc_json="$svc_json}"
+  printf '%s\n' "$svc_json" > "$svc_req.tmp" && mv "$svc_req.tmp" "$svc_req"
+
+  svc_deadline=$(( $(date +%s) + 15 ))
+  while [ ! -f "$svc_res" ] && [ "$(date +%s)" -lt "$svc_deadline" ]; do
+    sleep 0.05
+  done
+  if [ -f "$svc_res" ]; then
+    cat "$svc_res"
+    echo
+    if grep -q '^{"ok":true' "$svc_res"; then
+      rm -f "$svc_req" "$svc_res"
+      exit 0
+    fi
+    rm -f "$svc_req" "$svc_res"
+    exit 1
+  fi
+  echo '{"ok":false,"error":"timeout"}'
+  rm -f "$svc_req"
+  exit 1
+fi
+
 # ---------- 参数解析 ----------
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -246,6 +347,26 @@ Examples:
   termlou-ui --title "Menu" --button "Back=back=normal=0" --button "Exit=quit"  # back keeps it open; send the parent menu next
   termlou-ui --close
   The filter toggle limits the list to #up options; tags never appear in labels or results.
+
+Long-running Linux services:
+  termlou-ui service start --name NAME -- CMD [ARGS...]
+      Start a managed background service. It runs in its own PRoot session,
+      survives this command / the overlay / Activity backgrounding, and waits
+      for the main PRoot if it is not running yet. Duplicate active names are
+      rejected (max 4 active). Arguments are passed as an array (no quote loss).
+  termlou-ui service status NAME
+      Print {ok, service:{name,command,state,started_at,bound_session,alive,
+      exit_code,error,log}} as JSON.
+  termlou-ui service list
+      Print {ok, services:[...]} as JSON.
+  termlou-ui service stop NAME
+      Stop the service and kill its PRoot process tree.
+
+States: STARTING | WAITING (no main PRoot yet) | RUNNING (bound to main) |
+        STOPPING | STOPPED | FAILED.
+A service starts before TermLou is opened and binds when the main PRoot appears.
+When the main PRoot exits (including finishing the Activity), bound services stop.
+Normal tile commands keep their old one-shot behavior; service is opt-in.
 EOF
       else
         cat <<'EOF'
@@ -379,6 +500,26 @@ Canvas 点击 → 执行命令:
   termlou-ui --title "菜单" --button "返回=back=normal=0" --button "退出=quit"  # 返回不关窗，接着发上层菜单即回退
   termlou-ui --close
   开启过滤开关后列表只显示带 #标签 的选项；标签不出现在显示与结果里。
+
+Linux 后台服务:
+  termlou-ui service start --name 名称 -- 命令 [参数...]
+      启动一个托管的后台服务。它使用独立 PRoot 会话，命令结束、浮窗关闭、
+      Activity 切后台都不会退出；主 PRoot 不存在时进入 WAITING 等待。
+      同名服务正在运行时拒绝重复启动，最多同时托管 4 个。
+      参数按数组传递，不丢空格、引号或特殊字符。
+  termlou-ui service status 名称
+      输出 JSON：{ok, service:{name,command,state,started_at,bound_session,
+      alive,exit_code,error,log}}。
+  termlou-ui service list
+      输出 JSON：{ok, services:[...]}。
+  termlou-ui service stop 名称
+      停止服务并清理它的 PRoot 进程树。
+
+状态: STARTING | WAITING（等待主 PRoot）| RUNNING（已绑定主 PRoot）|
+      STOPPING | STOPPED | FAILED。
+可以先启动服务，再打开 TermLou；主 PRoot 出现后自动绑定。
+主 PRoot 退出（包括按返回键关闭 Activity）时，已绑定的服务会停止。
+普通磁贴命令仍保持一次性执行；只有 service 子命令进入托管模式。
 EOF
       fi
       exit 0

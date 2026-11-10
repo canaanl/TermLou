@@ -2,7 +2,7 @@
 
 > An Android terminal built for **people who don't code** — Debian GNU/Linux, file management, notes & todos and script-driven floating UI, all inside one tap-and-go App.
 
-![Version](https://img.shields.io/badge/version-5.11.1-blue)
+![Version](https://img.shields.io/badge/version-5.12.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -35,6 +35,7 @@ Beyond that core, TermLou also grew a complete **notes & todo system** (usable i
 | 📝 **Notes & Todos** | Notes tab and standalone notes page; list/editor, tag capsules, todo kanban, save-on-exit; plain-file storage, Linux-independent |
 | 📌 **Notes Tile** | One tap from Quick Settings to the standalone notes page; bypasses the main UI, does not boot Linux, leaves nothing in the background |
 | 💬 **Script-driven Dialogs** | One line of shell (`termlou-ui --title "Confirm" --button "OK"`) pops a native overlay: input/single-choice/multi-choice/toggle/ANSI-colored output |
+| 🚀 **Managed Background Services** | `termlou-ui service start --name NAME -- CMD` keeps long tasks alive in their own PRoot session across overlay close / Activity backgrounding; stops when the main PRoot exits, waits in WAITING when it is not up yet |
 | 🌐 **Browser for AI agents** | System WebView + loopback HTTP command API; generic mobile Chrome UA, persistent cookies, visible floating window |
 | 🎨 **Splash Pixel Workshop** | Hand-drawn 96×80 dot matrix + photo-to-pixels (grayscale quantization, auto orientation + resident invert) + particle fly-in animation |
 | 🧱 **Zero-XML Layout** | Entire UI constructed programmatically in Kotlin, four-tab architecture |
@@ -57,7 +58,7 @@ Beyond that core, TermLou also grew a complete **notes & todo system** (usable i
 | Files | `androidx.documentfile` (SAF import), `commons-compress` (tar unpacking), `xz` (streaming tar.xz) |
 | Data | `SharedPreferences` + hand-written JSON (command library v2, notes index) |
 | Static analysis | detekt 1.23.1 |
-| Testing | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso (766 unit tests) |
+| Testing | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso (785 unit tests) |
 | CI | GitHub Actions (lint + test + assembleDebug) |
 
 ---
@@ -88,6 +89,9 @@ TermLou
 │   ├── CanvasDesignerActivity            Canvas graphical designer (layers/timeline/paths/export)
 │   ├── DialogMakerActivity   Dialog workshop (design termlou-ui dialogs graphically)
 │   ├── OverlayBridge / ClipboardBridge  File IPC bridge (req/res + FileObserver + polling fallback)
+│   ├── TermlouServiceManager    Background-service state machine (main PRoot token / 60s fallback / process-tree kill)
+│   ├── TermlouBackgroundService Foreground host for long-running services (START_NOT_STICKY)
+│   ├── TermlouServiceBridge / TermlouServiceProtocol  Dedicated service IPC + JSON protocol
 │   ├── SplashView/Letters/Tokens/Maker  Splash rendering + pixel workshop (drawing + grayscale quantization)
 │   ├── WebAutomationService / WebProtocol  Built-in browser for AI agents (loopback HTTP + visible floating window)
 │   ├── CommandTileService / LauncherTileService / NotesTileService  Quick Settings tiles
@@ -130,7 +134,7 @@ The file manager goes **around proot**, browsing `filesDir/workspace` directly �
 
 ### Logs & footprint
 
-Linux `/var/log` is not written into the rootfs: it is bind-mounted to `filesDir/logs/linux`, and known unbounded apt/dpkg logs point to `/dev/null`. Linux logs plus app logs (`crash.log`, `net/*.log`, `lan/error.log`, etc.) share a **1MB** budget, trimmed once at process start with no periodic polling. Bash history goes to `/dev/null` and only lives in session memory; the release build strips TermLou's Android Logcat calls via R8. The terminal transcript is memory-only.
+Linux `/var/log` is not written into the rootfs: it is bind-mounted to `filesDir/logs/linux`, and known unbounded apt/dpkg logs point to `/dev/null`. Linux logs, app logs (`crash.log`, `lan/error.log`, etc.) and background-service logs (`.termlou/services/<name>.log`) share a **1MB** budget, trimmed once at process start with no periodic polling. Bash history goes to `/dev/null` and only lives in session memory; the release build strips TermLou's Android Logcat calls via R8. The terminal transcript is memory-only.
 
 ### Notes are Linux-independent
 
@@ -202,6 +206,7 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 - **Canvas tap submit**: a node action `submit:ID` writes `{"id":"ID","values":{...}}` and closes the window; `submit:ID:keep` writes the same result but keeps the window for the next request. The app only writes the result and never runs commands — the calling shell reads the JSON and executes
 - **Dialog workshop** (`DialogMakerActivity`): now only the shell (title, theme, accent, radius, position, animation, live preview, run, export). The linear control list and standalone Canvas control are gone; content is edited entirely in the CanvasDesigner dialog canvas, whose layers/properties/timeline are the workshop hierarchy. The workshop exports one `--canvas` scene; live preview updates in place without `removeAllViews`, Run reuses the same overlay, and the real-overlay result JSON and clipboard export stay the same
 - **Clipboard bridge**: `termlou-clipboard "text"` or `echo "text" | termlou-clipboard`
+- **Managed background services**: `termlou-ui service start --name NAME -- CMD [ARGS...]` launches a long-running task in its own PRoot session; it survives command exit, overlay close and Activity backgrounding. `service status NAME` / `service list` / `service stop NAME` return stable JSON. With no main PRoot it enters `WAITING` and binds to `RUNNING` when the main PRoot appears; when the main PRoot exits (including finishing the Activity with Back) bound services stop, while `WAITING` services stay for the next main PRoot. At most 4 active services, duplicate names are rejected, and argv is passed as an array without losing spaces or quotes. Logs go to `/termlou/services/<name>.log` inside the 1MB budget. Normal tile commands keep their one-shot behavior
 
 ### 6. Splash Workshop
 
@@ -327,6 +332,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history. Recent versions:
 
 | Version | versionCode | Summary |
 |---------|-------------|---------|
+| **5.12.0** | 6200 | **Managed Linux background services (Plan A)**: `termlou-ui service start/status/list/stop` keeps long tasks in a dedicated PRoot session. `WAITING` until the main PRoot appears, then `RUNNING`; bound services stop when the main PRoot exits (including finishing the Activity), while `WAITING` services stay for the next session and old services never rebind. At most 4 active services, duplicate names rejected, argv passed losslessly as an array, process-tree kill, `--kill-on-exit` retained, service logs inside the 1MB budget; existing one-shot tile commands unchanged; help updated in both languages |
 | **5.4.0** | 5400 | All five tab intro pages rewritten as a user manual: purpose / action (gesture → result) / rules / cautions, one action per line, one list item per line; new Notes search section; hanging indent for list items; gestures verified against code; zh/en kept in sync |
 | **5.3.0** | 5300 | Notes search rebuilt: index written on save, zero file reads at query time; recall intersections computed in-database; typical search on 10,000 notes locked under 50ms (1–33ms measured); identical results & ranking (guarded by old-vs-new parity tests); O(N²) ingest fixed (10k: 187s→2.7s); db-rebuild from txt intact |
 | **5.2.1** | 5201 | Notes list search now spans all fields: title + tags (title tier) + body + its todos (body tier); multi-term matches can span fields |
