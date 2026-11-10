@@ -154,24 +154,25 @@ if [ "${1:-}" = "service" ]; then
       [ ${#argv[@]} -gt 0 ] || die "$(_t "service start 需要 -- 命令参数" "service start needs -- COMMAND [ARGS...]")"
       [ -n "${argv[0]}" ] || die "$(_t "service start 的命令不能为空" "service start command must not be empty")"
       ;;
-    status|stop)
+    status|stop|rm|remove)
       name="${1:-}"
       [ -n "$name" ] || die "$(_t "service $action 需要服务名" "service $action needs a service name")"
       ;;
-    list)
+    list|clean)
       ;;
     *)
-      die "$(_t "用法: termlou-ui service start --name NAME -- CMD [ARGS...] | status NAME | list | stop NAME" \
-             "usage: termlou-ui service start --name NAME -- CMD [ARGS...] | status NAME | list | stop NAME")"
+      die "$(_t "用法: termlou-ui service start --name NAME -- CMD [ARGS...] | status NAME | list | stop NAME | rm NAME | clean" \
+             "usage: termlou-ui service start --name NAME -- CMD [ARGS...] | status NAME | list | stop NAME | rm NAME | clean")"
       ;;
   esac
 
-  if [ "$action" != "list" ]; then
+  if [ "$action" != "list" ] && [ "$action" != "clean" ]; then
     if [ "$name" = "." ] || [ "$name" = ".." ] || ! [[ "$name" =~ ^[A-Za-z0-9._-]{1,64}$ ]]; then
       die "$(_t "服务名只能包含字母、数字、点、下划线、连字符，长度 1..64" \
              "service name must be 1..64 chars of A-Z a-z 0-9 . _ -")"
     fi
   fi
+  [ "$action" = "remove" ] && action="rm"
 
   argv_json=""
   if [ ${#argv[@]} -gt 0 ]; then
@@ -350,22 +351,40 @@ Examples:
 
 Long-running Linux services:
   termlou-ui service start --name NAME -- CMD [ARGS...]
-      Start a managed background service. It runs in its own PRoot session,
-      survives this command / the overlay / Activity backgrounding, and waits
-      for the main PRoot if it is not running yet. Duplicate active names are
-      rejected (max 4 active). Arguments are passed as an array (no quote loss).
+      Start a managed service in its own PRoot session. The start command
+      returns after launch; closing the overlay or pressing Home/background
+      does not stop it. It stops when the main PRoot exits (including Back/
+      finish Activity), when the app process is killed, or on service stop.
+      It does NOT survive app process death. Run the command in the foreground
+      (no `&`, no daemonize). Duplicate active names are rejected (max 4 active).
+      Arguments are passed as an array; spaces/quotes are preserved.
+      RUNNING means the PRoot wrapper is alive, not that a port is ready.
   termlou-ui service status NAME
-      Print {ok, service:{name,command,state,started_at,bound_session,alive,
-      exit_code,error,log}} as JSON.
+      Print JSON {ok, service:{name,command,state,started_at,bound_session,
+      pid,alive,exit_code,error,log}}.
   termlou-ui service list
-      Print {ok, services:[...]} as JSON.
+      Print JSON {ok, services:[...]}.
   termlou-ui service stop NAME
-      Stop the service and kill its PRoot process tree.
+      Stop the service, verify its PRoot process tree is gone, and return
+      ok:false + stop_incomplete if anything survives.
+  termlou-ui service rm NAME
+      Remove a STOPPED/FAILED record and its log. Active/stopping services
+      must be stopped first. Print JSON {ok,removed:NAME}.
+  termlou-ui service clean
+      Remove all STOPPED/FAILED records and their logs.
+      Print JSON {ok,removed_count:N}.
+      Active services are never removed by clean.
 
-States: STARTING | WAITING (no main PRoot yet) | RUNNING (bound to main) |
+States: STARTING | WAITING (no main PRoot yet) | RUNNING (wrapper alive) |
         STOPPING | STOPPED | FAILED.
-A service starts before TermLou is opened and binds when the main PRoot appears.
-When the main PRoot exits (including finishing the Activity), bound services stop.
+Exit codes: 0 ok:true; 1 service error (ok:false); 2 usage/invalid input.
+Errors: not_found | exists | too_many_services | start_failed:... |
+        stop_incomplete | active | bad_request | timeout.
+Fields: pid = host PRoot wrapper PID (-1 if none); alive = wrapper alive;
+        exit_code = -1 if not exited; bound_session = token or empty;
+        log = container path, created at service start.
+A service can start before TermLou is opened and binds when the main PRoot appears.
+service list includes active and inactive records; use rm/clean to prune inactive ones.
 Normal tile commands keep their old one-shot behavior; service is opt-in.
 EOF
       else
@@ -503,22 +522,40 @@ Canvas 点击 → 执行命令:
 
 Linux 后台服务:
   termlou-ui service start --name 名称 -- 命令 [参数...]
-      启动一个托管的后台服务。它使用独立 PRoot 会话，命令结束、浮窗关闭、
-      Activity 切后台都不会退出；主 PRoot 不存在时进入 WAITING 等待。
-      同名服务正在运行时拒绝重复启动，最多同时托管 4 个。
+      在独立 PRoot 会话中启动托管服务。start 命令返回后服务继续运行；
+      关闭浮窗、按 Home/切后台不影响。按返回键 finish Activity、主 PRoot
+      退出、用户 stop 或 App 进程被杀时停止；进程被杀后无法恢复。
+      App 进程死亡后旧记录标记 FAILED，不能自动恢复。
+      服务命令必须前台运行，不要用 & 或 daemonize。
+      同名活动服务拒绝重复启动，最多 4 个。
       参数按数组传递，不丢空格、引号或特殊字符。
+      RUNNING 只表示 PRoot 包装进程活着，不表示端口/业务已就绪。
   termlou-ui service status 名称
       输出 JSON：{ok, service:{name,command,state,started_at,bound_session,
-      alive,exit_code,error,log}}。
+      pid,alive,exit_code,error,log}}。
   termlou-ui service list
       输出 JSON：{ok, services:[...]}。
   termlou-ui service stop 名称
-      停止服务并清理它的 PRoot 进程树。
+      停止服务并验证 PRoot 进程树已清理干净；仍有存活进程时返回
+      ok:false + stop_incomplete。
+  termlou-ui service rm 名称
+      删除 STOPPED/FAILED 记录及其日志；活动/停止中的服务需先 stop。
+      输出 JSON：{ok,removed:名称}。
+  termlou-ui service clean
+      删除所有 STOPPED/FAILED 记录及其日志。
+      输出 JSON：{ok,removed_count:N}。
 
-状态: STARTING | WAITING（等待主 PRoot）| RUNNING（已绑定主 PRoot）|
+状态: STARTING | WAITING（等待主 PRoot）| RUNNING（包装进程存活）|
       STOPPING | STOPPED | FAILED。
+退出码: 0 ok:true；1 服务错误（ok:false）；2 用法/参数错误。
+错误: not_found | exists | too_many_services | start_failed:... |
+      stop_incomplete | active | bad_request | timeout。
+字段: pid = 宿主 PRoot 包装进程 PID（无则 -1）；alive = 包装进程存活；
+      exit_code = -1 表示未退出；bound_session = token 或空；
+      log = 容器内路径，服务启动时创建。
 可以先启动服务，再打开 TermLou；主 PRoot 出现后自动绑定。
-主 PRoot 退出（包括按返回键关闭 Activity）时，已绑定的服务会停止。
+服务先启动时保持 WAITING；主 PRoot 出现后绑定为 RUNNING。
+service list 包含活动与非活动记录；非活动记录可用 rm/clean 清理。
 普通磁贴命令仍保持一次性执行；只有 service 子命令进入托管模式。
 EOF
       fi

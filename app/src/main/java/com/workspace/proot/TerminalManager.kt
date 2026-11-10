@@ -199,14 +199,16 @@ class TerminalManager(
      * - 不设超时，不加同步等待；
      * - 使用调用方给的独立 [wsTmp]，不碰主终端的 /tmp；
      * - 仍保留 proot 的 `--kill-on-exit`；
-     * - argv 通过 `bash -lc 'exec "$@"'` 传递，避免 shell 引号/空格二次解析。
+     * - `--noprofile --norc`：服务不是交互终端，绝不能执行用户的 .profile/.bashrc
+     *   （否则裸 `pi` 之类的启动命令会抢占并阻塞，`exec "$@"` 永远轮不到）；
+     * - argv 通过 `bash -c 'exec "$@"'` 传递，避免 shell 引号/空格二次解析。
      */
     fun startBackground(argv: List<String>): java.lang.Process {
         require(argv.isNotEmpty()) { "empty service command" }
         wsTmp.mkdirs()
         val shell = findShellInRootfs() ?: throw Exception(context.getString(R.string.shell_not_found))
         val args = buildProotArgs(shell) +
-            listOf("-lc", "exec \"$@\"", "termlou-service") +
+            listOf("--noprofile", "--norc", "-c", "exec \"$@\"", "termlou-service") +
             argv
         return startProotProcessArgs(args)
     }

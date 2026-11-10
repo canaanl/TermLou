@@ -27,13 +27,17 @@ import java.util.concurrent.TimeUnit
  * WeakHashMap 保证 ThemeSwap/Activity 重建后同一个 TerminalSession 仍拿到原 token，
  * 新会话则拿到新 token，旧服务不会误绑新会话。
  */
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LargeClass")
 object TermlouServiceManager {
 
     private const val TAG = "TermlouService"
     private const val MAX_ACTIVE_SERVICES = 4
     private const val MONITOR_MS = 60_000L
     private const val LOG_CAP_BYTES = 256 * 1024
+    private const val STARTUP_GRACE_MS = 500L
+    private const val LOG_READ_CHARS = 4096
+    private const val EXIT_REAP_TIMEOUT_MS = 1_000L
+    private const val SIGTERM_WAIT_MS = 750L
 
     private val lock = Any()
     private var appContext: Context? = null
@@ -65,6 +69,7 @@ object TermlouServiceManager {
         var error: String?,
         val logFile: File,
         val tempDir: File,
+        var knownTargets: List<TermlouServiceReaper.Target> = emptyList(),
     )
 
     private val ACTIVE = setOf(
@@ -130,10 +135,15 @@ object TermlouServiceManager {
         }
         for (s in targets) {
             s.state = TermlouServiceProtocol.State.STOPPING
-            stopProcessLocked(s, "main session changed")
-            s.state = TermlouServiceProtocol.State.STOPPED
+            val clean = stopProcessLocked(s, "main session changed")
             s.boundToken = null
-            s.error = "main session changed"
+            if (clean) {
+                s.state = TermlouServiceProtocol.State.STOPPED
+                s.error = "main session changed"
+            } else {
+                s.state = TermlouServiceProtocol.State.STOPPING
+                s.error = "stop_incomplete"
+            }
         }
         writeStateLocked()
         refreshHostNotificationLocked(appContext)
@@ -169,6 +179,8 @@ object TermlouServiceManager {
             TermlouServiceProtocol.ACTION_STOP -> stopServiceLocked(request.name)
             TermlouServiceProtocol.ACTION_STATUS -> statusLocked(request.name)
             TermlouServiceProtocol.ACTION_LIST -> listLocked()
+            TermlouServiceProtocol.ACTION_RM -> removeServiceLocked(request.name)
+            TermlouServiceProtocol.ACTION_CLEAN -> cleanServicesLocked()
             else -> TermlouServiceProtocol.error("unknown action")
         }
     }
@@ -178,6 +190,9 @@ object TermlouServiceManager {
             val existing = services[request.name]
             if (existing != null && existing.state in ACTIVE) {
                 return@synchronized TermlouServiceProtocol.error("exists", snapshot(existing))
+            }
+            if (existing != null && (existing.process != null || existing.knownTargets.isNotEmpty())) {
+                return@synchronized TermlouServiceProtocol.error("stop_incomplete", snapshot(existing))
             }
             if (activeCountLocked() >= MAX_ACTIVE_SERVICES) {
                 return@synchronized TermlouServiceProtocol.error("too_many_services")
@@ -222,8 +237,10 @@ object TermlouServiceManager {
         }
 
     @Suppress("TooGenericExceptionCaught")
-    private fun launchServiceLocked(context: Context, s: Managed): MiniJson.Obj =
-        try {
+    private fun launchServiceLocked(context: Context, s: Managed): MiniJson.Obj {
+        return try {
+            appendLog(s, "--- service ${s.name} start at ${System.currentTimeMillis()} ---\n")
+            appendLog(s, "command: ${s.command}\n")
             val tm = TerminalManager(
                 context,
                 File(context.filesDir, "workspace/linux"),
@@ -234,13 +251,20 @@ object TermlouServiceManager {
             val process = tm.startBackground(s.argv)
             s.process = process
             s.pid = processPid(process)
+            appendLog(s, "pid: ${s.pid ?: -1}\n")
+            drainOutput(s, process)
+
+            // 启动宽限：catch command-not-found / .profile 阻塞解除后立刻退出等情况。
+            val early = awaitStartupLocked(context, s, process)
+            if (early != null) return early
+
+            s.knownTargets = TermlouServiceReaper.snapshot(s.pid ?: 0)
             s.boundToken = mainToken
             s.state = if (mainToken != null) {
                 TermlouServiceProtocol.State.RUNNING
             } else {
                 TermlouServiceProtocol.State.WAITING
             }
-            drainOutput(s, process)
             ensureMonitorLocked()
             writeStateLocked()
             refreshHostNotificationLocked(context)
@@ -251,27 +275,98 @@ object TermlouServiceManager {
             s.error = e.message ?: e.javaClass.simpleName
             s.process = null
             s.pid = null
+            appendLog(s, "--- service ${s.name} start failed: ${s.error} ---\n")
             s.tempDir.deleteRecursively()
             writeStateLocked()
             refreshHostNotificationLocked(context)
             stopHostIfIdleLocked()
             TermlouServiceProtocol.error("start_failed: ${s.error}", snapshot(s))
         }
+    }
+
+    /** 启动宽限期检查；提前退出返回错误 JSON，存活返回 null。 */
+    private fun awaitStartupLocked(
+        context: Context,
+        s: Managed,
+        process: Process,
+    ): MiniJson.Obj? {
+        try {
+            Thread.sleep(STARTUP_GRACE_MS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+        if (process.isAlive) return null
+        val code = runCatching { process.exitValue() }.getOrDefault(-1)
+        s.process = null
+        s.pid = null
+        s.exitCode = code
+        s.state = TermlouServiceProtocol.State.FAILED
+        s.error = "exited during startup (code $code)"
+        appendLog(s, "--- service ${s.name} exited during startup code=$code ---\n")
+        s.tempDir.deleteRecursively()
+        writeStateLocked()
+        refreshHostNotificationLocked(context)
+        stopHostIfIdleLocked()
+        return TermlouServiceProtocol.error(
+            "start_failed: exited during startup (code $code)",
+            snapshot(s),
+        )
+    }
 
     private fun stopServiceLocked(name: String): MiniJson.Obj = synchronized(lock) {
         val s = services[name] ?: return@synchronized TermlouServiceProtocol.error("not_found")
-        if (s.state !in ACTIVE) {
+        if (s.state !in ACTIVE && s.knownTargets.isEmpty()) {
             return@synchronized TermlouServiceProtocol.ok(snapshot(s))
         }
         s.state = TermlouServiceProtocol.State.STOPPING
-        stopProcessLocked(s, "stopped")
-        s.state = TermlouServiceProtocol.State.STOPPED
-        s.boundToken = null
-        s.error = "stopped"
+        val clean = stopProcessLocked(s, "stopped")
+        if (clean) {
+            s.state = TermlouServiceProtocol.State.STOPPED
+            s.boundToken = null
+            s.error = "stopped"
+            writeStateLocked()
+            refreshHostNotificationLocked(context = appContext)
+            stopHostIfIdleLocked()
+            TermlouServiceProtocol.ok(snapshot(s))
+        } else {
+            s.state = TermlouServiceProtocol.State.STOPPING
+            s.boundToken = null
+            s.error = "stop_incomplete"
+            writeStateLocked()
+            refreshHostNotificationLocked(context = appContext)
+            TermlouServiceProtocol.error("stop_incomplete", snapshot(s))
+        }
+    }
+
+    private fun removeServiceLocked(name: String): MiniJson.Obj = synchronized(lock) {
+        val s = services[name] ?: return@synchronized TermlouServiceProtocol.error("not_found")
+        if (s.state in ACTIVE || s.process != null || s.knownTargets.isNotEmpty()) {
+            return@synchronized TermlouServiceProtocol.error("active", snapshot(s))
+        }
+        services.remove(name)
+        runCatching { s.logFile.delete() }
+        runCatching { s.tempDir.deleteRecursively() }
         writeStateLocked()
         refreshHostNotificationLocked(context = appContext)
         stopHostIfIdleLocked()
-        TermlouServiceProtocol.ok(snapshot(s))
+        TermlouServiceProtocol.okRemoved(name)
+    }
+
+    private fun cleanServicesLocked(): MiniJson.Obj = synchronized(lock) {
+        val targets = services.values.filter { s ->
+            s.state !in ACTIVE && s.process == null && s.knownTargets.isEmpty()
+        }
+        for (s in targets) {
+            services.remove(s.name)
+            runCatching { s.logFile.delete() }
+            runCatching { s.tempDir.deleteRecursively() }
+        }
+        if (targets.isNotEmpty()) {
+            writeStateLocked()
+            refreshHostNotificationLocked(context = appContext)
+            stopHostIfIdleLocked()
+        }
+        TermlouServiceProtocol.okRemovedCount(targets.size)
     }
 
     private fun statusLocked(name: String): MiniJson.Obj = synchronized(lock) {
@@ -344,18 +439,26 @@ object TermlouServiceManager {
 
     // ---------- 进程 ----------
 
+    private fun appendLog(s: Managed, text: String) {
+        LogBudget.appendCapped(s.logFile, text, LOG_CAP_BYTES)
+    }
+
     private fun drainOutput(s: Managed, process: Process) {
         Thread({
+            var code = -1
             try {
-                process.inputStream.bufferedReader().use { reader ->
+                process.inputStream.reader(Charsets.UTF_8).use { reader ->
+                    val buf = CharArray(LOG_READ_CHARS)
                     while (true) {
-                        val line = reader.readLine() ?: break
-                        LogBudget.appendCapped(s.logFile, line + "\n", LOG_CAP_BYTES)
+                        val n = reader.read(buf)
+                        if (n < 0) break
+                        if (n > 0) appendLog(s, String(buf, 0, n))
                     }
                 }
             } catch (_: Exception) {
             }
-            val code = runCatching { process.waitFor() }.getOrDefault(-1)
+            code = runCatching { process.waitFor() }.getOrDefault(-1)
+            appendLog(s, "\n--- service ${s.name} exited code=$code ---\n")
             onProcessExit(s, process, code)
         }, "term-lou-svc-${s.name}").apply { isDaemon = true }.start()
     }
@@ -363,11 +466,20 @@ object TermlouServiceManager {
     private fun onProcessExit(s: Managed, process: Process, code: Int) {
         synchronized(lock) {
             if (s.process !== process) return
+            val pid = s.pid
             s.process = null
             s.pid = null
             s.exitCode = code
             s.boundToken = null
-            if (s.state != TermlouServiceProtocol.State.STOPPING) {
+
+            // 包装进程退出不代表后代一定退出（daemon/exec/reparent）；再收一次。
+            val known = s.knownTargets + if (pid != null) TermlouServiceReaper.snapshot(pid) else emptyList()
+            val reaped = TermlouServiceReaper.kill(pid ?: 0, known, EXIT_REAP_TIMEOUT_MS)
+            s.knownTargets = reaped.survivors
+            if (!reaped.clean) {
+                s.state = TermlouServiceProtocol.State.STOPPING
+                s.error = "exit $code; stop_incomplete"
+            } else if (s.state != TermlouServiceProtocol.State.STOPPING) {
                 if (code == 0) {
                     s.state = TermlouServiceProtocol.State.STOPPED
                     s.error = "exited"
@@ -378,7 +490,7 @@ object TermlouServiceManager {
             } else {
                 s.state = TermlouServiceProtocol.State.STOPPED
             }
-            runCatching { s.tempDir.deleteRecursively() }
+            if (reaped.clean) runCatching { s.tempDir.deleteRecursively() }
             writeStateLocked()
             refreshHostNotificationLocked(appContext)
             stopMonitorIfIdleLocked()
@@ -399,35 +511,54 @@ object TermlouServiceManager {
         }
     }.getOrNull()
 
-    private fun stopProcessLocked(s: Managed, reason: String) {
+    private fun stopProcessLocked(s: Managed, reason: String): Boolean {
         val process = s.process
         val pid = s.pid
         s.process = null
         s.pid = null
-        if (pid != null && pid > 0 && process?.isAlive == true) {
-            runCatching { SessionTerminator.killTree(pid) }
-                .onFailure { Log.w(TAG, "kill service tree ${s.name} failed", it) }
-        }
+
+        // 先趁 root 还活着抓一次树，再优雅退出；否则停止过程中新 fork 的子进程会漏掉。
+        val known = s.knownTargets + if (pid != null) TermlouServiceReaper.snapshot(pid) else emptyList()
+
+        // 先给一次优雅退出的机会，再进入强制清理。
         if (process != null) {
             runCatching { process.destroy() }
-            runCatching {
-                if (!process.waitFor(1, TimeUnit.SECONDS)) process.destroyForcibly()
-            }
+            runCatching { process.waitFor(SIGTERM_WAIT_MS, TimeUnit.MILLISECONDS) }
+        }
+        val reaped = TermlouServiceReaper.kill(pid ?: 0, known)
+
+        if (process != null) {
+            runCatching { if (process.isAlive) process.destroyForcibly() }
+            runCatching { process.waitFor(1, TimeUnit.SECONDS) }
             runCatching { process.inputStream.close() }
         }
-        runCatching { s.tempDir.deleteRecursively() }
+        s.knownTargets = reaped.survivors
         s.exitCode = process?.let { runCatching { it.exitValue() }.getOrNull() }
-        Log.i(TAG, "service ${s.name} stopped: $reason")
+        appendLog(s, "\n--- service ${s.name} stop: $reason clean=${reaped.clean} ---\n")
+        if (reaped.clean) {
+            runCatching { s.tempDir.deleteRecursively() }
+            s.error = reason
+        } else {
+            appendLog(s, "survivors: ${reaped.survivors.joinToString(",") { it.pid.toString() }}\n")
+            s.error = "stop_incomplete"
+        }
+        Log.i(TAG, "service ${s.name} stop: $reason clean=${reaped.clean}")
+        return reaped.clean
     }
 
     private fun stopAllLocked(reason: String) {
         for (s in services.values) {
-            if (s.state in ACTIVE) {
+            if (s.state in ACTIVE || s.knownTargets.isNotEmpty()) {
                 s.state = TermlouServiceProtocol.State.STOPPING
-                stopProcessLocked(s, reason)
-                s.state = TermlouServiceProtocol.State.STOPPED
+                val clean = stopProcessLocked(s, reason)
                 s.boundToken = null
-                s.error = reason
+                if (clean) {
+                    s.state = TermlouServiceProtocol.State.STOPPED
+                    s.error = reason
+                } else {
+                    s.state = TermlouServiceProtocol.State.STOPPING
+                    s.error = "stop_incomplete"
+                }
             }
         }
         writeStateLocked()
@@ -439,14 +570,20 @@ object TermlouServiceManager {
     /** 只停止绑定在指定主会话 token 上的服务；WAITING 与其它会话的服务不动。 */
     private fun stopBoundToLocked(tokens: Set<String>, reason: String) {
         val targets = services.values.filter { s ->
-            s.state in ACTIVE && s.boundToken?.let { it in tokens } == true
+            (s.state in ACTIVE || s.knownTargets.isNotEmpty()) &&
+                s.boundToken?.let { it in tokens } == true
         }
         for (s in targets) {
             s.state = TermlouServiceProtocol.State.STOPPING
-            stopProcessLocked(s, reason)
-            s.state = TermlouServiceProtocol.State.STOPPED
+            val clean = stopProcessLocked(s, reason)
             s.boundToken = null
-            s.error = reason
+            if (clean) {
+                s.state = TermlouServiceProtocol.State.STOPPED
+                s.error = reason
+            } else {
+                s.state = TermlouServiceProtocol.State.STOPPING
+                s.error = "stop_incomplete"
+            }
         }
         if (targets.isNotEmpty()) {
             writeStateLocked()
@@ -475,6 +612,14 @@ object TermlouServiceManager {
 
     private fun monitorTick() {
         val lostToken = synchronized(lock) {
+            // 定期刷新后代快照，保证停止时能补杀中途 fork 的子进程。
+            for (s in services.values) {
+                val pid = s.pid
+                if (pid != null && s.process?.isAlive == true) {
+                    s.knownTargets = (s.knownTargets + TermlouServiceReaper.snapshot(pid))
+                        .distinctBy { it.pid to it.startTime }
+                }
+            }
             val token = mainToken ?: return@synchronized null
             val alive = mainRef?.get()?.isRunning == true
             if (!alive) {
@@ -507,6 +652,7 @@ object TermlouServiceManager {
             exitCode = s.exitCode,
             error = s.error,
             logPath = "/termlou/services/${s.name}.log",
+            pid = s.pid,
         )
 
     private fun stateFile(context: Context): File = File(TermlouDirs.base(context), "services.json")

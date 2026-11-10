@@ -2,7 +2,7 @@
 
 > 一个为**不写代码的人**打造的 Android 终端 —— 把 Debian GNU/Linux、文件管理、笔记待办和脚本浮窗，全部塞进一个"点一下就能用"的 App。
 
-![Version](https://img.shields.io/badge/version-5.12.0-blue)
+![Version](https://img.shields.io/badge/version-5.12.1-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -58,7 +58,7 @@
 | 文件 | `androidx.documentfile`（SAF 导入）、`commons-compress`（tar 解包）、`xz`（tar.xz 流式解压） |
 | 数据 | `SharedPreferences` + 自写 JSON（命令库 v2、笔记索引） |
 | 静态分析 | detekt 1.23.1 |
-| 测试 | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso（785 个单元测试） |
+| 测试 | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso（787 个单元测试） |
 | CI | GitHub Actions（lint + test + assembleDebug） |
 
 ---
@@ -206,7 +206,7 @@ Linux 的 `/var/log` 不写进 rootfs：通过 proot bind 到 `filesDir/logs/lin
 - **Canvas 点击提交**：节点动作 `submit:ID` 点按后写回 `{"id":"ID","values":{...}}` 并关窗；`submit:ID:keep` 写同样结果但保持浮窗，等待下一次请求。App 只写结果、不执行命令，由调用方 shell 读取 JSON 后自行执行
 - **弹窗工坊**（`DialogMakerActivity`）：只保留外壳（标题、主题、主色、圆角、位置、动画、预览、运行、导出）；线性控件列表和独立「画布」控件已移除。内容统一在 CanvasDesigner 的弹窗内容画布中编辑，图层/属性/时间轴就是工坊的层级结构。工坊只生成一个 `--canvas` 内容场景；实时预览原位更新，不再 `removeAllViews`；「运行」复用同一个浮窗，真机运行结果 JSON 和导出命令保持不变
 - **剪贴板桥**：`termlou-clipboard "文本"` 或 `echo "文本" | termlou-clipboard` 直写系统剪贴板
-- **后台服务托管**：`termlou-ui service start --name NAME -- CMD [ARGS...]` 在独立 PRoot 会话中启动长任务，命令结束、浮窗关闭、Activity 切后台都不会退出；`service status NAME` / `service list` / `service stop NAME` 返回稳定 JSON。主 PRoot 未启动时进入 `WAITING`，主 PRoot 出现后绑定为 `RUNNING`；主 PRoot 退出（包括按返回键 finish Activity）时停止已绑定服务，`WAITING` 服务保留等待下一次。最多同时托管 4 个，同名活动服务拒绝重复启动；参数按 argv 数组传递，不丢空格/引号。服务日志写入 `/termlou/services/<name>.log`，纳入 1MB 日志预算。普通磁贴命令仍保持一次性执行
+- **后台服务托管**：`termlou-ui service start --name NAME -- CMD [ARGS...]` 在独立 PRoot 会话中启动长任务，start 命令返回后继续运行；关闭浮窗、按 Home/切后台不影响。按返回键 finish Activity、主 PRoot 退出、用户 stop 或 App 进程被杀时停止（进程被杀后无法恢复）。`--noprofile --norc` 保证不会执行用户的 `.bashrc`/启动命令；服务命令必须前台运行，不要 daemonize。`service status NAME` / `service list` / `service stop NAME` / `service rm NAME` / `service clean` 返回稳定 JSON。主 PRoot 未启动时进入 `WAITING`，出现后绑定为 `RUNNING`；`RUNNING` 只表示包装进程活着，不是端口/业务就绪。stop 会多轮扫描并验证 PRoot 进程树，未收干净返回 `stop_incomplete`，不再谎报 `STOPPED`。状态包含 `pid/alive/exit_code/bound_session/log`；启动有 500ms 宽限，命令不存在或立刻退出直接返回 `start_failed`。服务日志 `/termlou/services/<name>.log` 在启动时即创建 header，纳入 1MB 日志预算。普通磁贴命令仍保持一次性执行
 
 ### 6. 启动工坊 Splash Workshop
 
@@ -332,6 +332,7 @@ App 不执行命令：`termlou-ui` 只输出结果 JSON，`case` 里的命令由
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.12.1** | 6201 | **后台服务托管修复**：`bash -lc` → `bash --noprofile --norc -c`，不再执行 `.bashrc` 启动命令；stop 多轮扫描/补杀/PID 校验，失败返回 `stop_incomplete`；新增 `pid`、500ms 启动宽限、日志 header + 块采集、`service rm/clean`；help 补错误码与字段语义 |
 | **5.12.0** | 6200 | **Linux 后台服务托管（方案 A）**：`termlou-ui service start/status/list/stop` 让长任务在独立 PRoot 会话中常驻；主 PRoot 未启动时 WAITING，出现后绑定 RUNNING；主 PRoot 退出时停止已绑定服务，WAITING 保留；最多 4 个、同名拒绝、参数数组无损、进程树清理、`--kill-on-exit` 保留、服务日志纳入 1MB 预算；普通磁贴命令行为不变；中英文 help 同步 |
 | **5.4.0** | 5400 | 五个 Tab 说明页改版为说明书体：用途/操作/规则/注意四段式，一行一动作（手势→效果）、清单一行一项；笔记页新增「搜索」说明；条目悬挂缩进；手势对照代码核实，中英同步 |
 | **5.3.0** | 5300 | 笔记搜索架构收口：写入即建索引、查询零文件读取；召回交集库内算完只回传结果；万条笔记典型查询锁定 50ms 内（实测 1~33ms）；排序语义与结果不变（新旧对拍测试锁定）；入库 O(N²) 修复（万条 187s→2.7s）；删库从 txt 恢复照旧 |

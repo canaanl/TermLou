@@ -36,7 +36,8 @@ object SessionTerminator {
     }
 
     /** 从 /proc 按 ppid 关系收集 root 的全部后代（BFS，深度封顶）。 */
-    private fun collectDescendants(root: Int): List<Int> {
+    @Suppress("CyclomaticComplexMethod", "NestedBlockDepth")
+    internal fun collectDescendants(root: Int): List<Int> {
         val result = ArrayList<Int>()
         try {
             val children = HashMap<Int, MutableList<Int>>()

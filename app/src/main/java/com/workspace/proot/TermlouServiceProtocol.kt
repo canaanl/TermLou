@@ -15,6 +15,8 @@ object TermlouServiceProtocol {
     const val ACTION_STATUS = "status"
     const val ACTION_LIST = "list"
     const val ACTION_STOP = "stop"
+    const val ACTION_RM = "rm"
+    const val ACTION_CLEAN = "clean"
 
     private val NAME_RE = Regex("^[A-Za-z0-9._-]{1,64}$")
 
@@ -44,6 +46,7 @@ object TermlouServiceProtocol {
         val exitCode: Int?,
         val error: String?,
         val logPath: String,
+        val pid: Int? = null,
     )
 
     fun validName(name: String): Boolean =
@@ -53,9 +56,11 @@ object TermlouServiceProtocol {
     fun parse(obj: MiniJson.Obj): Request? {
         if (obj.optString("op", "") != OP) return null
         val action = obj.optString("action", "").lowercase()
-        if (action !in setOf(ACTION_START, ACTION_STATUS, ACTION_LIST, ACTION_STOP)) return null
+        if (action !in setOf(ACTION_START, ACTION_STATUS, ACTION_LIST, ACTION_STOP, ACTION_RM, ACTION_CLEAN)) {
+            return null
+        }
         val name = obj.optString("name", "")
-        if (action != ACTION_LIST && !validName(name)) return null
+        if (action !in setOf(ACTION_LIST, ACTION_CLEAN) && !validName(name)) return null
         val argv = mutableListOf<String>()
         val arr = obj.optArr("argv")
         if (arr != null) {
@@ -80,6 +85,7 @@ object TermlouServiceProtocol {
         .put("state", s.state.name)
         .put("started_at", s.startedAt)
         .put("bound_session", s.boundToken ?: "")
+        .put("pid", s.pid ?: -1)
         .put("alive", s.alive)
         .put("exit_code", s.exitCode ?: -1)
         .put("error", s.error ?: "")
@@ -93,6 +99,12 @@ object TermlouServiceProtocol {
         for (s in list) arr.put(serviceJson(s))
         return MiniJson.Obj().put("ok", true).put("services", arr)
     }
+
+    fun okRemoved(name: String): MiniJson.Obj =
+        MiniJson.Obj().put("ok", true).put("removed", name)
+
+    fun okRemovedCount(count: Int): MiniJson.Obj =
+        MiniJson.Obj().put("ok", true).put("removed_count", count)
 
     fun error(message: String, snapshot: ServiceSnapshot? = null): MiniJson.Obj {
         val obj = MiniJson.Obj().put("ok", false).put("error", message)

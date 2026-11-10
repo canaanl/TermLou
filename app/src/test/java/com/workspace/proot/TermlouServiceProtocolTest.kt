@@ -36,6 +36,8 @@ class TermlouServiceProtocolTest {
         assertEquals("status", req("""{"op":"service","action":"status","name":"magpie"}""")!!.action)
         assertEquals("list", req("""{"op":"service","action":"list"}""")!!.action)
         assertEquals("stop", req("""{"op":"service","action":"stop","name":"magpie"}""")!!.action)
+        assertEquals("rm", req("""{"op":"service","action":"rm","name":"magpie"}""")!!.action)
+        assertEquals("clean", req("""{"op":"service","action":"clean"}""")!!.action)
     }
 
     @Test
@@ -46,6 +48,7 @@ class TermlouServiceProtocolTest {
         assertNull(req("""{"op":"service","action":"start","name":"bad name","argv":["x"]}"""))
         assertNull(req("""{"op":"service","action":"start","name":"x"}"""))
         assertNull(req("""{"op":"service","action":"status"}"""))
+        assertNull(req("""{"op":"service","action":"rm"}"""))
         assertNull(req("""{"op":"service","action":"bogus","name":"x"}"""))
         assertNull(req("""{"op":"service","action":"start","name":"x","argv":["x",1]}"""))
     }
@@ -74,12 +77,14 @@ class TermlouServiceProtocolTest {
             exitCode = null,
             error = null,
             logPath = "/termlou/services/magpie.log",
+            pid = 4321,
         )
         val json = TermlouServiceProtocol.ok(snapshot).toString()
         assertTrue(json.contains("\"ok\":true"))
         assertTrue(json.contains("\"name\":\"magpie\""))
         assertTrue(json.contains("\"state\":\"RUNNING\""))
         assertTrue(json.contains("\"bound_session\":\"session-1\""))
+        assertTrue(json.contains("\"pid\":4321"))
         assertTrue(json.contains("\"alive\":true"))
         assertTrue(json.contains("\"exit_code\":-1"))
         assertTrue(json.contains("/termlou/services/magpie.log"))
@@ -87,6 +92,9 @@ class TermlouServiceProtocolTest {
         val list = TermlouServiceProtocol.okServices(listOf(snapshot)).toString()
         assertTrue(list.contains("\"services\":["))
         assertTrue(list.contains("\"name\":\"magpie\""))
+
+        assertTrue(TermlouServiceProtocol.okRemoved("magpie").toString().contains("\"removed\":\"magpie\""))
+        assertTrue(TermlouServiceProtocol.okRemovedCount(3).toString().contains("\"removed_count\":3"))
     }
 
     @Test

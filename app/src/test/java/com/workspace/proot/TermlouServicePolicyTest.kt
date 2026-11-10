@@ -59,12 +59,22 @@ class TermlouServicePolicyTest {
         assertTrue("必须有主会话开始回调：\n$mgr", mgr.contains("onMainSessionStarted"))
         assertTrue("必须有主会话结束回调：\n$mgr", mgr.contains("onMainSessionFinished"))
         assertTrue("服务必须独立启动 PRoot：\n$mgr", mgr.contains("startBackground"))
-        assertTrue("停止必须杀进程树：\n$mgr", mgr.contains("SessionTerminator.killTree"))
+        assertTrue("停止必须走可验证的进程树清理器：\n$mgr", mgr.contains("TermlouServiceReaper.kill"))
         assertFalse("服务管理器不能复用一次性 runInProot：\n$mgr", mgr.contains("runInProot("))
         assertTrue("必须有 60 秒兜底监控：\n$mgr", mgr.contains("MONITOR_MS"))
         assertTrue("必须限制同时托管数量：\n$mgr", mgr.contains("MAX_ACTIVE_SERVICES"))
         assertTrue("主会话结束时只能停止绑定服务：\n$mgr", mgr.contains("stopBoundToLocked"))
-        assertTrue("服务进程启动必须保留 --kill-on-exit", code("TerminalManager.kt").contains("--kill-on-exit"))
+        assertTrue("停止未收干净必须报 stop_incomplete：\n$mgr", mgr.contains("stop_incomplete"))
+        assertTrue("状态必须包含 pid：\n$mgr", mgr.contains("pid = s.pid"))
+        assertTrue("启动必须有宽限期：\n$mgr", mgr.contains("STARTUP_GRACE_MS"))
+        assertTrue("日志必须启动即创建：\n$mgr", mgr.contains("appendLog(s, \"--- service"))
+        assertTrue("必须支持 rm/clean：\n$mgr", mgr.contains("removeServiceLocked") && mgr.contains("cleanServicesLocked"))
+        assertTrue("rm 必须拒绝活动/有残留记录：\n$mgr", mgr.contains("s.state in ACTIVE || s.process != null || s.knownTargets.isNotEmpty()"))
+
+        val tm = code("TerminalManager.kt")
+        assertTrue("服务进程启动必须保留 --kill-on-exit", tm.contains("--kill-on-exit"))
+        assertTrue("服务包装不能是 login shell：\n$tm", !tm.contains("\"-lc\""))
+        assertTrue("服务包装必须禁用 profile/rc：\n$tm", tm.contains("--noprofile") && tm.contains("--norc"))
     }
 
     @Test
@@ -124,15 +134,22 @@ class TermlouServicePolicyTest {
             "service status",
             "service list",
             "service stop",
+            "service rm",
+            "service clean",
             "STARTING | WAITING",
             "Long-running Linux services",
             "Linux 后台服务",
             "max 4 active",
+            "stop_incomplete",
+            "does NOT survive app process death",
+            "pid = host PRoot wrapper PID",
         )) {
             assertTrue("termlou-ui help 缺少 $needle", sh.contains(needle))
         }
         assertTrue("service 分支必须写独立 req 目录", sh.contains("\$DIR/service/req"))
         assertTrue("service start 必须传递 argv 数组", sh.contains("\\\"argv\\\":[\$argv_json]"))
+        assertTrue("service 必须有 rm 分支", sh.contains("status|stop|rm|remove"))
+        assertTrue("service 必须有 clean 分支", sh.contains("list|clean"))
     }
 
     @Test

@@ -79,6 +79,7 @@ class TermlouServiceStateTest {
         assertEquals("magpie serve --port 39080", magpie.optString("command", ""))
         assertEquals("FAILED", magpie.optString("state", ""))
         assertEquals("app process restarted", magpie.optString("error", ""))
+        assertEquals(-1, magpie.optInt("pid", 0))
         assertFalse(magpie.optBoolean("alive", true))
     }
 
@@ -112,5 +113,50 @@ class TermlouServiceStateTest {
             ?: throw AssertionError("missing services")
         assertEquals("earlier", arr.getObj(0)?.optString("name", ""))
         assertEquals("later", arr.getObj(1)?.optString("name", ""))
+    }
+
+    @Test
+    fun `rm removes inactive record and its log`() {
+        writeState(
+            """{"services":[
+              {"name":"old","command":"old","state":"STOPPED","started_at":100,"exit_code":0,"error":"exited"}
+            ]}"""
+        )
+        val log = File(File(TermlouDirs.base(ctx), "services"), "old.log").apply {
+            parentFile?.mkdirs()
+            writeText("old log")
+        }
+        TermlouServiceManager.attach(ctx)
+
+        val rm = TermlouServiceManager.handle(ctx, request("rm", "old"))
+        assertEquals(true, rm.optBoolean("ok", false))
+        assertEquals("old", rm.optString("removed", ""))
+        assertFalse(log.exists())
+        assertEquals(0, TermlouServiceManager.handle(ctx, request("list")).optArr("services")?.length() ?: -1)
+
+        val missing = TermlouServiceManager.handle(ctx, request("rm", "old"))
+        assertFalse(missing.optBoolean("ok", true))
+        assertEquals("not_found", missing.optString("error", ""))
+    }
+
+    @Test
+    fun `clean removes only inactive records`() {
+        writeState(
+            """{"services":[
+              {"name":"a","command":"a","state":"STOPPED","started_at":100,"exit_code":0,"error":"exited"},
+              {"name":"b","command":"b","state":"FAILED","started_at":200,"exit_code":1,"error":"exit 1"}
+            ]}"""
+        )
+        val serviceDir = File(TermlouDirs.base(ctx), "services").apply { mkdirs() }
+        val logA = File(serviceDir, "a.log").apply { writeText("a") }
+        val logB = File(serviceDir, "b.log").apply { writeText("b") }
+        TermlouServiceManager.attach(ctx)
+
+        val clean = TermlouServiceManager.handle(ctx, request("clean"))
+        assertEquals(true, clean.optBoolean("ok", false))
+        assertEquals(2, clean.optInt("removed_count", -1))
+        assertFalse(logA.exists())
+        assertFalse(logB.exists())
+        assertEquals(0, TermlouServiceManager.handle(ctx, request("list")).optArr("services")?.length() ?: -1)
     }
 }
