@@ -466,15 +466,13 @@ object TermlouServiceManager {
     private fun onProcessExit(s: Managed, process: Process, code: Int) {
         synchronized(lock) {
             if (s.process !== process) return
-            val pid = s.pid
             s.process = null
             s.pid = null
             s.exitCode = code
             s.boundToken = null
 
-            // 包装进程退出不代表后代一定退出（daemon/exec/reparent）；再收一次。
-            val known = s.knownTargets + if (pid != null) TermlouServiceReaper.snapshot(pid) else emptyList()
-            val reaped = TermlouServiceReaper.kill(pid ?: 0, known, EXIT_REAP_TIMEOUT_MS)
+            // 包装进程退出后 PID 可能立即被复用；只能用退出前记录的 knownTargets，且不传 root PID。
+            val reaped = TermlouServiceReaper.kill(0, s.knownTargets, EXIT_REAP_TIMEOUT_MS)
             s.knownTargets = reaped.survivors
             if (!reaped.clean) {
                 s.state = TermlouServiceProtocol.State.STOPPING
@@ -518,14 +516,18 @@ object TermlouServiceManager {
         s.pid = null
 
         // 先趁 root 还活着抓一次树，再优雅退出；否则停止过程中新 fork 的子进程会漏掉。
-        val known = s.knownTargets + if (pid != null) TermlouServiceReaper.snapshot(pid) else emptyList()
+        // 注意：包装进程已经退出时绝不能再 snapshot(pid)，PID 可能已被复用。
+        val known = s.knownTargets +
+            if (pid != null && process?.isAlive == true) TermlouServiceReaper.snapshot(pid) else emptyList()
 
         // 先给一次优雅退出的机会，再进入强制清理。
         if (process != null) {
             runCatching { process.destroy() }
             runCatching { process.waitFor(SIGTERM_WAIT_MS, TimeUnit.MILLISECONDS) }
         }
-        val reaped = TermlouServiceReaper.kill(pid ?: 0, known)
+        // 包装进程已经退出时传 0，禁止 reaper 再用旧 PID 查 /proc（PID 可能已复用）。
+        val rootPid = if (process?.isAlive == true) pid ?: 0 else 0
+        val reaped = TermlouServiceReaper.kill(rootPid, known)
 
         if (process != null) {
             runCatching { if (process.isAlive) process.destroyForcibly() }

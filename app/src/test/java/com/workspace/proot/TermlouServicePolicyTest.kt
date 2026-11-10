@@ -157,4 +157,29 @@ class TermlouServicePolicyTest {
         val budget = code("LogBudget.kt")
         assertTrue("服务日志必须纳入 1MB 预算：$budget", budget.contains(".termlou/services"))
     }
+
+    @Test
+    fun `service stop is PID reuse safe`() {
+        val mgr = code("TermlouServiceManager.kt")
+        val stop = mgr.substringAfter("private fun stopProcessLocked").substringBefore("private fun stopAllLocked")
+        assertTrue("stop 只能在包装进程存活时 snapshot：\n$stop", stop.contains("process?.isAlive == true"))
+        assertTrue("stop 只能在包装进程存活时传 root PID：\n$stop", stop.contains("if (process?.isAlive == true) pid ?: 0 else 0"))
+        assertFalse(
+            "stop 不能对已退出的 pid 做 snapshot（PID 可能复用）：\n$stop",
+            stop.contains("if (pid != null) TermlouServiceReaper.snapshot"),
+        )
+
+        val exit = mgr.substringAfter("private fun onProcessExit").substringBefore("private fun processPid")
+        assertFalse(
+            "onProcessExit 不能 snapshot 已退出/可能复用的 PID：\n$exit",
+            exit.contains("TermlouServiceReaper.snapshot"),
+        )
+        assertTrue("onProcessExit 必须传 rootPid=0：\n$exit", exit.contains("TermlouServiceReaper.kill(0,"))
+
+        val reaper = code("TermlouServiceReaper.kt")
+        assertTrue(
+            "root starttime 只能用 containsKey 保护后写入：\n$reaper",
+            reaper.contains("if (!tracked.containsKey(rootPid)) tracked[rootPid] = rootStart"),
+        )
+    }
 }

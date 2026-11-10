@@ -49,9 +49,9 @@ object TermlouServiceReaper {
     ): Result {
         val tracked = LinkedHashMap<Int, Long?>()
         for (t in known) tracked[t.pid] = t.startTime
-        if (rootPid > 0) {
+        if (rootPid > 0 && !tracked.containsKey(rootPid)) {
             val root = info(rootPid)
-            if (root != null) tracked[rootPid] = root.startTime
+            if (root != null) trackRoot(tracked, rootPid, root.startTime)
         }
         val deadline = System.currentTimeMillis() + timeoutMs
         while (true) {
@@ -84,6 +84,19 @@ object TermlouServiceReaper {
     }
 
     private data class ProcInfo(val state: String, val startTime: Long)
+
+    /**
+     * 只补充尚未记录的 root starttime；已有记录绝不覆盖。
+     * 这是 PID 复用安全的核心：root 先退出、PID 被新进程复用时，
+     * 新查到的 starttime 不能替换旧记录，否则会误杀新进程。
+     */
+    internal fun trackRoot(
+        tracked: MutableMap<Int, Long?>,
+        rootPid: Int,
+        rootStart: Long,
+    ) {
+        if (!tracked.containsKey(rootPid)) tracked[rootPid] = rootStart
+    }
 
     private fun alive(pid: Int, expectedStart: Long?): Boolean {
         val i = info(pid) ?: return false
