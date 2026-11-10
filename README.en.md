@@ -2,7 +2,7 @@
 
 > An Android terminal built for **people who don't code** — Debian GNU/Linux, file management, notes & todos and script-driven floating UI, all inside one tap-and-go App.
 
-![Version](https://img.shields.io/badge/version-5.12.1-blue)
+![Version](https://img.shields.io/badge/version-5.12.2-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -58,7 +58,7 @@ Beyond that core, TermLou also grew a complete **notes & todo system** (usable i
 | Files | `androidx.documentfile` (SAF import), `commons-compress` (tar unpacking), `xz` (streaming tar.xz) |
 | Data | `SharedPreferences` + hand-written JSON (command library v2, notes index) |
 | Static analysis | detekt 1.23.1 |
-| Testing | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso (790 unit tests) |
+| Testing | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso (796 unit tests) |
 | CI | GitHub Actions (lint + test + assembleDebug) |
 
 ---
@@ -206,7 +206,7 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 - **Canvas tap submit**: a node action `submit:ID` writes `{"id":"ID","values":{...}}` and closes the window; `submit:ID:keep` writes the same result but keeps the window for the next request. The app only writes the result and never runs commands — the calling shell reads the JSON and executes
 - **Dialog workshop** (`DialogMakerActivity`): now only the shell (title, theme, accent, radius, position, animation, live preview, run, export). The linear control list and standalone Canvas control are gone; content is edited entirely in the CanvasDesigner dialog canvas, whose layers/properties/timeline are the workshop hierarchy. The workshop exports one `--canvas` scene; live preview updates in place without `removeAllViews`, Run reuses the same overlay, and the real-overlay result JSON and clipboard export stay the same
 - **Clipboard bridge**: `termlou-clipboard "text"` or `echo "text" | termlou-clipboard`
-- **Managed background services**: `termlou-ui service start --name NAME -- CMD [ARGS...]` launches a long-running task in its own PRoot session; it keeps running after the start command returns, and survives overlay close / Home / backgrounding. It stops when the main PRoot exits (including Back/finish Activity), on `service stop`, or when the app process is killed (no recovery after process death). `--noprofile --norc` prevents user `.bashrc`/startup commands from hijacking the service wrapper; run the service command in the foreground (no daemonize). `service status NAME` / `service list` / `service stop NAME` / `service rm NAME` / `service clean` return stable JSON. With no main PRoot it enters `WAITING` and binds to `RUNNING` when the main PRoot appears; `RUNNING` only means the wrapper process is alive, not that the port/business is ready. Stop re-scans and verifies the PRoot tree, returning `stop_incomplete` instead of lying `STOPPED`. `pid/alive/exit_code/bound_session/log` are exposed; a 500ms startup grace returns `start_failed` for command-not-found/immediate exit. Logs go to `/termlou/services/<name>.log`, created with a header at startup and inside the 1MB budget. Normal tile commands keep their one-shot behavior
+- **Managed background services**: `termlou-ui service start --name NAME -- CMD [ARGS...]` launches a long-running task in its own PRoot session; it keeps running after the start command returns, and survives overlay close / Home / backgrounding. It stops when the main PRoot exits (including Back/finish Activity), on `service stop`, or when the app process is killed (no recovery after process death). `--noprofile --norc` prevents user `.bashrc`/startup commands from hijacking the service wrapper; run the service command in the foreground (no daemonize). `service status NAME` / `service list` / `service stop NAME` / `service rm NAME` / `service clean` return stable JSON. With no main PRoot it enters `WAITING` and binds to `RUNNING` when the main PRoot appears; `RUNNING` only means the wrapper process is alive, not that the port/business is ready. Stop re-scans and verifies the PRoot tree, returning `stop_incomplete` instead of lying `STOPPED`. `pid/alive/exit_code/bound_session/log` are exposed; the real host PID is resolved from a host pidfile plus `/proc` and `-1` is rejected. If no PID can be resolved, start fails and stop returns `pid_unavailable`, so no un-cleanable service is left behind; a 500ms startup grace returns `start_failed` for command-not-found/immediate exit. Logs go to `/termlou/services/<name>.log`, created with a header at startup and inside the 1MB budget. Normal tile commands keep their one-shot behavior
 
 ### 6. Splash Workshop
 
@@ -332,6 +332,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history. Recent versions:
 
 | Version | versionCode | Summary |
 |---------|-------------|---------|
+| **5.12.2** | 6202 | **Service PID resolution fix**: when `Process.pid()` is unavailable, resolve the real wrapper PID from a host pidfile plus `/proc`; reflection values must be `> 0` so `-1` is rejected. If no PID can be resolved, start fails and stop returns `pid_unavailable` instead of a false `STOPPED`. Added pidfile, fake `/proc` and `-1`-rejection regressions |
 | **5.12.1** | 6201 | **Background-service fixes**: wrapper changed from `bash -lc` to `bash --noprofile --norc -c` so user `.bashrc` startup commands cannot block `exec "$@"`; stop now re-scans, re-kills and verifies the PRoot tree, returning `stop_incomplete` instead of a false `STOPPED`; added `pid`, 500ms startup grace, log header + chunk collection, and `service rm/clean`; help now documents exit codes and field semantics |
 | **5.12.0** | 6200 | **Managed Linux background services (Plan A)**: `termlou-ui service start/status/list/stop` keeps long tasks in a dedicated PRoot session. `WAITING` until the main PRoot appears, then `RUNNING`; bound services stop when the main PRoot exits (including finishing the Activity), while `WAITING` services stay for the next session and old services never rebind. At most 4 active services, duplicate names rejected, argv passed losslessly as an array, process-tree kill, `--kill-on-exit` retained, service logs inside the 1MB budget; existing one-shot tile commands unchanged; help updated in both languages |
 | **5.4.0** | 5400 | All five tab intro pages rewritten as a user manual: purpose / action (gesture → result) / rules / cautions, one action per line, one list item per line; new Notes search section; hanging indent for list items; gestures verified against code; zh/en kept in sync |

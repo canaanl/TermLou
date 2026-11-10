@@ -142,7 +142,7 @@ object TermlouServiceManager {
                 s.error = "main session changed"
             } else {
                 s.state = TermlouServiceProtocol.State.STOPPING
-                s.error = "stop_incomplete"
+                s.error = s.error?.takeIf { it == "pid_unavailable" } ?: "stop_incomplete"
             }
         }
         writeStateLocked()
@@ -236,7 +236,7 @@ object TermlouServiceManager {
             launchServiceLocked(context, s)
         }
 
-    @Suppress("TooGenericExceptionCaught")
+    @Suppress("TooGenericExceptionCaught", "ReturnCount")
     private fun launchServiceLocked(context: Context, s: Managed): MiniJson.Obj {
         return try {
             appendLog(s, "--- service ${s.name} start at ${System.currentTimeMillis()} ---\n")
@@ -248,17 +248,22 @@ object TermlouServiceManager {
                 s.tempDir,
             )
             tm.setupWrappers()
-            val process = tm.startBackground(s.argv)
+            val pidFile = File(s.tempDir, "host.pid")
+            val process = tm.startBackground(s.argv, pidFile)
             s.process = process
-            s.pid = processPid(process)
-            appendLog(s, "pid: ${s.pid ?: -1}\n")
+            val pid = ServiceProcessPidResolver.resolve(process, s.tempDir, pidFile)
+            s.pid = pid
+            appendLog(s, "pid: ${pid ?: -1}\n")
+            if (pid == null) {
+                return failStartPidUnavailable(context, s, process)
+            }
             drainOutput(s, process)
 
             // 启动宽限：catch command-not-found / .profile 阻塞解除后立刻退出等情况。
             val early = awaitStartupLocked(context, s, process)
             if (early != null) return early
 
-            s.knownTargets = TermlouServiceReaper.snapshot(s.pid ?: 0)
+            s.knownTargets = TermlouServiceReaper.snapshot(pid)
             s.boundToken = mainToken
             s.state = if (mainToken != null) {
                 TermlouServiceProtocol.State.RUNNING
@@ -282,6 +287,31 @@ object TermlouServiceManager {
             stopHostIfIdleLocked()
             TermlouServiceProtocol.error("start_failed: ${s.error}", snapshot(s))
         }
+    }
+
+    /**
+     * 拿不到真实 PID 时拒绝继续托管：没有 PID 就无法验证/清理进程树，
+     * 宁可启动失败，也不能留下一条 stop 永远收不干净的记录。
+     */
+    private fun failStartPidUnavailable(
+        context: Context,
+        s: Managed,
+        process: Process,
+    ): MiniJson.Obj {
+        s.state = TermlouServiceProtocol.State.FAILED
+        s.error = "start_failed: pid_unavailable"
+        appendLog(s, "--- service ${s.name} start failed: pid_unavailable ---\n")
+        runCatching { process.destroy() }
+        runCatching { if (process.isAlive) process.destroyForcibly() }
+        runCatching { process.waitFor(1, TimeUnit.SECONDS) }
+        runCatching { process.inputStream.close() }
+        s.process = null
+        s.pid = null
+        s.tempDir.deleteRecursively()
+        writeStateLocked()
+        refreshHostNotificationLocked(context)
+        stopHostIfIdleLocked()
+        return TermlouServiceProtocol.error("start_failed: pid_unavailable", snapshot(s))
     }
 
     /** 启动宽限期检查；提前退出返回错误 JSON，存活返回 null。 */
@@ -331,10 +361,11 @@ object TermlouServiceManager {
         } else {
             s.state = TermlouServiceProtocol.State.STOPPING
             s.boundToken = null
-            s.error = "stop_incomplete"
+            val err = s.error?.takeIf { it == "pid_unavailable" } ?: "stop_incomplete"
+            s.error = err
             writeStateLocked()
             refreshHostNotificationLocked(context = appContext)
-            TermlouServiceProtocol.error("stop_incomplete", snapshot(s))
+            TermlouServiceProtocol.error(err, snapshot(s))
         }
     }
 
@@ -496,19 +527,7 @@ object TermlouServiceManager {
         }
     }
 
-    /**
-     * `Process.pid()` 在 Android 26+ 存在，但 Kotlin 编译器的 java.lang.Process
-     * 签名不一定暴露它；反射取值，取不到就退化为只 destroy。
-     */
-    private fun processPid(process: Process): Int? = runCatching {
-        val method = Process::class.java.getMethod("pid")
-        when (val value = method.invoke(process)) {
-            is Int -> value
-            is Long -> value.toInt()
-            else -> null
-        }
-    }.getOrNull()
-
+    @Suppress("CyclomaticComplexMethod")
     private fun stopProcessLocked(s: Managed, reason: String): Boolean {
         val process = s.process
         val pid = s.pid
@@ -525,6 +544,20 @@ object TermlouServiceManager {
             runCatching { process.destroy() }
             runCatching { process.waitFor(SIGTERM_WAIT_MS, TimeUnit.MILLISECONDS) }
         }
+        if (pid == null && s.knownTargets.isEmpty()) {
+            // 没有 PID 就没有可验证的进程树；绝不能返回 clean 假装 STOPPED。
+            if (process != null) {
+                runCatching { if (process.isAlive) process.destroyForcibly() }
+                runCatching { process.waitFor(1, TimeUnit.SECONDS) }
+                runCatching { process.inputStream.close() }
+            }
+            s.knownTargets = emptyList()
+            s.exitCode = process?.let { runCatching { it.exitValue() }.getOrNull() }
+            s.error = "pid_unavailable"
+            appendLog(s, "\n--- service ${s.name} stop: $reason clean=false reason=pid_unavailable ---\n")
+            Log.w(TAG, "service ${s.name} stop: pid unavailable, tree not verified")
+            return false
+        }
         // 包装进程已经退出时传 0，禁止 reaper 再用旧 PID 查 /proc（PID 可能已复用）。
         val rootPid = if (process?.isAlive == true) pid ?: 0 else 0
         val reaped = TermlouServiceReaper.kill(rootPid, known)
@@ -534,18 +567,21 @@ object TermlouServiceManager {
             runCatching { process.waitFor(1, TimeUnit.SECONDS) }
             runCatching { process.inputStream.close() }
         }
-        s.knownTargets = reaped.survivors
+        // reaper 判定 clean 后，Process 对象仍存活说明 /proc 可能不可读；不能报 STOPPED。
+        val clean = reaped.clean && process?.isAlive != true
+        val survivors = if (clean) emptyList() else reaped.survivors.ifEmpty { known }
+        s.knownTargets = survivors
         s.exitCode = process?.let { runCatching { it.exitValue() }.getOrNull() }
-        appendLog(s, "\n--- service ${s.name} stop: $reason clean=${reaped.clean} ---\n")
-        if (reaped.clean) {
+        appendLog(s, "\n--- service ${s.name} stop: $reason clean=$clean ---\n")
+        if (clean) {
             runCatching { s.tempDir.deleteRecursively() }
             s.error = reason
         } else {
-            appendLog(s, "survivors: ${reaped.survivors.joinToString(",") { it.pid.toString() }}\n")
+            appendLog(s, "survivors: ${survivors.joinToString(",") { it.pid.toString() }}\n")
             s.error = "stop_incomplete"
         }
-        Log.i(TAG, "service ${s.name} stop: $reason clean=${reaped.clean}")
-        return reaped.clean
+        Log.i(TAG, "service ${s.name} stop: $reason clean=$clean")
+        return clean
     }
 
     private fun stopAllLocked(reason: String) {
@@ -559,7 +595,7 @@ object TermlouServiceManager {
                     s.error = reason
                 } else {
                     s.state = TermlouServiceProtocol.State.STOPPING
-                    s.error = "stop_incomplete"
+                    s.error = s.error?.takeIf { it == "pid_unavailable" } ?: "stop_incomplete"
                 }
             }
         }
@@ -584,7 +620,7 @@ object TermlouServiceManager {
                 s.error = reason
             } else {
                 s.state = TermlouServiceProtocol.State.STOPPING
-                s.error = "stop_incomplete"
+                s.error = s.error?.takeIf { it == "pid_unavailable" } ?: "stop_incomplete"
             }
         }
         if (targets.isNotEmpty()) {

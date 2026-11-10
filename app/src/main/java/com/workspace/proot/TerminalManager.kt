@@ -203,14 +203,14 @@ class TerminalManager(
      *   （否则裸 `pi` 之类的启动命令会抢占并阻塞，`exec "$@"` 永远轮不到）；
      * - argv 通过 `bash -c 'exec "$@"'` 传递，避免 shell 引号/空格二次解析。
      */
-    fun startBackground(argv: List<String>): java.lang.Process {
+    fun startBackground(argv: List<String>, pidFile: File? = null): java.lang.Process {
         require(argv.isNotEmpty()) { "empty service command" }
         wsTmp.mkdirs()
         val shell = findShellInRootfs() ?: throw Exception(context.getString(R.string.shell_not_found))
         val args = buildProotArgs(shell) +
             listOf("--noprofile", "--norc", "-c", "exec \"$@\"", "termlou-service") +
             argv
-        return startProotProcessArgs(args)
+        return startProotProcessArgs(args, pidFile)
     }
 
     private fun startProotProcess(command: String): java.lang.Process {
@@ -219,12 +219,29 @@ class TerminalManager(
         return startProotProcessArgs(args)
     }
 
-    private fun startProotProcessArgs(args: List<String>): java.lang.Process {
+    private fun startProotProcessArgs(args: List<String>, pidFile: File? = null): java.lang.Process {
         TermlouDirs.base(context).mkdirs()
         val prootBin = File(context.applicationInfo.nativeLibraryDir, "libproot_exec.so")
         val loader = File(context.applicationInfo.nativeLibraryDir, "libproot_loader.so")
+        val prootCommand = listOf(prootBin.absolutePath) + args
 
-        val pb = ProcessBuilder(listOf(prootBin.absolutePath) + args)
+        // 服务启动时先让宿主 shell 写下自己的 PID，再 exec 成 PRoot：
+        // exec 不换 PID，所以 pidfile 里的值就是 ProcessBuilder 子进程的真实宿主 PID。
+        // 普通 runInProot 不传 pidFile，命令数组保持原样。
+        val hostShell = File("/system/bin/sh")
+        val command = if (pidFile != null && hostShell.isFile) {
+            listOf(
+                hostShell.absolutePath,
+                "-c",
+                "echo \$\$ > \"\$1\"; shift; exec \"\$@\"",
+                "sh",
+                pidFile.absolutePath,
+            ) + prootCommand
+        } else {
+            prootCommand
+        }
+
+        val pb = ProcessBuilder(command)
         pb.directory(wsFiles)
         pb.environment().putAll(mapOf(
             "PROOT_LOADER" to loader.absolutePath,

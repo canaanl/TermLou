@@ -379,7 +379,7 @@ States: STARTING | WAITING (no main PRoot yet) | RUNNING (wrapper alive) |
         STOPPING | STOPPED | FAILED.
 Exit codes: 0 ok:true; 1 service error (ok:false); 2 usage/invalid input.
 Errors: not_found | exists | too_many_services | start_failed:... |
-        stop_incomplete | active | bad_request | timeout.
+        stop_incomplete | pid_unavailable | active | bad_request | timeout.
 Fields: pid = host PRoot wrapper PID (-1 if none); alive = wrapper alive;
         exit_code = -1 if not exited; bound_session = token or empty;
         log = container path, created at service start.
@@ -549,7 +549,7 @@ Linux 后台服务:
       STOPPING | STOPPED | FAILED。
 退出码: 0 ok:true；1 服务错误（ok:false）；2 用法/参数错误。
 错误: not_found | exists | too_many_services | start_failed:... |
-      stop_incomplete | active | bad_request | timeout。
+      stop_incomplete | pid_unavailable | active | bad_request | timeout。
 字段: pid = 宿主 PRoot 包装进程 PID（无则 -1）；alive = 包装进程存活；
       exit_code = -1 表示未退出；bound_session = token 或空；
       log = 容器内路径，服务启动时创建。

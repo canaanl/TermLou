@@ -70,11 +70,23 @@ class TermlouServicePolicyTest {
         assertTrue("日志必须启动即创建：\n$mgr", mgr.contains("appendLog(s, \"--- service"))
         assertTrue("必须支持 rm/clean：\n$mgr", mgr.contains("removeServiceLocked") && mgr.contains("cleanServicesLocked"))
         assertTrue("rm 必须拒绝活动/有残留记录：\n$mgr", mgr.contains("s.state in ACTIVE || s.process != null || s.knownTargets.isNotEmpty()"))
+        assertTrue("pid 必须通过 pidfile + /proc resolver 获取：\n$mgr", mgr.contains("ServiceProcessPidResolver.resolve(process, s.tempDir, pidFile)"))
+        assertTrue("启动必须把 pidfile 交给独立 PRoot：\n$mgr", mgr.contains("startBackground(s.argv, pidFile)"))
+        assertTrue("拿不到 pid 必须启动失败，不能留不可清理服务：\n$mgr", mgr.contains("failStartPidUnavailable"))
+        assertFalse("manager 不能再依赖运行期不存在的 Process.pid 反射：\n$mgr", mgr.contains("getMethod(\"pid\")"))
+
+        val resolver = code("ServiceProcessPidResolver.kt")
+        assertTrue("pidfile 必须先读：\n$resolver", resolver.contains("readPidFile(pidFile)"))
+        assertTrue("反射 pid 必须拒绝 -1/0：\n$resolver", resolver.contains("positivePid(raw)"))
+        assertTrue("私有 pid 字段也必须拒绝 -1/0：\n$resolver", resolver.contains("positivePid(field.getInt(process).toLong())"))
+        assertTrue("positivePid 必须只接受 > 0：\n$resolver", resolver.contains("value?.takeIf { it > 0 }?.toInt()"))
 
         val tm = code("TerminalManager.kt")
         assertTrue("服务进程启动必须保留 --kill-on-exit", tm.contains("--kill-on-exit"))
         assertTrue("服务包装不能是 login shell：\n$tm", !tm.contains("\"-lc\""))
         assertTrue("服务包装必须禁用 profile/rc：\n$tm", tm.contains("--noprofile") && tm.contains("--norc"))
+        assertTrue("服务必须由宿主 shell 先写自身 PID 再 exec PRoot：\n$tm", tm.contains("/system/bin/sh") && tm.contains("shift; exec"))
+        assertTrue("普通 runInProot 不能传 pidfile：\n$tm", tm.contains("private fun startProotProcessArgs(args: List<String>, pidFile: File? = null)"))
     }
 
     @Test
@@ -169,7 +181,7 @@ class TermlouServicePolicyTest {
             stop.contains("if (pid != null) TermlouServiceReaper.snapshot"),
         )
 
-        val exit = mgr.substringAfter("private fun onProcessExit").substringBefore("private fun processPid")
+        val exit = mgr.substringAfter("private fun onProcessExit").substringBefore("private fun stopProcessLocked")
         assertFalse(
             "onProcessExit 不能 snapshot 已退出/可能复用的 PID：\n$exit",
             exit.contains("TermlouServiceReaper.snapshot"),
