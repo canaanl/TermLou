@@ -58,6 +58,9 @@ class NotesFabMenu(
     /** 聚合按钮是否可用（有正文/待办命中）。 */
     private var digestAvailable = false
 
+    /** 聚合图标（按 bounds 中心绘制，尺寸/颜色均由它决定）。 */
+    private val digestIcon = DigestIconDrawable(context)
+
     private var progress = 0f
     private var addStart = 0f
     private var searchStart = 0f
@@ -229,32 +232,39 @@ class NotesFabMenu(
     }
 
     /**
-     * 切换搜索 FAB 的语义（5.12.5）。
+     * 切换搜索 FAB 的语义（5.12.6）。
      *
      * - [enabled] false：恢复普通 ⌕，点击开关搜索；
-     * - [enabled] true：变成聚合图标，点击进入聚合页；
-     * - [available] false 时变灰且不可点（没有正文/待办命中）。
+     * - [enabled] true：变成聚合图标（前景 Drawable 居中绘制），点击进入聚合页；
+     * - [available] false 时用禁用色（与 [FileBackFab] 同一套颜色机制）。
+     *
+     * 颜色规则与 [FileBackFab.renderState] 一致：
+     * 启用 = [ThemeColors.primaryVisible]，禁用 = [NeuFab.disabledIconColor]。
+     * 不再用 alpha 假装灰色，避免与展开动画的 alpha/scale 互相覆盖。
      */
     fun setDigestMode(enabled: Boolean, available: Boolean) {
         digestMode = enabled
         digestAvailable = enabled && available
+        // 清掉上一次字形可能留下的墨迹补偿 padding。
+        search.setPadding(0, 0, 0, 0)
         if (!enabled) {
             search.text = GLYPH_SEARCH
+            search.foreground = null
             search.contentDescription = context.getString(R.string.notes_search_notes)
             search.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0)
             search.setTextColor(theme.primaryVisible)
             search.isClickable = true
             search.alpha = 1f
+            NeuFab.centerGlyph(search)
             return
         }
-        // 聚合图标是矢量图：清空字形，改用 drawable，避免 Unicode 里没有对应字形。
+        // 空文本：NeuFab.centerGlyph 会提前返回，不会再动 padding。
         search.text = ""
         search.contentDescription = context.getString(R.string.notes_digest_action)
-        search.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_notes_digest, 0, 0, 0)
-        val tint = if (digestAvailable) theme.primaryVisible else NeuFab.disabledIconColor(theme)
-        runCatching { search.compoundDrawablesRelative.firstOrNull()?.setTint(tint) }
+        digestIcon.color = if (digestAvailable) theme.primaryVisible else NeuFab.disabledIconColor(theme)
+        search.foreground = digestIcon
         search.isClickable = digestAvailable
-        search.alpha = if (digestAvailable) 1f else DISABLED_ALPHA
+        search.alpha = 1f
     }
 
     /** 测试用：聚合按钮是否可用。 */
@@ -262,6 +272,10 @@ class NotesFabMenu(
 
     /** 测试用：搜索/聚合那颗 FAB。 */
     internal fun searchFabForTest(): TextView = search
+
+    /** 测试用：聚合图标颜色（未进入聚合模式时为 null）。 */
+    internal fun digestIconColorForTest(): Int? =
+        if (digestMode) digestIcon.color else null
 
     private fun prepareStarts() {
         val mc = mainCenter()
@@ -320,7 +334,6 @@ class NotesFabMenu(
     private companion object {
         const val EXPAND_MS = 300L
         const val COLLAPSE_MS = 220L
-        const val DISABLED_ALPHA = 0.45f
         const val GLYPH_SEARCH = "⌕"
     }
 }

@@ -2,7 +2,7 @@
 
 > An Android terminal built for **people who don't code** — Debian GNU/Linux, file management, notes & todos and script-driven floating UI, all inside one tap-and-go App.
 
-![Version](https://img.shields.io/badge/version-5.12.5-blue)
+![Version](https://img.shields.io/badge/version-5.12.6-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -58,7 +58,7 @@ Beyond that core, TermLou also grew a complete **notes & todo system** (usable i
 | Files | `androidx.documentfile` (SAF import), `commons-compress` (tar unpacking), `xz` (streaming tar.xz) |
 | Data | `SharedPreferences` + hand-written JSON (command library v2, notes index) |
 | Static analysis | detekt 1.23.1 |
-| Testing | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso (834 unit tests) |
+| Testing | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso (838 unit tests) |
 | CI | GitHub Actions (lint + test + assembleDebug) |
 
 ---
@@ -187,7 +187,7 @@ The `.termlou` directory (`filesDir/.termlou` → `/termlou`) is the atomic JSON
 - **Two entries**: main-UI notes tab (swipeable) and a tile-launched standalone page (no back header, swipe disabled)
 - **List/editor**: list shows title, update time and tag capsules; editor has body, tag area, todo area, [＋Todo][＋Tag]
 - **Tag filtering**: tags are colored by content hash (same tag always same color); the bottom-right group FAB expands to a search action, which floats a full-width vertically draggable search panel with the tag row directly beneath. A chosen tag enters the search box as a `#tag ×` capsule that filters by the `tag:name` field (multiple tags are ANDed); tap the capsule to remove it. While expanded the notes content is dimmed and locked; list taps return only when the search has results
-- **Search digest**: entering search mode turns the search FAB into a digest button (four tiles, the top-right one detached). It lights up only when **body/todo content** matches — a tag-only filter stays grey even with results. Tapping it opens a digest page that gathers the matched content into one screen: todos show a grey "Todo" label plus the full todo text, body hits show a grey "Body" label plus a snippet around the match. Note names are not shown; a divider separates notes. Tap any row to jump to that note, and Back returns to the list with the search state preserved — identical to opening a note from search results
+- **Search digest**: entering search mode turns the search FAB into a digest button (four tiles with the top-right detached, drawn centred at 18dp). Colour follows the same rule as the Files back key — brand `primaryVisible` when tappable, disabled grey `disabledIconColor` when nothing matches; opacity is never used to fake grey. It lights up only when **body/todo content** matches — a tag-only filter stays grey even with results. Tapping it opens a digest page that gathers the matched content into one screen: todos show a grey "Todo" label plus the full todo text, body hits show a grey "Body" label plus a snippet around the match. Note names are not shown; a divider separates notes. Tap any row to jump to that note, and Back returns to the list with the search state preserved — identical to opening a note from search results
 - **Todo kanban**: "Done" left | divider | "Open" right, each column scrolls independently with frozen headers and counts; tap a row to toggle — it flies out and the destination row flies in and flashes- **Save on exit**: the body is compared and written before leaving the list, switching notes, switching tabs, backgrounding, jumping to sub-pages, renaming — avoiding per-keystroke write amplification
 - **Linux-independent**: plain-file storage; the tile path never boots proot / the terminal session
 

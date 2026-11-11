@@ -147,4 +147,67 @@ class NotesFabMenuTest {
         assertEquals(1, searches)
         assertEquals(1, news)
     }
+
+    // ---------- 聚合按钮的图标与颜色（5.12.6） ----------
+
+    @Test
+    fun `digest mode uses a centered foreground icon instead of compound drawable`() {
+        val activity = activity()
+        val menu = NotesFabMenu(activity, ThemeColors.default(true), {}, {}, {})
+        menu.setExpandedImmediate(true)
+        val search = menu.searchFabForTest()
+
+        menu.setDigestMode(enabled = true, available = true)
+
+        assertEquals("聚合模式必须清空字形：", "", search.text.toString())
+        assertTrue("必须用前景 Drawable 居中绘制：", search.foreground is DigestIconDrawable)
+        assertEquals("不能用复合图标（会居左）：", 0, search.compoundDrawablesRelative.count { it != null })
+        assertEquals("不能残留墨迹补偿 padding：", 0, search.paddingLeft + search.paddingTop + search.paddingRight + search.paddingBottom)
+        assertEquals("禁用态不能用 alpha 假装：", 1f, search.alpha, 0.001f)
+    }
+
+    @Test
+    fun `digest icon color follows the same rule as the file back fab`() {
+        val activity = activity()
+        val theme = ThemeColors.default(true)
+        val menu = NotesFabMenu(activity, theme, {}, {}, {})
+        menu.setExpandedImmediate(true)
+
+        menu.setDigestMode(enabled = true, available = true)
+        assertEquals("可用时必须用品牌色：", theme.primaryVisible, menu.digestIconColorForTest())
+
+        menu.setDigestMode(enabled = true, available = false)
+        assertEquals("不可用时必须用同一套禁用色：", NeuFab.disabledIconColor(theme), menu.digestIconColorForTest())
+        assertFalse("不可用时不可点：", menu.searchFabForTest().isClickable)
+
+        menu.setDigestMode(enabled = false, available = false)
+        assertTrue("退出聚合模式：", menu.digestIconColorForTest() == null)
+        assertEquals("必须恢复 ⌕：", "⌕", menu.searchFabForTest().text.toString())
+        assertTrue("恢复后必须可点：", menu.searchFabForTest().isClickable)
+        assertTrue("必须清掉前景图标：", menu.searchFabForTest().foreground == null)
+    }
+
+    @Test
+    fun `digest icon is drawn centered and smaller than the fab`() {
+        val activity = activity()
+        val drawable = DigestIconDrawable(activity)
+        val size = (56 * activity.resources.displayMetrics.density).toInt()
+        drawable.setBounds(0, 0, size, size)
+
+        val rect = drawable.iconRect()
+        val iconPx = (DigestIconDrawable.ICON_DP * activity.resources.displayMetrics.density).toInt()
+        assertEquals("图标边长必须是 ICON_DP：", iconPx, rect.width())
+        assertTrue("图标必须明显小于 FAB：$iconPx vs $size", iconPx < size / 2)
+
+        val centerX = (rect.left + rect.right) / 2f
+        val centerY = (rect.top + rect.bottom) / 2f
+        assertEquals("水平必须居中：", size / 2f, centerX, 2.5f)
+        assertEquals("垂直必须居中：", size / 2f, centerY, 2.5f)
+
+        // 非正方形 bounds（真机 foreground 可能带内边距）也必须居中。
+        drawable.setBounds(10, 20, 10 + size, 20 + size)
+        val rect2 = drawable.iconRect()
+        assertEquals("偏移 bounds 下仍要水平居中：", 10 + size / 2f, (rect2.left + rect2.right) / 2f, 2.5f)
+        assertEquals("偏移 bounds 下仍要垂直居中：", 20 + size / 2f, (rect2.top + rect2.bottom) / 2f, 2.5f)
+    }
 }

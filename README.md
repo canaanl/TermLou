@@ -2,7 +2,7 @@
 
 > 一个为**不写代码的人**打造的 Android 终端 —— 把 Debian GNU/Linux、文件管理、笔记待办和脚本浮窗，全部塞进一个"点一下就能用"的 App。
 
-![Version](https://img.shields.io/badge/version-5.12.5-blue)
+![Version](https://img.shields.io/badge/version-5.12.6-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -58,7 +58,7 @@
 | 文件 | `androidx.documentfile`（SAF 导入）、`commons-compress`（tar 解包）、`xz`（tar.xz 流式解压） |
 | 数据 | `SharedPreferences` + 自写 JSON（命令库 v2、笔记索引） |
 | 静态分析 | detekt 1.23.1 |
-| 测试 | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso（834 个单元测试） |
+| 测试 | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso（838 个单元测试） |
 | CI | GitHub Actions（lint + test + assembleDebug） |
 
 ---
@@ -187,7 +187,7 @@ Linux 的 `/var/log` 不写进 rootfs：通过 proot bind 到 `filesDir/logs/lin
 - **双入口**：主界面笔记 Tab（可左右滑）、磁贴直起的独立笔记页（无返回顶栏、禁左右滑）
 - **列表/编辑**：列表显示标题、更新时间、标签胶囊；编辑页正文、标签区、待办区、[＋待办][＋标签]
 - **标签筛选**：标签按内容哈希着色（同标签天然同色）；右下角「组」FAB 展开后点搜索，浮出全宽可上下拖动的搜索面板，标签行紧贴其下；点选后以 `#标签 ×` 胶囊进入搜索框，按 `tag:标签` 字段过滤（多标签 AND），点胶囊移除。展开时笔记内容区泛黑且外部锁死，有搜索结果时才恢复列表点击
-- **搜索聚合展示**：进入搜索模式后，原搜索 FAB 变成聚合按钮（四宫格、右上角分离）。只有**正文/待办内容**命中才点亮——纯标签筛选即使有结果也保持灰色。点击进入聚合页，把命中内容汇到一页：待办显示灰色「待办」+ 该条完整文本，正文显示灰色「正文」+ 命中处附近片段；不显示笔记名，笔记之间用分隔线。点任意一条跳到对应笔记，返回即回到保留搜索状态的列表（与从搜索结果点进笔记一致）
+- **搜索聚合展示**：进入搜索模式后，原搜索 FAB 变成聚合按钮（四宫格、右上角分离，18dp 居中绘制）。颜色机制与文件页返回键一致——可点击时是品牌色 `primaryVisible`，无内容命中时是禁用灰 `disabledIconColor`，不用透明度假装灰色。只有**正文/待办内容**命中才点亮——纯标签筛选即使有结果也保持灰色。点击进入聚合页，把命中内容汇到一页：待办显示灰色「待办」+ 该条完整文本，正文显示灰色「正文」+ 命中处附近片段；不显示笔记名，笔记之间用分隔线。点任意一条跳到对应笔记，返回即回到保留搜索状态的列表（与从搜索结果点进笔记一致）
 - **待办看板**：左"已完成"｜灰线｜右"未完成"两列独立滚动、冻结标题与计数；整行点按切换，切走飞出、落位飞入并高亮
 - **退出自动保存**：正文在退列表/切笔记/切 Tab/后台/跳子页/重命名前比对落盘，避免逐字写放大
 - **不依赖 Linux**：纯文件存储，磁贴入口全程不唤醒 proot / 终端会话

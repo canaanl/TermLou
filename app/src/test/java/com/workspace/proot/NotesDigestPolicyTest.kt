@@ -71,12 +71,32 @@ class NotesDigestPolicyTest {
         assertTrue("FAB 必须有聚合回调：\n$menu", menu.contains("onDigest"))
         assertTrue("搜索模式下点击必须走聚合：\n$menu", menu.contains("if (digestMode)") && menu.contains("onDigest()"))
         assertTrue("必须能切换聚合模式：\n$menu", menu.contains("fun setDigestMode"))
-        assertTrue("不可用必须变灰：\n$menu", menu.contains("NeuFab.disabledIconColor"))
+        assertTrue("必须用同一套禁用色：\n$menu", menu.contains("NeuFab.disabledIconColor"))
+        assertTrue("可用时必须用品牌色：\n$menu", menu.contains("theme.primaryVisible"))
+        assertTrue("图标必须用前景 Drawable：\n$menu", menu.contains("search.foreground = digestIcon"))
+        assertFalse(
+            "禁止回退到复合图标（会居左）：\n$menu",
+            menu.contains("setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_notes_digest"),
+        )
+        assertFalse(
+            "禁用态不能用 alpha 假装灰色：\n$menu",
+            menu.contains("DISABLED_ALPHA"),
+        )
 
         val overlay = code("NotesSearchOverlay.kt")
         assertTrue("打开搜索必须进入聚合模式：\n$overlay", overlay.contains("setDigestMode(enabled = true"))
         assertTrue("关闭搜索必须退出聚合模式：\n$overlay", overlay.contains("setDigestMode(enabled = false"))
         assertTrue("必须提供可用性入口：\n$overlay", overlay.contains("fun setDigestAvailable"))
+    }
+
+    @Test
+    fun `digest icon is drawn centered and sized independently`() {
+        val icon = code("DigestIconDrawable.kt")
+        assertTrue("必须用 mutate 让 tint 独立生效：\n$icon", icon.contains(".mutate()"))
+        assertTrue("必须显式按 bounds 中心绘制：\n$icon", icon.contains("bounds.exactCenterX()"))
+        assertTrue("必须显式按 bounds 中心绘制：\n$icon", icon.contains("bounds.exactCenterY()"))
+        assertTrue("尺寸必须是常量便于调整：\n$icon", icon.contains("ICON_DP"))
+        assertTrue("尺寸必须小于 FAB 一半：\n$icon", icon.contains("const val ICON_DP = 18"))
     }
 
     @Test
