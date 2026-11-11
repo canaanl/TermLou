@@ -202,6 +202,28 @@ class NotesStore(
             .map { it.first }
     }
 
+    /**
+     * 聚合展示的数据源（5.12.5）。
+     *
+     * 只取**内容**（正文 + 待办）：笔记名与标签不参与内容匹配判定。
+     * 传入的 [entries] 已由 [searchNotesFull] 完成标签筛选，这里不再二次过滤。
+     */
+    fun digestSources(entries: List<NoteEntry>): List<NoteDigest.Source> {
+        if (entries.isEmpty()) return emptyList()
+        val bodies = fetchBodies(entries.mapTo(HashSet()) { it.name })
+        return entries.map { e ->
+            NoteDigest.Source(
+                note = e.name,
+                body = bodies[e.name].orEmpty(),
+                todos = todosOf(e.name).map { it.text },
+            )
+        }
+    }
+
+    /** 聚合页可用性：至少一条笔记在正文/待办上命中全部查询词。 */
+    fun hasContentMatch(entries: List<NoteEntry>, terms: List<String>): Boolean =
+        NoteDigest.hasContentMatch(digestSources(entries), terms)
+
     private fun memoryHits(fields: List<FieldTexts>, terms: List<String>): Set<String> {
         val hits = HashSet<String>()
         for (term in terms) {

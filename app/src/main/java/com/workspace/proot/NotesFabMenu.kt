@@ -1,4 +1,4 @@
-@file:Suppress("MagicNumber", "LongParameterList")
+@file:Suppress("MagicNumber", "LongParameterList", "TooManyFunctions")
 
 package com.workspace.proot
 
@@ -35,6 +35,7 @@ class NotesFabMenu(
     private val onToggle: () -> Unit,
     private val onSearch: () -> Unit,
     private val onNewNote: () -> Unit,
+    private val onDigest: () -> Unit = {},
 ) : FrameLayout(context) {
 
     private val d = resources.displayMetrics.density
@@ -50,6 +51,12 @@ class NotesFabMenu(
     private val main: TextView
     private val add: TextView
     private val search: TextView
+
+    /** 搜索模式下 ⌕ 变成聚合按钮；false = 普通搜索模式。 */
+    private var digestMode = false
+
+    /** 聚合按钮是否可用（有正文/待办命中）。 */
+    private var digestAvailable = false
 
     private var progress = 0f
     private var addStart = 0f
@@ -106,7 +113,13 @@ class NotesFabMenu(
             size = miniSize,
             bottom = searchBottom,
             end = endMargin,
-            onClick = onSearch,
+            onClick = {
+                if (digestMode) {
+                    if (digestAvailable) onDigest()
+                } else {
+                    onSearch()
+                }
+            },
         ).apply {
             visibility = View.GONE
             alpha = 0f
@@ -215,6 +228,41 @@ class NotesFabMenu(
         animator = null
     }
 
+    /**
+     * 切换搜索 FAB 的语义（5.12.5）。
+     *
+     * - [enabled] false：恢复普通 ⌕，点击开关搜索；
+     * - [enabled] true：变成聚合图标，点击进入聚合页；
+     * - [available] false 时变灰且不可点（没有正文/待办命中）。
+     */
+    fun setDigestMode(enabled: Boolean, available: Boolean) {
+        digestMode = enabled
+        digestAvailable = enabled && available
+        if (!enabled) {
+            search.text = GLYPH_SEARCH
+            search.contentDescription = context.getString(R.string.notes_search_notes)
+            search.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0)
+            search.setTextColor(theme.primaryVisible)
+            search.isClickable = true
+            search.alpha = 1f
+            return
+        }
+        // 聚合图标是矢量图：清空字形，改用 drawable，避免 Unicode 里没有对应字形。
+        search.text = ""
+        search.contentDescription = context.getString(R.string.notes_digest_action)
+        search.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_notes_digest, 0, 0, 0)
+        val tint = if (digestAvailable) theme.primaryVisible else NeuFab.disabledIconColor(theme)
+        runCatching { search.compoundDrawablesRelative.firstOrNull()?.setTint(tint) }
+        search.isClickable = digestAvailable
+        search.alpha = if (digestAvailable) 1f else DISABLED_ALPHA
+    }
+
+    /** 测试用：聚合按钮是否可用。 */
+    internal fun digestAvailableForTest(): Boolean = digestAvailable
+
+    /** 测试用：搜索/聚合那颗 FAB。 */
+    internal fun searchFabForTest(): TextView = search
+
     private fun prepareStarts() {
         val mc = mainCenter()
         addStart = mc.y - centerY(add)
@@ -272,5 +320,7 @@ class NotesFabMenu(
     private companion object {
         const val EXPAND_MS = 300L
         const val COLLAPSE_MS = 220L
+        const val DISABLED_ALPHA = 0.45f
+        const val GLYPH_SEARCH = "⌕"
     }
 }

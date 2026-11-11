@@ -49,6 +49,16 @@ class NotesController(
     private var query = ""
     private val searchDebounce = Runnable { renderList() }
 
+    /** 聚合页结果：选中某篇笔记后回到列表并打开它。 */
+    private val digestLauncher = activity.registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val name = result.data?.getStringExtra(NotesDigestActivity.EXTRA_PICK)
+        if (result.resultCode == android.app.Activity.RESULT_OK && !name.isNullOrEmpty()) {
+            openNote(name)
+        }
+    }
+
     private fun density(): Float = activity.resources.displayMetrics.density
 
     fun buildInto(notesArea: LinearLayout) {
@@ -117,6 +127,7 @@ class NotesController(
         ).apply { weight = 1f }
         addView(content)
         searchOverlay = NotesSearchOverlay(activity, theme, tagSearch) { onNewPressed() }
+        searchOverlay.digestLauncher = { digestLauncher.launch(it) }
         searchOverlay.attach(this)
     }
 
@@ -389,6 +400,10 @@ class NotesController(
         val notes = store.searchNotesFull(query)
         if (::searchOverlay.isInitialized) {
             searchOverlay.setResultsAvailable(query.isNotBlank() && notes.isNotEmpty())
+            // 聚合按钮只看正文/待办内容命中；纯标签筛选不算（5.12.5）。
+            searchOverlay.setDigestAvailable(
+                parsed.textTerms.isNotEmpty() && store.hasContentMatch(notes, parsed.textTerms)
+            )
         }
         if (notes.isEmpty()) {
             listInner.addView(TextView(activity).apply {

@@ -620,6 +620,11 @@
     <string name="notes_tag_filter_select_fmt">按标签筛选：%1$s</string>
     <string name="notes_tag_filter_selected_fmt">已选标签：%1$s</string>
     <string name="notes_search_empty">没有匹配的内容</string>
+    <string name="notes_digest_action">聚合展示</string>
+    <string name="notes_digest_title">搜索聚合</string>
+    <string name="notes_digest_todo">待办</string>
+    <string name="notes_digest_body">正文</string>
+    <string name="notes_digest_empty">没有可聚合的内容匹配</string>
     <string name="notes_standalone_title">笔记</string>
     <string name="web_channel">浏览器</string>
     <string name="web_starting">正在启动浏览器…</string>

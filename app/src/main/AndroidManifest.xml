@@ -80,6 +80,14 @@
             android:exported="false"
             android:theme="@style/Theme.TermLou" />
 
+        <!-- 搜索聚合展示页（5.12.5）：结果回传给宿主，不在返回栈留层级 -->
+        <activity
+            android:name="com.workspace.proot.NotesDigestActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.TermLou" />
+
         <activity
             android:name="com.workspace.proot.NotesCalendarActivity"
             android:screenOrientation="portrait"

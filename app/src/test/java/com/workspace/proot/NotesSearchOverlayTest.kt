@@ -5,6 +5,7 @@ package com.workspace.proot
 import android.app.Activity
 import android.view.View
 import android.widget.FrameLayout
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -247,4 +248,84 @@ class NotesSearchOverlayTest {
         assertTrue("add FAB must open the new-note flow", opened)
         assertFalse("add FAB must collapse the group", f.overlay.isExpanded)
     }
+
+    // ---------- 聚合展示（5.12.5） ----------
+
+    @Test
+    fun `digest button is disabled until content matches`() {
+        val f = Fixture()
+        f.overlay.expandMenu(animate = false)
+        f.overlay.openSearch()
+
+        val search = searchFab(f)
+        assertFalse("打开搜索时聚合按钮必须不可用：", search.isClickable)
+        assertFalse("不可用时应变灰：", f.overlay.digestAvailableForTest())
+
+        f.overlay.setDigestAvailable(true)
+        assertTrue("有内容匹配后必须可点：", search.isClickable)
+        assertTrue(f.overlay.digestAvailableForTest())
+    }
+
+    @Test
+    fun `digest button opens the digest page and does not close search`() {
+        var launched: android.content.Intent? = null
+        val f = Fixture()
+        f.overlay.digestLauncher = { launched = it }
+        f.overlay.expandMenu(animate = false)
+        f.overlay.openSearch()
+        f.tagSearch.searchField.input.setText("苹果")
+        f.overlay.setDigestAvailable(true)
+
+        searchFab(f).performClick()
+
+        assertTrue("必须发起聚合页：", launched != null)
+        assertEquals(
+            "苹果",
+            launched!!.getStringExtra(NotesDigestActivity.EXTRA_QUERY),
+        )
+        assertTrue("点聚合不能关掉搜索：", f.overlay.isSearchOpen)
+    }
+
+    @Test
+    fun `closing search restores the plain search glyph`() {
+        val f = Fixture()
+        f.overlay.expandMenu(animate = false)
+        f.overlay.openSearch()
+        f.overlay.setDigestAvailable(true)
+
+        f.overlay.closeSearch()
+
+        val search = searchFab(f)
+        assertEquals("关闭搜索必须恢复 ⌕：", "⌕", search.text.toString())
+        assertTrue(search.isClickable)
+    }
+
+    @Test
+    fun `tab switch resets digest mode`() {
+        val f = Fixture()
+        f.overlay.expandMenu(animate = false)
+        f.overlay.openSearch()
+        f.overlay.setDigestAvailable(true)
+
+        f.overlay.onTabSwitch()
+
+        assertFalse(f.overlay.digestAvailableForTest())
+        assertEquals("⌕", searchFab(f).text.toString())
+    }
+
+    @Test
+    fun `restored search session re-arms digest mode`() {
+        val f = Fixture()
+        f.overlay.expandMenu(animate = false)
+        f.overlay.openSearch()
+        f.tagSearch.searchField.toggleTag("工作")
+        f.overlay.hideForEditor()
+
+        f.overlay.restoreAfterEditor()
+
+        assertTrue(f.overlay.isSearchOpen)
+        assertFalse("刚恢复时还没有重新判定结果，必须先灰：", searchFab(f).isClickable)
+    }
+
+    private fun searchFab(f: Fixture): android.widget.TextView = f.overlay.searchFabForTest()
 }

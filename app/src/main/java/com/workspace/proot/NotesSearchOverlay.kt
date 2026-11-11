@@ -39,6 +39,7 @@ class NotesSearchOverlay(
             collapseAll()
             onNewNote()
         },
+        onDigest = { launchDigest() },
     )
 
     var isExpanded: Boolean = false
@@ -53,6 +54,9 @@ class NotesSearchOverlay(
 
     /** true = 刚从上一次搜索会话恢复，下一次返回键直接回到初始态。 */
     private var restoredFromEditor = false
+
+    /** 聚合页请求码；结果回传给宿主的 launcher。 */
+    var digestLauncher: ((android.content.Intent) -> Unit)? = null
 
     private var scrimAnimator: ValueAnimator? = null
     private var host: FrameLayout? = null
@@ -106,6 +110,7 @@ class NotesSearchOverlay(
         isSearchOpen = true
         resultsAvailable = false
         panel.show()
+        menu.setDigestMode(enabled = true, available = false)
         updateBlocking()
     }
 
@@ -117,6 +122,7 @@ class NotesSearchOverlay(
         val wasOpen = isSearchOpen || panel.isOpen
         isSearchOpen = false
         resultsAvailable = false
+        menu.setDigestMode(enabled = false, available = false)
         panel.hide(animate)
         if (clearQuery && !tagSearch.isIdle()) tagSearch.clear()
         if (wasOpen) updateBlocking()
@@ -185,6 +191,7 @@ class NotesSearchOverlay(
         isSearchOpen = true
         resultsAvailable = false
         panel.show(focusInput = false)
+        menu.setDigestMode(enabled = true, available = false)
         updateBlocking()
         return true
     }
@@ -197,6 +204,7 @@ class NotesSearchOverlay(
         isSearchOpen = false
         resultsAvailable = false
         isExpanded = false
+        menu.setDigestMode(enabled = false, available = false)
         // 防止“搜索框已经藏了、列表却还在过滤”的幽灵状态。
         if (!tagSearch.isIdle()) tagSearch.clear()
         menu.visibility = View.VISIBLE
@@ -235,6 +243,30 @@ class NotesSearchOverlay(
     fun setResultsAvailable(value: Boolean) {
         resultsAvailable = value && isSearchOpen
         updateBlocking()
+    }
+
+    /**
+     * 聚合按钮可用性（5.12.5）。
+     *
+     * 只由**正文/待办内容命中**决定；纯标签筛选即使有结果也保持灰色。
+     */
+    fun setDigestAvailable(value: Boolean) {
+        menu.setDigestMode(enabled = isSearchOpen, available = value)
+    }
+
+    /** 测试用：聚合按钮当前是否可用。 */
+    internal fun digestAvailableForTest(): Boolean = menu.digestAvailableForTest()
+
+    /** 测试用：直接拿到搜索/聚合那颗 FAB。 */
+    internal fun searchFabForTest(): android.widget.TextView = menu.searchFabForTest()
+
+    private fun launchDigest() {
+        val query = tagSearch.query()
+        if (NoteQuery.parse(query).textTerms.isEmpty()) return
+        val intent = android.content.Intent(activity, NotesDigestActivity::class.java)
+            .putExtra(NotesDigestActivity.EXTRA_QUERY, query)
+        val launcher = digestLauncher
+        if (launcher != null) launcher(intent) else activity.startActivity(intent)
     }
 
     fun cancelAnimations() {

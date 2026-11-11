@@ -41,6 +41,16 @@ class NotesStandaloneActivity : NotesPageActivity() {
     private var query = ""
     private val searchDebounce = Runnable { renderList() }
 
+    /** 聚合页结果：选中某篇笔记后回到列表并打开它。 */
+    private val digestLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val name = result.data?.getStringExtra(NotesDigestActivity.EXTRA_PICK)
+        if (result.resultCode == android.app.Activity.RESULT_OK && !name.isNullOrEmpty()) {
+            openNote(name)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val root = LinearLayout(this).apply {
@@ -114,6 +124,7 @@ class NotesStandaloneActivity : NotesPageActivity() {
         ).apply { weight = 1f }
         addView(content)
         searchOverlay = NotesSearchOverlay(this@NotesStandaloneActivity, theme, tagSearch) { onNewPressed() }
+        searchOverlay.digestLauncher = { digestLauncher.launch(it) }
         searchOverlay.attach(this)
     }
 
@@ -358,6 +369,10 @@ class NotesStandaloneActivity : NotesPageActivity() {
         val notes = store.searchNotesFull(query)
         if (::searchOverlay.isInitialized) {
             searchOverlay.setResultsAvailable(query.isNotBlank() && notes.isNotEmpty())
+            // 聚合按钮只看正文/待办内容命中；纯标签筛选不算（5.12.5）。
+            searchOverlay.setDigestAvailable(
+                parsed.textTerms.isNotEmpty() && store.hasContentMatch(notes, parsed.textTerms)
+            )
         }
         if (notes.isEmpty()) {
             listInner.addView(TextView(this).apply {
