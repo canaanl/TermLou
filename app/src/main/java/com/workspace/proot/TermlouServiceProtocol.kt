@@ -29,7 +29,6 @@ object TermlouServiceProtocol {
 
     enum class State {
         STARTING,
-        WAITING,
         RUNNING,
         STOPPING,
         STOPPED,
@@ -41,7 +40,6 @@ object TermlouServiceProtocol {
         val command: String,
         val state: State,
         val startedAt: Long,
-        val boundToken: String?,
         val alive: Boolean,
         val exitCode: Int?,
         val error: String?,
@@ -84,7 +82,6 @@ object TermlouServiceProtocol {
         .put("command", s.command)
         .put("state", s.state.name)
         .put("started_at", s.startedAt)
-        .put("bound_session", s.boundToken ?: "")
         .put("pid", s.pid ?: -1)
         .put("alive", s.alive)
         .put("exit_code", s.exitCode ?: -1)

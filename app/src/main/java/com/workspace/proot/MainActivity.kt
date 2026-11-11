@@ -360,6 +360,9 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         if (isFinishing) {
             stopService(Intent(this, TermKeepAliveService::class.java))
+            // TermLou 主程序关闭：后台服务必须一起杀掉。
+            // Android 不会因为父进程退出就回收 PRoot 子进程，必须显式停。
+            TermlouServiceManager.onAppClosed(applicationContext)
         }
         super.onDestroy()
         scope.mainHandler.removeCallbacksAndMessages(null)

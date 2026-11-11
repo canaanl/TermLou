@@ -2,7 +2,6 @@ package com.workspace.proot
 
 import android.system.Os
 import android.system.OsConstants
-import java.io.File
 
 /**
  * 服务进程树清理器（5.12.1）。
@@ -14,13 +13,14 @@ import java.io.File
  *  - 停止时多轮扫描、补杀、等待，直到整棵树消失或超时；
  *  - 把存活 PID 返回给 manager，调用方据此返回 `stop_incomplete`，
  *    不再无条件谎报 STOPPED。
+ *
+ * 进程存活与 starttime 解析统一走 [ProcLiveness]，与主 PRoot 监控共用一份实现。
  */
 @Suppress("MagicNumber", "ReturnCount", "TooGenericExceptionCaught")
 object TermlouServiceReaper {
 
     const val DEFAULT_TIMEOUT_MS = 2_000L
     private const val POLL_MS = 50L
-    private const val START_TIME_INDEX = 19
 
     data class Target(val pid: Int, val startTime: Long?)
 
@@ -29,11 +29,11 @@ object TermlouServiceReaper {
     /** 当前 root 进程及全部后代；root 已退出/僵尸时返回空。 */
     fun snapshot(rootPid: Int): List<Target> {
         if (rootPid <= 0) return emptyList()
-        val root = info(rootPid) ?: return emptyList()
+        val root = ProcLiveness.info(rootPid) ?: return emptyList()
         if (root.state == "Z" || root.state == "X") return emptyList()
         val pids = listOf(rootPid) + SessionTerminator.collectDescendants(rootPid)
         return pids.mapNotNull { pid ->
-            info(pid)?.let { Target(pid, it.startTime) }
+            ProcLiveness.info(pid)?.let { Target(pid, it.startTime) }
         }
     }
 
@@ -50,7 +50,7 @@ object TermlouServiceReaper {
         val tracked = LinkedHashMap<Int, Long?>()
         for (t in known) tracked[t.pid] = t.startTime
         if (rootPid > 0 && !tracked.containsKey(rootPid)) {
-            val root = info(rootPid)
+            val root = ProcLiveness.info(rootPid)
             if (root != null) trackRoot(tracked, rootPid, root.startTime)
         }
         val deadline = System.currentTimeMillis() + timeoutMs
@@ -83,8 +83,6 @@ object TermlouServiceReaper {
         }
     }
 
-    private data class ProcInfo(val state: String, val startTime: Long)
-
     /**
      * 只补充尚未记录的 root starttime；已有记录绝不覆盖。
      * 这是 PID 复用安全的核心：root 先退出、PID 被新进程复用时，
@@ -98,25 +96,6 @@ object TermlouServiceReaper {
         if (!tracked.containsKey(rootPid)) tracked[rootPid] = rootStart
     }
 
-    private fun alive(pid: Int, expectedStart: Long?): Boolean {
-        val i = info(pid) ?: return false
-        if (i.state == "Z" || i.state == "X") return false
-        return expectedStart == null || i.startTime == expectedStart
-    }
-
-    /** stat 形如 "pid (comm) state ppid ... starttime ..."；comm 可含空格/括号。 */
-    private fun info(pid: Int): ProcInfo? {
-        if (pid <= 0) return null
-        return try {
-            val stat = File("/proc/$pid/stat").readText()
-            val rparen = stat.lastIndexOf(')')
-            if (rparen < 0) return null
-            val rest = stat.substring(rparen + 1).trim().split(Regex("\\s+"))
-            val state = rest.getOrNull(0) ?: return null
-            val start = rest.getOrNull(START_TIME_INDEX)?.toLongOrNull() ?: return null
-            ProcInfo(state, start)
-        } catch (_: Exception) {
-            null
-        }
-    }
+    private fun alive(pid: Int, expectedStart: Long?): Boolean =
+        ProcLiveness.isAlive(pid, expectedStart)
 }

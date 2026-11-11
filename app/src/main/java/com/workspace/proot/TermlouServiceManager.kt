@@ -6,26 +6,24 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import com.termux.terminal.TerminalSession
 import java.io.File
-import java.lang.ref.WeakReference
-import java.util.UUID
-import java.util.WeakHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
- * Linux 后台服务托管（5.12.0，方案 A）。
+ * Linux 后台服务托管（5.12.3）。
  *
- * 与一次性 [TermlouCommandRunner] 分开：
- *  - 服务启动后由 [TermlouBackgroundService] 前台承载独立 PRoot；
- *  - 主 PRoot 未启动时进入 WAITING，主 PRoot 出现后绑定为 RUNNING；
- *  - 主 PRoot 退出（包括按返回键 finish Activity）时停止已绑定服务；
- *  - WAITING 服务保留，等待下一次主 PRoot；已绑定过的旧服务不会改绑新会话；
- *  - 普通磁贴命令、`runInProot()` 的行为不变。
+ * 服务是**独立运行单元**，不隶属任何终端会话，只有三条规则：
+ *  1. 可以没有主 PRoot 就启动（磁贴直接拉起，不需要先打开主程序）；
+ *  2. 每 60 秒检查一次主 PRoot（[MainProotTracker]），不在就停掉全部服务——
+ *     包括“从来没有主 PRoot”的情况，服务最多活到下一次检查；
+ *  3. 主 PRoot 退出、TermLou 主程序关闭时立即停掉全部服务。
  *
- * 主会话身份使用 [TerminalSession] 对象 + UUID token，不依赖 PID。
- * WeakHashMap 保证 ThemeSwap/Activity 重建后同一个 TerminalSession 仍拿到原 token，
- * 新会话则拿到新 token，旧服务不会误绑新会话。
+ * 因此这里不存在会话 token / 绑定关系，生命周期只有
+ * `STARTING -> RUNNING -> STOPPING -> STOPPED / FAILED`。
+ *
+ * 与一次性 [TermlouCommandRunner] 分开：服务由 [TermlouBackgroundService] 前台承载
+ * 独立 PRoot；普通磁贴命令、`runInProot()` 的行为不变。
  */
 @Suppress("TooManyFunctions", "LargeClass")
 object TermlouServiceManager {
@@ -38,6 +36,8 @@ object TermlouServiceManager {
     private const val LOG_READ_CHARS = 4096
     private const val EXIT_REAP_TIMEOUT_MS = 1_000L
     private const val SIGTERM_WAIT_MS = 750L
+    private const val APP_CLOSE_JOIN_MS = 1_200L
+    private const val APP_CLOSE_VERIFY_MS = 500L
 
     private val lock = Any()
     private var appContext: Context? = null
@@ -46,9 +46,6 @@ object TermlouServiceManager {
     private var hostEpoch = 0L
 
     private val services = LinkedHashMap<String, Managed>()
-    private val sessionTokens = WeakHashMap<TerminalSession, String>()
-    private var mainToken: String? = null
-    private var mainRef: WeakReference<TerminalSession>? = null
     private var monitor: ScheduledExecutorService? = null
 
     private val io = Executors.newSingleThreadExecutor { r ->
@@ -62,7 +59,6 @@ object TermlouServiceManager {
         val command: String,
         val startedAt: Long,
         var state: TermlouServiceProtocol.State,
-        var boundToken: String?,
         var process: Process?,
         var pid: Int?,
         var exitCode: Int?,
@@ -74,7 +70,6 @@ object TermlouServiceManager {
 
     private val ACTIVE = setOf(
         TermlouServiceProtocol.State.STARTING,
-        TermlouServiceProtocol.State.WAITING,
         TermlouServiceProtocol.State.RUNNING,
         TermlouServiceProtocol.State.STOPPING,
     )
@@ -88,86 +83,48 @@ object TermlouServiceManager {
         }
     }
 
-    // ---------- 主 PRoot 会话 ----------
+    // ---------- 主 PRoot 生命周期 ----------
 
     /**
-     * 主终端会话创建/ThemeSwap 恢复时调用。必须是同一个 TerminalSession 才会复用 token；
-     * 新会话 token 出现时，绑定在旧 token 上的服务先停掉，绝不自动改绑新主 PRoot。
+     * 主 PRoot 启动。只登记身份，不触碰任何服务：服务不因主 PRoot 出现而改变状态，
+     * 也不会被重新“绑定”。
      */
     fun onMainSessionStarted(context: Context, session: TerminalSession) {
         attach(context)
-        val stale: List<Managed>
-        synchronized(lock) {
-            val token = sessionTokens.getOrPut(session) { UUID.randomUUID().toString() }
-            mainToken = token
-            mainRef = WeakReference(session)
-
-            stale = services.values.filter { s ->
-                s.state in ACTIVE && s.boundToken != null && s.boundToken != token
-            }
-            // 未绑定（WAITING）的服务才允许绑定新主 PRoot；已绑旧会话的服务走 stale 停止。
-            bindWaitingLocked(token)
-            ensureMonitorLocked()
-            writeStateLocked()
-        }
-        if (stale.isNotEmpty()) {
-            io.execute {
-                synchronized(lock) { stopStaleLocked(stale) }
-            }
-        }
-    }
-
-    private fun bindWaitingLocked(token: String) {
-        for (s in services.values) {
-            if (s.state == TermlouServiceProtocol.State.WAITING && s.process?.isAlive == true) {
-                s.state = TermlouServiceProtocol.State.RUNNING
-                s.boundToken = token
-            }
-        }
-    }
-
-    private fun stopStaleLocked(stale: List<Managed>) {
-        val targets = stale.filter { s ->
-            services[s.name] === s &&
-                s.state in ACTIVE &&
-                s.boundToken != null &&
-                s.boundToken != mainToken
-        }
-        for (s in targets) {
-            s.state = TermlouServiceProtocol.State.STOPPING
-            val clean = stopProcessLocked(s, "main session changed")
-            s.boundToken = null
-            if (clean) {
-                s.state = TermlouServiceProtocol.State.STOPPED
-                s.error = "main session changed"
-            } else {
-                s.state = TermlouServiceProtocol.State.STOPPING
-                s.error = s.error?.takeIf { it == "pid_unavailable" } ?: "stop_incomplete"
-            }
-        }
-        writeStateLocked()
-        refreshHostNotificationLocked(appContext)
-        stopMonitorIfIdleLocked()
-        stopHostIfIdleLocked()
+        MainProotTracker.onStarted(session.pid)
     }
 
     /**
-     * 主终端会话结束：只停止绑定到该 token 的服务；WAITING 服务保留，等下一次主 PRoot。
-     * 新主 PRoot 不会自动复活已绑定过的旧服务。
+     * 主 PRoot 退出：主 PRoot 关掉说明不再需要后台，立即停掉全部服务，
+     * 不等 60 秒监控。ThemeSwap 换色重建不会走到这里（同一会话被恢复）。
      */
     fun onMainSessionFinished(context: Context, session: TerminalSession) {
         attach(context)
-        val token = synchronized(lock) {
-            val t = sessionTokens.remove(session) ?: return
-            if (t == mainToken) {
-                mainToken = null
-                mainRef = null
-            }
-            t
-        }
+        MainProotTracker.onFinished(session.pid)
         io.execute {
-            synchronized(lock) { stopBoundToLocked(setOf(token), "main session ended") }
+            synchronized(lock) {
+                if (MainProotTracker.isAlive()) return@synchronized
+                stopAllLocked("main_proot_exited")
+            }
         }
+    }
+
+    /**
+     * TermLou 主程序关闭（返回键 finish / 从最近任务划掉）：
+     * Android 不会因为 Activity 结束就回收 PRoot 子进程，必须显式杀干净。
+     *
+     * 在独立线程执行并限时等待：关闭 App 后进程可能很快被杀，完全异步的清理来不及完成，
+     * 残留的后台服务正是要消除的问题；但也不能长时间阻塞主线程。
+     */
+    fun onAppClosed(context: Context) {
+        attach(context)
+        MainProotTracker.reset()
+        val worker = Thread({
+            synchronized(lock) { stopAllLocked("app_closed", graceful = false) }
+        }, "term-lou-app-close").apply { isDaemon = true }
+        worker.start()
+        // 只等一小段，避免 ANR；清理线程是 daemon，App 进程被回收前会继续跑完。
+        runCatching { worker.join(APP_CLOSE_JOIN_MS) }
     }
 
     // ---------- 命令入口 ----------
@@ -185,6 +142,9 @@ object TermlouServiceManager {
         }
     }
 
+    /**
+     * 启动服务。这里**不检查主 PRoot**：无主 PRoot 也能启动，能活多久由 60 秒监控决定。
+     */
     private fun startServiceLocked(context: Context, request: TermlouServiceProtocol.Request): MiniJson.Obj =
         synchronized(lock) {
             val existing = services[request.name]
@@ -200,12 +160,6 @@ object TermlouServiceManager {
             // 已 STOPPED/FAILED 的同名记录允许重新创建；先清理旧记录。
             if (existing != null) services.remove(existing.name)
 
-            // 主会话可能已结束但回调没到（例如系统直接杀掉 shell 回调链）：先核实存活再绑定。
-            if (mainToken != null && mainRef?.get()?.isRunning != true) {
-                mainToken = null
-                mainRef = null
-            }
-
             val root = TermlouDirs.base(context)
             val serviceDir = File(root, "services").apply { mkdirs() }
             val tempRoot = File(context.filesDir, "workspace/tmp").apply { mkdirs() }
@@ -217,7 +171,6 @@ object TermlouServiceManager {
                 command = request.argv.joinToString(" "),
                 startedAt = System.currentTimeMillis(),
                 state = TermlouServiceProtocol.State.STARTING,
-                boundToken = null,
                 process = null,
                 pid = null,
                 exitCode = null,
@@ -264,12 +217,7 @@ object TermlouServiceManager {
             if (early != null) return early
 
             s.knownTargets = TermlouServiceReaper.snapshot(pid)
-            s.boundToken = mainToken
-            s.state = if (mainToken != null) {
-                TermlouServiceProtocol.State.RUNNING
-            } else {
-                TermlouServiceProtocol.State.WAITING
-            }
+            s.state = TermlouServiceProtocol.State.RUNNING
             ensureMonitorLocked()
             writeStateLocked()
             refreshHostNotificationLocked(context)
@@ -352,7 +300,6 @@ object TermlouServiceManager {
         val clean = stopProcessLocked(s, "stopped")
         if (clean) {
             s.state = TermlouServiceProtocol.State.STOPPED
-            s.boundToken = null
             s.error = "stopped"
             writeStateLocked()
             refreshHostNotificationLocked(context = appContext)
@@ -360,7 +307,6 @@ object TermlouServiceManager {
             TermlouServiceProtocol.ok(snapshot(s))
         } else {
             s.state = TermlouServiceProtocol.State.STOPPING
-            s.boundToken = null
             val err = s.error?.takeIf { it == "pid_unavailable" } ?: "stop_incomplete"
             s.error = err
             writeStateLocked()
@@ -500,7 +446,6 @@ object TermlouServiceManager {
             s.process = null
             s.pid = null
             s.exitCode = code
-            s.boundToken = null
 
             // 包装进程退出后 PID 可能立即被复用；只能用退出前记录的 knownTargets，且不传 root PID。
             val reaped = TermlouServiceReaper.kill(0, s.knownTargets, EXIT_REAP_TIMEOUT_MS)
@@ -528,7 +473,7 @@ object TermlouServiceManager {
     }
 
     @Suppress("CyclomaticComplexMethod")
-    private fun stopProcessLocked(s: Managed, reason: String): Boolean {
+    private fun stopProcessLocked(s: Managed, reason: String, graceful: Boolean = true): Boolean {
         val process = s.process
         val pid = s.pid
         s.process = null
@@ -542,7 +487,9 @@ object TermlouServiceManager {
         // 先给一次优雅退出的机会，再进入强制清理。
         if (process != null) {
             runCatching { process.destroy() }
-            runCatching { process.waitFor(SIGTERM_WAIT_MS, TimeUnit.MILLISECONDS) }
+            if (graceful) {
+                runCatching { process.waitFor(SIGTERM_WAIT_MS, TimeUnit.MILLISECONDS) }
+            }
         }
         if (pid == null && s.knownTargets.isEmpty()) {
             // 没有 PID 就没有可验证的进程树；绝不能返回 clean 假装 STOPPED。
@@ -560,7 +507,9 @@ object TermlouServiceManager {
         }
         // 包装进程已经退出时传 0，禁止 reaper 再用旧 PID 查 /proc（PID 可能已复用）。
         val rootPid = if (process?.isAlive == true) pid ?: 0 else 0
-        val reaped = TermlouServiceReaper.kill(rootPid, known)
+        // 关闭 App 时跳过优雅等待，验证窗口也收紧：SIGKILL 已发出，进程组由 --kill-on-exit 兜底。
+        val verifyMs = if (graceful) TermlouServiceReaper.DEFAULT_TIMEOUT_MS else APP_CLOSE_VERIFY_MS
+        val reaped = TermlouServiceReaper.kill(rootPid, known, verifyMs)
 
         if (process != null) {
             runCatching { if (process.isAlive) process.destroyForcibly() }
@@ -584,12 +533,12 @@ object TermlouServiceManager {
         return clean
     }
 
-    private fun stopAllLocked(reason: String) {
+    /** 停止全部活动服务（主 PRoot 消失、App 关闭、宿主销毁的统一入口）。 */
+    private fun stopAllLocked(reason: String, graceful: Boolean = true) {
         for (s in services.values) {
             if (s.state in ACTIVE || s.knownTargets.isNotEmpty()) {
                 s.state = TermlouServiceProtocol.State.STOPPING
-                val clean = stopProcessLocked(s, reason)
-                s.boundToken = null
+                val clean = stopProcessLocked(s, reason, graceful)
                 if (clean) {
                     s.state = TermlouServiceProtocol.State.STOPPED
                     s.error = reason
@@ -605,33 +554,7 @@ object TermlouServiceManager {
         stopHostIfIdleLocked()
     }
 
-    /** 只停止绑定在指定主会话 token 上的服务；WAITING 与其它会话的服务不动。 */
-    private fun stopBoundToLocked(tokens: Set<String>, reason: String) {
-        val targets = services.values.filter { s ->
-            (s.state in ACTIVE || s.knownTargets.isNotEmpty()) &&
-                s.boundToken?.let { it in tokens } == true
-        }
-        for (s in targets) {
-            s.state = TermlouServiceProtocol.State.STOPPING
-            val clean = stopProcessLocked(s, reason)
-            s.boundToken = null
-            if (clean) {
-                s.state = TermlouServiceProtocol.State.STOPPED
-                s.error = reason
-            } else {
-                s.state = TermlouServiceProtocol.State.STOPPING
-                s.error = s.error?.takeIf { it == "pid_unavailable" } ?: "stop_incomplete"
-            }
-        }
-        if (targets.isNotEmpty()) {
-            writeStateLocked()
-            refreshHostNotificationLocked(appContext)
-        }
-        stopMonitorIfIdleLocked()
-        stopHostIfIdleLocked()
-    }
-
-    // ---------- 监控（60 秒兜底） ----------
+    // ---------- 监控（60 秒） ----------
 
     private fun ensureMonitorLocked() {
         if (monitor != null) return
@@ -648,30 +571,42 @@ object TermlouServiceManager {
         monitor = null
     }
 
+    /**
+     * 每 60 秒检查一次：主 PRoot 不在就停掉全部服务。
+     *
+     * 这里**不因为“没有主 PRoot 身份”而提前返回**——从来没有主 PRoot 时同样要停，
+     * 否则磁贴拉起的服务会永远活着。整个 tick 包在 try/catch 里，
+     * 单次异常不会让 `scheduleWithFixedDelay` 永久停摆。
+     */
+    @Suppress("TooGenericExceptionCaught")
     private fun monitorTick() {
-        val lostToken = synchronized(lock) {
-            // 定期刷新后代快照，保证停止时能补杀中途 fork 的子进程。
-            for (s in services.values) {
-                val pid = s.pid
-                if (pid != null && s.process?.isAlive == true) {
-                    s.knownTargets = (s.knownTargets + TermlouServiceReaper.snapshot(pid))
-                        .distinctBy { it.pid to it.startTime }
+        try {
+            val idle = synchronized(lock) {
+                // 定期刷新后代快照，保证停止时能补杀中途 fork 的子进程。
+                for (s in services.values) {
+                    val pid = s.pid
+                    if (pid != null && s.process?.isAlive == true) {
+                        s.knownTargets = (s.knownTargets + TermlouServiceReaper.snapshot(pid))
+                            .distinctBy { it.pid to it.startTime }
+                    }
+                }
+                activeCountLocked() == 0
+            }
+            if (idle) {
+                synchronized(lock) { stopMonitorIfIdleLocked() }
+            } else if (!MainProotTracker.isAlive()) {
+                // 进入 IO 线程后再确认一次，避免与刚启动的主 PRoot 竞争。
+                io.execute {
+                    synchronized(lock) {
+                        if (activeCountLocked() == 0) return@synchronized
+                        if (MainProotTracker.isAlive()) return@synchronized
+                        Log.i(TAG, "main PRoot missing, stopping all services")
+                        stopAllLocked("main_proot_missing")
+                    }
                 }
             }
-            val token = mainToken ?: return@synchronized null
-            val alive = mainRef?.get()?.isRunning == true
-            if (!alive) {
-                mainToken = null
-                mainRef = null
-                token
-            } else {
-                null
-            }
-        }
-        if (lostToken != null) {
-            io.execute {
-                synchronized(lock) { stopBoundToLocked(setOf(lostToken), "main session lost") }
-            }
+        } catch (e: Exception) {
+            Log.w(TAG, "monitor tick failed", e)
         }
     }
 
@@ -685,7 +620,6 @@ object TermlouServiceManager {
             command = s.command,
             state = s.state,
             startedAt = s.startedAt,
-            boundToken = s.boundToken,
             alive = s.process?.isAlive == true,
             exitCode = s.exitCode,
             error = s.error,
@@ -749,7 +683,6 @@ object TermlouServiceManager {
                         command = obj.optString("command", ""),
                         startedAt = startedAt,
                         state = if (wasActive) TermlouServiceProtocol.State.FAILED else state,
-                        boundToken = null,
                         process = null,
                         pid = null,
                         exitCode = exitCode,
@@ -763,15 +696,13 @@ object TermlouServiceManager {
         }.onFailure { Log.w(TAG, "load service state failed", it) }
     }
 
-    /** 测试/退出时清理；正常运行由主会话或用户 stop 触发。 */
+    /** 测试/退出时清理；正常运行由主 PRoot 消失、App 关闭或用户 stop 触发。 */
     fun shutdownForTest() {
         synchronized(lock) {
             stopAllLocked("shutdown")
             runCatching { monitor?.shutdownNow() }
             monitor = null
-            mainToken = null
-            mainRef = null
-            sessionTokens.clear()
+            MainProotTracker.reset()
             services.clear()
             appContext = null
             stateLoaded = false

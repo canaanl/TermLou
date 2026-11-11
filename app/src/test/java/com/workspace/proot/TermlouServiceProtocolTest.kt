@@ -72,7 +72,6 @@ class TermlouServiceProtocolTest {
             command = "magpie serve",
             state = TermlouServiceProtocol.State.RUNNING,
             startedAt = 123L,
-            boundToken = "session-1",
             alive = true,
             exitCode = null,
             error = null,
@@ -83,11 +82,11 @@ class TermlouServiceProtocolTest {
         assertTrue(json.contains("\"ok\":true"))
         assertTrue(json.contains("\"name\":\"magpie\""))
         assertTrue(json.contains("\"state\":\"RUNNING\""))
-        assertTrue(json.contains("\"bound_session\":\"session-1\""))
         assertTrue(json.contains("\"pid\":4321"))
         assertTrue(json.contains("\"alive\":true"))
         assertTrue(json.contains("\"exit_code\":-1"))
         assertTrue(json.contains("/termlou/services/magpie.log"))
+        assertFalse("不能再输出会话绑定字段：\n$json", json.contains("bound_session"))
 
         val list = TermlouServiceProtocol.okServices(listOf(snapshot)).toString()
         assertTrue(list.contains("\"services\":["))
@@ -102,9 +101,8 @@ class TermlouServiceProtocolTest {
         val snapshot = TermlouServiceProtocol.ServiceSnapshot(
             name = "magpie",
             command = "magpie serve",
-            state = TermlouServiceProtocol.State.WAITING,
+            state = TermlouServiceProtocol.State.RUNNING,
             startedAt = 1L,
-            boundToken = null,
             alive = true,
             exitCode = null,
             error = null,
@@ -113,6 +111,6 @@ class TermlouServiceProtocolTest {
         val json = TermlouServiceProtocol.error("exists", snapshot).toString()
         assertTrue(json.contains("\"ok\":false"))
         assertTrue(json.contains("\"error\":\"exists\""))
-        assertTrue(json.contains("\"state\":\"WAITING\""))
+        assertTrue(json.contains("\"state\":\"RUNNING\""))
     }
 }

@@ -53,17 +53,20 @@ class TermlouServicePolicyTest {
     }
 
     @Test
-    fun `service manager is independent from runInProot and tracks session tokens`() {
+    fun `service manager is independent from runInProot and has no session binding`() {
         val mgr = code("TermlouServiceManager.kt")
-        assertTrue("主会话必须用 TerminalSession token：\n$mgr", mgr.contains("WeakHashMap<TerminalSession"))
         assertTrue("必须有主会话开始回调：\n$mgr", mgr.contains("onMainSessionStarted"))
         assertTrue("必须有主会话结束回调：\n$mgr", mgr.contains("onMainSessionFinished"))
+        assertTrue("必须有 App 关闭回调：\n$mgr", mgr.contains("onAppClosed"))
         assertTrue("服务必须独立启动 PRoot：\n$mgr", mgr.contains("startBackground"))
         assertTrue("停止必须走可验证的进程树清理器：\n$mgr", mgr.contains("TermlouServiceReaper.kill"))
         assertFalse("服务管理器不能复用一次性 runInProot：\n$mgr", mgr.contains("runInProot("))
         assertTrue("必须有 60 秒兜底监控：\n$mgr", mgr.contains("MONITOR_MS"))
         assertTrue("必须限制同时托管数量：\n$mgr", mgr.contains("MAX_ACTIVE_SERVICES"))
-        assertTrue("主会话结束时只能停止绑定服务：\n$mgr", mgr.contains("stopBoundToLocked"))
+        assertTrue("主 PRoot 消失必须停止全部服务：\n$mgr", mgr.contains("stopAllLocked"))
+        assertFalse("不能再有会话绑定模型：\n$mgr", mgr.contains("boundToken"))
+        assertFalse("不能再有会话 token 表：\n$mgr", mgr.contains("sessionTokens"))
+        assertFalse("不能再有 WAITING 状态：\n$mgr", mgr.contains("State.WAITING"))
         assertTrue("停止未收干净必须报 stop_incomplete：\n$mgr", mgr.contains("stop_incomplete"))
         assertTrue("状态必须包含 pid：\n$mgr", mgr.contains("pid = s.pid"))
         assertTrue("启动必须有宽限期：\n$mgr", mgr.contains("STARTUP_GRACE_MS"))
@@ -74,6 +77,10 @@ class TermlouServicePolicyTest {
         assertTrue("启动必须把 pidfile 交给独立 PRoot：\n$mgr", mgr.contains("startBackground(s.argv, pidFile)"))
         assertTrue("拿不到 pid 必须启动失败，不能留不可清理服务：\n$mgr", mgr.contains("failStartPidUnavailable"))
         assertFalse("manager 不能再依赖运行期不存在的 Process.pid 反射：\n$mgr", mgr.contains("getMethod(\"pid\")"))
+
+        // 启动路径不允许检查主 PRoot：无主 PRoot 也必须能拉起服务。
+        val launch = mgr.substringAfter("private fun startServiceLocked").substringBefore("private fun launchServiceLocked")
+        assertFalse("启动服务不能要求主 PRoot 存在：\n$launch", launch.contains("MainProotTracker"))
 
         val resolver = code("ServiceProcessPidResolver.kt")
         assertTrue("pidfile 必须先读：\n$resolver", resolver.contains("readPidFile(pidFile)"))
@@ -90,12 +97,51 @@ class TermlouServicePolicyTest {
     }
 
     @Test
+    fun `monitor checks the main PRoot every tick even without a session`() {
+        val mgr = code("TermlouServiceManager.kt")
+        val tick = mgr.substringAfter("private fun monitorTick").substringBefore("// ---------- 快照与持久化")
+        assertTrue("监控必须检查主 PRoot 存活：\n$tick", tick.contains("MainProotTracker.isAlive()"))
+        assertFalse("监控不能因为缺少会话而提前返回：\n$tick", tick.contains("mainToken ?: return"))
+        assertFalse("监控不能用 PTY 状态代替进程存活：\n$tick", tick.contains("isRunning"))
+        assertTrue("主 PRoot 不在必须全停：\n$tick", tick.contains("stopAllLocked(\"main_proot_missing\")"))
+        assertTrue("监控单次异常不能终止后续周期：\n$tick", tick.contains("catch (e: Exception)"))
+        assertTrue("监控周期必须是 60 秒：\n$mgr", mgr.contains("MONITOR_MS = 60_000L"))
+    }
+
+    @Test
+    fun `main PRoot liveness uses proc start time and fails closed`() {
+        val tracker = code("MainProotTracker.kt")
+        assertTrue("主 PRoot 存活必须看 /proc：\n$tracker", tracker.contains("ProcLiveness.isAlive"))
+        assertTrue("必须记录 starttime 防 PID 复用：\n$tracker", tracker.contains("ProcLiveness.startTime"))
+        assertTrue("主会话结束时必须清理身份：\n$tracker", tracker.contains("fun onFinished"))
+
+        val proc = code("ProcLiveness.kt")
+        assertTrue("僵尸必须判为不存活：\n$proc", proc.contains("i.state == \"Z\""))
+        assertTrue("starttime 不一致必须判为不存活：\n$proc", proc.contains("i.startTime == expectedStart"))
+        assertTrue("读不到 /proc 必须判为不存活：\n$proc", proc.contains("?: return false"))
+
+        val reaper = code("TermlouServiceReaper.kt")
+        assertTrue("服务清理器必须复用同一份存活判定：\n$reaper", reaper.contains("ProcLiveness.isAlive"))
+        assertTrue("服务清理器必须复用同一份进程信息：\n$reaper", reaper.contains("ProcLiveness.info"))
+    }
+
+    @Test
     fun `main terminal publishes start and finish events`() {
         val tc = code("TerminalController.kt")
         assertTrue("创建主会话要登记：\n$tc", tc.contains("TermlouServiceManager.onMainSessionStarted"))
         assertTrue("恢复主会话要登记：\n$tc", tc.contains("onMainSessionStarted"))
         assertTrue("主会话结束要通知：\n$tc", tc.contains("TermlouServiceManager.onMainSessionFinished"))
         assertTrue("onDestroy 也要通知：\n$tc", tc.contains("onSessionFinished(finishedSession"))
+
+        val main = code("MainActivity.kt")
+        assertTrue("关闭 TermLou 主程序必须停掉后台服务：\n$main", main.contains("TermlouServiceManager.onAppClosed"))
+        val destroy = main.substringAfter("override fun onDestroy()").substringBefore("super.onDestroy()")
+        assertTrue("必须在 isFinishing 时停后台服务：\n$destroy", destroy.contains("isFinishing"))
+
+        val host = code("TermlouBackgroundService.kt")
+        assertTrue("从最近任务划掉也必须停后台服务：\n$host", host.contains("onTaskRemoved"))
+        val taskRemoved = host.substringAfter("override fun onTaskRemoved").substringBefore("override fun onBind")
+        assertTrue("onTaskRemoved 必须调用 onAppClosed：\n$taskRemoved", taskRemoved.contains("onAppClosed"))
     }
 
     @Test
@@ -148,16 +194,22 @@ class TermlouServicePolicyTest {
             "service stop",
             "service rm",
             "service clean",
-            "STARTING | WAITING",
+            "STARTING | RUNNING",
             "Long-running Linux services",
             "Linux 后台服务",
             "max 4 active",
             "stop_incomplete",
             "does NOT survive app process death",
             "pid = host PRoot wrapper PID",
+            "No main PRoot is required to start a service",
+            "a check runs every 60",
+            "without TermLou",
         )) {
             assertTrue("termlou-ui help 缺少 $needle", sh.contains(needle))
         }
+        assertFalse("help 不能残留 WAITING：$sh", sh.contains("WAITING"))
+        assertFalse("help 不能残留 bound_session：$sh", sh.contains("bound_session"))
+        assertFalse("help 不能残留绑定说法：$sh", sh.contains("binds when the main PRoot"))
         assertTrue("service 分支必须写独立 req 目录", sh.contains("\$DIR/service/req"))
         assertTrue("service start 必须传递 argv 数组", sh.contains("\\\"argv\\\":[\$argv_json]"))
         assertTrue("service 必须有 rm 分支", sh.contains("status|stop|rm|remove"))

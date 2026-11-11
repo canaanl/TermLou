@@ -46,6 +46,16 @@ class TermlouBackgroundService : Service() {
         super.onDestroy()
     }
 
+    /**
+     * 用户从最近任务划掉 TermLou 时，Activity 的 onDestroy 可能不执行；
+     * 这里作为“关闭主程序”的第二条可靠路径，停掉全部后台服务。
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        TermlouServiceManager.onAppClosed(applicationContext)
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {

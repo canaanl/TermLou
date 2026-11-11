@@ -353,14 +353,18 @@ Long-running Linux services:
   termlou-ui service start --name NAME -- CMD [ARGS...]
       Start a managed service in its own PRoot session. The start command
       returns after launch; closing the overlay or pressing Home/background
-      does not stop it. It stops when the main PRoot exits (including Back/
-      finish Activity), when the app process is killed, or on service stop.
+      does not stop it. No main PRoot is required to start a service.
+      It stops when the main PRoot is not running: a check runs every 60
+      seconds, and the service is killed if no main PRoot exists at that
+      moment (including the case where TermLou was never opened). It also
+      stops when the main PRoot exits, when the TermLou app is closed, when
+      the app process is killed, or on service stop.
       It does NOT survive app process death. Run the command in the foreground
       (no `&`, no daemonize). Duplicate active names are rejected (max 4 active).
       Arguments are passed as an array; spaces/quotes are preserved.
       RUNNING means the PRoot wrapper is alive, not that a port is ready.
   termlou-ui service status NAME
-      Print JSON {ok, service:{name,command,state,started_at,bound_session,
+      Print JSON {ok, service:{name,command,state,started_at,
       pid,alive,exit_code,error,log}}.
   termlou-ui service list
       Print JSON {ok, services:[...]}.
@@ -375,15 +379,15 @@ Long-running Linux services:
       Print JSON {ok,removed_count:N}.
       Active services are never removed by clean.
 
-States: STARTING | WAITING (no main PRoot yet) | RUNNING (wrapper alive) |
-        STOPPING | STOPPED | FAILED.
+States: STARTING | RUNNING (wrapper alive) | STOPPING | STOPPED | FAILED.
 Exit codes: 0 ok:true; 1 service error (ok:false); 2 usage/invalid input.
 Errors: not_found | exists | too_many_services | start_failed:... |
         stop_incomplete | pid_unavailable | active | bad_request | timeout.
 Fields: pid = host PRoot wrapper PID (-1 if none); alive = wrapper alive;
-        exit_code = -1 if not exited; bound_session = token or empty;
-        log = container path, created at service start.
-A service can start before TermLou is opened and binds when the main PRoot appears.
+        exit_code = -1 if not exited; log = container path, created at service start.
+A service can start before TermLou is opened. While no main PRoot is running,
+the 60-second check stops all services, so a service started without TermLou
+lives at most about one minute. With a main PRoot alive, services keep running.
 service list includes active and inactive records; use rm/clean to prune inactive ones.
 Normal tile commands keep their old one-shot behavior; service is opt-in.
 EOF
@@ -523,15 +527,18 @@ Canvas 点击 → 执行命令:
 Linux 后台服务:
   termlou-ui service start --name 名称 -- 命令 [参数...]
       在独立 PRoot 会话中启动托管服务。start 命令返回后服务继续运行；
-      关闭浮窗、按 Home/切后台不影响。按返回键 finish Activity、主 PRoot
-      退出、用户 stop 或 App 进程被杀时停止；进程被杀后无法恢复。
+      关闭浮窗、按 Home/切后台不影响。启动服务不需要主 PRoot。
+      没有主 PRoot 运行时服务会被自动停止：每 60 秒检查一次，检查时
+      没有主 PRoot 就杀掉全部后台服务（包括从未打开过 TermLou 的情况）。
+      主 PRoot 退出、TermLou 主程序关闭、用户 stop 或 App 进程被杀时也会停止；
+      进程被杀后无法恢复。
       App 进程死亡后旧记录标记 FAILED，不能自动恢复。
       服务命令必须前台运行，不要用 & 或 daemonize。
       同名活动服务拒绝重复启动，最多 4 个。
       参数按数组传递，不丢空格、引号或特殊字符。
       RUNNING 只表示 PRoot 包装进程活着，不表示端口/业务已就绪。
   termlou-ui service status 名称
-      输出 JSON：{ok, service:{name,command,state,started_at,bound_session,
+      输出 JSON：{ok, service:{name,command,state,started_at,
       pid,alive,exit_code,error,log}}。
   termlou-ui service list
       输出 JSON：{ok, services:[...]}。
@@ -545,17 +552,18 @@ Linux 后台服务:
       删除所有 STOPPED/FAILED 记录及其日志。
       输出 JSON：{ok,removed_count:N}。
 
-状态: STARTING | WAITING（等待主 PRoot）| RUNNING（包装进程存活）|
-      STOPPING | STOPPED | FAILED。
+状态: STARTING | RUNNING（包装进程存活）| STOPPING | STOPPED | FAILED。
 退出码: 0 ok:true；1 服务错误（ok:false）；2 用法/参数错误。
 错误: not_found | exists | too_many_services | start_failed:... |
       stop_incomplete | pid_unavailable | active | bad_request | timeout。
 字段: pid = 宿主 PRoot 包装进程 PID（无则 -1）；alive = 包装进程存活；
-      exit_code = -1 表示未退出；bound_session = token 或空；
-      log = 容器内路径，服务启动时创建。
-可以先启动服务，再打开 TermLou；主 PRoot 出现后自动绑定。
-服务先启动时保持 WAITING；主 PRoot 出现后绑定为 RUNNING。
+      exit_code = -1 表示未退出；log = 容器内路径，服务启动时创建。
+      state = 服务生命周期状态；error = 最近一次错误或停止原因。
+可以先启动服务，再打开 TermLou。没有主 PRoot 运行时，60 秒检查会停掉
+全部服务，所以未打开 TermLou 时启动的服务最多存活约一分钟；
+主 PRoot 存活期间服务不会被停。主 PRoot 关闭后最迟约一分钟内全停。
 service list 包含活动与非活动记录；非活动记录可用 rm/clean 清理。
+服务在 TermLou 未打开时也能启动，这是独立运行模式，不需要先开主程序。
 普通磁贴命令仍保持一次性执行；只有 service 子命令进入托管模式。
 EOF
       fi
