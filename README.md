@@ -2,7 +2,7 @@
 
 > 一个为**不写代码的人**打造的 Android 终端 —— 把 Debian GNU/Linux、文件管理、笔记待办和脚本浮窗，全部塞进一个"点一下就能用"的 App。
 
-![Version](https://img.shields.io/badge/version-5.12.3-blue)
+![Version](https://img.shields.io/badge/version-5.12.4-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -35,7 +35,7 @@
 | 📝 **笔记与待办** | 主界面笔记 Tab 与独立笔记页双入口；列表/编辑、标签胶囊、待办看板、退出自动保存；纯文件存储，不依赖 Linux |
 | 📌 **笔记磁贴** | 通知栏一键直达独立笔记页，绕开主界面、不唤醒 Linux 会话，用完即走、后台无残留 |
 | 💬 **脚本驱动浮窗** | Shell 一句 `termlou-ui --title "确认" --button "OK"` 即弹出原生浮窗，支持输入/单选/多选/开关/ANSI 彩色输出 |
-| 🚀 **后台服务托管** | `termlou-ui service start --name NAME -- CMD` 让长任务在独立 PRoot 会话中常驻，关浮窗/切后台不中断；无需先开主程序即可启动，每 60 秒检查一次主 PRoot，不在就停掉全部后台服务 |
+| 🚀 **后台服务托管** | `termlou-ui service start --name NAME -- CMD` 让长任务在独立 PRoot 会话中常驻，关浮窗/切后台不中断；无需先开主程序即可启动，每 60 秒检查一次 TermLou 主程序是否打开，没打开就停掉全部后台服务 |
 | 🌐 **给 AI agent 的内置浏览器** | 系统 WebView + 回环 HTTP 指令接口；通用移动 Chrome UA、Cookie 持久，悬浮小窗可见 |
 | 🎨 **启动像素工坊** | 手绘 96×80 点阵 + 照片转像素（灰阶分位量化，自动判向＋常驻反选）+ 粒子飞入动画，自定义启动画面 |
 | 🧱 **零 XML 布局** | 全部 UI 由 Kotlin 程序化构建，四 Tab 架构 |
@@ -58,7 +58,7 @@
 | 文件 | `androidx.documentfile`（SAF 导入）、`commons-compress`（tar 解包）、`xz`（tar.xz 流式解压） |
 | 数据 | `SharedPreferences` + 自写 JSON（命令库 v2、笔记索引） |
 | 静态分析 | detekt 1.23.1 |
-| 测试 | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso（807 个单元测试） |
+| 测试 | JUnit 4 · MockK · kotlinx-coroutines-test · Espresso（809 个单元测试） |
 | CI | GitHub Actions（lint + test + assembleDebug） |
 
 ---
@@ -206,7 +206,7 @@ Linux 的 `/var/log` 不写进 rootfs：通过 proot bind 到 `filesDir/logs/lin
 - **Canvas 点击提交**：节点动作 `submit:ID` 点按后写回 `{"id":"ID","values":{...}}` 并关窗；`submit:ID:keep` 写同样结果但保持浮窗，等待下一次请求。App 只写结果、不执行命令，由调用方 shell 读取 JSON 后自行执行
 - **弹窗工坊**（`DialogMakerActivity`）：只保留外壳（标题、主题、主色、圆角、位置、动画、预览、运行、导出）；线性控件列表和独立「画布」控件已移除。内容统一在 CanvasDesigner 的弹窗内容画布中编辑，图层/属性/时间轴就是工坊的层级结构。工坊只生成一个 `--canvas` 内容场景；实时预览原位更新，不再 `removeAllViews`；「运行」复用同一个浮窗，真机运行结果 JSON 和导出命令保持不变
 - **剪贴板桥**：`termlou-clipboard "文本"` 或 `echo "文本" | termlou-clipboard` 直写系统剪贴板
-- **后台服务托管**：`termlou-ui service start --name NAME -- CMD [ARGS...]` 在独立 PRoot 会话中启动长任务，start 命令返回后继续运行；关闭浮窗、按 Home/切后台不影响。**启动不需要主 PRoot**：没开 TermLou 也能用磁贴直接拉起服务。运行期间每 60 秒检查一次主 PRoot，检查时没有主 PRoot 就停掉全部后台服务——包括从未打开过 TermLou 的情况，所以这种服务最多存活约一分钟；主 PRoot 存活期间服务不会被停。主 PRoot 退出、关闭 TermLou 主程序（返回键 finish 或从最近任务划掉）、用户 stop 或 App 进程被杀时也会立即停止（进程被杀后无法恢复）。`--noprofile --norc` 保证不会执行用户的 `.bashrc`/启动命令；服务命令必须前台运行，不要 daemonize。`service status NAME` / `service list` / `service stop NAME` / `service rm NAME` / `service clean` 返回稳定 JSON。生命周期只有 `STARTING / RUNNING / STOPPING / STOPPED / FAILED`，`RUNNING` 只表示包装进程活着，不是端口/业务就绪。stop 会多轮扫描并验证 PRoot 进程树，未收干净返回 `stop_incomplete`，不再谎报 `STOPPED`。状态包含 `pid/alive/exit_code/log`；真实宿主 PID 由宿主 pidfile + `/proc` 解析并拒绝 `-1`，拿不到 PID 时启动直接失败、stop 返回 `pid_unavailable`，不会留下无法清理的服务；启动有 500ms 宽限，命令不存在或立刻退出直接返回 `start_failed`。服务日志 `/termlou/services/<name>.log` 在启动时即创建 header，纳入 1MB 日志预算。普通磁贴命令仍保持一次性执行
+- **后台服务托管**：`termlou-ui service start --name NAME -- CMD [ARGS...]` 在独立 PRoot 会话中启动长任务，start 命令返回后继续运行；关闭浮窗、按 Home/切后台不影响。**启动不需要打开 TermLou**：没开主程序也能用磁贴直接拉起服务。服务存活条件是 **TermLou 主程序打开着**（前台、后台、按 Home 都算打开）；运行期间每 60 秒检查一次，主程序没打开就停掉全部后台服务——包括从未打开过 TermLou 的情况，所以这种服务最多存活约一分钟。关闭 TermLou 主程序（返回键 finish 或从最近任务划掉）立即全停。在 TermLou 里手动关闭终端 shell **不影响**后台服务。App 进程被杀时服务一起消失（无法恢复）。`--noprofile --norc` 保证不会执行用户的 `.bashrc`/启动命令；服务命令必须前台运行，不要 daemonize。`service status NAME` / `service list` / `service stop NAME` / `service rm NAME` / `service clean` 返回稳定 JSON。生命周期只有 `STARTING / RUNNING / STOPPING / STOPPED / FAILED`，`RUNNING` 只表示包装进程活着，不是端口/业务就绪。stop 会多轮扫描并验证 PRoot 进程树，未收干净返回 `stop_incomplete`，不再谎报 `STOPPED`。状态包含 `pid/alive/exit_code/log`；真实宿主 PID 由宿主 pidfile + `/proc` 解析并拒绝 `-1`，拿不到 PID 时启动直接失败、stop 返回 `pid_unavailable`，不会留下无法清理的服务；启动有 500ms 宽限，命令不存在或立刻退出直接返回 `start_failed`。服务日志 `/termlou/services/<name>.log` 在启动时即创建 header，纳入 1MB 日志预算。普通磁贴命令仍保持一次性执行
 
 ### 6. 启动工坊 Splash Workshop
 
@@ -332,7 +332,7 @@ App 不执行命令：`termlou-ui` 只输出结果 JSON，`case` 里的命令由
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
-| **5.12.3** | 6203 | **后台服务生命周期重构**：服务不再绑定会话，删除 `WAITING`/`bound_session`/token；服务可在无主 PRoot 时启动，每 60 秒用 `/proc` + starttime 检查主 PRoot，不在就停掉全部服务（含从未打开 TermLou 的情况）；主 PRoot 退出、关闭 TermLou 主程序（finish 或从最近任务划掉）立即全停；新增 `MainProotTracker`/`ProcLiveness`，服务清理器复用同一份存活判定；监控异常不再终止后续周期；中英文 help/README 同步 |
+| **5.12.4** | 6204 | **后台服务存活条件改为“TermLou 主程序是否打开”**：删除 `MainProotTracker` 与全部会话回调，新增 `MainAppPresence`（`onMainOpened`/`onMainClosed`/`isOpen`）。主程序前台、后台、按 Home 都算打开，服务保持；每 60 秒检查一次，主程序没打开就停掉全部服务（含从未打开过 TermLou 的情况，最多存活约一分钟）；关闭主程序（`isFinishing` 或 `onTaskRemoved`）立即全停；在 TermLou 里手动关闭终端 shell 不影响服务。修复 5.12.3 冷启动 PID 恒为 0 导致“1 分钟准时掉”的根因。**笔记搜索**：从搜索结果打开笔记再返回时保留搜索框内容、标签、结果与 FAB 展开态，再按一次返回才回到初始；恢复时不抢焦点、不弹键盘。新增 `MainAppPresenceTest` 与搜索会话回归，809 测试通过 |
 | **5.12.2** | 6202 | **service pid 解析修复**：`Process.pid()` 不可用时由宿主 pidfile + `/proc` 解析真实 wrapper PID，反射值拒绝 `-1`；拿不到 pid 时启动失败、stop 返回 `pid_unavailable`，不再假报 `STOPPED`；新增 pidfile/fake `/proc`/`-1` 拒绝回归 |
 | **5.12.1** | 6201 | **后台服务托管修复**：`bash -lc` → `bash --noprofile --norc -c`，不再执行 `.bashrc` 启动命令；stop 多轮扫描/补杀/PID 校验，失败返回 `stop_incomplete`；新增 `pid`、500ms 启动宽限、日志 header + 块采集、`service rm/clean`；help 补错误码与字段语义 |
 | **5.12.0** | 6200 | **Linux 后台服务托管（方案 A）**：`termlou-ui service start/status/list/stop` 让长任务在独立 PRoot 会话中常驻；主 PRoot 未启动时 WAITING，出现后绑定 RUNNING；主 PRoot 退出时停止已绑定服务，WAITING 保留；最多 4 个、同名拒绝、参数数组无损、进程树清理、`--kill-on-exit` 保留、服务日志纳入 1MB 预算；普通磁贴命令行为不变；中英文 help 同步 |

@@ -85,7 +85,10 @@ class NotesSwipePriorityTest {
                 c.contains("tagSearch.searchField.visibility")
             )
             assertTrue("$name 打开笔记时必须藏起 FAB 组：\n$c", c.contains("searchOverlay.hideForEditor()"))
-            assertTrue("$name 回列表时必须恢复收起的 FAB：\n$c", c.contains("searchOverlay.showMenuCollapsed()"))
+            assertTrue(
+                "$name 回列表时必须恢复搜索会话或收起 FAB：\n$c",
+                c.contains("searchOverlay.restoreAfterEditor()")
+            )
         }
     }
 

@@ -102,6 +102,8 @@ class MainActivity : AppCompatActivity() {
             wsTmp = java.io.File(filesDir, "workspace/tmp")
         )
         TerminalManager.pruneStaleSessionTmp(scope.wsTmp)
+        // 主程序已打开：后台服务的存活条件就是它，直到 onDestroy(isFinishing) 或划掉任务。
+        TermlouServiceManager.onMainOpened(applicationContext)
         loadThemeColors()
         statusController = StatusController(this, scope)
         loadSettings()

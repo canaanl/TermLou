@@ -4,20 +4,22 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import androidx.core.content.ContextCompat
-import com.termux.terminal.TerminalSession
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
- * Linux 后台服务托管（5.12.3）。
+ * Linux 后台服务托管（5.12.4）。
  *
  * 服务是**独立运行单元**，不隶属任何终端会话，只有三条规则：
- *  1. 可以没有主 PRoot 就启动（磁贴直接拉起，不需要先打开主程序）；
- *  2. 每 60 秒检查一次主 PRoot（[MainProotTracker]），不在就停掉全部服务——
- *     包括“从来没有主 PRoot”的情况，服务最多活到下一次检查；
- *  3. 主 PRoot 退出、TermLou 主程序关闭时立即停掉全部服务。
+ *  1. 可以没有打开主程序就启动（磁贴直接拉起，不需要先开 TermLou）；
+ *  2. 每 60 秒检查一次 TermLou 主程序是否打开（[MainAppPresence]），没打开就停掉全部服务——
+ *     包括“从来没有打开过主程序”的情况，服务最多活到下一次检查；
+ *  3. TermLou 主程序关闭时立即停掉全部服务。
+ *
+ * 判定依据只看主程序，不看 PRoot、也不看终端 shell 是否退出：
+ * 主程序在前台或后台都算打开，服务保持。
  *
  * 因此这里不存在会话 token / 绑定关系，生命周期只有
  * `STARTING -> RUNNING -> STOPPING -> STOPPED / FAILED`。
@@ -83,30 +85,17 @@ object TermlouServiceManager {
         }
     }
 
-    // ---------- 主 PRoot 生命周期 ----------
+    // ---------- 主程序生命周期 ----------
 
     /**
-     * 主 PRoot 启动。只登记身份，不触碰任何服务：服务不因主 PRoot 出现而改变状态，
-     * 也不会被重新“绑定”。
+     * 主程序打开：只记录状态，不触碰任何服务。
+     *
+     * 服务是否存活由 60 秒检查统一判定（[MainAppPresence.isOpen]），
+     * 不存在“绑定/解绑”这层关系。
      */
-    fun onMainSessionStarted(context: Context, session: TerminalSession) {
+    fun onMainOpened(context: Context) {
         attach(context)
-        MainProotTracker.onStarted(session.pid)
-    }
-
-    /**
-     * 主 PRoot 退出：主 PRoot 关掉说明不再需要后台，立即停掉全部服务，
-     * 不等 60 秒监控。ThemeSwap 换色重建不会走到这里（同一会话被恢复）。
-     */
-    fun onMainSessionFinished(context: Context, session: TerminalSession) {
-        attach(context)
-        MainProotTracker.onFinished(session.pid)
-        io.execute {
-            synchronized(lock) {
-                if (MainProotTracker.isAlive()) return@synchronized
-                stopAllLocked("main_proot_exited")
-            }
-        }
+        MainAppPresence.onMainOpened()
     }
 
     /**
@@ -118,7 +107,7 @@ object TermlouServiceManager {
      */
     fun onAppClosed(context: Context) {
         attach(context)
-        MainProotTracker.reset()
+        MainAppPresence.onMainClosed()
         val worker = Thread({
             synchronized(lock) { stopAllLocked("app_closed", graceful = false) }
         }, "term-lou-app-close").apply { isDaemon = true }
@@ -594,14 +583,14 @@ object TermlouServiceManager {
             }
             if (idle) {
                 synchronized(lock) { stopMonitorIfIdleLocked() }
-            } else if (!MainProotTracker.isAlive()) {
-                // 进入 IO 线程后再确认一次，避免与刚启动的主 PRoot 竞争。
+            } else if (!MainAppPresence.isOpen()) {
+                // 进入 IO 线程后再确认一次，避免与刚打开的主程序竞争。
                 io.execute {
                     synchronized(lock) {
                         if (activeCountLocked() == 0) return@synchronized
-                        if (MainProotTracker.isAlive()) return@synchronized
-                        Log.i(TAG, "main PRoot missing, stopping all services")
-                        stopAllLocked("main_proot_missing")
+                        if (MainAppPresence.isOpen()) return@synchronized
+                        Log.i(TAG, "TermLou main app not open, stopping all services")
+                        stopAllLocked("main_app_missing")
                     }
                 }
             }
@@ -696,13 +685,13 @@ object TermlouServiceManager {
         }.onFailure { Log.w(TAG, "load service state failed", it) }
     }
 
-    /** 测试/退出时清理；正常运行由主 PRoot 消失、App 关闭或用户 stop 触发。 */
+    /** 测试/退出时清理；正常运行由主程序关闭或用户 stop 触发。 */
     fun shutdownForTest() {
         synchronized(lock) {
             stopAllLocked("shutdown")
             runCatching { monitor?.shutdownNow() }
             monitor = null
-            MainProotTracker.reset()
+            MainAppPresence.reset()
             services.clear()
             appContext = null
             stateLoaded = false

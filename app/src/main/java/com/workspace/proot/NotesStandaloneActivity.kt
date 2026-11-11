@@ -164,7 +164,8 @@ class NotesStandaloneActivity : NotesPageActivity() {
         val draft = body.text?.toString().orEmpty()
         flushPendingSave()
         current = null
-        searchOverlay.showMenuCollapsed()
+        // 从搜索结果进来的笔记，退回时保持搜索框与结果；普通列表则维持原收起态。
+        searchOverlay.restoreAfterEditor()
         navRow.visibility = View.VISIBLE
         editRow.visibility = View.GONE
         editorBox.visibility = View.GONE

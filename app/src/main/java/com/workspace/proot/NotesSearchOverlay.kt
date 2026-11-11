@@ -48,6 +48,12 @@ class NotesSearchOverlay(
     var resultsAvailable: Boolean = false
         private set
 
+    /** 进编辑器时挂起的搜索会话；返回列表时原样恢复，只有显式关闭才结束会话。 */
+    private var suspendedSearch = false
+
+    /** true = 刚从上一次搜索会话恢复，下一次返回键直接回到初始态。 */
+    private var restoredFromEditor = false
+
     private var scrimAnimator: ValueAnimator? = null
     private var host: FrameLayout? = null
 
@@ -120,8 +126,11 @@ class NotesSearchOverlay(
      * 收起整个 FAB 组（S1/S2 → S0）。
      *
      * 切 Tab、点组 FAB、打开笔记、点底部待办/日历都走这里。
+     * 这是**真正结束搜索会话**的唯一入口，会清空查询与标签。
      */
     fun collapseAll(animate: Boolean = true) {
+        suspendedSearch = false
+        restoredFromEditor = false
         closeSearch(clearQuery = true, animate = animate)
         if (!isExpanded) {
             menu.setExpandedImmediate(false)
@@ -134,17 +143,56 @@ class NotesSearchOverlay(
         updateBlocking()
     }
 
-    /** 打开笔记/进入编辑态：整个搜索层立即消失，不播动画。 */
+    /**
+     * 打开笔记/进入编辑态：只把搜索层**挂起**，不清查询。
+     *
+     * 从搜索结果点进笔记、发现不是想要的那篇再退回时，搜索框内容、标签、
+     * 结果列表和 FAB 展开态都要原样保留，由 [restoreAfterEditor] 恢复。
+     */
     fun hideForEditor() {
-        collapseAll(animate = false)
+        suspendedSearch = isSearchOpen
+        restoredFromEditor = false
+        isSearchOpen = false
+        resultsAvailable = false
+        isExpanded = false
         panel.hide(animate = false)
         menu.visibility = View.GONE
+        menu.setExpandedImmediate(false)
         scrim.visibility = View.GONE
         scrim.setBlocking(false)
+        // 只释放焦点、收起筛选条；查询词与已选标签保留。
+        tagSearch.hideForEditor()
+    }
+
+    /**
+     * 从编辑器回到列表。
+     *
+     * 有挂起的搜索会话就原样恢复（面板可见、结果可点、FAB 展开，但不抢焦点/不弹键盘）；
+     * 没有则退回普通收起态。
+     *
+     * @return true 表示恢复了搜索会话，此时列表过滤条件仍在。
+     */
+    fun restoreAfterEditor(): Boolean {
+        if (!suspendedSearch) {
+            showMenuCollapsed()
+            return false
+        }
+        suspendedSearch = false
+        restoredFromEditor = true
+        menu.visibility = View.VISIBLE
+        isExpanded = true
+        menu.setExpandedImmediate(true)
+        isSearchOpen = true
+        resultsAvailable = false
+        panel.show(focusInput = false)
+        updateBlocking()
+        return true
     }
 
     /** 从编辑器/子页面回到列表：FAB 组收起但可见。 */
     fun showMenuCollapsed() {
+        suspendedSearch = false
+        restoredFromEditor = false
         panel.hide(animate = false)
         isSearchOpen = false
         resultsAvailable = false
@@ -161,8 +209,12 @@ class NotesSearchOverlay(
         collapseAll(animate = false)
     }
 
-    /** 返回键：先关搜索，再收 FAB。 */
+    /** 返回键：恢复自编辑器的搜索先一步回到初始，再关搜索，最后收 FAB。 */
     fun handleBack(): Boolean {
+        if (restoredFromEditor) {
+            collapseAll()
+            return true
+        }
         if (isSearchOpen) {
             closeSearch()
             return true

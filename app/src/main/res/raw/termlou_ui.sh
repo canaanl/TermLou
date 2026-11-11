@@ -354,11 +354,13 @@ Long-running Linux services:
       Start a managed service in its own PRoot session. The start command
       returns after launch; closing the overlay or pressing Home/background
       does not stop it. No main PRoot is required to start a service.
-      It stops when the main PRoot is not running: a check runs every 60
-      seconds, and the service is killed if no main PRoot exists at that
-      moment (including the case where TermLou was never opened). It also
-      stops when the main PRoot exits, when the TermLou app is closed, when
-      the app process is killed, or on service stop.
+      The service lives while the TermLou app is open (foreground or
+      background). A check runs every 60 seconds: if the TermLou app is not
+      open, every service is stopped. That includes the case where TermLou
+      was never opened, so such a service lives at most about one minute.
+      It also stops when the TermLou app is closed (Back/finish or swiped
+      from recents), when the app process is killed, or on service stop.
+      Closing the terminal shell inside TermLou does not stop services.
       It does NOT survive app process death. Run the command in the foreground
       (no `&`, no daemonize). Duplicate active names are rejected (max 4 active).
       Arguments are passed as an array; spaces/quotes are preserved.
@@ -385,9 +387,11 @@ Errors: not_found | exists | too_many_services | start_failed:... |
         stop_incomplete | pid_unavailable | active | bad_request | timeout.
 Fields: pid = host PRoot wrapper PID (-1 if none); alive = wrapper alive;
         exit_code = -1 if not exited; log = container path, created at service start.
-A service can start before TermLou is opened. While no main PRoot is running,
-the 60-second check stops all services, so a service started without TermLou
-lives at most about one minute. With a main PRoot alive, services keep running.
+A service can start before TermLou is opened. While the TermLou app is not
+open, the 60-second check stops all services, so a service started without
+TermLou lives at most about one minute. While TermLou is open (foreground or
+background), services keep running; closing the terminal shell inside it does
+not stop them. Closing the TermLou app stops all services immediately.
 service list includes active and inactive records; use rm/clean to prune inactive ones.
 Normal tile commands keep their old one-shot behavior; service is opt-in.
 EOF
@@ -528,10 +532,12 @@ Linux 后台服务:
   termlou-ui service start --name 名称 -- 命令 [参数...]
       在独立 PRoot 会话中启动托管服务。start 命令返回后服务继续运行；
       关闭浮窗、按 Home/切后台不影响。启动服务不需要主 PRoot。
-      没有主 PRoot 运行时服务会被自动停止：每 60 秒检查一次，检查时
-      没有主 PRoot 就杀掉全部后台服务（包括从未打开过 TermLou 的情况）。
-      主 PRoot 退出、TermLou 主程序关闭、用户 stop 或 App 进程被杀时也会停止；
-      进程被杀后无法恢复。
+      服务在 TermLou 主程序打开期间保持（前台、后台都算打开）。
+      每 60 秒检查一次：主程序没打开就杀掉全部后台服务，
+      包括从未打开过 TermLou 的情况，所以这种服务最多存活约一分钟。
+      TermLou 主程序关闭（返回键 finish 或从最近任务划掉）、用户 stop
+      或 App 进程被杀时也会立即停止；进程被杀后无法恢复。
+      在 TermLou 里手动关闭终端 shell 不影响后台服务。
       App 进程死亡后旧记录标记 FAILED，不能自动恢复。
       服务命令必须前台运行，不要用 & 或 daemonize。
       同名活动服务拒绝重复启动，最多 4 个。
@@ -559,9 +565,11 @@ Linux 后台服务:
 字段: pid = 宿主 PRoot 包装进程 PID（无则 -1）；alive = 包装进程存活；
       exit_code = -1 表示未退出；log = 容器内路径，服务启动时创建。
       state = 服务生命周期状态；error = 最近一次错误或停止原因。
-可以先启动服务，再打开 TermLou。没有主 PRoot 运行时，60 秒检查会停掉
+可以先启动服务，再打开 TermLou。主程序没打开时，60 秒检查会停掉
 全部服务，所以未打开 TermLou 时启动的服务最多存活约一分钟；
-主 PRoot 存活期间服务不会被停。主 PRoot 关闭后最迟约一分钟内全停。
+主程序打开期间服务不会被停。关闭 TermLou 主程序后立即全停。
+       TermLou 在前台或后台都算打开；只有关闭主程序才会停服务。
+       TermLou 打开期间服务持续运行，60 秒检查只做兜底判定。
 service list 包含活动与非活动记录；非活动记录可用 rm/clean 清理。
 服务在 TermLou 未打开时也能启动，这是独立运行模式，不需要先开主程序。
 普通磁贴命令仍保持一次性执行；只有 service 子命令进入托管模式。

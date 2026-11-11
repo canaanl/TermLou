@@ -149,7 +149,13 @@ class NotesSearchPanel(
         }
     }
 
-    fun show() {
+    /**
+     * 显示面板。
+     *
+     * @param focusInput false = 恢复已有关键字时使用：只显示面板与结果，
+     *        不抢焦点、不弹键盘（用户此时是刚从笔记内容退回来的）。
+     */
+    fun show(focusInput: Boolean = true) {
         hideToken++
         animate().cancel()
         visibility = VISIBLE
@@ -159,7 +165,7 @@ class NotesSearchPanel(
         tagSearch.refreshTags()
         post {
             translationY = lastY.coerceIn(0f, maxTranslation())
-            focusAndShowIme()
+            if (focusInput) focusAndShowIme()
         }
     }
 
