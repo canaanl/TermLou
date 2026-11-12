@@ -1,5 +1,6 @@
 package com.workspace.proot
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -122,6 +123,30 @@ class NotesDigestPolicyTest {
             throw AssertionError("找不到 AndroidManifest.xml")
         }
         assertTrue("必须声明聚合页：\n$manifest", manifest.contains("NotesDigestActivity"))
+    }
+
+    @Test
+    fun `digest icon is a three-row checklist with round caps`() {
+        val icon = resFile("app/src/main/res/drawable/ic_notes_digest.xml").readText()
+        assertEquals(
+            "必须是 3 个圆点 + 3 条线（共 6 个 path）：",
+            6,
+            Regex("<path").findAll(icon).count(),
+        )
+        assertEquals(
+            "三条线都必须用圆头（方头会像表格）：",
+            3,
+            Regex("strokeLineCap=\"round\"").findAll(icon).count(),
+        )
+        assertEquals(
+            "线条必须用 stroke 描边，不能用填充矩形：",
+            3,
+            Regex("android:strokeWidth=\"3\"").findAll(icon).count(),
+        )
+        assertFalse("不能用方头：", icon.contains("strokeLineCap=\"butt\""))
+        assertTrue("第一行线到 21.5：", icon.contains("M8.5,6 L21.5,6"))
+        assertTrue("第二行线到 21.5：", icon.contains("M8.5,12 L21.5,12"))
+        assertTrue("第三行必须更短：", icon.contains("M8.5,18 L17,18"))
     }
 
     @Test

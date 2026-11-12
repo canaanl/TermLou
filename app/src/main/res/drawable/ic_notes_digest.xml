@@ -1,24 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 聚合展示图标（5.12.5，5.12.6 调整留白）：四宫格，右上角一块向右上分离，
-     表达"把散落内容汇到一处"。纯实心圆角方块，靠留白分离，任何主题下都不需要描边隔断。
-     颜色由 DigestIconDrawable.setTint 控制；viewport 内留 2dp 边距，缩到 18dp 后
-     图形不会顶到 FAB 内沿。 -->
+<!-- 聚合展示图标（5.12.7）：清单式三条目。
+     每行 = 左侧实心圆点 + 右侧圆头横线；第三行线更短，破掉对称呆板感。
+     不清单用三条等长横线，是因为组 FAB 收起态就是 ☰，两者并排会分不清。
+     线条必须用 stroke + round cap（填充矩形只能得到方头，看起来像表格）。
+     颜色由 DigestIconDrawable.setTint 统一控制，这里 fill/stroke 都用黑，
+     tint 后即变品牌色或禁用灰。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+
+    <!-- 第 1 行 -->
     <path
         android:fillColor="#FF000000"
-        android:pathData="M4.5,14h6a1.5,1.5 0 0 1 1.5,1.5v6a1.5,1.5 0 0 1 -1.5,1.5h-6a1.5,1.5 0 0 1 -1.5,-1.5v-6a1.5,1.5 0 0 1 1.5,-1.5z" />
+        android:pathData="M4.25,6 m-1.75,0 a1.75,1.75 0 1,1 3.5,0 a1.75,1.75 0 1,1 -3.5,0" />
+    <path
+        android:strokeColor="#FF000000"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M8.5,6 L21.5,6" />
+
+    <!-- 第 2 行 -->
     <path
         android:fillColor="#FF000000"
-        android:pathData="M14,14h6a1.5,1.5 0 0 1 1.5,1.5v6a1.5,1.5 0 0 1 -1.5,1.5h-6a1.5,1.5 0 0 1 -1.5,-1.5v-6a1.5,1.5 0 0 1 1.5,-1.5z" />
+        android:pathData="M4.25,12 m-1.75,0 a1.75,1.75 0 1,1 3.5,0 a1.75,1.75 0 1,1 -3.5,0" />
+    <path
+        android:strokeColor="#FF000000"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M8.5,12 L21.5,12" />
+
+    <!-- 第 3 行：线短一截 -->
     <path
         android:fillColor="#FF000000"
-        android:pathData="M4.5,3h6a1.5,1.5 0 0 1 1.5,1.5v6a1.5,1.5 0 0 1 -1.5,1.5h-6a1.5,1.5 0 0 1 -1.5,-1.5v-6a1.5,1.5 0 0 1 1.5,-1.5z" />
-    <!-- 右上角：整体上移 1.5、右移 1.5，与另外三块拉开缝隙 -->
+        android:pathData="M4.25,18 m-1.75,0 a1.75,1.75 0 1,1 3.5,0 a1.75,1.75 0 1,1 -3.5,0" />
     <path
-        android:fillColor="#FF000000"
-        android:pathData="M15.5,1.5h6a1.5,1.5 0 0 1 1.5,1.5v6a1.5,1.5 0 0 1 -1.5,1.5h-6a1.5,1.5 0 0 1 -1.5,-1.5v-6a1.5,1.5 0 0 1 1.5,-1.5z" />
+        android:strokeColor="#FF000000"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M8.5,18 L17,18" />
 </vector>
