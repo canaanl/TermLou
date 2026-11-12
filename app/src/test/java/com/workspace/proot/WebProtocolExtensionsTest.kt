@@ -72,6 +72,31 @@ class WebProtocolExtensionsTest {
         assertEquals("boom", out.getString("error"))
     }
 
+    @Test
+    fun `fields reports unknown names instead of dropping them`() {
+        val body = WebProtocol.okJson("value" to "1")
+        val out = JSONObject(
+            WebProtocol.projectFields(body, request("""{"fields":["ok","value","nonexistent"]}"""))
+        )
+        assertEquals("1", out.getString("value"))
+        assertEquals(1, out.getJSONArray("fields_unknown").length())
+        assertEquals("nonexistent", out.getJSONArray("fields_unknown").getString(0))
+    }
+
+    @Test
+    fun `fields with all known names has no unknown diagnostic`() {
+        val body = WebProtocol.okJson("value" to "1", "url" to "u")
+        val out = JSONObject(WebProtocol.projectFields(body, request("""{"fields":["value","url"]}""")))
+        assertFalse(out.has("fields_unknown"))
+    }
+
+    @Test
+    fun `fields does not report its own diagnostic as unknown`() {
+        val body = WebProtocol.okJson("value" to "1")
+        val out = JSONObject(WebProtocol.projectFields(body, request("""{"fields":["fields_unknown"]}""")))
+        assertFalse(out.has("fields_unknown"))
+    }
+
     // ---------- table ----------
 
     @Test
@@ -89,6 +114,40 @@ class WebProtocolExtensionsTest {
         assertEquals(1, out.getJSONArray("rows").length())
         assertEquals(1, out.getInt("rowCount"))
         assertFalse(out.getBoolean("truncated"))
+        assertFalse(out.getBoolean("headers_empty"))
+    }
+
+    @Test
+    fun `table response flags empty headers`() {
+        val page = JSONObject()
+            .put("ok", true)
+            .put("headers", JSONArray())
+            .put("rows", JSONArray())
+        val out = JSONObject(WebTable.response(page))
+        assertTrue(out.getBoolean("headers_empty"))
+        assertEquals(0, out.getJSONArray("headers").length())
+    }
+
+    @Test
+    fun `table page script handles selector sentinels and ancestor tables`() {
+        val js = WebTable.pageJs("document.querySelector('#t')", 50)
+        assertTrue("字符串哨兵必须先原样返回：$js", js.contains("typeof e==='string'"))
+        assertTrue("tbody/td 要能找到祖先 <table>：$js", js.contains("closest('table')"))
+    }
+
+    @Test
+    fun `table help explains selector forms and empty headers`() {
+        val help = WebProtocol.help(39080)
+        assertTrue(help.contains("headers_empty"))
+        assertTrue(help.contains("tbody/td"))
+    }
+
+    @Test
+    fun `help documents js_file root and fields diagnostics`() {
+        val help = WebProtocol.help(39080)
+        assertTrue(help.contains("只允许 /workspace 内"))
+        assertTrue(help.contains("fields_unknown"))
+        assertTrue(help.contains("must be inside"))
     }
 
     @Test

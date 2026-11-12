@@ -1,5 +1,6 @@
 package com.workspace.proot
 
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -158,7 +159,7 @@ object WebProtocol {
      *
      * 只保留 `ok` / `error` 与点名的键；`fields` 缺失或为空时原样返回。
      */
-    @Suppress("ReturnCount")
+    @Suppress("ReturnCount", "CyclomaticComplexMethod")
     fun projectFields(body: String, request: Request): String {
         val arr = runCatching { JSONObject(request.body).optJSONArray("fields") }.getOrNull()
             ?: return body
@@ -174,6 +175,14 @@ object WebProtocol {
         val out = JSONObject()
         for (k in o.keys()) if (k in keep) out.put(k, o.get(k))
         if (!out.has("ok")) out.put("ok", o.optBoolean("ok", true))
+        // 5.13.1：字段名猜错时不要无声消失，明确告诉调用方哪些名字不存在。
+        // 这不是失败（其它字段仍然有效），所以只在响应里加诊断，不改 ok。
+        val unknown = JSONArray()
+        for (name in keep.sorted()) {
+            if (name == "ok" || name == "error" || name == "fields_unknown") continue
+            if (!o.has(name)) unknown.put(name)
+        }
+        if (unknown.length() > 0) out.put("fields_unknown", unknown)
         return out.toString()
     }
 
@@ -297,12 +306,16 @@ object WebProtocol {
         appendLine("                                          可带 \"timeout\":1000~60000（默认 15000）")
         appendLine("                                          可带 \"raw\":true 让 value 是原生 JSON 值")
         appendLine("                                          可用 \"js_file\":\"/workspace/x.js\" 代替 js")
+        appendLine("                                          （只允许 /workspace 内；相对路径也相对它）")
         appendLine("  {\"op\":\"waitfor\",\"js\":\"…\"|\"selector\":\"…\",\"timeout\":15000}")
         appendLine("                                         条件等待：命中返回 ms，超时返回 ok:false")
         appendLine("  {\"op\":\"fetch\",\"url\":\"…\",\"method\":\"GET\"}   页面内 fetch（带 cookie），")
         appendLine("                                          返回 status/content_type/body/json")
         appendLine("  {\"op\":\"table\",\"selector\":\"…\"}         表格结构化：headers + rows（含单元格")
         appendLine("                                          title/aria-label/data-* 属性）")
+        appendLine("                                          selector 可选 <table>、包含它的容器，")
+        appendLine("                                          或 tbody/td 等表格内部元素；")
+        appendLine("                                          没有 <th> 时 headers_empty:true")
         appendLine("  {\"op\":\"html\"}                        取回当前页面 HTML（很大，慎用）")
         appendLine("  {\"op\":\"html\",\"selector\":\"…\"}         只取该元素的 outerHTML")
         appendLine("  {\"op\":\"shot\"}                        当前视口 PNG（base64，用于渲染自证）")
@@ -387,9 +400,11 @@ object WebProtocol {
         appendLine("  · eval 是唯一能跑任意 JS 的入口：异常走 ok:false（带 error_name/message/stack），")
         appendLine("    不再与“页面算出来就是 null”混淆；await 会等到 Promise 落地再返回。")
         appendLine("    默认 value 仍是字符串（42→\"42\"、对象→JSON 文本）；要原生值就加 \"raw\":true。")
-        appendLine("    js 里有换行或引号时，用 \"js_file\":\"/workspace/xxx.js\" 绕开 shell/JSON 三层转义。")
+        appendLine("    js 里有换行或引号时，用 \"js_file\":\"/workspace/xxx.js\" 绕开 shell/JSON 三层转义")
+        appendLine("    （只允许 /workspace 内，相对路径也相对它；越权/不存在/不可读会分别报错）。")
         appendLine("  · 任何指令都可带 \"fields\":[\"value\",\"url\"] 只回传需要的字段（ok/error 始终保留），")
-        appendLine("    大响应配 head/wc 时先裁剪，别让 curl 因写不进去而报 (23)。")
+        appendLine("    猜错的字段名会出现在 fields_unknown 里；大响应配 head/wc 时先裁剪，")
+        appendLine("    别让 curl 因写不进去而报 (23)。")
         appendLine("  · 选择器报错怎么读：not found = 元素不在（换选择器或先 wait）；")
         appendLine("    bad selector (...) = 选择器本身写错了（照抄报错里的原因）；")
         appendLine("    not a text field / not a <select> = 元素找对了但类型不对。")
@@ -441,8 +456,11 @@ object WebProtocol {
         appendLine("  · eval is the only entry for arbitrary JS: exceptions return ok:false with")
         appendLine("    error_name/message/stack instead of being flattened into value:null, and await")
         appendLine("    waits for the Promise. value is still a string by default (42 -> \"42\", object ->")
-        appendLine("    JSON text); pass \"raw\":true for native JSON. Use \"js_file\":\"/workspace/x.js\"")
-        appendLine("    to avoid shell/JSON escaping. Any op accepts \"fields\":[...] to trim the reply.")
+        appendLine("    JSON text); pass \"raw\":true for native JSON. \"js_file\" must be inside")
+        appendLine("    /workspace (absolute /workspace/x.js or relative x.js). Any op accepts")
+        appendLine("    \"fields\":[...] to trim the reply; unknown names come back in fields_unknown.")
+        appendLine("  · table accepts the <table> itself, a container, or an element inside it")
+        appendLine("    (tbody/td). headers_empty:true means no <th> was found - it is not a parse failure.")
         appendLine("  · A click with no wait reports ready:false once it started a new navigation.")
         appendLine()
         appendLine("提示：服务未开启时连接被拒——请在 TermLou 设置 → 高级 → 浏览器 里开启。")

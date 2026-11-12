@@ -32,9 +32,17 @@ object WebTable {
         append("(function(){")
         append("try{")
         append("var e=").append(pick).append(";")
+        // 5.13.1: pickJs 找不到元素 / 选择器语法错时返回的是字符串哨兵，
+        // 不是 null。先原样带回，让 opTable 用 pageSideError 翻成
+        // not found / bad selector；否则会在字符串上调 querySelector（N1）。
+        append("if(typeof e==='string')return e;")
         append("if(e===null)return JSON.stringify({ok:false,error:'not found'});")
-        append("var t=(String(e.tagName).toUpperCase()==='TABLE')?e:e.querySelector('table');")
-        append("if(!t)return JSON.stringify({ok:false,error:'no <table> inside the element'});")
+        // 5.13.1: 先找祖先 <table>，再找后代。tbody/td 本来就属于某个表，
+        // 只往后代找会得到“内部没有 table”的错误方向（N4）。
+        append("var tag=String(e.tagName||'').toUpperCase();")
+        append("var t=(tag==='TABLE')?e:")
+        append("(e.closest?e.closest('table'):null)||e.querySelector('table');")
+        append("if(!t)return JSON.stringify({ok:false,error:'no <table> found for this element'});")
         append("var headSel=t.querySelectorAll('thead th');")
         append("var headers=[];var i;")
         append("for(i=0;i<headSel.length;i++)headers.push(cellText(headSel[i]));")
@@ -95,6 +103,9 @@ object WebTable {
             "rows" to rows,
             "rowCount" to o.optInt("rowCount", rows.length()),
             "truncated" to o.optBoolean("truncated", false),
+            // 布局表/没有 <th> 的数据表很容易被误当成“0 列表头”。
+            // 明说一声，调用方才知道是表头缺失，不是解析失败（N4）。
+            "headers_empty" to (headers.length() == 0),
         )
     }
 }

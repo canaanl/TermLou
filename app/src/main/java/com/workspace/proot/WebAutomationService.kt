@@ -1145,8 +1145,10 @@ class WebAutomationService : Service() {
      */
     @Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount", "NestedBlockDepth", "LoopWithTooManyJumpStatements", "MagicNumber")
     private fun opEval(request: WebProtocol.Request, cancelled: () -> Boolean): String {
-        val js = resolveJs(request)
-            ?: return WebProtocol.errJson("missing js (or js_file not readable)")
+        val js = when (val source = resolveJs(request)) {
+            is WebJsFile.Result.Ok -> source.text
+            is WebJsFile.Result.Failure -> return WebProtocol.errJson(source.reason)
+        }
         val wv = webView ?: return WebProtocol.errJson("no page open")
         val timeoutMs = WebProtocol.bodyIntOrNull(request, "timeout", EVAL_TIMEOUT_MS.toInt())
             ?: return WebProtocol.errJson("bad timeout")
@@ -1316,6 +1318,9 @@ class WebAutomationService : Service() {
         )
         outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
         val value = outcome.valueOrNull() ?: return WebProtocol.errJson(SCRIPT_FAILED)
+        // N1：table 的选择器找不到 / 语法错时，pageJs 原样带回 pickJs 的字符串哨兵。
+        // 在解析 JSON 之前先翻译成人话，别再泄漏 "e.querySelector is not a function"。
+        pageSideError(value, rawSelector)?.let { return WebProtocol.errJson(it) }
         val parsed = runCatching { org.json.JSONObject(value) }.getOrNull()
             ?: return WebProtocol.errJson("table: unreadable result (${value.take(120)})")
         if (!parsed.optBoolean("ok", false)) {
@@ -1493,20 +1498,12 @@ class WebAutomationService : Service() {
 
     /** 读 `js` 或 `js_file`（只允许 workspace 内，防路径穿越）。 */
     @Suppress("ReturnCount")
-    private fun resolveJs(request: WebProtocol.Request): String? {
+    private fun resolveJs(request: WebProtocol.Request): WebJsFile.Result {
         val direct = WebProtocol.bodyString(request, "js")
-        if (direct.isNotBlank()) return direct
+        if (direct.isNotBlank()) return WebJsFile.Result.Ok(direct)
         val path = WebProtocol.bodyString(request, "js_file")
-        if (path.isBlank()) return null
-        val root = runCatching { File(filesDir, "workspace").canonicalFile }.getOrNull() ?: return null
-        val candidate = when {
-            path.startsWith("/workspace/") -> File(root, path.removePrefix("/workspace/"))
-            path.startsWith("/") -> return null
-            else -> File(root, path)
-        }
-        val canonical = runCatching { candidate.canonicalFile }.getOrNull() ?: return null
-        if (canonical.path != root.path && !canonical.path.startsWith(root.path + File.separator)) return null
-        return runCatching { canonical.readText() }.getOrNull()
+        if (path.isBlank()) return WebJsFile.Result.Failure("missing js (or js_file)")
+        return WebJsFile.resolve(File(filesDir, "workspace"), path)
     }
 
     /** `text`：取可见文字；不给选择器就是整页正文。 */

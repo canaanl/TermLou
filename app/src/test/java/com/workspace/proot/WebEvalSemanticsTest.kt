@@ -15,7 +15,7 @@ import java.io.File
  * 这里的 `evaluateJavascript` 由 node 的 `vm.runInThisContext` 冒充：
  * 返回值同样是“页面脚本的最终字符串”，PENDING 轮询同样是第二次调用。
  */
-@Suppress("MagicNumber")
+@Suppress("MagicNumber", "LongMethod")
 class WebEvalSemanticsTest {
 
     @Test
@@ -54,6 +54,14 @@ class WebEvalSemanticsTest {
                 )
             )
             .put("pollFetch", WebEvalScripts.poll("g"))
+            .put(
+                "tableMissing",
+                WebTable.pageJs(WebSelector.pickJs(WebSelector.Kind.Css("#nope")), 10)
+            )
+            .put(
+                "tableTbody",
+                WebTable.pageJs(WebSelector.pickJs(WebSelector.Kind.Css("#tbody")), 10)
+            )
             .put("conditionTrue", WebEvalScripts.condition("1===1"))
             .put("conditionFalse", WebEvalScripts.condition("1===2"))
             .put(
@@ -111,9 +119,40 @@ class WebEvalSemanticsTest {
             const fs = require('fs');
             const vm = require('vm');
             global.window = global;
+            const fakeCell = {
+              innerText: 'G1',
+              getAttribute: function () { return null; },
+              attributes: [],
+              colSpan: 0,
+              rowSpan: 0
+            };
+            const fakeHeader = {
+              innerText: '车次',
+              getAttribute: function () { return null; },
+              attributes: [],
+              colSpan: 0,
+              rowSpan: 0
+            };
+            const fakeTr = {
+              querySelectorAll: function (s) { return s === 'td' ? [fakeCell] : []; }
+            };
+            const fakeTable = {
+              tagName: 'TABLE',
+              querySelectorAll: function (s) {
+                if (s === 'thead th') return [fakeHeader];
+                if (s === 'tbody tr' || s === 'tr') return [fakeTr];
+                return [];
+              },
+              querySelector: function (s) { return s === 'tr' ? fakeTr : null; }
+            };
+            const fakeTbody = {
+              tagName: 'TBODY',
+              closest: function (s) { return s === 'table' ? fakeTable : null; },
+              querySelector: function () { return null; }
+            };
             global.document = {
               title: 'TermLou',
-              querySelector: function () { return null; }
+              querySelector: function (sel) { return sel === '#tbody' ? fakeTbody : null; }
             };
             global.fetch = function () {
               return Promise.resolve({
@@ -169,6 +208,21 @@ class WebEvalSemanticsTest {
             check('waitfor runtime error is reported', function () {
               const v = run('conditionError');
               if (v.indexOf('E:') !== 0) throw new Error('expected E:..., got ' + v);
+            });
+            check('table missing selector passes the sentinel through', function () {
+              const v = run('tableMissing');
+              if (v !== '__TERMLOU_NOT_FOUND__') {
+                throw new Error('expected sentinel, got ' + v);
+              }
+            });
+            check('table accepts tbody via its ancestor table', function () {
+              const e = JSON.parse(run('tableTbody'));
+              if (!e.ok || e.headers.length !== 1 || e.headers[0] !== '车次') {
+                throw new Error(JSON.stringify(e));
+              }
+              if (e.rows.length !== 1 || e.rows[0].cells[0] !== 'G1') {
+                throw new Error(JSON.stringify(e));
+              }
             });
             check('async wrappers report pending synchronously', function () {
               if (run('asyncNumber') !== '__TERMLOU_PENDING__') throw new Error('number not pending');

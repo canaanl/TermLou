@@ -2,7 +2,7 @@
 
 > 一个为**不写代码的人**打造的 Android 终端 —— 把 Debian GNU/Linux、文件管理、笔记待办和脚本浮窗，全部塞进一个"点一下就能用"的 App。
 
-![Version](https://img.shields.io/badge/version-5.13.0-blue)
+![Version](https://img.shields.io/badge/version-5.13.1-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-brightgreen)
 ![minSdk](https://img.shields.io/badge/minSdk-26-orange)
 ![Language](https://img.shields.io/badge/Kotlin-2.0.21-purple)
@@ -333,6 +333,7 @@ App 不执行命令：`termlou-ui` 只输出结果 JSON，`case` 里的命令由
 
 | 版本 | versionCode | 内容 |
 |------|------------|------|
+| **5.13.1** | 6301 | **浏览器接口错误语义与诊断补齐**：`table` 的选择器找不到/语法错改为 `not found` / `bad selector (...)`，不再泄漏内部 TypeError；selector 支持 `<table>`、其容器及 `tbody`/`td` 等内部元素，无 `<th>` 时返回 `headers_empty:true`。`js_file` 仍只允许 `/workspace`，但越权/不存在/不是文件/不可读分别报出实际路径与原因。`fields` 猜错的字段名回 `fields_unknown`。`shot` 保持只回 base64、不落盘。新增 `WebJsFileTest` 与表格/真引擎语义回归，880 测试通过 |
 | **5.13.0** | 6300 | **浏览器 HTTP 接口补齐错误通道与结构化能力**：`eval` 改为页面侧 try/catch + JSON 信封，JS 异常返回 `ok:false` + `error_name`/`error_message`/`error_stack`，不再与“页面算出来就是 null”混淆；支持 Promise 与顶层 `await`（全局槽位轮询，不用 JS 桥、不受 CSP `unsafe-eval` 限制）；默认 `value` 仍是字符串，新增 `"raw":true` 才还原原生 JSON 类型；新增 `timeout` 与 `js_file`（仅 `/workspace` 内）。新增 `waitfor`、`fetch`（页面内请求，带 cookie）、`table`（headers + rows，保留单元格语义属性）、`shot`（当前视口 PNG base64）；`html` 支持 `selector`；所有指令支持 `fields` 投影。中英文 help 同步，865 测试通过 |
 | **5.12.4** | 6204 | **后台服务存活条件改为“TermLou 主程序是否打开”**：删除 `MainProotTracker` 与全部会话回调，新增 `MainAppPresence`（`onMainOpened`/`onMainClosed`/`isOpen`）。主程序前台、后台、按 Home 都算打开，服务保持；每 60 秒检查一次，主程序没打开就停掉全部服务（含从未打开过 TermLou 的情况，最多存活约一分钟）；关闭主程序（`isFinishing` 或 `onTaskRemoved`）立即全停；在 TermLou 里手动关闭终端 shell 不影响服务。修复 5.12.3 冷启动 PID 恒为 0 导致“1 分钟准时掉”的根因。**笔记搜索**：从搜索结果打开笔记再返回时保留搜索框内容、标签、结果与 FAB 展开态，再按一次返回才回到初始；恢复时不抢焦点、不弹键盘。新增 `MainAppPresenceTest` 与搜索会话回归，809 测试通过 |
 | **5.12.2** | 6202 | **service pid 解析修复**：`Process.pid()` 不可用时由宿主 pidfile + `/proc` 解析真实 wrapper PID，反射值拒绝 `-1`；拿不到 pid 时启动失败、stop 返回 `pid_unavailable`，不再假报 `STOPPED`；新增 pidfile/fake `/proc`/`-1` 拒绝回归 |
