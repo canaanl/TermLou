@@ -83,7 +83,7 @@ internal object WebEvalScripts {
      * 包装器同步返回 [PENDING]，结果由 [poll] 取回。
      */
     fun asyncScript(expr: String, token: String): String = buildString {
-        append("(function(){")
+        append("(function(){").append(PACK).append(ERR)
         append("var M=window.__tl_eval||(window.__tl_eval={});")
         append("var S=M['").append(token).append("']={done:false,e:''};")
         append("try{Promise.resolve(").append(expr).append(").then(")
@@ -128,7 +128,7 @@ internal object WebEvalScripts {
         bodyLiteral: String,
         maxChars: Int,
     ): String = buildString {
-        append("(function(){")
+        append("(function(){").append(PACK).append(ERR)
         append("var M=window.__tl_eval||(window.__tl_eval={});")
         append("var S=M['").append(token).append("']={done:false,e:''};")
         append("(async function(){try{")
