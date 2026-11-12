@@ -181,16 +181,15 @@ class WebProtocolTest {
         assertFalse("说明书绝不许印令牌", help.contains("deadbeef"))
         assertTrue("得说清令牌从哪儿来", help.contains("web.env"))
         for (op in listOf(
-            "open", "wait", "eval", "html", "extract", "text", "click", "type", "select",
-            "reload", "clear", "close", "ping", "diag"
+            "open", "wait", "waitfor", "eval", "fetch", "table", "html", "extract",
+            "text", "click", "type", "select", "reload", "clear", "close", "ping", "diag", "shot"
         )) {
             assertTrue("说明书缺少 $op", help.contains("\"$op\""))
         }
         // 5.9.39：back 整个删掉（平台侧的后退在"从没被点过"的窗口里装死，见 RegressionScanTest）
         assertFalse("说明书不该再有 back 指令", help.contains("\"back\""))
-        // 5.9.37 删掉整页截图。说明书里不许还留着它 ——
-        // agent 会照着说明书调一条根本不存在的指令，然后拿到 "unknown op"。
-        assertFalse("说明书不该再有 shot 指令", help.contains("\"shot\""))
+        // 5.13.0：shot 回来了，但实现是「当前视口 PNG」，不是 5.9.37 删掉的整页拼图，
+        // 所以这里不再断言它不存在；shots 目录仍然不许有（不在磁盘留产物）。
         assertFalse("说明书不该再有 shots 目录", help.contains("shots/"))
         // 5.9.38 删掉 cookie 导出（用户要求：cookie 全删、不保留）。
         assertFalse("说明书不该再有 cookie 导出（保留不等于导出）", help.contains("\"cookies\""))

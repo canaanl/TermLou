@@ -42,6 +42,7 @@ import org.junit.Test
  * 不查语义（变量有没有定义过、函数调得对不对）—— 那是真引擎的活。
  * 查自己**能做到的**，并且**只查这一类**：让"又出现一处括号错"这件事再也进不了包。
  */
+@Suppress("MagicNumber")
 class WebJsStructureTest {
 
     // ================= 检查器本身 =================
@@ -280,7 +281,34 @@ class WebJsStructureTest {
 
         "probe(落地页)" to WebOpScripts.PROBE_JS,
         "diag(页面探针)" to WebOpScripts.DIAG_JS,
-        "html(整页源码)" to WebOpScripts.OUTER_HTML_JS
+        "html(整页源码)" to WebOpScripts.OUTER_HTML_JS,
+        "html(局部源码)" to WebOpScripts.wrap(
+            WebSelector.pickJs(WebSelector.Kind.Css("h1")), "return e.outerHTML||'';"
+        ),
+
+        // 5.13.0：eval 包装层与新增 op 的页面脚本
+        "eval(同步表达式)" to WebEvalScripts.syncExpression("document.title", "t1"),
+        "eval(同步语句)" to WebEvalScripts.syncStatement("var x=1; return x", "t2"),
+        "eval(异步表达式)" to WebEvalScripts.asyncScript(
+            WebEvalScripts.asyncExpression("await 1"), "t3"
+        ),
+        "eval(异步语句)" to WebEvalScripts.asyncScript(
+            WebEvalScripts.asyncStatement("var x=await 1; return x"), "t4"
+        ),
+        "eval(轮询)" to WebEvalScripts.poll("t5"),
+        "waitfor(js)" to WebEvalScripts.condition("document.title!==''"),
+        "waitfor(selector)" to WebEvalScripts.conditionSelector(
+            WebSelector.pickJs(WebSelector.Kind.Css("#kw"))
+        ),
+        "fetch" to WebEvalScripts.fetchScript(
+            token = "t6",
+            urlLiteral = "\"/api\"",
+            methodLiteral = "\"GET\"",
+            headersLiteral = "{}",
+            bodyLiteral = "null",
+            maxChars = 1000,
+        ),
+        "table" to WebTable.pageJs(WebSelector.pickJs(WebSelector.Kind.Css("#t")), 200)
     )
 
     // ================= 锁 =================
@@ -329,6 +357,10 @@ class WebJsStructureTest {
             "WebOpScripts.PROBE_JS",
             "WebOpScripts.DIAG_JS",
             "WebOpScripts.OUTER_HTML_JS",
+            "WebOpScripts.wrap(",
+            "WebTable.pageJs(",
+            "WebEvalScripts.poll(",
+            "script",   // waitfor / runEval 的脚本变量
             "js"        // opEval：agent 自己写的，我们不检查
         )
         val unknown = produced.filter { expr -> known.none { expr.startsWith(it) } }

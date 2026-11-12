@@ -25,6 +25,7 @@ import android.webkit.WebViewDatabase
 import java.io.BufferedInputStream
 import java.io.PushbackInputStream
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -411,7 +412,7 @@ class WebAutomationService : Service() {
         // 任何一条真指令都算"用过了"：重置闲置计时（探活不算），status 的空闲提示据此判断
         if (op != "ping") markActivity()
         val response = try {
-            json(handle(op, request) { isClientGone(client, input) })
+            json(WebProtocol.projectFields(handle(op, request) { isClientGone(client, input) }, request))
         } catch (e: Exception) {
             Log.e(TAG, "op $op failed", e)
             json(WebProtocol.errJson(e.message ?: e.javaClass.simpleName))
@@ -434,14 +435,18 @@ class WebAutomationService : Service() {
             return when (op) {
                 "open" -> opOpen(request, cancelled)
                 "wait" -> opWait(request, cancelled)
+                "waitfor" -> opWaitFor(request, cancelled)
                 "eval" -> opEval(request, cancelled)
-                "html" -> opHtml(cancelled)
+                "fetch" -> opFetch(request, cancelled)
+                "table" -> opTable(request, cancelled)
+                "html" -> opHtml(request, cancelled)
                 "text" -> opText(request, cancelled)
                 "click" -> opClick(request, cancelled)
                 "type" -> opType(request, cancelled)
                 "select" -> opSelect(request, cancelled)
                 "extract" -> opExtract(request, cancelled)
                 "reload" -> opReload(request, cancelled)
+                "shot" -> opShot(cancelled)
                 "clear", "close" -> opClose()
                 else -> WebProtocol.errJson("unknown op: $op")
             }
@@ -940,11 +945,12 @@ class WebAutomationService : Service() {
     private fun evalInPage(
         wv: WebView,
         js: String,
-        cancelled: () -> Boolean
+        cancelled: () -> Boolean,
+        timeoutMs: Long = EVAL_TIMEOUT_MS
     ): WebProtocol.EvalOutcome = when (
         val result = UiEval.postAndAwait(
             ui = mainUi,
-            timeoutMs = EVAL_TIMEOUT_MS,
+            timeoutMs = timeoutMs,
             cancelled = cancelled,
             pollMs = POLL_MS,
             evaluate = { deliver -> wv.evaluateJavascript(js) { deliver(it) } },
@@ -988,7 +994,7 @@ class WebAutomationService : Service() {
         lastErrorCode?.let { code ->
             return WebUsability.Unusable("landed on an error page: ${WebPageUsable.describeErrorCode(code)}")
         }
-        val outcome = evalInPage(wv, WebOpScripts.PROBE_JS) { false }
+        val outcome = evalInPage(wv, WebOpScripts.PROBE_JS, { false })
         // ⚠ 这三条以前都掉进"可用"那一支
         outcomeError(outcome)?.let {
             // 5.9.9：把**原始回值**记下来放进 diag。eval 在真页面上不回值这件事
@@ -1072,7 +1078,7 @@ class WebAutomationService : Service() {
                 "note" to "open a page first, then call diag again to see the rendering state"
             )
         }
-        val outcome = evalInPage(wv, WebOpScripts.DIAG_JS) { false }
+        val outcome = evalInPage(wv, WebOpScripts.DIAG_JS, { false })
         // ⚠ 5.9.38：把"探针为什么没回值"分开报。原来四种原因（超时 / 客户端断开 /
         // 投不进主线程 / 脚本自己报错）全塌成一句 "evaluate failed" ——
         // 那正是这个项目到处在消灭的"失败混成一锅"。
@@ -1125,23 +1131,382 @@ class WebAutomationService : Service() {
             ?: WebOpScripts.webErrorOf(value)?.let { "$it [selector: $selector]" }
     }
 
-/**
-     * `eval`：在页面里跑任意 JS，返回值原样带回（字符串就是字符串，不是 JSON 字面量）。
+    /**
+     * `eval`：在页面里跑任意 JS。
+     *
+     * ## 5.13.0 起的三点契约（字符串默认行为不变）
+     *
+     * 1. **错误有通道**：JS 抛异常 → `ok:false` + `error_name/message/stack`。
+     *    `evaluateJavascript` 本身会把异常吞成 `null`，所以页面侧包了一层 try/catch。
+     * 2. **支持 await**：包装器检测 thenable，把结果写进 `window.__tl_eval[token]`，
+     *    这里轮询取回；顶层 `await` 则换 async 包装形式（最多多一次往返）。
+     * 3. **类型可选保真**：`"raw":true` 时 `value` 是原生 JSON 值；
+     *    默认仍是字符串（`42`→`"42"`、对象→JSON 文本），旧脚本不受影响。
      */
+    @Suppress("CyclomaticComplexMethod", "LongMethod", "ReturnCount", "NestedBlockDepth", "LoopWithTooManyJumpStatements", "MagicNumber")
     private fun opEval(request: WebProtocol.Request, cancelled: () -> Boolean): String {
-        val js = WebProtocol.bodyString(request, "js")
-        if (js.isBlank()) return WebProtocol.errJson("missing js")
+        val js = resolveJs(request)
+            ?: return WebProtocol.errJson("missing js (or js_file not readable)")
         val wv = webView ?: return WebProtocol.errJson("no page open")
-        val outcome = evalInPage(wv, js, cancelled)
-        outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
-        return WebProtocol.okJson("value" to outcome.valueOrNull(), "url" to (onMain { wv.url } ?: ""))
+        val timeoutMs = WebProtocol.bodyIntOrNull(request, "timeout", EVAL_TIMEOUT_MS.toInt())
+            ?: return WebProtocol.errJson("bad timeout")
+        val rawMode = WebProtocol.bodyOptBoolean(request, "raw", false)
+        val bounded = timeoutMs.coerceIn(1_000, MAX_EVAL_TIMEOUT_MS)
+        val token = "t" + System.nanoTime().toString(36)
+
+        val attempts = listOf(
+            WebEvalScripts.syncExpression(js, token),
+            WebEvalScripts.syncStatement(js, token),
+            WebEvalScripts.asyncScript(WebEvalScripts.asyncExpression(js), token),
+            WebEvalScripts.asyncScript(WebEvalScripts.asyncStatement(js), token)
+        )
+        for (index in attempts.indices) {
+            when (val run = runEval(wv, attempts[index], token, bounded.toLong(), cancelled)) {
+                is EvalRun.Ok -> {
+                    // 语句形式没有 return 时得到 undefined；退回旧语义（脚本 completion value）。
+                    if (index == 1 && run.envelope.type == "undefined") {
+                        val legacy = evalInPage(wv, js, cancelled, bounded.toLong())
+                        val legacyValue = (legacy as? WebProtocol.EvalOutcome.Value)?.value
+                        if (legacyValue != null) {
+                            return WebProtocol.okJson(
+                                "value" to legacyValue,
+                                "value_type" to "legacy",
+                                "url" to (onMain { wv.url } ?: ""),
+                            )
+                        }
+                        continue
+                    }
+                    return buildEvalResponse(wv, run.envelope, rawMode)
+                }
+                is EvalRun.Failure -> return run.body
+                EvalRun.Syntax -> continue
+            }
+        }
+        return WebProtocol.errJsonDetailed(
+            "SyntaxError",
+            "eval: the script could not be parsed (syntax error)",
+            null,
+        )
     }
 
-    private fun opHtml(cancelled: () -> Boolean): String {
+    /**
+     * `waitfor`：条件等待，消除"盲猜毫秒数"。
+     *
+     * `js` 或 `selector` 二选一；每 100ms 求值一次，命中返回 `ms`，超时返回 `ok:false`。
+     */
+    @Suppress("ReturnCount", "CyclomaticComplexMethod", "MagicNumber")
+    private fun opWaitFor(request: WebProtocol.Request, cancelled: () -> Boolean): String {
         val wv = webView ?: return WebProtocol.errJson("no page open")
-        val outcome = evalInPage(wv, WebOpScripts.OUTER_HTML_JS, cancelled)
+        val js = WebProtocol.bodyString(request, "js")
+        val selector = WebProtocol.bodyString(request, "selector")
+        val script = when {
+            selector.isNotBlank() -> {
+                val kind = WebSelector.parse(selector)
+                    ?: return WebProtocol.errJson("bad selector: $selector")
+                WebEvalScripts.conditionSelector(WebSelector.pickJs(kind))
+            }
+            js.isNotBlank() -> WebEvalScripts.condition(js)
+            else -> return WebProtocol.errJson("missing js (or selector)")
+        }
+        val timeoutMs = WebProtocol.bodyIntOrNull(request, "timeout", WAITFOR_TIMEOUT_MS)
+            ?: return WebProtocol.errJson("bad timeout")
+        val bounded = timeoutMs.coerceIn(1, MAX_WAIT_MS)
+        val start = System.currentTimeMillis()
+        while (true) {
+            if (cancelled()) return WebProtocol.errJson("client disconnected")
+            val elapsed = System.currentTimeMillis() - start
+            if (elapsed > bounded) return WebProtocol.errJson("timeout after ${bounded}ms")
+            val remain = (bounded - elapsed).coerceAtLeast(1L)
+            val outcome = evalInPage(wv, script, cancelled, minOf(remain, 5_000L))
+            outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
+            val value = outcome.valueOrNull()
+                ?: return WebProtocol.errJson("waitfor: the condition could not be parsed (syntax error)")
+            if (value == "1") return WebProtocol.okJson("ms" to elapsed)
+            if (value.startsWith("E:")) {
+                return WebProtocol.errJson("condition failed: ${value.removePrefix("E:")}")
+            }
+            try {
+                Thread.sleep(POLL_MS)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return WebProtocol.errJson("client disconnected")
+            }
+        }
+    }
+
+    /**
+     * `fetch`：在页面里发请求（带页面 cookie），结果一次返回，不用 eval + sleep 三段式。
+     */
+    @Suppress("ReturnCount", "CyclomaticComplexMethod", "MagicNumber")
+    private fun opFetch(request: WebProtocol.Request, cancelled: () -> Boolean): String {
+        val wv = webView ?: return WebProtocol.errJson("no page open")
+        val url = WebProtocol.bodyString(request, "url")
+        if (url.isBlank()) return WebProtocol.errJson("missing url")
+        val method = WebProtocol.bodyString(request, "method").ifBlank { "GET" }.uppercase()
+        val timeoutMs = WebProtocol.bodyIntOrNull(request, "timeout", FETCH_TIMEOUT_MS)
+            ?: return WebProtocol.errJson("bad timeout")
+        val bounded = timeoutMs.coerceIn(1_000, MAX_EVAL_TIMEOUT_MS)
+        val maxChars = WebProtocol.bodyIntOrNull(request, "max_chars", FETCH_MAX_CHARS)
+            ?: return WebProtocol.errJson("bad max_chars")
+        val limit = maxChars.coerceIn(1_024, FETCH_MAX_CHARS)
+
+        val headersLiteral = runCatching {
+            val o = org.json.JSONObject(request.body).optJSONObject("headers")
+            if (o == null) "{}" else o.keys().asSequence().joinToString(
+                prefix = "{", postfix = "}", separator = ","
+            ) { k -> WebSelector.jsLiteral(k) + ":" + WebSelector.jsLiteral(o.optString(k, "")) }
+        }.getOrDefault("{}")
+        val bodyText = WebProtocol.bodyString(request, "body")
+        val bodyLiteral = if (method == "GET" || method == "HEAD" || bodyText.isEmpty()) {
+            "null"
+        } else {
+            WebSelector.jsLiteral(bodyText)
+        }
+
+        val token = "f" + System.nanoTime().toString(36)
+        val script = WebEvalScripts.fetchScript(
+            token = token,
+            urlLiteral = WebSelector.jsLiteral(url),
+            methodLiteral = WebSelector.jsLiteral(method),
+            headersLiteral = headersLiteral,
+            bodyLiteral = bodyLiteral,
+            maxChars = limit,
+        )
+        val run = runEval(wv, script, token, bounded.toLong(), cancelled)
+        val env = when (run) {
+            is EvalRun.Failure -> return run.body
+            EvalRun.Syntax -> return WebProtocol.errJson("fetch: the page script could not be parsed")
+            is EvalRun.Ok -> run.envelope
+        }
+        if (!env.ok) {
+            return WebProtocol.errJsonDetailed(env.name, env.message ?: "fetch failed", env.stack)
+        }
+        val payload = env.json ?: env.text
+            ?: return WebProtocol.errJson("fetch: the page returned no payload")
+        val o = runCatching { org.json.JSONObject(payload) }.getOrNull()
+            ?: return WebProtocol.errJson("fetch: unreadable payload (${payload.take(120)})")
+        val body = o.optString("body", "")
+        val ct = o.optString("ct", "")
+        val json = WebEvalScripts.jsonOrNull(body, ct)
+        return WebProtocol.okJson(
+            "status" to o.optInt("status", 0),
+            "navigated" to o.optBoolean("navigated", false),
+            "content_type" to ct,
+            "truncated" to o.optBoolean("truncated", false),
+            "body" to body,
+            "json" to json,
+            "url" to (onMain { wv.url } ?: ""),
+        )
+    }
+
+    /** `table`：把数据表格按行列结构取出，单元格语义属性原样带出。 */
+    @Suppress("ReturnCount")
+    private fun opTable(request: WebProtocol.Request, cancelled: () -> Boolean): String {
+        val wv = webView ?: return WebProtocol.errJson("no page open")
+        val rawSelector = WebProtocol.bodyString(request, "selector").ifBlank { "table" }
+        val kind = WebSelector.parse(rawSelector)
+            ?: return WebProtocol.errJson("bad selector: $rawSelector")
+        val maxRows = WebProtocol.bodyIntOrNull(request, "max_rows", WebTable.DEFAULT_MAX_ROWS)
+            ?: return WebProtocol.errJson("bad max_rows")
+        val limit = maxRows.coerceIn(1, WebTable.MAX_ROWS)
+        val outcome = evalInPage(
+            wv,
+            WebTable.pageJs(WebSelector.pickJs(kind), limit),
+            cancelled,
+        )
         outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
-        return WebProtocol.okJson("html" to outcome.valueOrNull(), "url" to (onMain { wv.url } ?: ""))
+        val value = outcome.valueOrNull() ?: return WebProtocol.errJson(SCRIPT_FAILED)
+        val parsed = runCatching { org.json.JSONObject(value) }.getOrNull()
+            ?: return WebProtocol.errJson("table: unreadable result (${value.take(120)})")
+        if (!parsed.optBoolean("ok", false)) {
+            return WebProtocol.errJson("table: " + parsed.optString("error", "unknown error"))
+        }
+        return WebTable.response(parsed)
+    }
+
+    /** `html`：默认整页源码；给了 `selector` 就只取那个元素的 outerHTML。 */
+    @Suppress("ReturnCount")
+    private fun opHtml(request: WebProtocol.Request, cancelled: () -> Boolean): String {
+        val wv = webView ?: return WebProtocol.errJson("no page open")
+        val raw = WebProtocol.bodyString(request, "selector")
+        val outcome = if (raw.isBlank()) {
+            evalInPage(wv, WebOpScripts.OUTER_HTML_JS, cancelled)
+        } else {
+            val kind = WebSelector.parse(raw) ?: return WebProtocol.errJson("bad selector: $raw")
+            evalInPage(
+                wv,
+                WebOpScripts.wrap(WebSelector.pickJs(kind), "return e.outerHTML||'';"),
+                cancelled,
+            )
+        }
+        outcomeError(outcome)?.let { return WebProtocol.errJson(it) }
+        val value = outcome.valueOrNull()
+        if (raw.isNotBlank() && value != null) {
+            pageSideError(value, raw)?.let { return WebProtocol.errJson(it) }
+        }
+        return WebProtocol.okJson("html" to value, "url" to (onMain { wv.url } ?: ""))
+    }
+
+    /** `shot`：把当前视口画成 PNG（base64），用于渲染类任务自证。 */
+    @Suppress("ReturnCount")
+    private fun opShot(cancelled: () -> Boolean): String {
+        if (cancelled()) return WebProtocol.errJson("client disconnected")
+        val wv = webView ?: return WebProtocol.errJson("no page open")
+        val bitmap = onMain {
+            val w = wv.width
+            val h = wv.height
+            if (w <= 0 || h <= 0) return@onMain null
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            wv.draw(android.graphics.Canvas(bmp))
+            bmp
+        } ?: return WebProtocol.errJson("no page open")
+        val png = ByteArrayOutputStream().use { out ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            bitmap.recycle()
+            out.toByteArray()
+        }
+        val b64 = android.util.Base64.encodeToString(png, android.util.Base64.NO_WRAP)
+        val w = onMain { wv.width } ?: 0
+        val h = onMain { wv.height } ?: 0
+        return WebProtocol.okJson(
+            "png_base64" to b64,
+            "width" to w,
+            "height" to h,
+            "bytes" to png.size,
+        )
+    }
+
+    /** eval 包装器的一次执行结果。 */
+    private sealed class EvalRun {
+        data class Ok(val envelope: WebEvalScripts.Envelope) : EvalRun()
+
+        /** 已经拼好的错误响应（直接返回给 agent）。 */
+        data class Failure(val body: String) : EvalRun()
+
+        /** 整段脚本没被解析（语法错误），调用方可以换一种包装形式重试。 */
+        data object Syntax : EvalRun()
+    }
+
+    /** 执行一段包装脚本；遇到 PENDING 就轮询槽位直到出结果。 */
+    @Suppress("ReturnCount", "MagicNumber")
+    private fun runEval(
+        wv: WebView,
+        script: String,
+        token: String,
+        timeoutMs: Long,
+        cancelled: () -> Boolean,
+    ): EvalRun {
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000L
+        val outcome = evalInPage(wv, script, cancelled, timeoutMs)
+        when (outcome) {
+            is WebProtocol.EvalOutcome.Timeout -> return EvalRun.Failure(WebProtocol.errJson("evaluate timeout"))
+            is WebProtocol.EvalOutcome.Cancelled -> return EvalRun.Failure(WebProtocol.errJson("client disconnected"))
+            is WebProtocol.EvalOutcome.NotPosted -> return EvalRun.Failure(WebProtocol.errJson("cannot reach main thread"))
+            is WebProtocol.EvalOutcome.Failed -> {
+                return EvalRun.Failure(WebProtocol.errJson("evaluate failed (${outcome.reason})"))
+            }
+            is WebProtocol.EvalOutcome.Value -> {
+                val raw = outcome.value ?: return EvalRun.Syntax
+                if (raw == WebEvalScripts.PENDING) return pollEval(wv, token, deadline, cancelled)
+                val env = WebEvalScripts.parseEnvelope(raw)
+                    ?: return EvalRun.Failure(
+                        WebProtocol.errJson("eval: unreadable result (${raw.take(120)})")
+                    )
+                return if (env.ok) {
+                    EvalRun.Ok(env)
+                } else {
+                    EvalRun.Failure(WebProtocol.errJsonDetailed(env.name, env.message ?: "eval failed", env.stack))
+                }
+            }
+        }
+    }
+
+    @Suppress("ReturnCount", "CyclomaticComplexMethod", "NestedBlockDepth", "MagicNumber")
+    private fun pollEval(
+        wv: WebView,
+        token: String,
+        deadlineNanos: Long,
+        cancelled: () -> Boolean,
+    ): EvalRun {
+        while (true) {
+            if (cancelled()) return EvalRun.Failure(WebProtocol.errJson("client disconnected"))
+            val remainMs = (deadlineNanos - System.nanoTime()) / 1_000_000L
+            if (remainMs <= 0) return EvalRun.Failure(WebProtocol.errJson("evaluate timeout"))
+            val outcome = evalInPage(wv, WebEvalScripts.poll(token), cancelled, minOf(remainMs, 5_000L))
+            when (outcome) {
+                is WebProtocol.EvalOutcome.Timeout -> {
+                    // 单次轮询没回不算失败，继续等到总超时
+                }
+                is WebProtocol.EvalOutcome.Cancelled ->
+                    return EvalRun.Failure(WebProtocol.errJson("client disconnected"))
+                is WebProtocol.EvalOutcome.NotPosted ->
+                    return EvalRun.Failure(WebProtocol.errJson("cannot reach main thread"))
+                is WebProtocol.EvalOutcome.Failed ->
+                    return EvalRun.Failure(WebProtocol.errJson("evaluate failed (${outcome.reason})"))
+                is WebProtocol.EvalOutcome.Value -> {
+                    val raw = outcome.value
+                    when {
+                        raw == null -> return EvalRun.Failure(
+                            WebProtocol.errJson("eval: the page context was lost while the result was pending")
+                        )
+                        raw == WebEvalScripts.PENDING -> try {
+                            Thread.sleep(POLL_MS)
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            return EvalRun.Failure(WebProtocol.errJson("client disconnected"))
+                        }
+                        raw == WebEvalScripts.GONE -> return EvalRun.Failure(
+                            WebProtocol.errJson("eval: the page navigated away before the result arrived")
+                        )
+                        else -> {
+                            val env = WebEvalScripts.parseEnvelope(raw)
+                                ?: return EvalRun.Failure(
+                                    WebProtocol.errJson("eval: unreadable result (${raw.take(120)})")
+                                )
+                            return if (env.ok) {
+                                EvalRun.Ok(env)
+                            } else {
+                                EvalRun.Failure(
+                                    WebProtocol.errJsonDetailed(env.name, env.message ?: "eval failed", env.stack)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** 按默认（字符串）或 `raw`（原生 JSON）两种契约组装响应。 */
+    private fun buildEvalResponse(
+        wv: WebView,
+        env: WebEvalScripts.Envelope,
+        rawMode: Boolean,
+    ): String {
+        val value: Any? = if (rawMode) WebEvalScripts.rawValue(env) else WebEvalScripts.textValue(env)
+        return WebProtocol.okJson(
+            "value" to value,
+            "value_type" to env.type,
+            "url" to (onMain { wv.url } ?: ""),
+        )
+    }
+
+    /** 读 `js` 或 `js_file`（只允许 workspace 内，防路径穿越）。 */
+    @Suppress("ReturnCount")
+    private fun resolveJs(request: WebProtocol.Request): String? {
+        val direct = WebProtocol.bodyString(request, "js")
+        if (direct.isNotBlank()) return direct
+        val path = WebProtocol.bodyString(request, "js_file")
+        if (path.isBlank()) return null
+        val root = runCatching { File(filesDir, "workspace").canonicalFile }.getOrNull() ?: return null
+        val candidate = when {
+            path.startsWith("/workspace/") -> File(root, path.removePrefix("/workspace/"))
+            path.startsWith("/") -> return null
+            else -> File(root, path)
+        }
+        val canonical = runCatching { candidate.canonicalFile }.getOrNull() ?: return null
+        if (canonical.path != root.path && !canonical.path.startsWith(root.path + File.separator)) return null
+        return runCatching { canonical.readText() }.getOrNull()
     }
 
     /** `text`：取可见文字；不给选择器就是整页正文。 */
@@ -1521,6 +1886,10 @@ class WebAutomationService : Service() {
         private const val PROBE_TIMEOUT_MS = 200
         private const val PROBE_PUSHBACK = 1
         private const val EVAL_TIMEOUT_MS = 15_000L
+        private const val MAX_EVAL_TIMEOUT_MS = 60_000
+        private const val WAITFOR_TIMEOUT_MS = 15_000
+        private const val FETCH_TIMEOUT_MS = 15_000
+        private const val FETCH_MAX_CHARS = 1_000_000
         private const val TEARDOWN_JOIN_MS = 3_000L
         private const val POLL_MS = 100L
         private const val LOOPBACK = "127.0.0.1"

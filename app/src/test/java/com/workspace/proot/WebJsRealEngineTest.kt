@@ -28,6 +28,7 @@ import java.io.File
  * 所以这里：**有 node 就真跑，没有就跳过并说清楚**（[Assume]）。
  * 跳过是诚实的 —— 不假装验过；而在这台开发机上它一定会跑。
  */
+@Suppress("MagicNumber")
 class WebJsRealEngineTest {
 
     /** 与 [WebJsStructureTest] 同一张清单（那边负责结构，这边负责真引擎）。 */
@@ -59,7 +60,32 @@ class WebJsRealEngineTest {
         ),
         "probe" to WebOpScripts.PROBE_JS,
         "diag" to WebOpScripts.DIAG_JS,
-        "html" to WebOpScripts.OUTER_HTML_JS
+        "html" to WebOpScripts.OUTER_HTML_JS,
+        "html-selector" to WebOpScripts.wrap(
+            WebSelector.pickJs(WebSelector.Kind.Css("h1")), "return e.outerHTML||'';"
+        ),
+        "eval-sync" to WebEvalScripts.syncExpression("document.title", "t1"),
+        "eval-stmt" to WebEvalScripts.syncStatement("var x=1; return x", "t2"),
+        "eval-async-expr" to WebEvalScripts.asyncScript(
+            WebEvalScripts.asyncExpression("await 1"), "t3"
+        ),
+        "eval-async-stmt" to WebEvalScripts.asyncScript(
+            WebEvalScripts.asyncStatement("var x=await 1; return x"), "t4"
+        ),
+        "eval-poll" to WebEvalScripts.poll("t5"),
+        "waitfor-js" to WebEvalScripts.condition("document.title!==''"),
+        "waitfor-selector" to WebEvalScripts.conditionSelector(
+            WebSelector.pickJs(WebSelector.Kind.Css("#kw"))
+        ),
+        "fetch" to WebEvalScripts.fetchScript(
+            token = "t6",
+            urlLiteral = "\"/api\"",
+            methodLiteral = "\"GET\"",
+            headersLiteral = "{}",
+            bodyLiteral = "null",
+            maxChars = 1000,
+        ),
+        "table" to WebTable.pageJs(WebSelector.pickJs(WebSelector.Kind.Css("#t")), 200)
     )
 
     @Test

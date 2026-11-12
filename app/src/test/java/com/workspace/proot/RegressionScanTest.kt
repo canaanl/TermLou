@@ -726,8 +726,11 @@ class RegressionScanTest {
     @Test
     fun `截图功能必须真的删干净`() {
         // 十条版本（5.9.27–5.9.36）全卡在"第 2 屏空白"，取像素的那一行是 `wv.draw(canvas)`。
-        // 5.9.37 决定不让 agent 看截图了，于是这条路**整个拿掉** ——
-        // 如果哪天它悄悄回来，agent 又会拿到一片空白，而且没人知道为什么。
+        // 5.9.37 决定不让 agent 看截图了，于是"整页拼接/逐屏采样"那条路**整个拿掉**。
+        //
+        // 5.13.0 起 `shot` 回来了，但只画**当前视口**一次（见 WebAutomationService.opShot），
+        // 不遍历、不拼接、不落盘。所以这里继续禁的是旧机器（采样器/拼接器/落盘器），
+        // 而不是 `wv.draw(` 本身。
         for (f in listOf(
             "WebAutomationService.kt", "WebProtocol.kt", "WebArtifacts.kt",
             "WebOpScripts.kt", "WebFloatWindow.kt", "WebFloatWindowHost.kt",
@@ -735,23 +738,30 @@ class RegressionScanTest {
         )) {
             val c = codeOnly(f)
             assertFalse(
-                "$f 里还有截图的残留：\n$c",
-                Regex("""\bopShot\b|\bcaptureScreen\b|\bprobeScreen\b|\bawaitScreenStable\b""" +
+                "$f 里还有整页截图机器的残留：\n$c",
+                Regex("""\bcaptureScreen\b|\bprobeScreen\b|\bawaitScreenStable\b""" +
                     """|\bwalkScreens\b|\bfinishShot\b|\bShotRunner\b|\bWebShotSampler\b""" +
                     """|\bShotWriter\b|\bshotFileName\b|\bhighestShotSeq\b|\boldestToDelete\b""" +
-                    """|\bMAX_SHOTS\b|\bregisterFrameCommitCallback\b|\bwv\.draw\(""").containsMatchIn(c)
+                    """|\bMAX_SHOTS\b|\bregisterFrameCommitCallback\b""").containsMatchIn(c)
             )
         }
         assertFalse(
             "ShotRunner.kt 与 WebShotSampler.kt 必须整个删掉，不是掏空",
             fileExists("ShotRunner.kt") || fileExists("WebShotSampler.kt")
         )
+        // 新实现只能画一次视口，不许出现"滚动拼接"的循环
+        val svc = codeOnly("WebAutomationService.kt")
+        val shot = svc.substringAfter("private fun opShot").substringBefore("private sealed class EvalRun")
+        assertTrue("shot 必须把当前视口画出来：\n$shot", shot.contains("wv.draw("))
+        assertFalse("shot 不许再遍历页面高度/拼图：\n$shot", shot.contains("scrollHeight"))
+        assertFalse("shot 不许再落盘：\n$shot", shot.contains("File("))
     }
 
     @Test
     fun `help不许再教截图也不许漏掉extract`() {
         val h = WebProtocol.help(39080)
-        assertFalse("help 不许再提 shot 指令：\n$h", h.contains("\"op\":\"shot\""))
+        // 5.13.0：shot 恢复，但只教"当前视口 PNG"，旧的多屏拼接说法仍不许出现
+        assertTrue("help 必须教新的 shot：\n$h", h.contains("\"op\":\"shot\""))
         assertFalse("help 不许再提 shots 目录", h.contains("shots/"))
         assertFalse("help 不许再教一屏一张/拼接那套", h.contains("shot-0007"))
         // extract 的字段与两个上限必须写进去 —— agent 是照着 help 用的

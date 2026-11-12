@@ -139,6 +139,45 @@ object WebProtocol {
         JSONObject().put("ok", false).put("error", message).toString()
 
     /**
+     * 失败，并带上**结构化的错误信息**（5.13.0）。
+     *
+     * `evaluateJavascript` 会把 JS 异常吞成 `null`；包装器在页面里 try/catch 后
+     * 带回 name/message/stack，这里原样暴露。`error` 仍保留纯字符串，旧脚本不受影响。
+     */
+    fun errJsonDetailed(name: String?, message: String, stack: String?): String =
+        JSONObject()
+            .put("ok", false)
+            .put("error", message)
+            .put("error_name", name ?: "Error")
+            .put("error_message", message)
+            .put("error_stack", stack ?: "")
+            .toString()
+
+    /**
+     * 按请求里的 `"fields":[...]` 裁剪响应（5.13.0）。
+     *
+     * 只保留 `ok` / `error` 与点名的键；`fields` 缺失或为空时原样返回。
+     */
+    @Suppress("ReturnCount")
+    fun projectFields(body: String, request: Request): String {
+        val arr = runCatching { JSONObject(request.body).optJSONArray("fields") }.getOrNull()
+            ?: return body
+        if (arr.length() == 0) return body
+        val keep = HashSet<String>()
+        for (i in 0 until arr.length()) {
+            arr.optString(i, "").takeIf { it.isNotEmpty() }?.let { keep.add(it) }
+        }
+        if (keep.isEmpty()) return body
+        val o = runCatching { JSONObject(body) }.getOrNull() ?: return body
+        keep.add("ok")
+        keep.add("error")
+        val out = JSONObject()
+        for (k in o.keys()) if (k in keep) out.put(k, o.get(k))
+        if (!out.has("ok")) out.put("ok", o.optBoolean("ok", true))
+        return out.toString()
+    }
+
+    /**
      * 失败，但**带上已经拿到的数据**。
      *
      * ## 为什么需要它
@@ -253,7 +292,20 @@ object WebProtocol {
         appendLine("  {\"op\":\"open\",\"url\":\"https://…\",\"wait\":8000}  打开网址（复用同一页面；wait=等加载完的毫秒数）")
         appendLine("  {\"op\":\"wait\",\"ms\":10000}               单独等当前页面加载完")
         appendLine("  {\"op\":\"eval\",\"js\":\"…\"}                在页面里执行 JS，返回其值（字符串就是字符串）")
+        appendLine("                                          支持 await / 顶层 await；JS 抛错 → ok:false")
+        appendLine("                                          + error_name/error_message/error_stack")
+        appendLine("                                          可带 \"timeout\":1000~60000（默认 15000）")
+        appendLine("                                          可带 \"raw\":true 让 value 是原生 JSON 值")
+        appendLine("                                          可用 \"js_file\":\"/workspace/x.js\" 代替 js")
+        appendLine("  {\"op\":\"waitfor\",\"js\":\"…\"|\"selector\":\"…\",\"timeout\":15000}")
+        appendLine("                                         条件等待：命中返回 ms，超时返回 ok:false")
+        appendLine("  {\"op\":\"fetch\",\"url\":\"…\",\"method\":\"GET\"}   页面内 fetch（带 cookie），")
+        appendLine("                                          返回 status/content_type/body/json")
+        appendLine("  {\"op\":\"table\",\"selector\":\"…\"}         表格结构化：headers + rows（含单元格")
+        appendLine("                                          title/aria-label/data-* 属性）")
         appendLine("  {\"op\":\"html\"}                        取回当前页面 HTML（很大，慎用）")
+        appendLine("  {\"op\":\"html\",\"selector\":\"…\"}         只取该元素的 outerHTML")
+        appendLine("  {\"op\":\"shot\"}                        当前视口 PNG（base64，用于渲染自证）")
         appendLine("  {\"op\":\"extract\"}                    **看清页面上有什么** —— 见下面「搜索」一节")
         appendLine("                                          可带 \"limit\":0~${WebExtract.MAX_LIMIT}（链接条数，默认 ${WebExtract.DEFAULT_LIMIT}）")
         appendLine("                                          可带 \"text_chars\":0~${WebExtract.MAX_TEXT_CHARS}（正文字数，默认 ${WebExtract.DEFAULT_TEXT_CHARS}）")
@@ -332,6 +384,12 @@ object WebProtocol {
         appendLine("  · clear 与 close 完全等价：都是清数据 + 结束当前页面会话。")
         appendLine("  · 只监听 127.0.0.1（同一 WiFi 下别的设备连不上）。")
         appendLine("  · 元素找不到一律 ok:false，绝不会报成功 —— ok:true 表示事情真的发生了。")
+        appendLine("  · eval 是唯一能跑任意 JS 的入口：异常走 ok:false（带 error_name/message/stack），")
+        appendLine("    不再与“页面算出来就是 null”混淆；await 会等到 Promise 落地再返回。")
+        appendLine("    默认 value 仍是字符串（42→\"42\"、对象→JSON 文本）；要原生值就加 \"raw\":true。")
+        appendLine("    js 里有换行或引号时，用 \"js_file\":\"/workspace/xxx.js\" 绕开 shell/JSON 三层转义。")
+        appendLine("  · 任何指令都可带 \"fields\":[\"value\",\"url\"] 只回传需要的字段（ok/error 始终保留），")
+        appendLine("    大响应配 head/wc 时先裁剪，别让 curl 因写不进去而报 (23)。")
         appendLine("  · 选择器报错怎么读：not found = 元素不在（换选择器或先 wait）；")
         appendLine("    bad selector (...) = 选择器本身写错了（照抄报错里的原因）；")
         appendLine("    not a text field / not a <select> = 元素找对了但类型不对。")
@@ -380,6 +438,11 @@ object WebProtocol {
         appendLine("    history is actually fine. To return to a previous page, just open its url -")
         appendLine("    you already have it from the extract / type / open responses.")
         appendLine("  · A missing element always returns ok:false; ok:true means it really happened.")
+        appendLine("  · eval is the only entry for arbitrary JS: exceptions return ok:false with")
+        appendLine("    error_name/message/stack instead of being flattened into value:null, and await")
+        appendLine("    waits for the Promise. value is still a string by default (42 -> \"42\", object ->")
+        appendLine("    JSON text); pass \"raw\":true for native JSON. Use \"js_file\":\"/workspace/x.js\"")
+        appendLine("    to avoid shell/JSON escaping. Any op accepts \"fields\":[...] to trim the reply.")
         appendLine("  · A click with no wait reports ready:false once it started a new navigation.")
         appendLine()
         appendLine("提示：服务未开启时连接被拒——请在 TermLou 设置 → 高级 → 浏览器 里开启。")
